@@ -165,7 +165,17 @@ func removeHook(root, key string) error {
 
 type hookOutcome struct {
 	Block   bool
-	Message string
+	Message string // the hook's own words (its reason, or the context it adds)
+	Command string // the hook that blocked
+}
+
+// blockMsg is why a hook blocked, for the model and the user: the hook's reason as it wrote it, or the
+// hook's command when it gave none.
+func (o hookOutcome) blockMsg() Msg {
+	if o.Message != "" {
+		return M("hook.blocked", "message", o.Message)
+	}
+	return M("hook.blocked_cmd", "command", o.Command)
 }
 
 // runHooks runs the approved hooks of an event whose matcher fits target (a tool name; "" for others).
@@ -219,9 +229,7 @@ func (s *Session) runHooks(ctx context.Context, event, target string, payload ma
 			res.Message = strings.TrimSpace(stdout.String()) // context added to the user's message
 		}
 		if res.Block {
-			if res.Message == "" {
-				res.Message = "bloqueado pelo hook: " + h.Command
-			}
+			res.Command = h.Command
 			return res
 		}
 	}

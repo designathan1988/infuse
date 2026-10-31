@@ -42,7 +42,9 @@ func (s *Session) runReadsInParallel(ctx context.Context, rules *RuleSet, conten
 			defer wg.Done()
 			start := time.Now()
 			res, isErr := s.runTool(ctx, rules, b)
-			r := Block{Type: "tool_result", ToolUseID: b.ID, Content: redactSecrets(res), IsError: isErr, Ms: time.Since(start).Milliseconds()}
+			res = redactSecrets(res)
+			// the user's version: infuse's messages recorded for this call, in the user's language
+			r := Block{Type: "tool_result", ToolUseID: b.ID, Content: res, IsError: isErr, Ms: time.Since(start).Milliseconds(), Display: displayFor(s.uiLang(), res, s.takeCallMsgs(b.ID))}
 			mu.Lock()
 			out[b.ID] = r
 			mu.Unlock()

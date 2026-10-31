@@ -44,3 +44,23 @@ func FuzzGuardNeverLetsAWriteToTheOracleThrough(f *testing.F) {
 		}
 	})
 }
+
+// A refusal and a note of the guard are messages: the model reads the English, the user their language.
+func TestGuardSpeaksInMessages(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	g := newGuard(root, []string{"secrets/**"})
+	_, _, err := g.GuardCommandMsgs("rm secrets/key.pem", root)
+	m := msgOf(err)
+	want := M("guard.protected", "file", "secrets/key.pem", "detail", M("guard.with_command", "why", M("guard.command"), "command", "rm secrets/key.pem"))
+	if m.String() != want.String() || err.Error() != want.String() {
+		t.Fatalf("%v", err)
+	}
+	if !strings.HasPrefix(m.Render("pt-BR"), "caminho protegido, somente leitura para o agente: secrets/key.pem (comando sobre caminho protegido recusado: rm") {
+		t.Fatal(m.Render("pt-BR"))
+	}
+	_, notes, err := g.GuardCommandMsgs("echo x > secrets/a", root)
+	if err != nil || len(notes) != 1 || notes[0].String() != M("guard.redirected", "file", "secrets/a").String() {
+		t.Fatalf("%v %v", notes, err)
+	}
+}

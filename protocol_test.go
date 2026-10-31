@@ -25,7 +25,7 @@ func TestProtocolDecidesNotTheModel(t *testing.T) {
 	run := func(b Block) (string, bool) { return s.runTool(context.Background(), &RuleSet{}, b) }
 
 	// 1. no plan, no write
-	if out, isErr := run(writeCall("1", "soma.js", "module.exports = (a, b) => a + b;\n")); !isErr || !strings.Contains(out, "record the plan") {
+	if out, isErr := run(writeCall("1", "soma.js", "module.exports = (a, b) => a + b;\n")); !isErr || out != M("protocol.no_plan").String() {
 		t.Fatalf("write without a plan: %s", out)
 	}
 	// a plan whose open task has no proof is refused
@@ -42,7 +42,7 @@ func TestProtocolDecidesNotTheModel(t *testing.T) {
 	// 2. a library or external API not researched in this turn: refused before the first error
 	code := "const axios = require('axios');\nmodule.exports = () => axios.get('https://api.frankfurter.app/latest');\n"
 	out, isErr := run(writeCall("5", "cotacao.js", code))
-	if !isErr || !strings.Contains(out, "axios") || !strings.Contains(out, "api.frankfurter.app") {
+	if !isErr || out != M("protocol.docs_first", "uses", "api.frankfurter.app, axios").String() {
 		t.Fatalf("unresearched library and API accepted: %s", out)
 	}
 	s.noteResearch("WebSearch", json.RawMessage(`{"query":"axios get request documentation"}`))
@@ -57,24 +57,24 @@ func TestProtocolDecidesNotTheModel(t *testing.T) {
 
 	// 3. size limit
 	big := strings.Repeat("const x = 1;\n", 450)
-	if out, isErr := run(writeCall("8", "grande.js", big)); !isErr || !strings.Contains(out, "project limit: 400") {
+	if out, isErr := run(writeCall("8", "grande.js", big)); !isErr || out != M("protocol.file_too_big", "file", "grande.js", "lines", 451, "limit", 400).String() {
 		t.Fatalf("oversized file accepted: %s", out)
 	}
 
 	// 4. the turn cannot end with the plan open
 	s.Turn, s.TurnStarts = 1, []int{0}
 	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "crie soma"}}}}
-	if why := s.turnObligation(context.Background()); !strings.Contains(why, "open tasks") {
+	if why := s.turnObligation(context.Background()); why.ID != "turn.open_tasks" {
 		t.Fatalf("turn ended with an open plan: %q", why)
 	}
 	s.setTasks([]TaskItem{{ID: "1", Text: "criar soma", Status: "done"}})
 	s.Checkpoints[1] = []CheckpointFile{{Path: "quebrado.json", New: true}}
 	_ = os.WriteFile(filepath.Join(root, "quebrado.json"), []byte(`{"a": }`), 0o644)
-	if why := s.turnObligation(context.Background()); !strings.Contains(why, "project's checker") {
+	if why := s.turnObligation(context.Background()); why.ID != "turn.checker" {
 		t.Fatalf("turn ended with a broken file: %q", why)
 	}
 	_ = os.WriteFile(filepath.Join(root, "quebrado.json"), []byte(`{"a": 1}`), 0o644)
-	if why := s.turnObligation(context.Background()); !strings.Contains(why, "without a Report") {
+	if why := s.turnObligation(context.Background()); why.ID != "gate.no_report" {
 		t.Fatalf("turn ended without a report: %q", why)
 	}
 }
@@ -88,18 +88,18 @@ func TestConventionsAreEnforcedOnWrites(t *testing.T) {
 	}
 	LearnConventions(root)
 	tabs := "const a = require('./a');\nfunction g() {\n\tif (a) {\n\t\treturn 1;\n\t}\n\tconst b = 2;\n\tconst c = 3;\n\treturn b + c;\n}\nmodule.exports = g;\n"
-	if why := conventionViolation(root, "src/novo-arquivo.js", "", tabs); !strings.Contains(why, "2 spaces") {
+	if why := conventionViolation(root, "src/novo-arquivo.js", "", tabs); why.String() != M("conv.indent", "want", M("conv.indent_2"), "share", 100, "got", M("conv.indent_tabs")).String() {
 		t.Fatalf("tabs in a 2-space project: %q", why)
 	}
 	esm := "import a from './a';\nexport function g() {\n  if (a) {\n    return 1;\n  }\n  return 2;\n}\n"
-	if why := conventionViolation(root, "src/outro-arquivo.js", "", esm); !strings.Contains(why, "CommonJS") {
+	if why := conventionViolation(root, "src/outro-arquivo.js", "", esm); why.String() != M("conv.modules", "system", "CommonJS (require/module.exports)").String() {
 		t.Fatalf("ESM in a CommonJS project: %q", why)
 	}
 	good := "const a = require('./a');\nfunction g() {\n  if (a) {\n    return 1;\n  }\n  return 2;\n}\nmodule.exports = g;\n"
-	if why := conventionViolation(root, "src/mais-um.js", "", good); why != "" {
+	if why := conventionViolation(root, "src/mais-um.js", "", good); !why.Empty() {
 		t.Fatalf("a file that follows the conventions was refused: %q", why)
 	}
-	if why := conventionViolation(root, "src/maisUm.js", "", good); !strings.Contains(why, "kebab-case") {
+	if why := conventionViolation(root, "src/maisUm.js", "", good); why.String() != M("conv.naming", "ext", ".js", "want", "kebab-case", "file", "maisUm.js", "got", "camelCase").String() {
 		t.Fatalf("camelCase name in a kebab-case project: %q", why)
 	}
 }

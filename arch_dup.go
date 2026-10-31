@@ -5,7 +5,6 @@ package main
 // (dependency-cruiser no-circular, eslint import/no-cycle).
 
 import (
-	"fmt"
 	"hash/fnv"
 	"os"
 	"path"
@@ -109,16 +108,16 @@ func windowsOf(code, ext string, n int) map[uint64]int {
 }
 
 // archDuplicates: the code a write adds may not be a copy of code in another file.
-func archDuplicates(r *ArchRules, work, rel, ext, before, after string) string {
+func archDuplicates(r *ArchRules, work, rel, ext, before, after string) Msg {
 	if !r.on("duplicates") || !codeExts[ext] || ext == ".css" || r.DupLines < 3 {
-		return ""
+		return Msg{}
 	}
 	added := windowsOf(after, ext, r.DupLines)
 	for h := range windowsOf(before, ext, r.DupLines) {
 		delete(added, h)
 	}
 	if len(added) == 0 {
-		return ""
+		return Msg{}
 	}
 	for orel, f := range projectIndex(work, r.DupLines) {
 		if orel == rel {
@@ -126,11 +125,11 @@ func archDuplicates(r *ArchRules, work, rel, ext, before, after string) string {
 		}
 		for h, line := range added {
 			if oline, ok := f.windows[h]; ok {
-				return fmt.Sprintf("the code starting at line %d repeats %d+ lines of %s:%d. Reuse it: extract a shared function (or import the one that already exists) instead of copying.", line, r.DupLines, orel, oline)
+				return M("arch.duplicate", "line", line, "lines", r.DupLines, "file", orel, "at", oline)
 			}
 		}
 	}
-	return ""
+	return Msg{}
 }
 
 var reComments = regexp.MustCompile(`(?s)/\*.*?\*/|(?m)//[^\n]*`)
@@ -172,13 +171,13 @@ func resolveModule(work, target string) string {
 }
 
 // archCycles: a new import that makes a module depend, through others, on itself.
-func archCycles(r *ArchRules, work, rel, ext, before, after string) string {
+func archCycles(r *ArchRules, work, rel, ext, before, after string) Msg {
 	if !r.on("cycles") {
-		return ""
+		return Msg{}
 	}
 	newEdges := relImports(rel, after, ext, work)
 	if len(newEdges) == 0 {
-		return ""
+		return Msg{}
 	}
 	had := map[string]bool{}
 	for _, e := range relImports(rel, before, ext, work) {
@@ -206,7 +205,7 @@ func archCycles(r *ArchRules, work, rel, ext, before, after string) string {
 					loop = append([]string{at}, loop...)
 				}
 				loop = append([]string{rel}, loop...)
-				return fmt.Sprintf("importing %s creates a cycle: %s. Modules depend in one direction only: move what both use into a lower (shared) module that neither of them imports back.", start, strings.Join(loop, " → "))
+				return M("arch.cycle", "module", start, "loop", strings.Join(loop, " → "))
 			}
 			for _, nx := range graph[cur] {
 				if _, ok := prev[nx]; !ok {
@@ -216,5 +215,5 @@ func archCycles(r *ArchRules, work, rel, ext, before, after string) string {
 			}
 		}
 	}
-	return ""
+	return Msg{}
 }

@@ -327,18 +327,23 @@ func DescribeDir(m *ProjectMap, relDir string) string {
 	return b.String()
 }
 
-// DescribeDependents: who depends on a file — infused when the agent writes it.
+// DescribeDependents: who depends on a file — infused when the agent writes it (English).
 func DescribeDependents(m *ProjectMap, relFile string) string {
+	return DependentsMsg(m, relFile).String()
+}
+
+// DependentsMsg: who depends on a file, as a message (empty when nobody does).
+func DependentsMsg(m *ProjectMap, relFile string) Msg {
 	f, ok := m.Files[relFile]
 	if !ok || len(f.Dependents) == 0 {
-		return ""
+		return Msg{}
 	}
 	deps := f.Dependents
 	more := ""
 	if len(deps) > 12 {
 		deps, more = deps[:12], "…"
 	}
-	return fmt.Sprintf("[infuse] %s is used by %d: %s%s", relFile, len(f.Dependents), strings.Join(deps, ", "), more)
+	return M("map.dependents", "file", relFile, "count", len(f.Dependents), "files", strings.Join(deps, ", ")+more)
 }
 
 func mapFile(root string) string { return filepath.Join(root, infuseDirName, "map", "map.json") }

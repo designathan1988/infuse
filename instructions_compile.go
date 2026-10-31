@@ -33,7 +33,7 @@ type compiledRules struct {
 	Compiled int64          `json:"compiled"`
 	Model    string         `json:"model"`
 	Rules    []compiledRule `json:"rules"`
-	Dropped  []string       `json:"dropped,omitempty"` // proposals rejected by the quote check, with why
+	Dropped  []Msg          `json:"rejected,omitempty"` // proposals rejected by the quote check, with why (as messages)
 }
 
 func compiledRulesFile(root string) string {
@@ -82,8 +82,8 @@ func (s *Session) compileInstructions(ctx context.Context, p Provider, text stri
 	norm := normSpace(text)
 	for _, r := range out.Rules {
 		why := verifyRule(s.Root, norm, r)
-		if why != "" {
-			c.Dropped = append(c.Dropped, fmt.Sprintf("%s %s%s: %s", r.Kind, r.Path, r.Command, why))
+		if !why.Empty() {
+			c.Dropped = append(c.Dropped, M("instr.rule_dropped", "kind", r.Kind, "target", r.Path+r.Command, "why", why))
 			continue
 		}
 		r.Disabled = false
@@ -95,29 +95,29 @@ func (s *Session) compileInstructions(ctx context.Context, p Provider, text stri
 	return c, nil
 }
 
-// verifyRule is the mechanical check of a proposed rule ("" when it holds).
-func verifyRule(root, normText string, r compiledRule) string {
+// verifyRule is the mechanical check of a proposed rule (empty when it holds).
+func verifyRule(root, normText string, r compiledRule) Msg {
 	q := normSpace(r.Quote)
 	if len(q) < 8 || !strings.Contains(normText, q) {
-		return "the quoted passage is not in the instructions"
+		return M("instr.rule_no_quote")
 	}
 	switch r.Kind {
 	case "reference", "read":
 		p := strings.Trim(strings.TrimPrefix(filepath.ToSlash(r.Path), "./"), "/")
 		if p == "" || !strings.Contains(q, normSpace(p)) {
-			return "the path does not appear in the quoted passage"
+			return M("instr.rule_no_path")
 		}
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(p))); err != nil && r.Kind == "read" {
-			return "the document does not exist in the project"
+			return M("instr.rule_no_doc")
 		}
 	case "verify":
 		if r.Command == "" || !strings.Contains(q, normSpace(r.Command)) {
-			return "the command does not appear in the quoted passage"
+			return M("instr.rule_no_command")
 		}
 	default:
-		return "unknown kind"
+		return M("instr.rule_bad_kind")
 	}
-	return ""
+	return Msg{}
 }
 
 // ensureCompiledRules compiles the instructions when they changed since the last compilation.
@@ -131,7 +131,7 @@ func (s *Session) ensureCompiledRules(ctx context.Context, p Provider) {
 	if old != nil && old.Hash == h {
 		return
 	}
-	s.emit("gate", map[string]any{"message": "[infuse] Reading the project's instructions to extract the rules (each one checked against the text)…"})
+	s.emitMsg("gate", M("instr.compiling"))
 	c, err := s.compileInstructions(ctx, p, pr.text)
 	if err != nil {
 		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "compiling the instructions: " + err.Error()})

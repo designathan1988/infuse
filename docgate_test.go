@@ -24,12 +24,12 @@ func TestCommandOptionsNeedReadDocs(t *testing.T) {
 		t.Fatalf("unread options accepted: %s", out)
 	}
 	// options inside an environment assignment belong to the program too
-	if why := s.commandDocCheck(`RENDERDOC_HOOK=--capture-all-children renderdoccmd capture app.exe`); !strings.Contains(why, "--capture-all-children") {
-		t.Fatalf("option in an assignment missed: %q", why)
+	if why := s.commandDocCheck(`RENDERDOC_HOOK=--capture-all-children renderdoccmd capture app.exe`); why.ID != "docs.cmd_options" || why.Args["options"] != "--capture-all-children" {
+		t.Fatalf("option in an assignment missed: %v", why)
 	}
 	// everyday tooling, help commands and the project's own programs pass
 	for _, c := range []string{"git log --oneline --stat", "go test -count=1 ./...", "chrome --help", "build/infuse.exe --window-hidden"} {
-		if why := s.commandDocCheck(c); why != "" {
+		if why := s.commandDocCheck(c); !why.Empty() {
 			t.Fatalf("%s refused: %s", c, why)
 		}
 	}
@@ -40,17 +40,22 @@ func TestCommandOptionsNeedReadDocs(t *testing.T) {
 	if out, isErr := run(Block{Type: "tool_use", ID: "2", Name: "Read", Input: json.RawMessage(`{"path":".infuse/docs/dawn-debugging.md"}`)}); isErr {
 		t.Fatal(out)
 	}
-	if why := s.commandDocCheck(chrome); !strings.Contains(why, "--enable-unsafe-webgpu") || strings.Contains(why, "--gpu-startup-dialog") {
-		t.Fatalf("after reading, only the unread option should remain: %q", why)
+	if why := s.commandDocCheck(chrome); why.Args["options"] != "--enable-unsafe-webgpu" {
+		t.Fatalf("after reading, only the unread option should remain: %v", why)
+	}
+	// infuse's own notes are not the user's words, whatever they mention
+	s.Messages = append(s.Messages, Message{Role: "user", Kind: "infuse_note", Content: []Block{{Type: "text", Text: "about --enable-unsafe-webgpu"}}})
+	if why := s.commandDocCheck(chrome); why.Empty() {
+		t.Fatal("an infuse note counted as the user's request")
 	}
 	// an option the user asked for is the user's choice
 	s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: "rode com --enable-unsafe-webgpu"}}})
-	if why := s.commandDocCheck(chrome); why != "" {
+	if why := s.commandDocCheck(chrome); !why.Empty() {
 		t.Fatalf("user's option refused: %s", why)
 	}
 	// a project script documents its own options
 	_ = os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"scripts":{"e2e":"playwright test --headed"}}`), 0o644)
-	if why := s.commandDocCheck("playwright test --headed"); why != "" {
+	if why := s.commandDocCheck("playwright test --headed"); !why.Empty() {
 		t.Fatalf("project-documented option refused: %s", why)
 	}
 }
@@ -62,20 +67,26 @@ func TestPartlyReadPageBlocksAction(t *testing.T) {
 	s.gate.diagnosed = true // this test is about another gate
 	s.Mode = "bypass"
 	s.docs.markPart("https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md", 0, 3)
+	page := "https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md"
 	why := s.commandDocCheck("go build ./...")
-	if !strings.Contains(why, "read only in part") || !strings.Contains(why, "offset=30000") {
+	if want := M("docs.cmd_partial", "pages", []Msg{M("docs.part", "url", page, "seen", 1, "total", 3, "offset", 30000)}); why.String() != want.String() {
 		t.Fatalf("skimmed page did not block: %q", why)
 	}
-	if why := s.commandDocCheck("curl -s https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md?format=TEXT"); why != "" {
+	if why := s.commandDocCheck("curl -s https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md?format=TEXT"); !why.Empty() {
 		t.Fatalf("reading command blocked: %s", why)
 	}
 	s.gate.planned = true
-	if out, isErr := s.runTool(context.Background(), &RuleSet{}, writeCall("1", "a.js", "x\n")); !isErr || !strings.Contains(out, "read only in part") && !strings.Contains(out, "lida só em parte") {
+	out, isErr := s.runTool(context.Background(), &RuleSet{}, writeCall("1", "a.js", "x\n"))
+	if want := M("docs.write_partial", "pages", s.docs.unfinished()); !isErr || out != want.String() {
 		t.Fatalf("write while a page is half read: %s", out)
+	}
+	// the user reads the refusal in their language, from the message recorded with the call
+	if d := displayFor("pt-BR", out, s.takeCallMsgs("1")); !strings.HasPrefix(d, "[infuse] Alteração recusada") {
+		t.Fatalf("display %q", d)
 	}
 	s.docs.markPart("https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md", 1, 3)
 	s.docs.markPart("https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md", 2, 3)
-	if why := s.commandDocCheck("go build ./..."); why != "" {
+	if why := s.commandDocCheck("go build ./..."); !why.Empty() {
 		t.Fatalf("fully read page still blocks: %s", why)
 	}
 }
@@ -88,11 +99,11 @@ func TestPlanOfEarlierTurnHoldsAndClosesHonestly(t *testing.T) {
 	s.settings.RequireReview = &off
 	s.setTasks([]TaskItem{{ID: "1", Text: "ler a doc", Status: "in_progress", Proof: "página lida"}, {ID: "2", Text: "criar cli", Status: "pending", Proof: "node cli.js"}, {ID: "3", Text: "feito", Status: "done"}})
 	s.gate.reset() // a later turn (a mission's next round): the plan was registered before it
-	if why := s.turnObligation(context.Background()); !strings.Contains(why, "open tasks") || !strings.Contains(why, "criar cli") {
+	if why := s.turnObligation(context.Background()); why.String() != M("turn.open_tasks", "tasks", "ler a doc; criar cli").String() {
 		t.Fatalf("an earlier turn's plan was ignored: %q", why)
 	}
 	s.gate.obligationAsks = 6 // the agent kept refusing: the turn ends, and the plan says so
-	if why := s.turnObligation(context.Background()); why != "" {
+	if why := s.turnObligation(context.Background()); !why.Empty() {
 		t.Fatal(why)
 	}
 	for _, x := range s.Tasks {

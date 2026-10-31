@@ -3,7 +3,6 @@ package main
 // The locks drawn from the project's instructions, and the loop that treats effects instead of causes.
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -63,10 +62,10 @@ func (s *Session) readProgress(abs string) (seen, total, next int) {
 }
 
 // requiredReading returns why the agent may not act yet: documents the instructions point to that it has
-// not read to the end ("" when all are read, or the project has none).
-func (s *Session) requiredReading() string {
+// not read to the end (empty when all are read, or the project has none).
+func (s *Session) requiredReading() Msg {
 	r := loadProjectRules(s.Root)
-	var missing []string
+	var missing []Msg
 	for _, p := range r.Required {
 		abs := filepath.Join(s.Root, filepath.FromSlash(p))
 		seen, total, next := s.readProgress(abs)
@@ -74,27 +73,27 @@ func (s *Session) requiredReading() string {
 			continue
 		}
 		if seen == 0 {
-			missing = append(missing, fmt.Sprintf("%s (not read)", p))
+			missing = append(missing, M("instr.not_read", "file", p))
 		} else {
-			missing = append(missing, fmt.Sprintf("%s (read %d of %d lines; continue with Read offset=%d)", p, seen, total, next))
+			missing = append(missing, M("instr.partly_read", "file", p, "seen", seen, "total", total, "next", next))
 		}
 	}
 	if len(missing) == 0 {
-		return ""
+		return Msg{}
 	}
-	return fmt.Sprintf("[infuse] Blocked: the project's instructions (%s) point to documents you have not yet read in full. Read each one to the end with Read before changing files or running commands — they are where the project says what has already been tried, what is forbidden and how to measure:\n- %s", strings.Join(r.Files, ", "), strings.Join(missing, "\n- "))
+	return M("instr.required", "files", strings.Join(r.Files, ", "), "docs", missing)
 }
 
 // instructionWriteCheck: the instruction files are not edited; the forbidden references are not written.
-func (s *Session) instructionWriteCheck(rel, before string) string {
+func (s *Session) instructionWriteCheck(rel, before string) Msg {
 	r := loadProjectRules(s.Root)
 	if isInstructionFile(rel) {
-		return fmt.Sprintf("[infuse] Blocked: %s is the project's instructions. The agent follows the instructions; it does not change or delete them. If something in them needs to change, tell the user what and why.", rel)
+		return M("instr.no_edit", "file", rel)
 	}
 	if ref := underReference(r, rel); ref != "" {
-		return fmt.Sprintf("[infuse] Blocked: %s is a read-only reference according to the project's instructions. Nothing is written in it.", ref)
+		return M("instr.reference", "ref", ref)
 	}
-	return ""
+	return Msg{}
 }
 
 // ---------------------------------------------------------------- the effects loop
@@ -166,14 +165,14 @@ type ranCommand struct {
 }
 
 // missingVerification lists the commands the instructions order after changes that did not run, with
-// success, after this turn's last change ("" when none is missing or nothing changed).
-func (s *Session) missingVerification() string {
+// success, after this turn's last change (empty when none is missing or nothing changed).
+func (s *Session) missingVerification() Msg {
 	r := loadProjectRules(s.Root)
 	s.mu.Lock()
 	writes, ran := s.gate.writes, append([]ranCommand{}, s.gate.ran...)
 	s.mu.Unlock()
 	if writes == 0 || len(r.AfterChange) == 0 {
-		return ""
+		return Msg{}
 	}
 	var missing []string
 	for _, want := range r.AfterChange {
@@ -189,9 +188,9 @@ func (s *Session) missingVerification() string {
 		}
 	}
 	if len(missing) == 0 {
-		return ""
+		return Msg{}
 	}
-	return fmt.Sprintf("[infuse] The turn cannot end: the project's instructions say to run these after changes, and they did not run successfully after this turn's last change: %s. Run exactly these commands (the project's metrics are its own, not tools of yours) and deal with whatever they fail.", strings.Join(missing, " · "))
+	return M("instr.verify_missing", "commands", strings.Join(missing, " · "))
 }
 
 // noteWrite and noteInvestigation feed the loop detector.
@@ -217,28 +216,28 @@ func investigates(root, name, path string) bool {
 }
 
 // loopCheck refuses the next change or command while the agent is in a measure-and-tweak loop.
-func (s *Session) loopCheck(name, cat, path string, isAgentExplore bool) string {
+func (s *Session) loopCheck(name, cat, path string, isAgentExplore bool) Msg {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	g := &s.gate
 	if g.loopKey == "" {
-		return ""
+		return Msg{}
 	}
 	if isAgentExplore || investigates(s.Root, name, path) {
 		g.studied++
 		if g.studied >= 2 { // it went to the sources: the loop is over; counting starts again
 			g.loopKey, g.studied, g.runs = "", 0, nil
 		}
-		return ""
+		return Msg{}
 	}
 	if cat != "write" && cat != "exec" {
-		return ""
+		return Msg{}
 	}
 	docs := strings.Join(loadProjectRules(s.Root).Required, ", ")
 	if docs == "" {
-		return fmt.Sprintf("[infuse] Blocked: a measure-and-tweak loop — `%s` ran again after each tweak, 3 times or more in this turn, with no research into the cause. That treats effects, one at a time. Stop: read the project's documentation and the official documentation of what is involved (at least two readings), record in the plan (TodoWrite) the cause that explains all the symptoms together, and only then go back to changing things.", g.loopKey)
+		return M("instr.loop", "command", g.loopKey)
 	}
-	return fmt.Sprintf("[infuse] Blocked: a measure-and-tweak loop — `%s` ran again after each tweak, 3 times or more in this turn, with no research into the cause. That treats effects, one at a time. Stop: read the required documents (%s) and the official documentation of what is involved (at least two readings), record in the plan (TodoWrite) the cause that explains all the symptoms together, and only then go back to changing things.", g.loopKey, docs)
+	return M("instr.loop_docs", "command", g.loopKey, "docs", docs)
 }
 
 // instructionsPrompt tells the agent what infuse extracted from the instructions and will enforce.

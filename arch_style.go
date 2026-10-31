@@ -4,7 +4,6 @@ package main
 // classes in the style sheets, not by literals scattered in rules or inline styles.
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -31,9 +30,9 @@ func colorLiterals(code string) []string {
 }
 
 // archStyles: new literal colours outside the token files, and inline styles with literal colours.
-func archStyles(r *ArchRules, work, rel, ext, before, after string) string {
+func archStyles(r *ArchRules, work, rel, ext, before, after string) Msg {
 	if !r.on("styles") || len(r.TokenFiles) == 0 || contains(r.TokenFiles, rel) {
-		return ""
+		return Msg{}
 	}
 	styleLike := ext == ".css" || ext == ".scss" || ext == ".less" || ext == ".vue" || ext == ".svelte" || ext == ".html" || ext == ".astro"
 	if styleLike {
@@ -47,17 +46,17 @@ func archStyles(r *ArchRules, work, rel, ext, before, after string) string {
 				was[k]--
 				continue
 			}
-			return fmt.Sprintf("literal color %s outside the tokens. The project's colors come from %s: use var(--…)%s. If it is a new color in the design, it goes into the tokens file first.", c, strings.Join(r.TokenFiles, ", "), tokenHint(work, r, k))
+			return M("arch.color", "color", c, "tokens", strings.Join(r.TokenFiles, ", "), "hint", tokenHint(work, r, k))
 		}
 	}
 	if (jsLikeExts[ext] || styleLike) && len(reInlineLiteral.FindAllString(after, -1)) > len(reInlineLiteral.FindAllString(before, -1)) {
-		return fmt.Sprintf("inline style with a literal color. Appearance comes from the classes in the stylesheet and colors from the tokens (%s): create or use a class; inline style only for values computed at run time.", strings.Join(r.TokenFiles, ", "))
+		return M("arch.inline_color", "tokens", strings.Join(r.TokenFiles, ", "))
 	}
-	return ""
+	return Msg{}
 }
 
-// tokenHint names the tokens that already hold this colour.
-func tokenHint(work string, r *ArchRules, color string) string {
+// tokenHint names the tokens that already hold this colour (empty when none does).
+func tokenHint(work string, r *ArchRules, color string) Msg {
 	var hits []string
 	for _, f := range r.TokenFiles {
 		b, err := os.ReadFile(filepath.Join(work, filepath.FromSlash(f)))
@@ -71,10 +70,10 @@ func tokenHint(work string, r *ArchRules, color string) string {
 		}
 	}
 	if len(hits) == 0 {
-		return ""
+		return Msg{}
 	}
 	if len(hits) > 3 {
 		hits = hits[:3]
 	}
-	return " — this color already exists as var(" + strings.Join(hits, "), var(") + ")"
+	return M("arch.color_hint", "vars", "var("+strings.Join(hits, "), var(")+")")
 }

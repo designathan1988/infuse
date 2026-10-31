@@ -16,7 +16,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -71,8 +70,8 @@ func isResearch(name string, input json.RawMessage) (investigates, web bool) {
 	return strings.HasPrefix(name, "mcp__"), strings.HasPrefix(name, "mcp__")
 }
 
-// gateCheck runs before a tool: it returns why the call is refused, or "".
-func (s *Session) gateCheck(name string, cat string, input json.RawMessage) string {
+// gateCheck runs before a tool: it returns why the call is refused (empty when it may run).
+func (s *Session) gateCheck(name string, cat string, input json.RawMessage) Msg {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	g := &s.gate
@@ -83,24 +82,24 @@ func (s *Session) gateCheck(name string, cat string, input json.RawMessage) stri
 				g.needWeb = false
 			}
 		}
-		return ""
+		return Msg{}
 	}
 	if (cat != "exec" && cat != "write") || g.fails < 2 {
-		return ""
+		return Msg{}
 	}
 	g.trips++
 	if g.trips >= 2 {
 		g.needWeb = true
 	}
-	format := "[infuse] Blocked: %d attempts failed in a row. Before another attempt, read the code involved (Read, Grep) or consult a source (WebSearch, WebFetch, pinned documentation); then explain the cause, and only then fix it.\nRecent errors:\n- %s"
 	if g.needWeb {
-		format = "[infuse] Blocked: %d attempts failed in a row. Before another attempt, research outside the project: WebSearch with the error message, WebFetch on the official documentation for the version in use, the pinned documentation (.infuse/docs) or a skill — reading the local files was not enough; then explain the cause, and only then fix it.\nRecent errors:\n- %s"
+		return M("gate.research_web", "fails", g.fails, "errors", strings.Join(g.errors, "\n- "))
 	}
-	return fmt.Sprintf(format, g.fails, strings.Join(g.errors, "\n- "))
+	return M("gate.research_local", "fails", g.fails, "errors", strings.Join(g.errors, "\n- "))
 }
 
-// gateRecord runs after a tool: failed commands count toward the gate.
-func (s *Session) gateRecord(name, cat string, out string, isErr bool) {
+// gateRecord runs after a tool: failed commands count toward the gate. A call that infuse refused before
+// it acted (one of blockMsgs recorded for it) is not a failed attempt.
+func (s *Session) gateRecord(callID, name, cat string, out string, isErr bool) {
 	if cat != "exec" {
 		return
 	}
@@ -110,8 +109,11 @@ func (s *Session) gateRecord(name, cat string, out string, isErr bool) {
 		s.gate.fails, s.gate.errors = 0, nil
 		return
 	}
-	if strings.HasPrefix(out, "[infuse] Blocked") || strings.HasPrefix(out, "[infuse] Bloqueado") {
-		return
+	for _, m := range s.callMsgs[callID] {
+		if blockMsgs[m.ID] {
+			return
+		}
+		out = strings.Replace(out, m.String(), "", 1) // infuse's own notes are not the command's error
 	}
 	s.gate.fails++
 	s.gate.errors = append(s.gate.errors, lastMeaningfulLine(out))
@@ -120,12 +122,13 @@ func (s *Session) gateRecord(name, cat string, out string, isErr bool) {
 	}
 }
 
-// lastMeaningfulLine is the line of a failed command's output that most likely carries the error.
+// lastMeaningfulLine is the line of a failed command's output that most likely carries the error (the
+// notes infuse recorded for the call are already taken out).
 func lastMeaningfulLine(out string) string {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		l := strings.TrimSpace(lines[i])
-		if l == "" || strings.HasPrefix(l, "[infuse") || strings.HasPrefix(l, "exit") {
+		if l == "" || strings.HasPrefix(l, "exit") {
 			continue
 		}
 		if regexp.MustCompile(`(?i)error|erro|fail|exception|cannot|not found|undefined|expected`).MatchString(l) || i == 0 {
@@ -142,25 +145,25 @@ func lastMeaningfulLine(out string) string {
 
 type shortcut struct {
 	re       *regexp.Regexp
-	what     string
+	what     Msg
 	testOnly bool // weakens tests: the user decides
 }
 
 var shortcuts = []shortcut{
-	{regexp.MustCompile(`\b(it|test|describe)\.(skip|only)\(|\bx(it|describe|test)\(|\btest\.todo\(`), "test disabled or isolated (.skip/.only)", true},
-	{regexp.MustCompile(`@pytest\.mark\.(skip|xfail)|\bpytest\.skip\(|\bunittest\.skip|@unittest\.skip`), "test skipped (pytest skip/xfail)", true},
-	{regexp.MustCompile(`\bt\.Skip(f|Now)?\(`), "test skipped (t.Skip)", true},
-	{regexp.MustCompile(`@(Disabled|Ignore)\b`), "test disabled (@Disabled/@Ignore)", true},
-	{regexp.MustCompile(`expect\((true|1|'.*?'|".*?")\)\.(toBe|toEqual)\(\s*(true|1|'.*?'|".*?")\s*\)|assert\.(ok|equal)\(\s*true\s*\)|\bassert\s+True\b`), "assertion that cannot fail", true},
-	{regexp.MustCompile(`@ts-(ignore|nocheck|expect-error)`), "type checking silenced (@ts-ignore)", false},
-	{regexp.MustCompile(`eslint-disable|//\s*nolint|#\s*noqa|#\s*type:\s*ignore|#\s*pylint:\s*disable`), "checker silenced", false},
-	{regexp.MustCompile(`catch\s*(\([^)]*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(\{\s*\}|null|undefined)\s*\)`), "swallowed error (empty catch)", false},
-	{regexp.MustCompile(`except(\s+[\w.,() ]+)?:\s*(\n\s*)?pass\b`), "swallowed error (except: pass)", false},
-	{regexp.MustCompile(`"test"\s*:\s*"[^"]*(\|\|\s*true|exit\s+0)[^"]*"`), "test script that never fails (|| true)", true},
+	{regexp.MustCompile(`\b(it|test|describe)\.(skip|only)\(|\bx(it|describe|test)\(|\btest\.todo\(`), M("shortcut.skip_only"), true},
+	{regexp.MustCompile(`@pytest\.mark\.(skip|xfail)|\bpytest\.skip\(|\bunittest\.skip|@unittest\.skip`), M("shortcut.pytest_skip"), true},
+	{regexp.MustCompile(`\bt\.Skip(f|Now)?\(`), M("shortcut.t_skip"), true},
+	{regexp.MustCompile(`@(Disabled|Ignore)\b`), M("shortcut.disabled"), true},
+	{regexp.MustCompile(`expect\((true|1|'.*?'|".*?")\)\.(toBe|toEqual)\(\s*(true|1|'.*?'|".*?")\s*\)|assert\.(ok|equal)\(\s*true\s*\)|\bassert\s+True\b`), M("shortcut.assert_true"), true},
+	{regexp.MustCompile(`@ts-(ignore|nocheck|expect-error)`), M("shortcut.ts_ignore"), false},
+	{regexp.MustCompile(`eslint-disable|//\s*nolint|#\s*noqa|#\s*type:\s*ignore|#\s*pylint:\s*disable`), M("shortcut.checker_silenced"), false},
+	{regexp.MustCompile(`catch\s*(\([^)]*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(\{\s*\}|null|undefined)\s*\)`), M("shortcut.empty_catch"), false},
+	{regexp.MustCompile(`except(\s+[\w.,() ]+)?:\s*(\n\s*)?pass\b`), M("shortcut.except_pass"), false},
+	{regexp.MustCompile(`"test"\s*:\s*"[^"]*(\|\|\s*true|exit\s+0)[^"]*"`), M("shortcut.test_true"), true},
 }
 
 // detectShortcuts lists the shortcuts that after has and before did not (newly introduced).
-func detectShortcuts(path, before, after string) (ask []string, warn []string) {
+func detectShortcuts(path, before, after string) (ask []Msg, warn []Msg) {
 	isTest := reTestFile.MatchString(filepath.ToSlash(path)) || strings.HasSuffix(filepath.ToSlash(path), "package.json")
 	for _, sc := range shortcuts {
 		if len(sc.re.FindAllStringIndex(after, -1)) <= len(sc.re.FindAllStringIndex(before, -1)) {
@@ -219,20 +222,21 @@ func editedContent(root, cwd string, name string, input json.RawMessage) (path, 
 	return path, before, after, true
 }
 
-// missingReport returns the reminder when the turn changed files and ended without a Report ("" otherwise).
-func (s *Session) missingReport() string {
+// missingReport returns the reminder when the turn changed files and ended without a Report (empty
+// otherwise).
+func (s *Session) missingReport() Msg {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	changed := len(s.Checkpoints[s.Turn])
 	if changed == 0 || s.gate.reportAsks > 0 || s.Turn < 1 || s.Turn-1 >= len(s.TurnStarts) {
-		return ""
+		return Msg{}
 	}
 	for _, m := range s.Messages[min(s.TurnStarts[s.Turn-1], len(s.Messages)):] {
 		for _, b := range m.Content {
 			if b.Type == "tool_use" && b.Name == "Report" {
-				return ""
+				return Msg{}
 			}
 		}
 	}
-	return fmt.Sprintf("[infuse] This turn changed %d file(s) and ended without a Report. Before finishing, report with the Report tool: every claim with the evidence it rests on (the command you ran, the file you changed). infuse checks each one against what actually happened.", changed)
+	return M("gate.no_report", "count", changed)
 }

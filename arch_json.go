@@ -7,7 +7,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"path"
 	"path/filepath"
 	"strings"
@@ -26,13 +25,13 @@ func isToolConfig(rel string) bool {
 }
 
 // archJSON validates a data file against its schema, requires one for data folders, and checks schemas.
-func archJSON(r *ArchRules, work, rel, ext, after string) string {
+func archJSON(r *ArchRules, work, rel, ext, after string) Msg {
 	if ext != ".json" || !r.on("json") || isToolConfig(rel) {
-		return ""
+		return Msg{}
 	}
 	inst, err := jsonschema.UnmarshalJSON(strings.NewReader(after))
 	if err != nil {
-		return "" // a JSON syntax error is reported by the checker after the write
+		return Msg{} // a JSON syntax error is reported by the checker after the write
 	}
 	c := jsonschema.NewCompiler()
 	c.DefaultDraft(jsonschema.Draft2020)
@@ -40,12 +39,12 @@ func archJSON(r *ArchRules, work, rel, ext, after string) string {
 	if strings.HasSuffix(rel, ".schema.json") {
 		url := fileURL(abs)
 		if err := c.AddResource(url, inst); err != nil {
-			return fmt.Sprintf("invalid schema in %s: %s", rel, err.Error())
+			return M("arch.bad_schema", "file", rel, "error", err.Error())
 		}
 		if _, err := c.Compile(url); err != nil {
-			return fmt.Sprintf("invalid schema in %s: %s", rel, firstLine(err.Error()))
+			return M("arch.bad_schema", "file", rel, "error", firstLine(err.Error()))
 		}
-		return ""
+		return Msg{}
 	}
 	obj, _ := inst.(map[string]any)
 	ref, _ := obj["$schema"].(string)
@@ -61,29 +60,29 @@ func archJSON(r *ArchRules, work, rel, ext, after string) string {
 			if len(r.SchemaDirs) > 0 {
 				where = r.SchemaDirs[0] + "/"
 			}
-			return fmt.Sprintf("JSON data without a contract (%s). First write the schema in %s<name>.schema.json (JSON Schema 2020-12: $schema, $id, type, required, additionalProperties:false) and point to it with \"$schema\" in this file; the data is validated before every write.", rel, where)
+			return M("arch.no_schema", "file", rel, "dir", where)
 		}
-		return ""
+		return Msg{}
 	}
 	if strings.HasPrefix(ref, "http://json-schema.org") || strings.HasPrefix(ref, "https://json-schema.org") {
-		return "" // a meta-schema: this file is itself a schema
+		return Msg{} // a meta-schema: this file is itself a schema
 	}
 	schemaURL := ref
 	if !strings.Contains(ref, "://") {
 		schemaURL = fileURL(filepath.Join(filepath.Dir(abs), filepath.FromSlash(ref)))
 	} else if !strings.HasPrefix(ref, "file:") {
-		return "" // a remote schema is not fetched to write a file
+		return Msg{} // a remote schema is not fetched to write a file
 	}
 	sch, err := c.Compile(schemaURL)
 	if err != nil {
-		return fmt.Sprintf("the schema that %s points to (%s) could not be loaded: %s", rel, ref, firstLine(err.Error()))
+		return M("arch.schema_load", "file", rel, "schema", ref, "error", firstLine(err.Error()))
 	}
 	delete(obj, "$schema") // the pointer is not part of the data
 	if err := sch.Validate(inst); err != nil {
 		msg, _ := json.Marshal(err.Error())
-		return fmt.Sprintf("the data in %s does not follow the schema %s: %s. Fix the data, or change the schema first if the contract changed.", rel, ref, strings.Trim(string(msg), `"`))
+		return M("arch.schema_invalid", "file", rel, "schema", ref, "error", strings.Trim(string(msg), `"`))
 	}
-	return ""
+	return Msg{}
 }
 
 func fileURL(abs string) string {

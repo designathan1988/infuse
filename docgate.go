@@ -11,7 +11,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -83,12 +82,18 @@ func (d *docLedger) markPart(url string, part, total int) {
 	p.seen[part], p.total = true, total
 }
 
-// unfinished lists pages read only in part, with the offset where reading continues.
-func (d *docLedger) unfinished() []string {
+// unfinished lists pages read only in part, with the offset where reading continues (by address).
+func (d *docLedger) unfinished() []Msg {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	var out []string
-	for url, p := range d.pages {
+	var urls []string
+	for url := range d.pages {
+		urls = append(urls, url)
+	}
+	sort.Strings(urls)
+	var out []Msg
+	for _, url := range urls {
+		p := d.pages[url]
 		if p.total <= 1 || p.total > docMustFinish || len(p.seen) >= p.total {
 			continue
 		}
@@ -96,9 +101,8 @@ func (d *docLedger) unfinished() []string {
 		for p.seen[next] {
 			next++
 		}
-		out = append(out, fmt.Sprintf("%s (read %d of %d parts; continue with offset=%d)", url, len(p.seen), p.total, next*docPageSize))
+		out = append(out, M("docs.part", "url", url, "seen", len(p.seen), "total", p.total, "offset", next*docPageSize))
 	}
-	sort.Strings(out)
 	return out
 }
 
@@ -228,11 +232,11 @@ func helpCommand(cmd string) bool {
 	return false
 }
 
-// commandDocCheck returns why a command may not run yet ("" when it may).
-func (s *Session) commandDocCheck(cmd string) string {
+// commandDocCheck returns why a command may not run yet (empty when it may).
+func (s *Session) commandDocCheck(cmd string) Msg {
 	if !helpCommand(cmd) {
 		if open := s.docs.unfinished(); len(open) > 0 {
-			return "[infuse] Command refused: some documentation was read only in part. Read it to the end before acting (WebFetch with offset):\n- " + strings.Join(open, "\n- ")
+			return M("docs.cmd_partial", "pages", open)
 		}
 	}
 	userText := strings.ToLower(s.userWords())
@@ -255,10 +259,9 @@ func (s *Session) commandDocCheck(cmd string) string {
 		}
 	}
 	if len(missing) == 0 {
-		return ""
+		return Msg{}
 	}
-	return fmt.Sprintf("[infuse] Command refused: it uses options of %s that appear in nothing you have read in this session: %s.\nRead the official documentation that describes each one — the whole page (WebFetch, every part), the output of `%s --help`, or the program's source code — and only then run it. An option counts when it is in text you actually read, not in your memory.",
-		strings.Join(dedupe(programs), ", "), strings.Join(dedupe(missing), ", "), programs[0])
+	return M("docs.cmd_options", "programs", strings.Join(dedupe(programs), ", "), "options", strings.Join(dedupe(missing), ", "), "program", programs[0])
 }
 
 // projectProgram reports whether a program is the project's own (its source is its documentation).
@@ -299,21 +302,36 @@ func (s *Session) inProjectFiles(flag string, files []string) bool {
 }
 
 // userWords is what the user wrote in this session (options the user asked for are theirs to choose).
+// infuse's notes, hooks' messages and tool results are not the user's words.
 func (s *Session) userWords() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var b strings.Builder
 	for _, m := range s.Messages {
-		if m.Role != "user" {
+		if !isUserRequest(m) {
 			continue
 		}
 		for _, c := range m.Content {
-			if c.Type == "text" && !strings.HasPrefix(c.Text, "[infuse]") && !strings.HasPrefix(c.Text, "[hook") {
+			if c.Type == "text" {
 				b.WriteString(c.Text + "\n")
 			}
 		}
 	}
 	return b.String()
+}
+
+// isUserRequest reports whether a message is one the user wrote: a user message that infuse did not
+// add (no Kind) and that carries no tool results (notes appended to results belong to infuse).
+func isUserRequest(m Message) bool {
+	if m.Role != "user" || m.Kind != "" {
+		return false
+	}
+	for _, b := range m.Content {
+		if b.Type == "tool_result" {
+			return false
+		}
+	}
+	return true
 }
 
 // noteRead keeps the text a research call delivered, for commandDocCheck.
