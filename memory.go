@@ -1,159 +1,39 @@
 package main
 
-// Structured memory: typed items (decision, user correction, acceptance criterion, file touched and why,
-// command that worked, dead end, fact) kept per session, per project (.infuse/memory/items.json) and for
-// every project (~/.infuse/memory.json). They go into every request within a fixed budget, highest
-// priority first, so they survive compaction. The agent records and removes items only through the
-// Memory tool (the folder is protected from its other tools); the user curates them in the Memory pane.
+// The Memory tool and the session-bound scope: the store and the prompt live in internal/knowledge.
 
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
-	"time"
+	"infuse/internal/knowledge"
 )
 
-const memoryRel = ".infuse/memory"
+const memoryRel = knowledge.MemoryRel
+const memoryBudget = knowledge.MemoryBudget
 
-type MemoryItem struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"` // decisao | correcao | criterio | arquivo | comando | beco | fato
-	Text     string `json:"text"`
-	Origin   string `json:"origin"` // agente | usuario
-	Session  string `json:"session,omitempty"`
-	Priority int    `json:"priority"` // 1 normal · 2 importante · 3 essencial
-	Created  int64  `json:"created"`
-}
+type MemoryItem = knowledge.MemoryItem
 
-var memoryTypes = map[string]string{
-	"correcao": "user correction",
-	"criterio": "acceptance criterion",
-	"decisao":  "decision",
-	"beco":     "dead end",
-	"comando":  "command that worked",
-	"arquivo":  "file",
-	"fato":     "fact",
-}
-
-// typeRank orders items of the same priority: what the user said first, trivia last.
-var typeRank = map[string]int{"correcao": 0, "criterio": 1, "decisao": 2, "beco": 3, "comando": 4, "arquivo": 5, "fato": 6}
-
-const memoryBudget = 8000 // characters (~2k tokens) of memory in each request
-
-func projectMemoryFile(root string) string {
-	return filepath.Join(root, infuseDirName, "memory", "items.json")
-}
-func globalMemoryFile() string { return filepath.Join(InfuseHome(), "memory.json") }
-
-func loadMemory(file string) []MemoryItem {
-	var items []MemoryItem
-	_ = readJSON(file, &items)
-	if items == nil {
-		items = []MemoryItem{}
-	}
-	return items
-}
-
+func projectMemoryFile(root string) string { return knowledge.ProjectMemoryFile(root) }
+func globalMemoryFile() string             { return knowledge.GlobalMemoryFile() }
+func loadMemory(file string) []MemoryItem  { return knowledge.LoadMemory(file) }
 func saveMemory(file string, items []MemoryItem) error {
-	_ = os.MkdirAll(filepath.Dir(file), 0o755)
-	return writeJSON(file, items)
+	return knowledge.SaveMemory(file, items)
 }
+func normalizeMemory(it *MemoryItem) error { return knowledge.NormalizeMemory(it) }
 
-func normalizeMemory(it *MemoryItem) error {
-	it.Text = strings.TrimSpace(it.Text)
-	if it.Text == "" {
-		return errMsg(M("memory.empty_text"))
-	}
-	if _, ok := memoryTypes[it.Type]; !ok {
-		it.Type = "fato"
-	}
-	if it.Priority < 1 || it.Priority > 3 {
-		it.Priority = 1
-	}
-	if it.ID == "" {
-		it.ID = "m" + randomHex(6) // a clock-based id repeats on Windows (coarse timer)
-	}
-	if it.Created == 0 {
-		it.Created = time.Now().UnixMilli()
-	}
-	if len(it.Text) > 1000 {
-		it.Text = it.Text[:1000]
-	}
-	return nil
-}
-
-func sortMemory(items []MemoryItem) {
-	sort.SliceStable(items, func(i, j int) bool {
-		a, b := items[i], items[j]
-		if a.Priority != b.Priority {
-			return a.Priority > b.Priority
-		}
-		if typeRank[a.Type] != typeRank[b.Type] {
-			return typeRank[a.Type] < typeRank[b.Type]
-		}
-		return a.Created > b.Created
-	})
-}
-
-// memoryPrompt is the memory section of the system prompt: session, project and global items, the most
-// important first, cut at the budget (what does not fit is named, so it can be listed with the tool).
 func memoryPrompt(s *Session) string {
-	items, left := memoryItems(s)
-	if left > 0 {
-		items += M("memory.overflow", "count", left).String() + "\n"
-	}
-	return items
-}
-
-// memoryItems is the memory's lines that fit the budget, and how many did not fit.
-func memoryItems(s *Session) (string, int) {
-	type scoped struct {
-		MemoryItem
-		scope string
-	}
-	var all []scoped
 	s.mu.Lock()
-	for _, it := range s.Memory {
-		all = append(all, scoped{it, "session"})
-	}
+	items := append([]MemoryItem{}, s.Memory...)
 	s.mu.Unlock()
-	for _, it := range loadMemory(projectMemoryFile(s.Root)) {
-		all = append(all, scoped{it, "project"})
-	}
-	for _, it := range loadMemory(globalMemoryFile()) {
-		all = append(all, scoped{it, "global"})
-	}
-	if len(all) == 0 {
-		return "", 0
-	}
-	sort.SliceStable(all, func(i, j int) bool {
-		a, b := all[i], all[j]
-		if a.Priority != b.Priority {
-			return a.Priority > b.Priority
-		}
-		if typeRank[a.Type] != typeRank[b.Type] {
-			return typeRank[a.Type] < typeRank[b.Type]
-		}
-		return a.Created > b.Created
-	})
-	var b strings.Builder
-	left := 0
-	for i, it := range all {
-		line := fmt.Sprintf("- [%s · %s] %s (id %s)\n", memoryTypes[it.Type], it.scope, it.Text, it.ID)
-		if b.Len()+len(line) > memoryBudget {
-			left = len(all) - i
-			break
-		}
-		b.WriteString(line)
-	}
-	return b.String(), left
+	return knowledge.MemoryPrompt(s.Root, items)
 }
 
-// ---------------------------------------------------------------- the agent's tool
+func memoryItems(s *Session) (string, int) {
+	s.mu.Lock()
+	items := append([]MemoryItem{}, s.Memory...)
+	s.mu.Unlock()
+	return knowledge.MemoryItems(s.Root, items)
+}
 
 type memoryTool struct{}
 
