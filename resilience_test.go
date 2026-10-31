@@ -182,7 +182,7 @@ func TestLongWorkWithProgressIsNotCutAtAStepCount(t *testing.T) {
 
 func TestNoProgressIsWarnedThenStopped(t *testing.T) {
 	s, p := runScript(t, call("Glob", `{"pattern":"*.nada"}`))
-	if s.State != "error" || !strings.Contains(s.lastError, "no progress") || !strings.Contains(transcript(s), "steps without progress") {
+	if s.State != "error" || !strings.Contains(s.lastError, "120") || !strings.Contains(transcript(s), M("stall.warn", "steps", 60).String()) {
 		t.Fatalf("state %s after %d calls: %s", s.State, p.n, s.lastError)
 	}
 }

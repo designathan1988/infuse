@@ -100,6 +100,7 @@ type Session struct {
 	docs          docLedger             // what the agent read as documentation in this session (docgate.go)
 	procs         []*bgProc             // background processes (procs.go)
 	cover         map[string]*readCover // lines of each file actually shown to the agent (instructions_gate.go)
+	callMsgs      map[string][]Msg      // infuse's messages recorded per tool call (msgs.go)
 	procSeq       int
 }
 
@@ -251,17 +252,6 @@ func (s *Session) subscribe() (chan Event, func()) {
 }
 
 func (s *Session) emit(t string, data any) {
-	if m, ok := data.(map[string]any); ok && (t == "gate" || t == "tool_result") { // the user reads infuse in their language
-		key := "message"
-		if t == "tool_result" {
-			key = "output"
-		}
-		if txt, ok := m[key].(string); ok {
-			if d := localize(s.uiLang(), txt); d != txt {
-				m["display"] = d
-			}
-		}
-	}
 	s.mu.Lock()
 	s.seq++
 	ev := Event{Type: t, Data: data, Seq: s.seq}
@@ -711,14 +701,14 @@ func (s *Session) run(ctx context.Context) {
 	maxOut := 0                          // raised when a reply is cut at the output limit
 	contextRetries := 0                  // compactions in a row because the context did not fit
 	for iter := 0; iter < 5000; iter++ { // a safety ceiling only: the watchdog decides when work stalled
-		if note, stop := s.stalled(&watch, iter); stop != "" {
-			s.fail(errors.New(stop))
+		if note, stop := s.stalled(&watch, iter); !stop.Empty() {
+			s.fail(errors.New(stop.Render(s.uiLang())))
 			return
-		} else if note != "" {
+		} else if !note.Empty() {
 			s.mu.Lock()
-			s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: note}}, TS: time.Now().UnixMilli()})
+			s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{s.textBlock(note)}, TS: time.Now().UnixMilli()})
 			s.mu.Unlock()
-			s.emit("gate", map[string]any{"message": note})
+			s.emitMsg("gate", note)
 		}
 		if ctx.Err() != nil {
 			s.finish("cancelado")
@@ -804,9 +794,9 @@ func (s *Session) run(ctx context.Context) {
 		}
 		if cut {
 			s.mu.Lock()
-			s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: cutNote}}, TS: time.Now().UnixMilli()})
+			s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{s.textBlock(cutNote)}, TS: time.Now().UnixMilli()})
 			s.mu.Unlock()
-			s.emit("gate", map[string]any{"message": cutNote})
+			s.emitMsg("gate", cutNote)
 			continue
 		}
 		if res.StopReason != "tool_use" {
@@ -852,7 +842,7 @@ func (s *Session) run(ctx context.Context) {
 			out, isErr := s.safeRunTool(ctx, rules, b)
 			out = redactSecrets(out) // credentials never reach the model, the transcript or the UI
 			ms := time.Since(toolStart).Milliseconds()
-			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms, Display: displayIfLocalized(s.uiLang(), out)})
+			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms, Display: displayFor(s.uiLang(), out, s.takeCallMsgs(b.ID))})
 			s.mu.Lock()
 			s.inflight = append([]Block{}, results...)
 			s.mu.Unlock()
@@ -886,7 +876,7 @@ func (s *Session) run(ctx context.Context) {
 				tripped = nil
 				s.mu.Lock()
 				s.gate.fails, s.gate.needWeb = 2, true // the research gate now accepts only outside research
-				s.gate.diagnosed, s.gate.redoWhy = false, "the same call failed repeatedly, twice"
+				s.gate.diagnosed, s.gate.redoWhy = false, M("redo.breaker")
 				last := &s.Messages[len(s.Messages)-1]
 				last.Content = append(last.Content, Block{Type: "text", Text: note})
 				s.mu.Unlock()
@@ -977,10 +967,10 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 			return why, true
 		}
 	}
-	if why := s.diagnosisGate(b.Name, tool.Category(), b.Input); why != "" { // the cause, from the project's knowledge, before acting
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})
-		s.emit("gate", map[string]any{"message": why})
-		return why, true
+	if m := s.diagnosisGate(b.Name, tool.Category(), b.Input); !m.Empty() { // the cause, from the project's knowledge, before acting
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(m.Render("pt-BR"))})
+		s.emitMsg("gate", m)
+		return s.say(b.ID, m), true
 	}
 	if tool.Category() == "write" {
 		s.noteFileStateBefore(toolPath(b.Input))
@@ -1099,7 +1089,7 @@ func (s *Session) runToolChecked(ctx context.Context, rules *RuleSet, tool Tool,
 	s.setState("tool")
 	s.emit("tool_run", map[string]any{"id": b.ID, "name": b.Name})
 	s.mu.Lock()
-	tc := &ToolContext{S: s, Root: s.workRoot(), Cwd: s.Cwd, Rules: rules}
+	tc := &ToolContext{CallID: b.ID, S: s, Root: s.workRoot(), Cwd: s.Cwd, Rules: rules}
 	s.mu.Unlock()
 	return tool.Run(ctx, tc, b.Input)
 }

@@ -139,7 +139,7 @@ func (s *Session) recordRun(cmd string, ok bool) {
 	rc.writesAt = g.writes
 	if rc.rounds >= 3 && g.loopKey == "" {
 		g.loopKey, g.loopSince = k, time.Now()
-		g.diagnosed, g.redoWhy = false, fmt.Sprintf("`%s` ran again after each change, %d rounds, without the cause being found", k, rc.rounds)
+		g.diagnosed, g.redoWhy = false, M("redo.loop", "command", k, "rounds", rc.rounds)
 	}
 	// a check the project declares, which passed earlier in this turn, fails after a change: a regression
 	if !ok {
@@ -150,7 +150,7 @@ func (s *Session) recordRun(cmd string, ok bool) {
 			}
 			for _, prev := range g.ran[:len(g.ran)-1] {
 				if prev.ok && strings.Contains(prev.cmd, w) && prev.afterWrites < g.writes {
-					g.diagnosed, g.redoWhy = false, fmt.Sprintf("the project's check `%s` passed before your last change and fails after it", want)
+					g.diagnosed, g.redoWhy = false, M("redo.regression", "command", want)
 				}
 			}
 		}
@@ -290,7 +290,7 @@ func (s *Session) noteFileState(path string) {
 	hist := g.fileHashes[rel]
 	for i, old := range hist {
 		if old == h && i < len(hist)-1 {
-			g.diagnosed, g.redoWhy = false, "you returned "+rel+" to a content it had earlier in this turn, undoing your own change"
+			g.diagnosed, g.redoWhy = false, M("redo.revert", "file", rel)
 			break
 		}
 	}

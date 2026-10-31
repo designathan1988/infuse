@@ -73,7 +73,7 @@ func (s *Session) streamResilient(ctx context.Context, p Provider, req ModelRequ
 		}
 		wait := waits[attempt]
 		s.emit("stream_reset", nil) // the partial answer of the failed attempt is discarded on screen
-		s.emit("gate", map[string]any{"message": fmt.Sprintf("[infuse] The provider failed (%s); trying again in %ds (attempt %d).", firstLine(err.Error()), int(wait.Seconds()), attempt+2)})
+		s.emitMsg("gate", M("provider.retry", "error", firstLine(err.Error()), "seconds", int(wait.Seconds()), "attempt", attempt+2))
 		select {
 		case <-ctx.Done():
 			return res, ctx.Err()
@@ -97,9 +97,9 @@ func outputLimit(model string, configured int) int {
 
 // truncatedReply handles an answer cut at the output limit: calls whose input may be incomplete are
 // dropped (never executed half-written) and the agent is told to continue from where it stopped.
-func truncatedReply(res *ModelResult) (note string, cut bool) {
+func truncatedReply(res *ModelResult) (note Msg, cut bool) {
 	if res.StopReason != "max_tokens" && res.StopReason != "length" {
-		return "", false
+		return Msg{}, false
 	}
 	var kept []Block
 	dropped := 0
@@ -114,11 +114,10 @@ func truncatedReply(res *ModelResult) (note string, cut bool) {
 		kept = []Block{{Type: "text", Text: "…"}}
 	}
 	res.Content = kept
-	note = "[infuse] Your reply was cut at the output limit. Continue exactly where it stopped."
 	if dropped > 0 {
-		note += fmt.Sprintf(" %d tool call(s) in it were not run, because their input may be incomplete: make them again, in full (for a large file, write it in parts with Edit).", dropped)
+		return M("reply.cut_calls", "count", dropped), true
 	}
-	return note, true
+	return M("reply.cut"), true
 }
 
 // compactFallback shrinks the conversation without a model when summarizing failed: the user's own
@@ -198,7 +197,7 @@ func (s *Session) shrinkLargestResults() {
 func (s *Session) safeRunTool(ctx context.Context, rules *RuleSet, b Block) (out string, isErr bool) {
 	defer func() {
 		if r := recover(); r != nil {
-			out, isErr = fmt.Sprintf("[infuse] The tool %s failed inside infuse (%v). This is infuse's fault, not your input; try another way to do the same step.", b.Name, r), true
+			out, isErr = s.say(b.ID, M("tool.panic", "tool", b.Name, "error", fmt.Sprint(r))), true
 			Journal(s.Root, JournalEntry{Kind: "gate", Detail: fmt.Sprintf("panic em %s: %v", b.Name, r)})
 		}
 	}()
@@ -215,7 +214,7 @@ type progressWatch struct {
 
 // stalled reports whether the turn made no progress for long; the first time it returns a note for the
 // agent, the second time the reason to stop.
-func (s *Session) stalled(w *progressWatch, iter int) (note string, stop string) {
+func (s *Session) stalled(w *progressWatch, iter int) (note Msg, stop Msg) {
 	s.mu.Lock()
 	done := 0
 	for _, t := range s.Tasks {
@@ -227,17 +226,17 @@ func (s *Session) stalled(w *progressWatch, iter int) (note string, stop string)
 	s.mu.Unlock()
 	if done != w.lastDone || writes != w.lastWrite {
 		w.lastIter, w.lastDone, w.lastWrite, w.warned = iter, done, writes, false
-		return "", ""
+		return Msg{}, Msg{}
 	}
 	idle := iter - w.lastIter
 	switch {
 	case idle >= 120:
-		return "", fmt.Sprintf("no progress in %d steps (no change landed and no plan task finished)", idle)
+		return Msg{}, M("stall.stop", "steps", idle)
 	case idle >= 60 && !w.warned:
 		w.warned = true
-		return fmt.Sprintf("[infuse] %d steps without progress: no change landed and no plan task finished. Stop exploring: state in the plan (TodoWrite) the next concrete change and make it, or mark the task blocked with the reason.", idle), ""
+		return M("stall.warn", "steps", idle), Msg{}
 	}
-	return "", ""
+	return Msg{}, Msg{}
 }
 
 // ---------------------------------------------------------------- restarts
@@ -251,7 +250,7 @@ func (s *Session) ResumeInterrupted() {
 	}
 	s.settings = EffectiveSettings(s.Root)
 	s.Messages = repairTranscript(s.Messages)
-	note := Message{Role: "user", Content: []Block{{Type: "text", Text: "[infuse] infuse was restarted while you were working, and the turn was interrupted. Continue the task exactly from where it stopped: check the plan and the files you were changing, then go on."}}, TS: time.Now().UnixMilli()}
+	note := Message{Role: "user", Content: []Block{s.textBlockLocked(M("resume.note"))}, TS: time.Now().UnixMilli()}
 	if n := len(s.Messages); n > 0 && s.Messages[n-1].Role == "user" { // keep the roles alternating
 		s.Messages[n-1].Content = append(s.Messages[n-1].Content, note.Content...)
 	} else {

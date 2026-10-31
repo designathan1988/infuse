@@ -44,7 +44,7 @@ type researchGate struct {
 	studied   int // investigations since the loop was detected
 
 	diagnosed  bool                // the current request has a verified diagnosis
-	redoWhy    string              // why a new diagnosis is demanded ("" when none)
+	redoWhy    Msg                 // why a new diagnosis is demanded (empty when none)
 	fileHashes map[string][]string // contents each file had in this turn, to see the agent undo its own change
 }
 

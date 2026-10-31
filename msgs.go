@@ -1,0 +1,193 @@
+package main
+
+// infuse's messages are data. A message is an identifier from the catalog and named arguments; each
+// language writes it from its own template ("{file} would have {lines} lines"), placing the arguments
+// wherever its grammar wants them. An argument may itself be a message (a reason inside a refusal),
+// written in the same language. The model always gets the English writing; the user gets their
+// configured language. Nothing reads text back to find out what a message was: whoever produces a
+// message records it with the tool call (or the event) it belongs to, so the user's version is built
+// from the data, never from parsing words.
+
+import (
+	"fmt"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+)
+
+// Msg is one message of infuse: catalog identifier plus named arguments.
+type Msg struct {
+	ID   string         `json:"id"`
+	Args map[string]any `json:"args,omitempty"`
+}
+
+var (
+	catalog   = map[string]map[string]string{} // id → language → template
+	catalogMu sync.RWMutex
+)
+
+// registerMessages adds messages to the catalog: id → {language: template}. English is required.
+func registerMessages(m map[string]map[string]string) {
+	catalogMu.Lock()
+	defer catalogMu.Unlock()
+	for id, langs := range m {
+		if catalog[id] == nil {
+			catalog[id] = map[string]string{}
+		}
+		for l, t := range langs {
+			catalog[id][l] = t
+		}
+	}
+}
+
+// M builds a message: M("diag.ev_quote", "n", 1, "file", rel).
+func M(id string, kv ...any) Msg {
+	m := Msg{ID: id}
+	if len(kv) > 0 {
+		m.Args = map[string]any{}
+		for i := 0; i+1 < len(kv); i += 2 {
+			m.Args[fmt.Sprint(kv[i])] = kv[i+1]
+		}
+	}
+	return m
+}
+
+func (m Msg) Empty() bool { return m.ID == "" }
+
+var rePlaceholder = regexp.MustCompile(`\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
+
+// Render writes the message in a language (falling back to English, then to the identifier).
+func (m Msg) Render(lang string) string {
+	if m.ID == "" {
+		return ""
+	}
+	catalogMu.RLock()
+	langs := catalog[m.ID]
+	t := langs[langKey(lang)]
+	if t == "" {
+		t = langs["en"]
+	}
+	catalogMu.RUnlock()
+	if t == "" {
+		return m.ID
+	}
+	return rePlaceholder.ReplaceAllStringFunc(t, func(ph string) string {
+		v, ok := m.Args[ph[1:len(ph)-1]]
+		if !ok {
+			return ph
+		}
+		return renderArg(v, lang)
+	})
+}
+
+// String is the model's version.
+func (m Msg) String() string { return m.Render("en") }
+
+func renderArg(v any, lang string) string {
+	switch x := v.(type) {
+	case Msg:
+		return x.Render(lang)
+	case []Msg:
+		parts := make([]string, len(x))
+		for i, m := range x {
+			parts[i] = m.Render(lang)
+		}
+		return strings.Join(parts, "\n- ")
+	case float64:
+		if x == float64(int64(x)) {
+			return fmt.Sprint(int64(x))
+		}
+		return fmt.Sprintf("%.1f", x)
+	}
+	return fmt.Sprint(v)
+}
+
+// langKey maps a configured language to the catalog's keys ("pt-BR" → "pt-BR", "pt" → "pt-BR").
+func langKey(lang string) string {
+	switch strings.ToLower(lang) {
+	case "", "pt", "pt-br":
+		return "pt-BR"
+	case "en", "en-us", "en-gb":
+		return "en"
+	}
+	return lang
+}
+
+// ---------------------------------------------------------------- recording what was said
+
+// say records a message produced for a tool call and returns the model's version.
+func (s *Session) say(callID string, m Msg) string {
+	if m.Empty() {
+		return ""
+	}
+	s.mu.Lock()
+	if s.callMsgs == nil {
+		s.callMsgs = map[string][]Msg{}
+	}
+	s.callMsgs[callID] = append(s.callMsgs[callID], m)
+	s.mu.Unlock()
+	return m.String()
+}
+
+// Say is say for a tool: the message belongs to the call the tool is serving.
+func (tc *ToolContext) Say(m Msg) string {
+	if tc.S == nil {
+		return m.String()
+	}
+	return tc.S.say(tc.CallID, m)
+}
+
+// takeCallMsgs returns, and forgets, the messages recorded for a call.
+func (s *Session) takeCallMsgs(callID string) []Msg {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ms := s.callMsgs[callID]
+	delete(s.callMsgs, callID)
+	return ms
+}
+
+// displayFor is the user's version of a tool output: each message infuse recorded for the call is
+// written again in the user's language, in place of the exact English text it produced. Output that is
+// not infuse's (a file, a command's output) is left as it is.
+func displayFor(lang, content string, msgs []Msg) string {
+	if langKey(lang) == "en" || len(msgs) == 0 {
+		return ""
+	}
+	// longest first: a message that contains another is replaced whole
+	sort.SliceStable(msgs, func(i, j int) bool { return len(msgs[i].String()) > len(msgs[j].String()) })
+	out := content
+	for _, m := range msgs {
+		if en := m.String(); en != "" {
+			out = strings.Replace(out, en, m.Render(lang), 1)
+		}
+	}
+	if out == content {
+		return ""
+	}
+	return out
+}
+
+// emitMsg sends a message to the user as an event (a gate, a notice) in both versions.
+func (s *Session) emitMsg(kind string, m Msg) {
+	s.emit(kind, map[string]any{"message": m.String(), "display": m.Render(s.uiLang()), "msg": m})
+}
+
+// textBlockLocked is textBlock for a caller that holds s.mu.
+func (s *Session) textBlockLocked(m Msg) Block {
+	b := Block{Type: "text", Text: m.String()}
+	if d := m.Render(s.uiLang()); d != b.Text {
+		b.Display = d
+	}
+	return b
+}
+
+// textBlock is a note infuse adds to the conversation: English for the model, the user's language on
+// screen.
+func (s *Session) textBlock(m Msg) Block {
+	b := Block{Type: "text", Text: m.String()}
+	if d := m.Render(s.uiLang()); d != b.Text {
+		b.Display = d
+	}
+	return b
+}

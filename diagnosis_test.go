@@ -209,11 +209,3 @@ func TestKnowledgeDigestCoversTheWholeDocumentAndChecksQuotes(t *testing.T) {
 		t.Fatalf("inventory %v", inv)
 	}
 }
-
-func TestDiagnosisMessagesShownInPortuguese(t *testing.T) {
-	en := "[infuse] Diagnosis refused:\n- evidence 1: you read 3 of 10 lines of docs/A.md; read it to the end first (Read offset=4)"
-	want := "[infuse] Diagnóstico recusado:\n- evidência 1: você leu 3 de 10 linhas de docs/A.md; leia até o fim antes (Read offset=4)"
-	if got := localize("pt-BR", en); got != want {
-		t.Fatalf("%q", got)
-	}
-}

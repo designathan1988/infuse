@@ -171,7 +171,7 @@ func (s *Session) ensureKnowledge(ctx context.Context, p Provider) {
 		return
 	}
 	_ = os.MkdirAll(knowledgeDir(s.Root), 0o755)
-	s.emit("gate", map[string]any{"message": fmt.Sprintf("[infuse] Reading the project's documents to the end before the agent acts: %d document(s) new or changed.", len(todo))})
+	s.emitMsg("gate", M("knowledge.reading", "count", len(todo)))
 	sem := make(chan struct{}, 3)
 	var wg sync.WaitGroup
 	for _, rel := range todo {

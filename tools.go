@@ -22,10 +22,11 @@ import (
 )
 
 type ToolContext struct {
-	S     *Session
-	Root  string
-	Cwd   string
-	Rules *RuleSet
+	CallID string // the tool call being served (messages are recorded with it)
+	S      *Session
+	Root   string
+	Cwd    string
+	Rules  *RuleSet
 }
 
 type Tool interface {

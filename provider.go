@@ -39,6 +39,7 @@ type Message struct {
 	Ms      int64   `json:"ms,omitempty"`     // assistant: request duration
 	Model   string  `json:"model,omitempty"`  // assistant
 	Tokens  int     `json:"tokens,omitempty"` // assistant: output tokens
+	Kind    string  `json:"kind,omitempty"`   // what the message is, for the screen, never read from its text: review | review_ack | mission | compaction | infuse_note
 }
 
 type ToolSpec struct {

@@ -13,7 +13,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -28,14 +27,15 @@ type Evidence struct {
 }
 
 type Diagnosis struct {
-	Turn      int        `json:"turn"`
-	Problem   string     `json:"problem"`
-	RootCause string     `json:"root_cause"`
-	Approach  string     `json:"approach"`
-	WhyCause  string     `json:"why_cause"` // why the approach treats the cause, not a symptom
-	Evidence  []Evidence `json:"evidence"`
-	At        int64      `json:"at"`
-	Redo      string     `json:"redo,omitempty"` // why a new diagnosis was demanded
+	Turn       int        `json:"turn"`
+	Problem    string     `json:"problem"`
+	RootCause  string     `json:"root_cause"`
+	Approach   string     `json:"approach"`
+	WhyCause   string     `json:"why_cause"` // why the approach treats the cause, not a symptom
+	Evidence   []Evidence `json:"evidence"`
+	At         int64      `json:"at"`
+	Redo       Msg        `json:"redo,omitempty"`       // why a new diagnosis was demanded
+	Continuing bool       `json:"continuing,omitempty"` // carried over from the previous turn
 }
 
 // diagnosisRule is the line of the system prompt that states the protocol.
@@ -58,7 +58,7 @@ If a new diagnosis is demanded, it must bring evidence you did not cite before.`
 func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
 	var d Diagnosis
 	if err := json.Unmarshal(input, &d); err != nil {
-		return "invalid diagnosis: " + err.Error(), true
+		return tc.Say(M("diag.invalid", "error", err.Error())), true
 	}
 	s := tc.S
 	var cont struct {
@@ -72,51 +72,51 @@ func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 		if n > 0 {
 			last = s.Diagnoses[n-1]
 		}
-		ok := n > 0 && last.Turn == turn-1 && redo == ""
+		ok := n > 0 && last.Turn == turn-1 && redo.Empty()
 		if ok {
-			last.Turn, last.At = turn, time.Now().UnixMilli()
-			last.Redo = "continues the diagnosis of the previous turn"
+			last.Turn, last.At, last.Continuing, last.Redo = turn, time.Now().UnixMilli(), true, Msg{}
 			s.Diagnoses = append(s.Diagnoses, last)
 			s.gate.diagnosed = true
 		}
 		list := append([]Diagnosis{}, s.Diagnoses...)
 		s.mu.Unlock()
 		if !ok {
-			return "[infuse] Diagnosis refused: continues=true only carries the diagnosis of the immediately previous turn, when no new diagnosis was demanded. Register a full Diagnosis.", true
+			return tc.Say(M("diag.continue_refused")), true
 		}
 		s.emit("diagnoses", list)
 		s.save()
-		return "the previous diagnosis carries over to this turn (the user sees it marked as a continuation)", false
+		return tc.Say(M("diag.continued")), false
 	}
 	for _, f := range []struct{ name, v string }{{"problem", d.Problem}, {"root_cause", d.RootCause}, {"approach", d.Approach}, {"why_cause", d.WhyCause}} {
 		if len(strings.Fields(f.v)) < 4 {
-			return fmt.Sprintf("[infuse] Diagnosis refused: %s is empty or too short to mean anything.", f.name), true
+			return tc.Say(M("diag.field_short", "field", f.name)), true
 		}
 	}
 	if len(d.Evidence) < 2 {
-		return "[infuse] Diagnosis refused: at least 2 pieces of evidence (file and verbatim quote) are required.", true
+		return tc.Say(M("diag.need_two")), true
 	}
-	var problems []string
+	var problems []Msg
 	fromKnowledge := false
 	knowledge := knowledgeInventory(s.Root)
 	for i, e := range d.Evidence {
+		n := i + 1
 		rel := strings.TrimPrefix(filepath.ToSlash(e.File), "./")
 		abs := filepath.Join(s.Root, filepath.FromSlash(rel))
 		if !within(s.Root, abs) {
-			problems = append(problems, fmt.Sprintf("evidence %d: %s is outside the project", i+1, e.File))
+			problems = append(problems, M("diag.ev_outside", "n", n, "file", e.File))
 			continue
 		}
 		b, err := os.ReadFile(abs)
 		if err != nil {
-			problems = append(problems, fmt.Sprintf("evidence %d: %s does not exist", i+1, e.File))
+			problems = append(problems, M("diag.ev_missing", "n", n, "file", e.File))
 			continue
 		}
 		if q := normSpace(e.Quote); len(q) < 12 || !strings.Contains(normSpace(string(b)), q) {
-			problems = append(problems, fmt.Sprintf("evidence %d: the quote is not in %s, word for word", i+1, rel))
+			problems = append(problems, M("diag.ev_quote", "n", n, "file", rel))
 			continue
 		}
 		if seen, total, next := s.readProgress(abs); seen < total {
-			problems = append(problems, fmt.Sprintf("evidence %d: you read %d of %d lines of %s; read it to the end first (Read offset=%d)", i+1, seen, total, rel, next))
+			problems = append(problems, M("diag.ev_unread", "n", n, "seen", seen, "total", total, "file", rel, "next", next))
 			continue
 		}
 		if contains(knowledge, rel) {
@@ -124,13 +124,13 @@ func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 		}
 	}
 	if len(problems) == 0 && len(knowledge) > 0 && !fromKnowledge {
-		problems = append(problems, "no evidence comes from the project's own documents ("+strings.Join(firstN(knowledge, 8), ", ")+"…). What the project already knows about the problem comes first: read the relevant documents to the end and cite them")
+		problems = append(problems, M("diag.no_knowledge", "docs", strings.Join(firstN(knowledge, 8), ", ")))
 	}
 	s.mu.Lock()
 	redo := s.gate.redoWhy
 	prev := append([]Diagnosis{}, s.Diagnoses...)
 	s.mu.Unlock()
-	if len(problems) == 0 && redo != "" {
+	if len(problems) == 0 && !redo.Empty() {
 		cited := map[string]bool{}
 		for _, p := range prev {
 			for _, e := range p.Evidence {
@@ -144,24 +144,24 @@ func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 			}
 		}
 		if !fresh {
-			problems = append(problems, "a new diagnosis was demanded ("+redo+") and it must bring evidence not cited before: the previous reading did not find the cause")
+			problems = append(problems, M("diag.not_new", "why", redo))
 		}
 		if len(prev) > 0 && normSpace(prev[len(prev)-1].RootCause) == normSpace(d.RootCause) {
-			problems = append(problems, "the root cause is word for word the previous one, which the facts contradicted ("+redo+")")
+			problems = append(problems, M("diag.same_cause", "why", redo))
 		}
 	}
 	if len(problems) > 0 {
-		return "[infuse] Diagnosis refused:\n- " + strings.Join(problems, "\n- "), true
+		return tc.Say(M("diag.refused", "items", problems)), true
 	}
 	s.mu.Lock()
 	d.Turn, d.At, d.Redo = s.Turn, time.Now().UnixMilli(), redo
 	s.Diagnoses = append(s.Diagnoses, d)
-	s.gate.diagnosed, s.gate.redoWhy = true, ""
+	s.gate.diagnosed, s.gate.redoWhy = true, Msg{}
 	list := append([]Diagnosis{}, s.Diagnoses...)
 	s.mu.Unlock()
 	s.emit("diagnoses", list)
 	s.save()
-	return fmt.Sprintf("diagnosis registered with %d verified pieces of evidence; the user sees it beside the plan. Now register the plan (TodoWrite) that follows from it.", len(d.Evidence)), false
+	return tc.Say(M("diag.registered", "count", len(d.Evidence))), false
 }
 
 func firstN(xs []string, n int) []string {
@@ -171,14 +171,17 @@ func firstN(xs []string, n int) []string {
 	return xs
 }
 
-var reReadOnlyCmd = regexp.MustCompile(`^\s*(?:cd\s+\S+\s*&&\s*)?(?:git\s+(?:log|status|diff|show|blame|ls-files|grep|add|commit|push|stash|branch|switch|tag|fetch)|ls|dir|cat|head|tail|grep|rg|find|wc|tree|type|stat|file|which|where|pwd|echo)\b`)
+var (
+	reReadOnlyCmd = regexp.MustCompile(`^\s*(?:cd\s+\S+\s*&&\s*)?(?:git\s+(?:log|status|diff|show|blame|ls-files|grep|add|commit|push|stash|branch|switch|tag|fetch)|ls|dir|cat|head|tail|grep|rg|find|wc|tree|type|stat|file|which|where|pwd|echo)\b`)
+	reCmdSplit    = regexp.MustCompile(`&&|\|\||;|\|`)
+)
 
 // isReadOnlyCommand reports whether a shell command only reads (allowed before a diagnosis).
 func isReadOnlyCommand(cmd string) bool {
 	if helpCommand(cmd) {
 		return true
 	}
-	for _, part := range regexp.MustCompile(`&&|\|\||;|\|`).Split(cmd, -1) {
+	for _, part := range reCmdSplit.Split(cmd, -1) {
 		p := strings.TrimSpace(part)
 		if p == "" || strings.HasPrefix(p, "cd ") {
 			continue
@@ -191,37 +194,37 @@ func isReadOnlyCommand(cmd string) bool {
 }
 
 // diagnosisGate refuses changes and non-reading commands until the current request has a diagnosis.
-func (s *Session) diagnosisGate(name, cat string, input json.RawMessage) string {
+func (s *Session) diagnosisGate(name, cat string, input json.RawMessage) Msg {
 	if s.settings.RequireDiagnosis != nil && !*s.settings.RequireDiagnosis {
-		return ""
+		return Msg{}
 	}
 	if cat != "write" && cat != "exec" {
-		return ""
+		return Msg{}
 	}
 	if name == "Bash" && isReadOnlyCommand(bashCommand(input)) {
-		return ""
+		return Msg{}
 	}
 	s.mu.Lock()
 	ok, redo := s.gate.diagnosed, s.gate.redoWhy
 	s.mu.Unlock()
 	if ok {
-		return ""
+		return Msg{}
 	}
-	if redo != "" {
-		return "[infuse] Blocked: a new diagnosis is required (" + redo + "). The current approach produced that sign; continuing it treats effects. Read further — the project's documents first, to the end — and register a new Diagnosis with evidence you did not cite before."
+	if !redo.Empty() {
+		return M("gate.redo", "why", redo)
 	}
-	return "[infuse] Blocked: no diagnosis for this request yet. Before changing files or running anything that is not a read, find out what the project already knows: read its instructions and the documents about this problem to the end, read the code involved, and register a Diagnosis (problem, root cause that explains all symptoms, approach, why it treats the cause, verbatim evidence)."
+	return M("gate.no_diagnosis")
 }
 
 // demandRediagnosis marks the approach as contradicted by facts: changes wait for a new diagnosis.
-func (s *Session) demandRediagnosis(why string) {
+func (s *Session) demandRediagnosis(why Msg) {
 	s.mu.Lock()
-	first := s.gate.redoWhy == ""
+	first := s.gate.redoWhy.Empty()
 	s.gate.diagnosed, s.gate.redoWhy = false, why
 	s.mu.Unlock()
 	if first {
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "novo diagnóstico exigido: " + why})
-		s.emit("gate", map[string]any{"message": "[infuse] New diagnosis required: " + why + "."})
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "novo diagnóstico exigido: " + why.Render("pt-BR")})
+		s.emitMsg("gate", M("diag.redo_notice", "why", why))
 	}
 }
 
