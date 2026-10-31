@@ -6,14 +6,6 @@ import "infuse/internal/config"
 // the report and the contract, missions, memory, connectors, web search, skills, the agent's browser.
 // English is what the model reads; pt-BR is what the user reads.
 
-// SayErr is the tool output for an error: infuse's message recorded with the call, or the error's text.
-func (tc *ToolContext) SayErr(err error) string {
-	if m, ok := msgOf(err); ok {
-		return tc.Say(m)
-	}
-	return err.Error()
-}
-
 // rootLang is the language the user reads infuse in, for code that has a project folder but no session.
 func rootLang(root string) string { return config.RootLanguage(root) }
 

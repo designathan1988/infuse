@@ -1,0 +1,1589 @@
+package agent
+
+// Session: the canonical state of one conversation with the agent, its state machine, the agent loop,
+// permissions, checkpoints, compaction. The UI only reads this through events and the API.
+
+import (
+	"infuse/internal/mcp"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+type permRequest struct {
+	ID       string          `json:"id"`
+	Tool     string          `json:"tool"`
+	Input    json.RawMessage `json:"input"`
+	Category string          `json:"category"`
+	Reason   string          `json:"reason,omitempty"` // why infuse asks although the mode would allow it (a sentinel)
+	reply    chan string
+}
+
+type askRequest struct {
+	ID       string   `json:"id"`
+	Question string   `json:"question"`
+	Options  []string `json:"options"`
+	reply    chan string
+}
+
+type SessionData struct {
+	ID          string                   `json:"id"`
+	Root        string                   `json:"root"`
+	Title       string                   `json:"title"`
+	Created     int64                    `json:"created"`
+	Updated     int64                    `json:"updated"`
+	Model       string                   `json:"model"`
+	Messages    []Message                `json:"messages"`
+	Agents      []AgentRun               `json:"agents,omitempty"` // every subagent of the session, with its result
+	Turn        int                      `json:"turn"`
+	TurnStarts  []int                    `json:"turnStarts"` // message index where each turn begins
+	Tasks       []TaskItem               `json:"tasks"`
+	Cwd         string                   `json:"cwd"`
+	Usage       Usage                    `json:"usage"`
+	Cost        float64                  `json:"cost"`
+	Checkpoints map[int][]CheckpointFile `json:"checkpoints"`
+	Compactions int                      `json:"compactions"`
+	Provider    string                   `json:"provider,omitempty"` // connection id; "" = default
+	Mode        string                   `json:"mode,omitempty"`     // permission mode; "" = settings
+	Effort      string                   `json:"effort,omitempty"`   // low | medium | high | max
+	Archived    bool                     `json:"archived,omitempty"`
+	Diagnoses   []Diagnosis              `json:"diagnoses,omitempty"` // the diagnoses registered, with their verified evidence
+	Working     bool                     `json:"working,omitempty"`   // a turn was in progress when last saved (resumed at startup)
+	Worktree    string                   `json:"worktree,omitempty"`  // absolute path when the session has its own worktree
+	Branch      string                   `json:"branch,omitempty"`
+	Plan        string                   `json:"plan,omitempty"`       // the latest plan proposed in plan mode
+	LastInput   int                      `json:"lastInput,omitempty"`  // context size of the latest request
+	Memory      []MemoryItem             `json:"memory,omitempty"`     // structured memory of this session only
+	Pinned      bool                     `json:"pinned,omitempty"`     // shown at the top of the sidebar
+	Mission     *Mission                 `json:"mission,omitempty"`    // the session's mission, running or ended
+	PinnedMsgs  []int                    `json:"pinnedMsgs,omitempty"` // messages the user pinned (indices)
+}
+
+type Session struct {
+	SessionData
+	State string `json:"state"` // idle | thinking | tool | waiting_permission | waiting_user | compacting | error
+
+	Mu            sync.Mutex
+	subs          map[chan Event]struct{}
+	seq           int
+	cancel        context.CancelFunc
+	pendingPerm   *permRequest
+	pendingAsk    *askRequest
+	readFiles     map[string]bool
+	allowAlways   map[string]bool
+	lastError     string
+	mapTimer      *time.Timer
+	settings      Settings
+	inflight      []Block               // results of the current reply's tool calls, before they join the transcript
+	pendingImages []Block               // images the agent opened with Read, sent with the next tool results
+	askMu         sync.Mutex            // one question to the user at a time (parallel subagents may each need one)
+	gate          researchGate          // research gate and report requirement of the current turn
+	docs          docLedger             // what the agent read as documentation in this session (docgate.go)
+	procs         []*bgProc             // background processes (procs.go)
+	cover         map[string]*readCover // lines of each file actually shown to the agent (instructions_gate.go)
+	callMsgs      map[string][]Msg      // infuse's messages recorded per tool call (msgs.go)
+	procSeq       int
+}
+
+var (
+	sessions   = map[string]*Session{}
+	sessionsMu sync.Mutex
+)
+
+func sessionsDir(root string) string { return filepath.Join(root, infuseDirName, "sessions") }
+
+var sessionIDMu sync.Mutex
+
+// newSessionID is the creation time in milliseconds (sessions sort by it), moved forward when that
+// millisecond is taken — two sessions created in the same millisecond (a fork) must not share an id.
+func newSessionID(root string) string {
+	sessionIDMu.Lock()
+	defer sessionIDMu.Unlock()
+	ms := time.Now().UnixNano() / 1e6
+	for {
+		id := fmt.Sprintf("%d", ms)
+		sessionsMu.Lock()
+		_, taken := sessions[id]
+		sessionsMu.Unlock()
+		if !taken && !exists(filepath.Join(sessionsDir(root), id+".json")) {
+			return id
+		}
+		ms++
+	}
+}
+
+func newSession(root string) *Session {
+	s := &Session{
+		SessionData: SessionData{
+			ID: newSessionID(root), Root: root, Created: time.Now().UnixMilli(), Updated: time.Now().UnixMilli(),
+			Cwd: root, Checkpoints: map[int][]CheckpointFile{}, Title: "Nova sessão",
+		},
+		State: "idle", subs: map[chan Event]struct{}{}, readFiles: map[string]bool{}, allowAlways: map[string]bool{},
+	}
+	s.settings = EffectiveSettings(root)
+	s.Model = s.settings.Model
+	sessionsMu.Lock()
+	sessions[s.ID] = s
+	sessionsMu.Unlock()
+	s.save()
+	RememberProject(root)
+	return s
+}
+
+func loadSession(root, id string) (*Session, error) {
+	sessionsMu.Lock()
+	if s, ok := sessions[id]; ok {
+		sessionsMu.Unlock()
+		return s, nil
+	}
+	sessionsMu.Unlock()
+	var d SessionData
+	if err := readJSON(filepath.Join(sessionsDir(root), id+".json"), &d); err != nil {
+		return nil, err
+	}
+	if d.Checkpoints == nil {
+		d.Checkpoints = map[int][]CheckpointFile{}
+	}
+	s := &Session{SessionData: d, State: "idle", subs: map[chan Event]struct{}{}, readFiles: map[string]bool{}, allowAlways: map[string]bool{}}
+	s.settings = EffectiveSettings(root)
+	if s.Model == "" {
+		s.Model = s.settings.Model
+	}
+	if s.Cwd == "" {
+		s.Cwd = root
+	}
+	// Several requests can load the same session at once (opening it fires a few); the first one stored
+	// wins, so every caller — the event stream included — holds the same object the agent runs on.
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+	if existing, ok := sessions[id]; ok {
+		return existing, nil
+	}
+	sessions[id] = s
+	return s, nil
+}
+
+// sessionListCache keeps the sidebar's summary of each session file, by modification time and size:
+// the list is asked for often and a session file carries the whole conversation.
+var (
+	sessionListCache   = map[string]sessionListEntry{}
+	sessionListCacheMu sync.Mutex
+)
+
+type sessionListEntry struct {
+	mod  time.Time
+	size int64
+	data SessionData
+}
+
+func listSessions(root string) []SessionData {
+	entries, _ := os.ReadDir(sessionsDir(root))
+	var out []SessionData
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		p := filepath.Join(sessionsDir(root), e.Name())
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		sessionListCacheMu.Lock()
+		c, ok := sessionListCache[p]
+		sessionListCacheMu.Unlock()
+		if ok && c.mod.Equal(info.ModTime()) && c.size == info.Size() {
+			out = append(out, c.data)
+			continue
+		}
+		var d SessionData
+		if readJSON(p, &d) == nil {
+			d.Messages = nil
+			d.Checkpoints = nil
+			d.Memory = nil
+			sessionListCacheMu.Lock()
+			sessionListCache[p] = sessionListEntry{mod: info.ModTime(), size: info.Size(), data: d}
+			sessionListCacheMu.Unlock()
+			out = append(out, d)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Updated > out[j].Updated })
+	if out == nil {
+		out = []SessionData{}
+	}
+	return out
+}
+
+func (s *Session) save() {
+	s.Updated = time.Now().UnixMilli()
+	_ = writeJSON(filepath.Join(sessionsDir(s.Root), s.ID+".json"), s.SessionData)
+}
+
+// ---------------------------------------------------------------- events
+
+func (s *Session) subscribe() (chan Event, func()) {
+	ch := make(chan Event, 256)
+	s.Mu.Lock()
+	s.subs[ch] = struct{}{}
+	s.Mu.Unlock()
+	return ch, func() {
+		s.Mu.Lock()
+		delete(s.subs, ch)
+		s.Mu.Unlock()
+	}
+}
+
+func (s *Session) emit(t string, data any) {
+	s.Mu.Lock()
+	s.seq++
+	ev := Event{Type: t, Data: data, Seq: s.seq}
+	for ch := range s.subs {
+		select {
+		case ch <- ev:
+		default:
+			// a subscriber that fell behind is disconnected rather than silently skipped: its client
+			// reconnects and receives a fresh snapshot (pending permission and question included)
+			close(ch)
+			delete(s.subs, ch)
+		}
+	}
+	s.Mu.Unlock()
+}
+
+func (s *Session) setState(st string) {
+	s.Mu.Lock()
+	s.State = st
+	s.Mu.Unlock()
+	s.emit("state", map[string]any{"state": st})
+}
+
+func (s *Session) snapshot() map[string]any {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	return map[string]any{
+		"id": s.ID, "root": s.Root, "title": s.Title, "model": s.Model, "state": s.State, "turn": s.Turn,
+		"messages": s.Messages, "tasks": s.Tasks, "cwd": s.Cwd, "usage": s.Usage, "cost": s.Cost,
+		"turnStarts": s.TurnStarts, "checkpoints": s.Checkpoints, "pendingPermission": s.pendingPerm,
+		"pendingQuestion": s.pendingAsk, "error": s.lastError, "compactions": s.Compactions, "mode": s.mode(),
+		"provider": s.providerID(), "effort": s.effort(), "archived": s.Archived, "worktree": s.Worktree, "branch": s.Branch,
+		"workRoot": s.workRoot(), "plan": s.Plan, "mission": s.Mission.clone(), "pinnedMsgs": s.PinnedMsgs, "created": s.Created, "updated": s.Updated, "lastInput": s.LastInput,
+		"procs": s.procListLocked(), "agents": s.Agents, "contextLimit": s.contextLimitLocked(), "diagnoses": s.Diagnoses,
+	}
+}
+
+// mode, providerID, effort: the session's own choice, else the settings default.
+func (s *Session) mode() string {
+	if s.Mode != "" {
+		return s.Mode
+	}
+	if s.settings.Mode == "" {
+		return "default"
+	}
+	return s.settings.Mode
+}
+
+func (s *Session) providerID() string {
+	if s.Provider != "" {
+		return s.Provider
+	}
+	return s.settings.Provider
+}
+
+func (s *Session) effort() string {
+	if s.Effort != "" {
+		return s.Effort
+	}
+	return s.settings.Effort
+}
+
+// fastModel is the settings' fast model when the session's provider serves it, else the session's model
+// (a fast model from another provider would fail on this connection).
+func (s *Session) fastModel() string {
+	fm := s.settings.FastModel
+	if fm == "" {
+		return s.Model
+	}
+	c := s.settings.Connections[s.providerID()]
+	for _, m := range c.Models {
+		if m == fm {
+			return fm
+		}
+	}
+	if s.providerID() == s.settings.Provider && len(c.Models) == 0 {
+		return fm
+	}
+	return s.Model
+}
+
+// workRoot is where the agent's tools operate: the session's worktree, or the project.
+func (s *Session) workRoot() string {
+	if s.Worktree != "" {
+		return s.Worktree
+	}
+	return s.Root
+}
+
+// thinkingBudget maps the effort level to a reasoning budget (0 = off).
+func thinkingBudget(effort string, fallback int) int {
+	switch effort {
+	case "low":
+		return 0
+	case "medium":
+		return 4000
+	case "high":
+		return 12000
+	case "max":
+		return 32000
+	}
+	return fallback
+}
+
+// ---------------------------------------------------------------- helpers used by tools
+
+func (s *Session) isProtected(abs string) bool {
+	_, ok := newGuard(s.Root, s.settings.ProtectedPaths).Protects(s.Root, abs)
+	return ok
+}
+
+func bashCommand(input json.RawMessage) string {
+	var in struct{ Command string }
+	_ = json.Unmarshal(input, &in)
+	return in.Command
+}
+
+func toolPath(input json.RawMessage) string {
+	var in struct{ Path, FilePath string }
+	_ = json.Unmarshal(input, &in)
+	return firstNonEmpty(in.Path, in.FilePath)
+}
+
+func (s *Session) markRead(abs string) { s.Mu.Lock(); s.readFiles[abs] = true; s.Mu.Unlock() }
+func (s *Session) wasRead(abs string) bool {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	return s.readFiles[abs]
+}
+func (s *Session) setCwd(abs string) { s.Mu.Lock(); s.Cwd = abs; s.Mu.Unlock(); s.emit("cwd", abs) }
+func (s *Session) setTasks(t []TaskItem) {
+	s.Mu.Lock()
+	s.Tasks = t
+	s.Mu.Unlock()
+	s.emit("tasks", t)
+	s.save()
+}
+
+func (s *Session) scheduleMapRefresh() {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	if s.mapTimer != nil {
+		s.mapTimer.Stop()
+	}
+	root := s.Root
+	s.mapTimer = time.AfterFunc(400*time.Millisecond, func() { WriteMap(root, BuildMap(root)); s.emit("map", nil) })
+}
+
+func (s *Session) checkpointBeforeWrite(abs string) {
+	rel := relTo(s.workRoot(), abs) // relative to where the tools work: a worktree's files stay inside it
+	s.Mu.Lock()
+	for _, c := range s.Checkpoints[s.Turn] {
+		if c.Path == rel {
+			s.Mu.Unlock()
+			return
+		}
+	}
+	cf := CheckpointFile{Path: rel, New: !exists(abs)}
+	if !cf.New {
+		dst := filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(s.Turn), filepath.FromSlash(rel))
+		_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+		if b, err := os.ReadFile(abs); err == nil {
+			_ = os.WriteFile(dst, b, 0o644)
+		}
+	}
+	s.Checkpoints[s.Turn] = append(s.Checkpoints[s.Turn], cf)
+	s.Mu.Unlock()
+	s.emit("checkpoint", map[string]any{"turn": s.Turn, "path": rel})
+}
+
+// Revert restores files to how they were before turn `toTurn` and truncates the conversation there.
+func (s *Session) Revert(toTurn int) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	if s.State != "idle" && s.State != "error" {
+		return errors.New(M("session.stop_first_revert").Render(s.uiLang()))
+	}
+	for t := s.Turn; t >= toTurn; t-- {
+		files := s.Checkpoints[t]
+		for i := len(files) - 1; i >= 0; i-- {
+			c := files[i]
+			abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
+			if c.New {
+				_ = os.Remove(abs)
+				continue
+			}
+			src := filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t), filepath.FromSlash(c.Path))
+			if b, err := os.ReadFile(src); err == nil {
+				_ = os.MkdirAll(filepath.Dir(abs), 0o755)
+				_ = os.WriteFile(abs, b, 0o644)
+			}
+		}
+		_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
+		delete(s.Checkpoints, t)
+	}
+	if toTurn-1 < len(s.TurnStarts) && toTurn >= 1 {
+		s.Messages = s.Messages[:s.TurnStarts[toTurn-1]]
+		s.TurnStarts = s.TurnStarts[:toTurn-1]
+	}
+	s.Turn = toTurn - 1
+	Journal(s.Root, JournalEntry{Kind: "revert", Detail: fmt.Sprintf("sessão %s revertida ao turno %d", s.ID, toTurn)})
+	s.save()
+	s.scheduleMapRefreshLocked()
+	return nil
+}
+
+func (s *Session) scheduleMapRefreshLocked() {
+	root := s.Root
+	time.AfterFunc(200*time.Millisecond, func() { WriteMap(root, BuildMap(root)); s.emit("map", nil); s.emit("session", s.snapshot()) })
+}
+
+// ---------------------------------------------------------------- permissions
+
+func (s *Session) permissionFor(tool Tool, input json.RawMessage) string {
+	name := tool.Spec().Name
+	cat := tool.Category()
+	switch s.mode() {
+	case "bypass":
+		return "allow"
+	case "plan":
+		if cat == "write" || cat == "exec" {
+			return "deny"
+		}
+	case "acceptEdits":
+		if cat == "write" || cat == "memory" {
+			return "allow"
+		}
+	}
+	if cat == "read" || cat == "ui" {
+		return "allow"
+	}
+	s.Mu.Lock()
+	always := s.allowAlways[name] || s.allowAlways[name+":"+bashPrefix(name, input)]
+	s.Mu.Unlock()
+	if always {
+		return "allow"
+	}
+	if v, ok := s.settings.Permissions[name]; ok {
+		return v
+	}
+	return "ask"
+}
+
+func bashPrefix(tool string, input json.RawMessage) string {
+	if tool != "Bash" {
+		return ""
+	}
+	var in struct{ Command string }
+	_ = json.Unmarshal(input, &in)
+	f := strings.Fields(in.Command)
+	if len(f) == 0 {
+		return ""
+	}
+	if len(f) > 1 && (f[0] == "git" || f[0] == "npm" || f[0] == "go" || f[0] == "docker" || f[0] == "pnpm" || f[0] == "yarn") {
+		return f[0] + " " + f[1]
+	}
+	return f[0]
+}
+
+func (s *Session) askPermission(ctx context.Context, tool Tool, input json.RawMessage) bool {
+	return s.askPermissionWhy(ctx, tool, input, "", Msg{})
+}
+
+// askPermissionWhy asks the user about a call a sentinel caught: reason is shown in the user's language;
+// key identifies the sentinel, so "don't ask again" silences that sentinel for the session.
+func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.RawMessage, key string, reason Msg) bool {
+	s.askMu.Lock()
+	defer s.askMu.Unlock()
+	req := &permRequest{ID: fmt.Sprintf("p%d", time.Now().UnixNano()), Tool: tool.Spec().Name, Input: input, Category: tool.Category(), Reason: reason.Render(s.uiLang()), reply: make(chan string, 1)}
+	s.Mu.Lock()
+	s.pendingPerm = req
+	s.Mu.Unlock()
+	s.setState("waiting_permission")
+	s.emit("permission", req)
+	defer func() { s.Mu.Lock(); s.pendingPerm = nil; s.Mu.Unlock() }()
+	select {
+	case d := <-req.reply:
+		if d == "always" && key != "" { // "don't ask again" silences this sentinel for the session, not the tool
+			s.Mu.Lock()
+			s.allowAlways["sentinel:"+key] = true
+			s.Mu.Unlock()
+		} else if d == "always" {
+			s.Mu.Lock()
+			s.allowAlways[req.Tool] = true
+			if p := bashPrefix(req.Tool, input); p != "" {
+				s.allowAlways[req.Tool+":"+p] = true
+			}
+			s.Mu.Unlock()
+		}
+		return d == "allow" || d == "always"
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func (s *Session) ResolvePermission(id, decision string) bool {
+	s.Mu.Lock()
+	req := s.pendingPerm
+	s.Mu.Unlock()
+	if req == nil || req.ID != id {
+		return false
+	}
+	req.reply <- decision
+	return true
+}
+
+func (s *Session) askUser(ctx context.Context, question string, options []string) (string, bool) {
+	s.askMu.Lock()
+	defer s.askMu.Unlock()
+	req := &askRequest{ID: fmt.Sprintf("q%d", time.Now().UnixNano()), Question: question, Options: options, reply: make(chan string, 1)}
+	s.Mu.Lock()
+	s.pendingAsk = req
+	s.Mu.Unlock()
+	s.setState("waiting_user")
+	s.emit("question", req)
+	defer func() { s.Mu.Lock(); s.pendingAsk = nil; s.Mu.Unlock() }()
+	select {
+	case a := <-req.reply:
+		return a, true
+	case <-ctx.Done():
+		return "", false
+	}
+}
+
+func (s *Session) Answer(id, answer string) bool {
+	s.Mu.Lock()
+	req := s.pendingAsk
+	s.Mu.Unlock()
+	if req == nil || req.ID != id {
+		return false
+	}
+	req.reply <- answer
+	return true
+}
+
+// ---------------------------------------------------------------- the loop
+
+// userBlocks builds the user message: the text, then each attached file (images as image blocks, other
+// files as their content, with the path), then pasted images.
+func userBlocks(text string, atts []Attachment, imgs []InlineImage) []Block {
+	blocks := []Block{{Type: "text", Text: text}}
+	for _, a := range atts {
+		b, err := os.ReadFile(a.Path)
+		if err != nil {
+			continue
+		}
+		if mt, ok := imageExt[strings.ToLower(filepath.Ext(a.Path))]; ok {
+			blocks = append(blocks, Block{Type: "image", MediaType: mt, Data: base64.StdEncoding.EncodeToString(b)})
+			continue
+		}
+		if len(b) > 400_000 {
+			b = b[:400_000]
+		}
+		blocks = append(blocks, Block{Type: "text", Text: fmt.Sprintf("<attached-file path=%q>\n%s\n</attached-file>", a.Path, string(b))})
+	}
+	for _, im := range imgs {
+		if im.Data != "" {
+			blocks = append(blocks, Block{Type: "image", MediaType: im.MediaType, Data: im.Data})
+		}
+	}
+	return blocks
+}
+
+func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error {
+	s.Mu.Lock()
+	busy := s.State != "idle" && s.State != "error"
+	s.Mu.Unlock()
+	if busy {
+		return errors.New(M("session.busy").Render(s.uiLang()))
+	}
+	hook := s.runHooks(context.Background(), "UserPromptSubmit", "", map[string]any{"prompt": text})
+	if hook.Block {
+		return errors.New(hook.blockMsg().Render(s.uiLang()))
+	}
+	s.Mu.Lock()
+	s.settings = EffectiveSettings(s.Root)
+	if s.Model == "" {
+		s.Model = s.settings.Model
+	}
+	s.lastError = ""
+	s.gate.reset()
+	s.resetTurnLocks()
+	s.Turn++
+	s.TurnStarts = append(s.TurnStarts, len(s.Messages))
+	blocks := userBlocks(text, atts, imgs)
+	if hook.Message != "" { // context a UserPromptSubmit hook adds to the message
+		blocks = append(blocks, Block{Type: "text", Text: "<hook-context>\n" + hook.Message + "\n</hook-context>"})
+	}
+	s.Messages = append(s.Messages, Message{Role: "user", Content: blocks, TS: time.Now().UnixMilli()})
+	if s.Turn == 1 && (s.Title == "" || s.Title == "Nova sessão") {
+		s.Title = truncate(strings.SplitN(strings.TrimSpace(text), "\n", 2)[0], 60)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
+	s.Working = true
+	s.Mu.Unlock()
+	if work := s.workRoot(); !exists(filepath.Join(work, ".git")) && !exists(filepath.Join(s.Root, ".git")) {
+		snapshotTurn(s.Root, work, s.ID, s.Turn) // the base of "Alterações", whatever changes the files
+	}
+	s.emit("turn", map[string]any{"turn": s.Turn, "text": text, "title": s.Title})
+	s.save()
+	go s.run(ctx)
+	return nil
+}
+
+func (s *Session) Stop() {
+	s.Mu.Lock()
+	c := s.cancel
+	s.Mu.Unlock()
+	if c != nil {
+		c()
+	}
+}
+
+func (s *Session) run(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.Mu.Lock()
+			s.lastError = fmt.Sprint(r)
+			s.Mu.Unlock()
+			s.setState("error")
+		}
+		s.save()
+	}()
+	if s.providerID() == "" {
+		s.failMsg(M("session.no_provider"))
+		return
+	}
+	provider, err := providerFor(s.settings, s.providerID())
+	if err != nil {
+		s.fail(err)
+		return
+	}
+	rules := LoadRules(s.Root)
+	mcp.For(s.Root).Ensure(ctx)           // approved connectors start before the first request
+	s.ensureCompiledRules(ctx, provider) // the instructions' meaning, as quote-checked rules
+	s.ensureKnowledge(ctx, provider)     // the project's documents, read to the last line
+	s.compileBans(ctx, provider)         // what the user forbade, in the user's words, checked
+	know := knowledgePrompt(s.Root)
+	var breaker loopBreaker // stops a turn that keeps repeating the same failure
+	stopHooks := 0
+	var tripped error
+	breakerTrips := 0 // the breaker warns, then demands research, then ends the turn
+	var watch progressWatch
+	maxOut := 0                          // raised when a reply is cut at the output limit
+	contextRetries := 0                  // compactions in a row because the context did not fit
+	for iter := 0; iter < 5000; iter++ { // a safety ceiling only: the watchdog decides when work stalled
+		if note, stop := s.stalled(&watch, iter); !stop.Empty() {
+			s.failMsg(stop)
+			return
+		} else if !note.Empty() {
+			s.addNote("infuse_note", note)
+		}
+		if ctx.Err() != nil {
+			s.finish("cancelado")
+			return
+		}
+		if s.needsCompaction() {
+			s.compactResilient(ctx, provider)
+		}
+		s.setState("thinking")
+		budget := thinkingBudget(s.effort(), s.settings.ThinkingBudget)
+		maxTok := max(outputLimit(s.Model, s.settings.MaxTokens), maxOut)
+		if budget > 0 && maxTok <= budget+1024 {
+			maxTok = budget + 8000
+		}
+		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules) + "\n" + diagnosisRule + "\n\n" + s.workStatePrompt() + "\n\n" + know, Messages: repairTranscript(s.copyMessages()), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
+		started := time.Now()
+		var thinkFrom, thinkTo time.Time // how long the model spent in its reasoning, from the stream
+		res, err := s.streamResilient(ctx, provider, req, func(ev StreamEvent) {
+			if ev.Kind == "thinking" && thinkFrom.IsZero() {
+				thinkFrom = time.Now()
+			} else if ev.Kind != "thinking" && !thinkFrom.IsZero() && thinkTo.IsZero() {
+				thinkTo = time.Now()
+			}
+			s.emit("stream", ev)
+		})
+		if err != nil {
+			if ctx.Err() != nil {
+				s.finish("cancelado")
+				return
+			}
+			if errors.Is(err, errContextTooLong) { // the provider measured more than estimated: compact and go on
+				if contextRetries++; contextRetries > 3 {
+					s.failMsg(M("session.context_overflow", "error", err.Error()))
+					return
+				}
+				s.compactResilient(ctx, provider)
+				continue
+			}
+			contextRetries = 0
+			s.fail(err)
+			return
+		}
+		cutNote, cut := truncatedReply(&res) // a reply cut at the output limit is continued, never run half-written
+		if cut {
+			maxOut = min(max(maxTok*2, 32000), 128000)
+		}
+		if !thinkFrom.IsZero() {
+			if thinkTo.IsZero() {
+				thinkTo = time.Now()
+			}
+			for i := range res.Content {
+				if res.Content[i].Type == "thinking" {
+					res.Content[i].Ms = thinkTo.Sub(thinkFrom).Milliseconds()
+				}
+			}
+		}
+		reply := Message{Role: "assistant", Content: res.Content, TS: time.Now().UnixMilli(), Ms: time.Since(started).Milliseconds(), Model: s.Model, Tokens: res.Usage.Output}
+		s.Mu.Lock()
+		s.Messages = append(s.Messages, reply)
+		s.Usage.Input += res.Usage.Input
+		s.Usage.Output += res.Usage.Output
+		s.Usage.CacheRead += res.Usage.CacheRead
+		s.Usage.CacheWrite += res.Usage.CacheWrite
+		cost := s.settings.CostOf(s.Model, res.Usage)
+		s.Cost += cost
+		s.LastInput = res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite
+		if s.mode() == "plan" && res.StopReason != "tool_use" {
+			for _, b := range res.Content {
+				if b.Type == "text" && strings.TrimSpace(b.Text) != "" {
+					s.Plan = b.Text
+				}
+			}
+		}
+		s.Mu.Unlock()
+		recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cache: res.Usage.CacheRead + res.Usage.CacheWrite, Cost: cost})
+		s.emit("message", map[string]any{"message": reply, "usage": res.Usage, "totalUsage": s.Usage, "cost": s.Cost, "lastInput": res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite})
+		s.save()
+		if lim := s.settings.DailyLimitUSD; lim > 0 { // the day's total across every session, from the ledger
+			if spent := todaySpend(); spent > lim {
+				s.failMsg(M("session.daily_limit", "spent", fmt.Sprintf("%.2f", spent), "limit", fmt.Sprintf("%.2f", lim)))
+				return
+			}
+		}
+		if cut {
+			s.addNote("infuse_note", cutNote)
+			continue
+		}
+		if res.StopReason != "tool_use" {
+			why := s.workObligation()
+			if why.Empty() {
+				why = s.turnObligation(ctx)
+			}
+			if !why.Empty() { // the protocol decides when the turn may end
+				s.Mu.Lock()
+				s.gate.obligationAsks++
+				if why.ID == "gate.no_report" {
+					s.gate.reportAsks++
+				}
+				s.Mu.Unlock()
+				kind := "infuse_note"
+				if why.ID == "turn.review" {
+					kind = "review"
+				}
+				s.addNote(kind, why)
+				continue
+			}
+			if stopHooks < 3 { // a Stop hook can send the agent back to work, with its reason
+				if o := s.runHooks(ctx, "Stop", "", map[string]any{"stop_hook_active": stopHooks > 0}); o.Block {
+					stopHooks++
+					s.Mu.Lock()
+					s.Messages = append(s.Messages, Message{Role: "user", Kind: "hook", Content: []Block{s.textBlockLocked(M("hook.stop", "message", o.Message))}, TS: time.Now().UnixMilli()})
+					s.Mu.Unlock()
+					s.emit("hook", map[string]any{"event": "Stop", "message": o.Message})
+					continue
+				}
+			}
+			s.finish("")
+			return
+		}
+		var results []Block
+		pre := s.runReadsInParallel(ctx, rules, res.Content) // several reads in one reply run at once
+		for _, b := range res.Content {
+			if b.Type != "tool_use" {
+				continue
+			}
+			if r, ok := pre[b.ID]; ok {
+				results = append(results, r)
+				s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": r.Content, "display": r.Display, "isError": r.IsError, "ms": r.Ms})
+				if err := breaker.record(b.Name, b.Input, r.IsError); err != nil {
+					tripped = err
+				}
+				continue
+			}
+			toolStart := time.Now()
+			out, isErr := s.safeRunTool(ctx, rules, b)
+			out = redactSecrets(out) // credentials never reach the model, the transcript or the UI
+			ms := time.Since(toolStart).Milliseconds()
+			display := displayFor(s.uiLang(), out, s.takeCallMsgs(b.ID))
+			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms, Display: display})
+			s.Mu.Lock()
+			s.inflight = append([]Block{}, results...)
+			s.Mu.Unlock()
+			s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": out, "display": display, "isError": isErr, "ms": ms})
+			if err := breaker.record(b.Name, b.Input, isErr); err != nil {
+				tripped = err
+			}
+			if ctx.Err() != nil || tripped != nil {
+				break
+			}
+		}
+		if ctx.Err() != nil || tripped != nil {
+			why := M("session.cancelled")
+			if tripped != nil {
+				if why, _ = msgOf(tripped); why.Empty() {
+					why = M("text.verbatim", "text", tripped.Error())
+				}
+			}
+			s.Mu.Lock()
+			// keep the conversation consistent: every tool_use gets a result
+			for _, b := range res.Content {
+				if b.Type == "tool_use" && !hasResult(results, b.ID) {
+					r := s.textBlockLocked(why)
+					results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: r.Text, Display: r.Display, IsError: true})
+				}
+			}
+			s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
+			s.inflight = nil
+			s.Mu.Unlock()
+			if tripped != nil && breakerTrips == 1 && ctx.Err() == nil { // the second time: research outside the project first
+				breakerTrips++
+				breaker = loopBreaker{}
+				note := M("breaker.second", "why", why)
+				tripped = nil
+				s.Mu.Lock()
+				s.gate.fails, s.gate.needWeb = 2, true // the research gate now accepts only outside research
+				s.gate.diagnosed, s.gate.redoWhy = false, M("redo.breaker")
+				last := &s.Messages[len(s.Messages)-1]
+				last.Content = append(last.Content, s.textBlockLocked(note))
+				s.Mu.Unlock()
+				s.emitMsg("gate", note)
+				continue
+			}
+			if tripped != nil && breakerTrips == 0 && ctx.Err() == nil {
+				// the first time, the agent is sent back with an order to change approach; only insisting ends the turn
+				breakerTrips++
+				breaker = loopBreaker{}
+				note := M("breaker.first", "why", why)
+				tripped = nil
+				s.Mu.Lock() // in the same message as the results: the roles keep alternating
+				last := &s.Messages[len(s.Messages)-1]
+				last.Content = append(last.Content, s.textBlockLocked(note))
+				s.Mu.Unlock()
+				s.emitMsg("gate", note)
+				continue
+			}
+			if tripped != nil {
+				Lesson(s.Root, "loop-errático", tripped.Error())
+				s.failMsg(why)
+				return
+			}
+			s.finish("cancelado")
+			return
+		}
+		s.Mu.Lock()
+		results = append(results, s.pendingImages...) // images opened with Read, after the tool results
+		s.pendingImages = nil
+		s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
+		s.inflight = nil
+		s.Mu.Unlock()
+		s.save()
+	}
+	s.failMsg(M("session.iteration_limit"))
+}
+
+// addNote adds a note of infuse's to the conversation (English for the model, the user's language on
+// screen) and tells the user.
+func (s *Session) addNote(kind string, m Msg) {
+	s.Mu.Lock()
+	s.Messages = append(s.Messages, Message{Role: "user", Kind: kind, Content: []Block{s.textBlockLocked(m)}, TS: time.Now().UnixMilli()})
+	s.Mu.Unlock()
+	s.emitMsg("gate", m)
+}
+
+// failMsg ends the turn with an error the user reads in their language.
+func (s *Session) failMsg(m Msg) { s.fail(errors.New(m.Render(s.uiLang()))) }
+
+// refuse is a gate's refusal of a call: journaled, shown to the user, recorded with the call.
+func (s *Session) refuse(callID, command string, m Msg) (string, bool) {
+	Journal(s.Root, JournalEntry{Kind: "gate", Command: command, Detail: firstLine(m.Render(s.uiLang()))})
+	s.emitMsg("gate", m)
+	return s.say(callID, m), true
+}
+
+func hasResult(results []Block, id string) bool {
+	for _, r := range results {
+		if r.ToolUseID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// readsOutside reports whether a read tool's path (path / file_path) points outside the session's folder.
+func (s *Session) readsOutside(input json.RawMessage) bool {
+	var in struct {
+		Path     string `json:"path"`
+		FilePath string `json:"file_path"`
+	}
+	_ = json.Unmarshal(input, &in)
+	p := in.Path
+	if p == "" {
+		p = in.FilePath
+	}
+	if p == "" {
+		return false
+	}
+	p = FromMsysPath(p)
+	s.Mu.Lock()
+	cwd, root := s.Cwd, s.workRoot()
+	s.Mu.Unlock()
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(cwd, p)
+	}
+	return !within(root, p)
+}
+
+func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string, bool) {
+	tool, ok := s.lookupTool(b.Name)
+	if !ok {
+		return s.say(b.ID, M("session.unknown_tool", "tool", b.Name)), true
+	}
+	var toolInput any
+	_ = json.Unmarshal(b.Input, &toolInput)
+	if o := s.runHooks(ctx, "PreToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput}); o.Block {
+		return s.say(b.ID, o.blockMsg()), true
+	}
+	if m := s.banCheck(b.Name, b.Input); !m.Empty() { // what the user forbade in this session
+		return s.refuse(b.ID, bashCommand(b.Input), m)
+	}
+	if inv, _ := isResearch(b.Name, b.Input); inv && b.Name != "Read" || b.Name == "Read" && isSourceRead(b.Input) {
+		s.noteResearch(b.Name, b.Input)
+	}
+	if c := tool.Category(); (c == "write" || c == "exec") && !(b.Name == "Bash" && helpCommand(bashCommand(b.Input))) {
+		if why := s.requiredReading(); !why.Empty() { // the documents the instructions point to, read in full
+			return s.refuse(b.ID, "", why)
+		}
+	}
+	if m := s.diagnosisGate(b.Name, tool.Category(), b.Input); !m.Empty() { // the cause, from the project's knowledge, before acting
+		return s.refuse(b.ID, "", m)
+	}
+	if tool.Category() == "write" {
+		s.noteFileStateBefore(toolPath(b.Input))
+	}
+	if tool.Category() == "write" { // the protocol: plan, docs before use, conventions, size
+		if why := s.protocolCheckWrite(b.Name, b.Input); !why.Empty() {
+			return s.refuse(b.ID, "", why)
+		}
+		if p, before, after, ok := editedContent(s.workRoot(), s.Cwd, b.Name, b.Input); ok {
+			rel := relTo(s.workRoot(), p)
+			if why := s.largeRemoval(rel, before, after); !why.Empty() {
+				return s.refuse(b.ID, "", why)
+			}
+			if why := cheatWriteCheck(s.workRoot(), rel, before, after); !why.Empty() {
+				if why.ID != "cheat.test_infra" {
+					return s.refuse(b.ID, "", why)
+				}
+				// the test infrastructure may have to change: the user decides, every time
+				if !s.askPermissionWhy(ctx, tool, b.Input, "cheat:"+rel, why) {
+					return s.say(b.ID, M("perm.user_refused", "why", why)), true
+				}
+			}
+		}
+	}
+	if b.Name == "Bash" { // docs before commands: options the agent has not read about are refused
+		var in struct{ Command string }
+		_ = json.Unmarshal(b.Input, &in)
+		if why := s.commandDocCheck(in.Command); !why.Empty() {
+			return s.refuse(b.ID, in.Command, why)
+		}
+		if why := swallowedTestCommand(in.Command); !why.Empty() { // a test run judged by its real exit code
+			return s.refuse(b.ID, in.Command, why)
+		}
+		if why := unknownPackages(ctx, in.Command); !why.Empty() { // packages exist before they are installed
+			return s.refuse(b.ID, in.Command, why)
+		}
+	} else if tool.Category() == "write" {
+		if open := s.docs.unfinished(); len(open) > 0 {
+			return s.refuse(b.ID, "", M("docs.write_partial", "pages", open))
+		}
+	}
+	if why := s.gateCheck(b.Name, tool.Category(), b.Input); !why.Empty() { // research before another attempt
+		return s.refuse(b.ID, "", why)
+	}
+	var shortcutWarn []Msg
+	if tool.Category() == "write" && s.mode() != "plan" {
+		if p, before, after, ok := editedContent(s.workRoot(), s.Cwd, b.Name, b.Input); ok {
+			ask, warn := detectShortcuts(p, before, after)
+			shortcutWarn = warn
+			if len(ask) > 0 {
+				why := M("shortcut.weakens_tests", "items", ask)
+				key := "shortcut"
+				for _, a := range ask {
+					key += ":" + a.ID
+				}
+				s.Mu.Lock()
+				silenced := s.allowAlways["sentinel:"+key]
+				s.Mu.Unlock()
+				if !silenced {
+					Journal(s.Root, JournalEntry{Kind: "sentinel", Path: p, Detail: why.Render(s.uiLang())})
+					if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
+						Lesson(s.Root, "atalho-em-teste", why.String()+" in "+p)
+						return s.say(b.ID, M("shortcut.user_refused", "why", why)), true
+					}
+				}
+			}
+		}
+	}
+	out, isErr := s.runToolChecked(ctx, rules, tool, b)
+	s.gateRecord(b.ID, b.Name, tool.Category(), out, isErr)
+	if b.Name == "Bash" {
+		s.recordRun(bashCommand(b.Input), !isErr)
+	} else if tool.Category() == "write" && !isErr {
+		s.noteWrite()
+		s.noteFileState(toolPath(b.Input))
+		if p := toolPath(b.Input); p != "" {
+			abs := p
+			if !filepath.IsAbs(abs) {
+				abs = filepath.Join(s.Cwd, abs)
+			}
+			s.noteUIChange(relTo(s.workRoot(), abs))
+			s.noteAuthored(abs, writtenTexts(b.Input)...)
+		}
+	}
+	if !isErr {
+		switch b.Name {
+		case "Browser":
+			var in struct{ Action string }
+			_ = json.Unmarshal(b.Input, &in)
+			if in.Action == "screenshot" || in.Action == "record_stop" {
+				s.noteScreenshot()
+			}
+			s.noteFetched(string(b.Input) + "\n" + out)
+		case "WebFetch", "WebSearch":
+			s.noteFetched(string(b.Input) + "\n" + out)
+		}
+	}
+	s.noteRead(b.Name, b.Input, out, isErr)
+	if b.Name == "Bash" && !isErr {
+		var in struct{ Command string }
+		_ = json.Unmarshal(b.Input, &in)
+		for _, seg := range commandSegments(in.Command) {
+			s.docs.succeeded(seg.flags)
+		}
+	}
+	if len(shortcutWarn) > 0 && !isErr {
+		Lesson(s.Root, "atalho", strings.Join(msgStrings(shortcutWarn), ", "))
+		out += "\n" + s.say(b.ID, M("shortcut.introduced", "items", shortcutWarn))
+	}
+	for _, m := range s.procNoteMsgs() {
+		out += "\n" + s.say(b.ID, m)
+	}
+	if o := s.runHooks(ctx, "PostToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput, "tool_response": out}); o.Message != "" {
+		out += "\n" + s.say(b.ID, M("hook.post", "message", o.Message))
+	}
+	return out, isErr
+}
+
+// runToolChecked applies sentinels and permissions, then runs the tool.
+func (s *Session) runToolChecked(ctx context.Context, rules *RuleSet, tool Tool, b Block) (string, bool) {
+	decision := s.permissionFor(tool, b.Input)
+	// reading outside the session's folder (~/.ssh, browser profiles…) is never silent: it asks,
+	// unless the user chose to accept everything
+	if decision == "allow" && tool.Category() == "read" && s.mode() != "bypass" && s.readsOutside(b.Input) {
+		decision = "ask"
+	}
+	// sentinels: deterministic checks that ask the user even when the mode would allow the action
+	if decision != "deny" {
+		if why := s.sentinelMsg(tool, b.Input); !why.Empty() {
+			key := "sentinel:" + why.ID + ":" + toolPath(b.Input)
+			s.Mu.Lock()
+			silenced := s.allowAlways[key]
+			s.Mu.Unlock()
+			if !silenced {
+				Journal(s.Root, JournalEntry{Kind: "sentinel", Detail: why.Render(s.uiLang())})
+				if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
+					Lesson(s.Root, "teste-alterado", why.String())
+					return s.say(b.ID, M("perm.user_refused", "why", why)), true
+				}
+				decision = "allow"
+			}
+		}
+	}
+	switch decision {
+	case "deny":
+		if s.mode() == "plan" {
+			return s.say(b.ID, M("perm.plan_mode")), true
+		}
+		return s.say(b.ID, M("perm.denied_settings")), true
+	case "ask":
+		if !s.askPermission(ctx, tool, b.Input) {
+			return s.say(b.ID, M("perm.user_denied")), true
+		}
+	}
+	s.setState("tool")
+	s.emit("tool_run", map[string]any{"id": b.ID, "name": b.Name})
+	s.Mu.Lock()
+	tc := &ToolContext{CallID: b.ID, S: s, Root: s.workRoot(), Cwd: s.Cwd, Rules: rules}
+	s.Mu.Unlock()
+	return tool.Run(ctx, tc, b.Input)
+}
+
+func (s *Session) copyMessages() []Message {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	out := make([]Message, len(s.Messages))
+	copy(out, s.Messages)
+	return out
+}
+
+func (s *Session) finish(reason string) {
+	s.Mu.Lock()
+	s.cancel = nil
+	s.Working = false
+	s.Mu.Unlock()
+	s.save() // the terminal state is observed only after the document is durable
+	s.emit("done", map[string]any{"reason": reason, "cost": s.Cost, "usage": s.Usage})
+	s.setState("idle")
+	s.Mu.Lock()
+	running := s.Mission != nil && s.Mission.State == "running"
+	s.Mu.Unlock()
+	if running {
+		if reason == "" {
+			go s.missionStep() // verdict, budget, and the next turn
+		} else {
+			s.endMission("parada", reason)
+		}
+	}
+}
+
+func (s *Session) fail(err error) {
+	s.Mu.Lock()
+	s.Working = false
+	s.lastError = err.Error()
+	s.cancel = nil
+	s.Mu.Unlock()
+	s.save()
+	s.emit("error", err.Error())
+	s.setState("error")
+	s.endMission("parada", "erro: "+err.Error())
+}
+
+// ---------------------------------------------------------------- compaction
+
+func (s *Session) needsCompaction() bool {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	// Estimate: 4 chars per token over the serialized messages.
+	b, _ := json.Marshal(s.Messages)
+	return len(b)/4 > int(float64(s.contextLimitLocked())*0.75)
+}
+
+func (s *Session) compact(ctx context.Context, p Provider) error {
+	s.setState("compacting")
+	msgs := s.copyMessages()
+	if len(msgs) < 4 {
+		return nil
+	}
+	// the latest exchange stays verbatim; both are fresh slices: appending the request below must not
+	// write over the exchange that is kept (a shared backing array lost the agent's tool calls once)
+	keep := append([]Message{}, msgs[len(msgs)-2:]...)
+	older := append([]Message{}, msgs[:len(msgs)-2]...)
+	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: compactRequest + " Be specific and concise."}}})
+	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: repairTranscript(older), MaxTokens: 4000}, func(StreamEvent) {})
+	if err != nil {
+		return err
+	}
+	summary := ""
+	for _, b := range res.Content {
+		if b.Type == "text" {
+			summary += b.Text
+		}
+	}
+	s.Mu.Lock()
+	s.Messages = append(compactionHead("[Context compacted — summary of the work so far]\n\n"+summary, verbatimRequests(older[:len(older)-1])), keep...)
+	s.TurnStarts = []int{0}
+	s.Compactions++
+	s.Cost += s.settings.CostOf(s.fastModel(), res.Usage)
+	s.Mu.Unlock()
+	s.emit("compacted", map[string]any{"summary": summary})
+	return nil
+}
+
+// compactRequest is what the model is asked when the conversation is summarized.
+const compactRequest = "Summarize the conversation above so the work can continue without losing anything essential: the goal, the decisions made, the files created or changed (with paths), what was tried and rejected, the errors found, the current state and the next steps."
+
+// compactionHead is the start of a compacted conversation: the summary, then the user's own requests,
+// each verbatim in its own block (the next compaction takes them back from there), then the agent's
+// acknowledgement. Both messages are marked as the compaction, never read from their text.
+func compactionHead(summary string, requests []string) []Message {
+	blocks := []Block{{Type: "text", Text: summary}}
+	if len(requests) > 0 {
+		blocks = append(blocks, Block{Type: "text", Text: "## The user's requests, verbatim (oldest first; each block below is one request, word for word)"})
+		for _, r := range requests {
+			blocks = append(blocks, Block{Type: "text", Text: r})
+		}
+	}
+	return []Message{
+		{Role: "user", Kind: "compaction", Content: blocks, TS: time.Now().UnixMilli()},
+		{Role: "assistant", Kind: "compaction", Content: []Block{{Type: "text", Text: "Understood; I continue from that state."}}},
+	}
+}
+
+// verbatimRequests returns what the user typed in msgs, word for word, newest kept whole when the
+// budget runs out: a summary may lose a nuance; these islands keep the user's own wording.
+func verbatimRequests(msgs []Message) []string {
+	var reqs []string
+	for _, m := range msgs {
+		if m.Role == "user" && m.Kind == "compaction" { // islands kept by an earlier compaction
+			for i, b := range m.Content {
+				if i >= 2 && b.Type == "text" {
+					reqs = append(reqs, b.Text)
+				}
+			}
+			continue
+		}
+		if !isUserRequest(m) {
+			continue
+		}
+		for _, b := range m.Content {
+			if b.Type == "text" && strings.TrimSpace(b.Text) != "" {
+				reqs = append(reqs, strings.TrimSpace(b.Text))
+				break
+			}
+		}
+	}
+	const budget = 6000
+	var out []string
+	used := 0
+	for i := len(reqs) - 1; i >= 0; i-- {
+		r := reqs[i]
+		if used+len(r) > budget {
+			if used > 0 {
+				break // the oldest requests do not fit: the summary covers them
+			}
+			r = r[:budget] + " […]"
+		}
+		used += len(r)
+		out = append(out, r)
+	}
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return out
+}
+
+// ---------------------------------------------------------------- rewind variants, summaries, side chat
+
+// RewindTo restores files and/or the conversation to before turn toTurn. It returns the prompt that
+// started that turn, so the window can put it back in the prompt box.
+func (s *Session) RewindTo(toTurn int, code, conversation bool) (string, error) {
+	s.Mu.Lock()
+	if s.State != "idle" && s.State != "error" {
+		s.Mu.Unlock()
+		return "", errors.New(M("session.stop_first_rewind").Render(s.uiLang()))
+	}
+	if toTurn < 1 || toTurn > s.Turn {
+		s.Mu.Unlock()
+		return "", errors.New(M("session.no_turn").Render(s.uiLang()))
+	}
+	prompt := ""
+	if toTurn-1 < len(s.TurnStarts) {
+		if i := s.TurnStarts[toTurn-1]; i < len(s.Messages) {
+			for _, b := range s.Messages[i].Content {
+				if b.Type == "text" {
+					prompt = b.Text
+					break
+				}
+			}
+		}
+	}
+	s.Mu.Unlock()
+	if code && conversation {
+		return prompt, s.Revert(toTurn)
+	}
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	if code {
+		for t := s.Turn; t >= toTurn; t-- {
+			files := s.Checkpoints[t]
+			for i := len(files) - 1; i >= 0; i-- {
+				c := files[i]
+				abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
+				if c.New {
+					_ = os.Remove(abs)
+					continue
+				}
+				src := filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t), filepath.FromSlash(c.Path))
+				if b, err := os.ReadFile(src); err == nil {
+					_ = os.MkdirAll(filepath.Dir(abs), 0o755)
+					_ = os.WriteFile(abs, b, 0o644)
+				}
+			}
+			_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
+			delete(s.Checkpoints, t)
+		}
+		Journal(s.Root, JournalEntry{Kind: "revert", Detail: fmt.Sprintf("sessão %s: código restaurado a antes do turno %d", s.ID, toTurn)})
+	}
+	if conversation {
+		for t := s.Turn; t >= toTurn; t-- { // later checkpoints no longer belong to any turn
+			_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
+			delete(s.Checkpoints, t)
+		}
+		if toTurn-1 < len(s.TurnStarts) {
+			s.Messages = s.Messages[:s.TurnStarts[toTurn-1]]
+			s.TurnStarts = s.TurnStarts[:toTurn-1]
+		}
+		s.Turn = toTurn - 1
+	}
+	s.save()
+	s.scheduleMapRefreshLocked()
+	return prompt, nil
+}
+
+// SummarizeUpTo compresses the conversation before turn upTo into a summary; later turns stay verbatim.
+func (s *Session) SummarizeUpTo(ctx context.Context, upTo int, hint string) error {
+	s.Mu.Lock()
+	if s.State != "idle" && s.State != "error" {
+		s.Mu.Unlock()
+		return errors.New(M("session.stop_first_summary").Render(s.uiLang()))
+	}
+	if upTo < 2 || upTo-1 >= len(s.TurnStarts) {
+		s.Mu.Unlock()
+		return errors.New(M("session.nothing_to_summarize").Render(s.uiLang()))
+	}
+	cut := s.TurnStarts[upTo-1]
+	older := append([]Message{}, s.Messages[:cut]...)
+	s.Mu.Unlock()
+	p, err := providerFor(s.settings, s.providerID())
+	if err != nil {
+		return err
+	}
+	ask := compactRequest
+	if strings.TrimSpace(hint) != "" {
+		ask += "\nFocus the user asked for: " + hint
+	}
+	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: ask}}})
+	model := s.fastModel()
+	res, err := p.Stream(ctx, ModelRequest{Model: model, Messages: older, MaxTokens: 4000}, func(StreamEvent) {})
+	if err != nil {
+		return err
+	}
+	summary := ""
+	for _, b := range res.Content {
+		if b.Type == "text" {
+			summary += b.Text
+		}
+	}
+	s.Mu.Lock()
+	head := compactionHead("[Conversation summarized]\n\n"+summary, nil)
+	rest := s.Messages[cut:]
+	shift := cut - len(head)
+	var starts []int
+	starts = append(starts, 0)
+	for _, st := range s.TurnStarts[upTo-1:] {
+		starts = append(starts, st-shift)
+	}
+	s.Messages = append(head, rest...)
+	s.TurnStarts = starts
+	s.Turn = len(starts)
+	s.Compactions++
+	s.Cost += s.settings.CostOf(model, res.Usage)
+	s.Mu.Unlock()
+	s.save()
+	s.emit("session", s.snapshot())
+	return nil
+}
+
+// SideQuestion answers a question about the session without adding anything to its history.
+func (s *Session) SideQuestion(ctx context.Context, question string) (string, error) {
+	p, err := providerFor(s.settings, s.providerID())
+	if err != nil {
+		return "", err
+	}
+	msgs := s.copyMessages()
+	// a trailing tool_use without its result would be rejected; cut back to the last complete exchange
+	for len(msgs) > 0 && msgs[len(msgs)-1].Role == "assistant" {
+		hasTool := false
+		for _, b := range msgs[len(msgs)-1].Content {
+			if b.Type == "tool_use" {
+				hasTool = true
+			}
+		}
+		if !hasTool {
+			break
+		}
+		msgs = msgs[:len(msgs)-1]
+	}
+	if len(msgs) > 0 && msgs[len(msgs)-1].Role == "user" {
+		msgs = append(msgs, Message{Role: "assistant", Content: []Block{{Type: "text", Text: "(continuing)"}}})
+	}
+	msgs = append(msgs, Message{Role: "user", Content: []Block{{Type: "text", Text: "[A side question from the user — answer directly, without tools; this does not enter the history]\n" + question}}})
+	res, err := p.Stream(ctx, ModelRequest{Model: s.Model, System: "You answer quick questions about the work session in progress. " + responseLanguageRule(s.settings.Language), Messages: msgs, MaxTokens: 2000}, func(StreamEvent) {})
+	if err != nil {
+		return "", err
+	}
+	out := ""
+	for _, b := range res.Content {
+		if b.Type == "text" {
+			out += b.Text
+		}
+	}
+	cost := s.settings.CostOf(s.Model, res.Usage)
+	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cost: cost})
+	return out, nil
+}
+
+// ContextBreakdown estimates where the context window goes (4 characters ≈ 1 token).
+func (s *Session) ContextBreakdown() map[string]any {
+	rules := LoadRules(s.Root)
+	sys := len(buildSystemPrompt(s, rules)) / 4
+	tb, _ := json.Marshal(toolSpecs())
+	tools := len(tb) / 4
+	var user, assistant, calls, results, images int
+	for _, m := range s.copyMessages() {
+		for _, b := range m.Content {
+			switch b.Type {
+			case "text":
+				if m.Role == "user" {
+					user += len(b.Text) / 4
+				} else {
+					assistant += len(b.Text) / 4
+				}
+			case "thinking":
+				assistant += len(b.Thinking) / 4
+			case "tool_use":
+				calls += (len(b.Input) + len(b.Name)) / 4
+			case "tool_result":
+				results += len(b.Content) / 4
+			case "image":
+				images += 1600
+			}
+		}
+	}
+	total := sys + tools + user + assistant + calls + results + images
+	limit := s.contextLimit()
+	return map[string]any{
+		"limit": limit, "total": total,
+		"categories": []map[string]any{
+			{"name": "Instruções do sistema", "tokens": sys}, {"name": "Ferramentas", "tokens": tools},
+			{"name": "Suas mensagens", "tokens": user}, {"name": "Respostas", "tokens": assistant},
+			{"name": "Chamadas de ferramenta", "tokens": calls}, {"name": "Resultados de ferramenta", "tokens": results},
+			{"name": "Imagens", "tokens": images},
+		},
+	}
+}
+
+// SuggestNext guesses the user's likely next message from the end of the conversation, for the gray
+// suggestion in the prompt box (Tab accepts). The fast model sees only the recent text, no tools.
+func (s *Session) SuggestNext(ctx context.Context) (string, error) {
+	p, err := providerFor(s.settings, s.providerID())
+	if err != nil {
+		return "", err
+	}
+	msgs := s.copyMessages()
+	var lines []string
+	for i := len(msgs) - 1; i >= 0 && len(lines) < 6; i-- {
+		if msgs[i].Kind != "" || msgs[i].Role == "user" && !isUserRequest(msgs[i]) {
+			continue // infuse's notes and tool results are not the conversation between the two
+		}
+		if t := strings.TrimSpace(msgText(msgs[i])); t != "" {
+			who := "Agent"
+			if msgs[i].Role == "user" {
+				who = "User"
+			}
+			if len(t) > 1200 {
+				t = t[:1200] + "…"
+			}
+			lines = append([]string{who + ": " + t}, lines...)
+		}
+	}
+	if len(lines) == 0 {
+		return "", nil
+	}
+	ask := "A recent conversation between a user and a coding agent:\n\n" + strings.Join(lines, "\n\n") +
+		"\n\nWrite the user's most likely next message, short (up to 12 words), in the user's language. Answer with the message only, without quotes. If there is no clear next step, answer with a dash (-)."
+	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: []Message{{Role: "user", Content: []Block{{Type: "text", Text: ask}}}}, MaxTokens: 60}, func(StreamEvent) {})
+	if err != nil {
+		return "", err
+	}
+	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.fastModel(), Input: res.Usage.Input, Output: res.Usage.Output, Cost: s.settings.CostOf(s.fastModel(), res.Usage)})
+	out := strings.Trim(strings.TrimSpace(msgText(Message{Content: res.Content})), "\"'“”")
+	if out == "-" || out == "" || strings.Contains(out, "\n") || len([]rune(out)) > 120 {
+		return "", nil
+	}
+	for i := len(msgs) - 1; i >= 0 && i >= len(msgs)-12; i-- { // never suggest what the user already sent
+		if msgs[i].Role == "user" && strings.EqualFold(strings.TrimSpace(msgText(msgs[i])), out) {
+			return "", nil
+		}
+	}
+	return out, nil
+}
+
+// msgText joins the text blocks of a message.
+
+type sessionHit struct {
+	ID      string `json:"id"`
+	Root    string `json:"root"`
+	Title   string `json:"title"`
+	Snippet string `json:"snippet"`
+}
+
+// searchSessions finds q (case-insensitive) in the titles and messages of every project's sessions.
+func searchSessions(q string, max int) []sessionHit {
+	q = strings.ToLower(strings.TrimSpace(q))
+	out := []sessionHit{}
+	if len([]rune(q)) < 2 {
+		return out
+	}
+	for _, p := range loadProjects() {
+		entries, _ := os.ReadDir(sessionsDir(p.Root))
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".json") || len(out) >= max {
+				continue
+			}
+			var d SessionData
+			if readJSON(filepath.Join(sessionsDir(p.Root), e.Name()), &d) != nil {
+				continue
+			}
+			hit := ""
+			if strings.Contains(strings.ToLower(d.Title), q) {
+				hit = d.Title
+			}
+			for i := len(d.Messages) - 1; i >= 0 && hit == ""; i-- {
+				for _, b := range d.Messages[i].Content {
+					text := b.Text
+					if b.Type == "tool_result" {
+						text = b.Content
+					}
+					low := strings.ToLower(text)
+					if k := strings.Index(low, q); k >= 0 {
+						hit = snippetAround(text, k, len(q))
+						break
+					}
+				}
+			}
+			if hit != "" {
+				out = append(out, sessionHit{ID: d.ID, Root: d.Root, Title: d.Title, Snippet: hit})
+			}
+		}
+	}
+	return out
+}
+
+// snippetAround cuts ~40 characters on each side of the match at byte k (rune-safe).

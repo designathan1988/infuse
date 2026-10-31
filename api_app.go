@@ -5,6 +5,7 @@ package main
 // scheduled tasks, usage totals.
 
 import (
+	"infuse/internal/agent"
 	"infuse/internal/mcp"
 	"encoding/json"
 	"errors"
@@ -285,9 +286,9 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		out := map[string]any{"project": loadMemory(projectMemoryFile(root)), "global": loadMemory(globalMemoryFile()), "session": []MemoryItem{}}
 		if id := q["session"]; id != "" {
 			if s, err := loadSession(root, id); err == nil {
-				s.mu.Lock()
+				s.Mu.Lock()
 				out["session"] = append([]MemoryItem{}, s.Memory...)
-				s.mu.Unlock()
+				s.Mu.Unlock()
 			}
 		}
 		sendJSON(w, 200, out)
@@ -316,7 +317,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				sendJSON(w, 404, map[string]any{"error": "sessão não encontrada"})
 				return true
 			}
-			err = s.editMemory("session", func([]MemoryItem) []MemoryItem { return clean })
+			err = s.EditMemory("session", func([]MemoryItem) []MemoryItem { return clean })
 		case "global":
 			err = saveMemory(globalMemoryFile(), clean)
 		default:
@@ -394,7 +395,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 			return true
 		}
 		s := newSession(root)
-		s.mu.Lock()
+		s.Mu.Lock()
 		if v := str("mode"); v != "" {
 			s.Mode = v
 		}
@@ -407,7 +408,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		if v := str("effort"); v != "" {
 			s.Effort = v
 		}
-		s.mu.Unlock()
+		s.Mu.Unlock()
 		if boolean("worktree") {
 			wt, branch, err := CreateWorktree(root, str("title"))
 			if err != nil {
@@ -415,15 +416,15 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				sendJSON(w, 400, map[string]any{"error": err.Error()})
 				return true
 			}
-			s.mu.Lock()
+			s.Mu.Lock()
 			s.Worktree, s.Branch, s.Cwd = wt, branch, wt
-			s.mu.Unlock()
+			s.Mu.Unlock()
 		} else {
 			s.Branch = strings.TrimSpace(gitOutput(root, "rev-parse", "--abbrev-ref", "HEAD"))
 		}
-		s.save()
+		s.Save()
 		rememberProjectMode(root, s.Mode)
-		sendJSON(w, 200, s.snapshot())
+		sendJSON(w, 200, s.Snapshot())
 		return true
 	case path == "/api/sessions/search":
 		sendJSON(w, 200, searchSessions(q["q"], 40))
@@ -436,12 +437,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				if d.Archived != (q["archived"] == "1") {
 					continue
 				}
-				state := "idle"
-				sessionsMu.Lock()
-				if live, ok := sessions[d.ID]; ok {
-					state = live.State
-				}
-				sessionsMu.Unlock()
+				state := agent.LiveState(d.ID)
 				out = append(out, map[string]any{"id": d.ID, "root": d.Root, "title": d.Title, "updated": d.Updated, "created": d.Created,
 					"cost": d.Cost, "branch": d.Branch, "worktree": d.Worktree, "archived": d.Archived, "state": state, "model": d.Model, "pinned": d.Pinned})
 			}
@@ -460,7 +456,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		}
 		switch parts[1] {
 		case "settings": // mode, provider, model, effort, title
-			s.mu.Lock()
+			s.Mu.Lock()
 			if v := str("mode"); v != "" {
 				s.Mode = v
 			}
@@ -476,19 +472,19 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 			if v := str("title"); v != "" {
 				s.Title = v
 			}
-			s.mu.Unlock()
-			s.save()
+			s.Mu.Unlock()
+			s.Save()
 			if v := str("mode"); v != "" {
 				rememberProjectMode(root, v)
 			}
-			snap := s.snapshot()
-			s.emit("session", snap)
+			snap := s.Snapshot()
+			s.Emit("session", snap)
 			sendJSON(w, 200, snap)
 		case "pin":
-			s.mu.Lock()
+			s.Mu.Lock()
 			s.Pinned = boolean("pinned")
-			s.mu.Unlock()
-			s.save()
+			s.Mu.Unlock()
+			s.Save()
 			sendJSON(w, 200, map[string]any{"ok": true})
 		case "archive":
 			force := boolean("force")
@@ -499,16 +495,16 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				}
 			}
 			s.Stop()
-			s.mu.Lock()
+			s.Mu.Lock()
 			s.Archived = true
-			s.mu.Unlock()
-			s.save()
+			s.Mu.Unlock()
+			s.Save()
 			sendJSON(w, 200, map[string]any{"ok": true})
 		case "unarchive":
-			s.mu.Lock()
+			s.Mu.Lock()
 			s.Archived = false
-			s.mu.Unlock()
-			s.save()
+			s.Mu.Unlock()
+			s.Save()
 			sendJSON(w, 200, map[string]any{"ok": true})
 		case "rewind":
 			prompt, err := s.RewindTo(num("turn"), boolean("code"), boolean("conversation"))
@@ -516,13 +512,13 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				sendJSON(w, 409, map[string]any{"error": err.Error()})
 				return true
 			}
-			sendJSON(w, 200, map[string]any{"session": s.snapshot(), "prompt": prompt})
+			sendJSON(w, 200, map[string]any{"session": s.Snapshot(), "prompt": prompt})
 		case "summarize":
 			if err := s.SummarizeUpTo(r.Context(), num("turn"), str("hint")); err != nil {
 				sendJSON(w, 409, map[string]any{"error": err.Error()})
 				return true
 			}
-			sendJSON(w, 200, map[string]any{"session": s.snapshot()})
+			sendJSON(w, 200, map[string]any{"session": s.Snapshot()})
 		case "btw":
 			ans, err := s.SideQuestion(r.Context(), str("question"))
 			if err != nil {
@@ -542,25 +538,24 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		case "bans": // the user's prohibitions: list, lift or restore one
 			if str("action") == "set" {
 				off, _ := body["off"].(bool)
-				sendJSON(w, 200, map[string]any{"bans": s.liftBan(num("index"), off)})
+				sendJSON(w, 200, map[string]any{"bans": s.LiftBan(num("index"), off)})
 				return true
 			}
 			sendJSON(w, 200, map[string]any{"bans": s.Bans()})
 		case "procs": // background processes: list, full output of one, stop one
 			switch str("action") {
 			case "stop":
-				err := s.stopProc(str("id"))
+				err := s.StopProc(str("id"))
 				sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err)})
 			case "output":
-				p := s.proc(str("id"))
-				if p == nil {
+				text, ok := s.ProcOutput(str("id"))
+				if !ok {
 					sendJSON(w, 404, map[string]any{"error": "processo não encontrado"})
 					return true
 				}
-				text, _ := p.out.since(0)
 				sendJSON(w, 200, map[string]any{"output": text})
 			default:
-				sendJSON(w, 200, map[string]any{"procs": s.procList()})
+				sendJSON(w, 200, map[string]any{"procs": s.ProcList()})
 			}
 		case "mission":
 			var err error
@@ -571,7 +566,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				turns, _ := strconv.Atoi(fmt.Sprint(body["maxTurns"]))
 				err = s.StartMission(str("goal"), budget, turns)
 			}
-			sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err), "mission": s.missionSnapshot()})
+			sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err), "mission": s.MissionSnapshot()})
 		case "review": // independent reviewer on the current changes, asked by the user
 			out, err := s.IndependentReview(r.Context(), str("focus"))
 			sendJSON(w, 200, map[string]any{"ok": err == nil, "review": out, "error": errString(err)})

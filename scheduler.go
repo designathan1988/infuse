@@ -27,7 +27,7 @@ type scheduledRunner struct{}
 
 func (scheduledRunner) RunTask(t scheduler.Task) (string, error) {
 	s := newSession(t.Root)
-	s.mu.Lock()
+	s.Mu.Lock()
 	s.Title = "⏱ " + t.Name
 	if t.Mode != "" {
 		s.Mode = t.Mode
@@ -38,15 +38,13 @@ func (scheduledRunner) RunTask(t scheduler.Task) (string, error) {
 	if t.Model != "" {
 		s.Model = t.Model
 	}
-	for _, tool := range t.AlwaysOK {
-		s.allowAlways[tool] = true
-	}
-	s.mu.Unlock()
+	s.Mu.Unlock()
+	s.AllowAlways(t.AlwaysOK)
 	if t.Worktree {
 		if dir, branch, err := CreateWorktree(t.Root, t.Name); err == nil {
-			s.mu.Lock()
+			s.Mu.Lock()
 			s.Worktree, s.Branch, s.Cwd = dir, branch, dir
-			s.mu.Unlock()
+			s.Mu.Unlock()
 		}
 	}
 	if err := s.Send(t.Prompt, nil, nil); err != nil {

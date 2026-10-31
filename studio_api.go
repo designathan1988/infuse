@@ -3,6 +3,7 @@ package main
 // Studio API: sessions, streaming events (SSE), files, diff, settings.
 
 import (
+	"infuse/internal/agent"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -70,7 +71,7 @@ func studioAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body
 			return true
 		}
 		s := newSession(root)
-		sendJSON(w, 200, s.snapshot())
+		sendJSON(w, 200, s.Snapshot())
 		return true
 
 	case strings.HasPrefix(path, "/api/sessions/"):
@@ -91,37 +92,33 @@ func studioAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body
 			switch r.Method {
 			case http.MethodDelete:
 				s.Stop()
-				sessionsMu.Lock()
-				delete(sessions, id)
-				sessionsMu.Unlock()
-				_ = os.Remove(filepath.Join(sessionsDir(root), id+".json"))
-				_ = os.RemoveAll(filepath.Join(root, infuseDirName, "checkpoints", id))
+				agent.RemoveSession(root, id)
 				sendJSON(w, 200, map[string]any{"ok": true})
 			case http.MethodPut:
-				s.mu.Lock()
+				s.Mu.Lock()
 				if t := str("title"); t != "" {
 					s.Title = t
 				}
 				if m := str("model"); m != "" {
 					s.Model = m
 				}
-				s.mu.Unlock()
-				s.save()
-				sendJSON(w, 200, s.snapshot())
+				s.Mu.Unlock()
+				s.Save()
+				sendJSON(w, 200, s.Snapshot())
 			default:
-				sendJSON(w, 200, s.snapshot())
+				sendJSON(w, 200, s.Snapshot())
 			}
 		case "duplicate":
 			d := newSession(root)
-			d.mu.Lock()
+			d.Mu.Lock()
 			d.Title = s.Title + " (cópia)"
 			d.Model = s.Model
-			d.Messages = s.copyMessages()
+			d.Messages = s.CopyMessages()
 			d.Turn = s.Turn
 			d.TurnStarts = append([]int{}, s.TurnStarts...)
-			d.mu.Unlock()
-			d.save()
-			sendJSON(w, 200, d.snapshot())
+			d.Mu.Unlock()
+			d.Save()
+			sendJSON(w, 200, d.Snapshot())
 		case "send":
 			var atts []Attachment
 			ab, _ := json.Marshal(body["attachments"])
@@ -147,7 +144,7 @@ func studioAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body
 				sendJSON(w, 409, map[string]any{"error": err.Error()})
 				return true
 			}
-			sendJSON(w, 200, s.snapshot())
+			sendJSON(w, 200, s.Snapshot())
 		case "events":
 			streamEvents(w, r, s)
 		default:
@@ -305,14 +302,14 @@ func streamEvents(w http.ResponseWriter, r *http.Request, s *Session) {
 	w.Header().Set("content-type", "text/event-stream")
 	w.Header().Set("cache-control", "no-cache")
 	w.Header().Set("connection", "keep-alive")
-	ch, unsub := s.subscribe()
+	ch, unsub := s.Subscribe()
 	defer unsub()
 	write := func(ev Event) {
 		b, _ := json.Marshal(ev)
 		fmt.Fprintf(w, "data: %s\n\n", b)
 		fl.Flush()
 	}
-	write(Event{Type: "session", Data: s.snapshot()})
+	write(Event{Type: "session", Data: s.Snapshot()})
 	ping := time.NewTicker(20 * time.Second)
 	defer ping.Stop()
 	for {

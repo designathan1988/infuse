@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"infuse/internal/agent"
+	"infuse/internal/browser"
 	"infuse/internal/config"
 	"infuse/internal/filter"
 	"regexp"
@@ -193,6 +195,7 @@ func osDialogs(owner func() uintptr) desktop.NativeDialogs {
 }
 func attachmentOf(p string) (Attachment, bool) { return desktop.AttachmentOf(p) }
 func gitRun(root string, args ...string) (string, error) { return workspace.GitRun(root, args...) }
+func gitOutput(root string, args ...string) string       { return workspace.GitOutput(root, args...) }
 
 type OracleCheck = oracle.OracleCheck
 type OracleSpec = oracle.OracleSpec
@@ -289,21 +292,7 @@ func snapshotTurn(root, work, session string, turn int) {
 type rootSnapshots struct{}
 
 func (rootSnapshots) LiveSessions(root string) []workspace.LiveSession {
-	sessionsMu.Lock()
-	defer sessionsMu.Unlock()
-	var out []workspace.LiveSession
-	for _, s := range sessions {
-		s.mu.Lock()
-		if s.Root == root {
-			cp := map[int][]CheckpointFile{}
-			for t, c := range s.Checkpoints {
-				cp[t] = append([]CheckpointFile{}, c...)
-			}
-			out = append(out, workspace.LiveSession{ID: s.ID, Created: s.Created, Checkpoints: cp})
-		}
-		s.mu.Unlock()
-	}
-	return out
+	return agent.LiveSessions(root)
 }
 
 func LocalChanges(root, work, session, scope string) map[string]any {
@@ -349,7 +338,7 @@ func guardPolicy(root string, protected []string) filter.Policy {
 		Protected:        protected,
 		References:       loadProjectRules(root).Reference,
 		InstructionFiles: instructionNames,
-		Memory:           []string{memoryRel},
+		Memory:           []string{knowledge.MemoryRel},
 	}
 }
 
@@ -420,3 +409,68 @@ func listedDirectory(cmd string) (string, bool) { return filter.ListedDirectory(
 func mayChangeTree(cmd string) bool             { return filter.MayChangeTree(cmd) }
 
 var reRedir = filter.ReRedir
+
+// Agent runtime surface kept for the API during the migration.
+
+type Session = agent.Session
+type SessionData = agent.SessionData
+type SessionHit = agent.SessionHit
+type Mission = agent.Mission
+type MissionStep = agent.MissionStep
+type Diagnosis = agent.Diagnosis
+type Evidence = agent.Evidence
+type AgentRun = agent.AgentRun
+type AgentStep = agent.AgentStep
+type ReportClaim = agent.ReportClaim
+type ReportSource = agent.ReportSource
+type TurnReport = agent.TurnReport
+type Ban = agent.Ban
+type HookEntry = agent.HookEntry
+type CompiledRule = agent.CompiledRule
+type PinnedDoc = agent.PinnedDoc
+type MemoryItem = agent.MemoryItem
+type Skill = agent.Skill
+type SearchResult = agent.SearchResult
+type docSuggestion = agent.DocSuggestion
+
+func newSession(root string) *Session               { return agent.NewSession(root) }
+func loadSession(root, id string) (*Session, error) { return agent.LoadSession(root, id) }
+func listSessions(root string) []SessionData        { return agent.ListSessions(root) }
+func searchSessions(q string, max int) []SessionHit { return agent.SearchSessions(q, max) }
+func resumeInterruptedSessions()                    { agent.ResumeInterruptedSessions() }
+func sessionsDir(root string) string                { return agent.SessionsDir(root) }
+func toolSpecs() []ToolSpec                         { return agent.ToolSpecs() }
+func stopAllProcs()                                 { agent.StopAllProcs() }
+func loadDocs(root string) []PinnedDoc              { return agent.LoadDocs(root) }
+func unpinDoc(root, url string) error               { return agent.UnpinDoc(root, url) }
+func docsPrompt(root string) string                 { return agent.DocsPrompt(root) }
+func PinDoc(ctx context.Context, root, url string) (PinnedDoc, error) { return agent.PinDoc(ctx, root, url) }
+func SuggestDocs(root string) []docSuggestion       { return agent.SuggestDocs(root) }
+func addHook(root, scope, event, matcher, command string) error {
+	return agent.AddHook(root, scope, event, matcher, command)
+}
+func removeHook(root, key string) error { return agent.RemoveHook(root, key) }
+func LoadHooks(root string) []HookEntry              { return agent.LoadHooks(root) }
+func WebSearch(ctx context.Context, q string, max int) ([]SearchResult, string, error) {
+	return agent.WebSearch(ctx, q, max)
+}
+
+var hookEvents = agent.HookEvents
+func hookKey(root, scope, event, matcher, command string) string {
+	return agent.HookKey(root, scope, event, matcher, command)
+}
+func approveHook(key string) error { return agent.ApproveHook(key) }
+func parseSkill(text string) (string, string, string) { return agent.ParseSkill(text) }
+func LoadSkills(root string) []Skill { return agent.LoadSkills(root) }
+func projectMemoryFile(root string) string { return agent.ProjectMemoryFile(root) }
+func globalMemoryFile() string { return agent.GlobalMemoryFile() }
+func loadMemory(file string) []MemoryItem { return agent.LoadMemory(file) }
+func saveMemory(file string, items []MemoryItem) error { return agent.SaveMemory(file, items) }
+func normalizeMemory(it *MemoryItem) error { return agent.NormalizeMemory(it) }
+
+func openDefaultBrowser(u string) error { return agent.OpenDefaultBrowser(u) }
+func frameable(ctx context.Context, u string) bool { return agent.Frameable(ctx, u) }
+
+func readIfExists(p string) string { return agent.ReadIfExists(p) }
+func loadInstructions(root string) string { return agent.LoadInstructions(root) }
+func closeAgentBrowsers() { browser.CloseAgentBrowsers() }
