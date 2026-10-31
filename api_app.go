@@ -109,6 +109,9 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		}
 		sendJSON(w, 200, map[string]any{"ok": true, "verdict": v})
 		return true
+	case path == "/api/oracle/suggest":
+		sendJSON(w, 200, SuggestChecks(root))
+		return true
 	case path == "/api/oracle/verdicts":
 		sendJSON(w, 200, ListVerdicts(root, 20))
 		return true
@@ -391,6 +394,26 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		return true
 	case path == "/api/editors":
 		sendJSON(w, 200, Editors())
+		return true
+	case path == "/api/frameable":
+		sendJSON(w, 200, map[string]any{"frameable": frameable(r.Context(), q["url"])})
+		return true
+	case path == "/api/websearch":
+		res, engine, err := WebSearch(r.Context(), q["q"], 12)
+		if err != nil {
+			sendJSON(w, 200, map[string]any{"error": err.Error(), "results": []SearchResult{}})
+			return true
+		}
+		sendJSON(w, 200, map[string]any{"results": res, "engine": engine})
+		return true
+	case path == "/api/open" && str("url") != "":
+		// "open in the default browser", asked by the user from the browser pane
+		u := str("url")
+		if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+			sendJSON(w, 400, map[string]any{"error": "endereço inválido"})
+			return true
+		}
+		sendJSON(w, 200, map[string]any{"ok": openDefaultBrowser(u) == nil})
 		return true
 	case path == "/api/open":
 		p := str("path")

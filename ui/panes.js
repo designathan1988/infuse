@@ -213,19 +213,79 @@ function mountFiles(pb, extra, c) {
 }
 
 // ---------------------------------------------------------------- Browser: tabs, URL bar, dev servers
+// The address bar takes an address or words to search. In the window every tab is a native WebView2
+// view placed over the pane (any site opens); in a plain browser tab it falls back to an iframe, and a
+// search lists results from /api/websearch (no search API key: the engines' HTML pages are read).
+function addressOf(v) {
+  v = v.trim(); if (!v) return '';
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v) || /^(about|data|file):/i.test(v)) return v;
+  if (/^(localhost|127\.0\.0\.1|\[::1\]|\d{1,3}(\.\d{1,3}){3})(:\d+)?(\/|$)/i.test(v)) return 'http://' + v;
+  if (!/\s/.test(v) && /^[\w-]+(\.[\w-]+)+(:\d+)?(\/.*)?$/.test(v)) return 'https://' + v;
+  return '';
+}
+const searchURL = q => 'https://www.google.com/search?q=' + encodeURIComponent(q);
+let browserSeq = 0;
 function mountBrowser(pb, extra, c) {
-  const tabs = []; let cur = null;
-  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('Voltar'))}">‹</button><button class="ib rl" title="${esc(t('Recarregar'))}">${I.reload}</button><input class="url" placeholder="http://localhost:3000"><button class="ib ext" title="${esc(t('Abrir no navegador padrão'))}">${I.pop}</button></div><div class="frames" style="flex:1;display:flex;min-height:0"></div>`;
+  const tabs = []; let cur = null; let native = !!(window.infuse && window.infuse.native);
+  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('Voltar'))}">‹</button><button class="ib fwd" title="${esc(t('Avançar'))}">›</button><button class="ib rl" title="${esc(t('Recarregar'))}">${I.reload}</button><input class="url" placeholder="${esc(t('Endereço ou pesquisa — ex.: localhost:3000, github.com, como usar fetch'))}"><span class="spin bload" style="display:none"></span><button class="ib ext" title="${esc(t('Abrir no navegador padrão'))}">${I.pop}</button></div><div class="frames" style="flex:1;display:flex;min-height:0;position:relative"></div>`;
   extra.innerHTML = `<span class="row tabs" style="gap:2px;min-width:0"></span><button class="ib nt" title="${esc(t('Nova aba'))}">${I.plus}</button><button class="btn sm srv">${t('Servidores')} ${I.caret}</button>`;
-  const frames = $('.frames', pb), url = $('.url', pb), bar = $('.tabs', extra);
-  const draw = () => { bar.innerHTML = ''; tabs.forEach(tb => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}"><span class="trunc" style="max-width:110px">${esc(tb.title || tb.url || t('Nova aba'))}</span><span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) { tb.fr.remove(); tabs.splice(tabs.indexOf(tb), 1); cur = tabs[tabs.length - 1]; if (!cur) add(''); else show(cur); return; } show(tb); }; bar.appendChild(el); }); };
-  const show = tb => { tabs.forEach(x => x.fr.style.display = x === tb ? '' : 'none'); cur = tb; url.value = tb.url || ''; draw(); };
-  const add = u => { const fr = h('<iframe class="bframe" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"></iframe>'); frames.appendChild(fr); const tb = { fr, url: u }; fr.onload = () => { try { tb.title = fr.contentDocument?.title; } catch { tb.title = ''; } draw(); }; if (u) fr.src = u; tabs.push(tb); show(tb); };
-  const go = u => { if (!u) return; if (!/^https?:/.test(u)) u = 'http://' + u; cur.url = u; cur.fr.src = u; url.value = u; draw(); };
-  url.onkeydown = e => { if (e.key === 'Enter') go(url.value.trim()); };
-  $('.rl', pb).onclick = () => { if (cur?.url) cur.fr.src = cur.url; };
-  $('.back', pb).onclick = () => { try { cur.fr.contentWindow.history.back(); } catch { } };
-  $('.ext', pb).onclick = () => cur?.url && window.open(cur.url, '_blank');
+  const frames = $('.frames', pb), url = $('.url', pb), bar = $('.tabs', extra), spin = $('.bload', pb);
+  const label = tb => tb.title || (tb.url ? tb.url.replace(/^https?:\/\/(www\.)?/, '').split(/[/?#]/)[0] : t('Nova aba'));
+  const draw = () => { bar.innerHTML = ''; tabs.forEach(tb => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}" title="${esc(tb.url || '')}"><span class="trunc" style="max-width:120px">${esc(label(tb))}</span><span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) return closeTab(tb); show(tb); }; bar.appendChild(el); }); spin.style.display = cur?.loading ? '' : 'none'; };
+  // native views: kept exactly over the pane; hidden while a menu or dialog would be under them
+  let lastPlace = '';
+  const rectNow = () => { const r = frames.getBoundingClientRect(), d = window.devicePixelRatio || 1; return { x: Math.round(r.left * d), y: Math.round(r.top * d), w: Math.round(r.width * d), h: Math.round(r.height * d) }; };
+  const place = force => {
+    if (!native) return;
+    const rect = rectNow();
+    const visible = document.body.contains(frames) && frames.offsetParent !== null && rect.w > 4 && rect.h > 4 && !document.querySelector('.menu, .overlay') && !document.hidden;
+    const key = JSON.stringify([rect, visible, cur?.id]); if (!force && key === lastPlace) return; lastPlace = key;
+    tabs.forEach(tb => tb.opened && infuse.call('browser', 'place', { id: tb.id, ...rect, visible: visible && tb === cur }).catch(() => { }));
+  };
+  const ro = new ResizeObserver(() => place()); ro.observe(frames);
+  const timer = setInterval(() => place(), 200);
+  const onEv = ev => { const tb = tabs.find(x => x.id === ev.id); if (!tb) return; tb.url = ev.url; tb.title = ev.title; tb.loading = ev.loading; if (tb === cur && document.activeElement !== url) url.value = ev.url === 'about:blank' ? '' : ev.url; if (ev.url && ev.url !== 'about:blank') lsSet('browserUrl:' + c.root, ev.url); draw(); };
+  if (native) infuse.on('browser', ev => { if (document.body.contains(pb)) onEv(ev); });
+  const fallback = tb => { // iframe: sites that refuse framing stay blank here (in the window every site opens)
+    tb.fr = h('<iframe class="bframe" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"></iframe>'); frames.appendChild(tb.fr);
+    tb.fr.onload = () => { try { tb.title = tb.fr.contentDocument?.title; } catch { tb.title = ''; } tb.loading = false; draw(); };
+  };
+  const results = async (tb, q) => { // search results listed by the app itself (iframe mode)
+    tb.fr.style.display = 'none'; let box = tb.res; if (!box) { box = tb.res = h('<div class="sres sel"></div>'); frames.appendChild(box); }
+    box.style.display = ''; box.innerHTML = `<div class="status"><span class="spin"></span>${t('pesquisando…')}</div>`; tb.url = searchURL(q); tb.title = q; tb.loading = false; draw();
+    const r = await api('/api/websearch?q=' + encodeURIComponent(q));
+    box.innerHTML = (r.results || []).length ? r.results.map(x => `<div class="sr"><a href="#" data-u="${esc(x.url)}">${esc(x.title)}</a><div class="faint mono trunc">${esc(x.url)}</div><div class="sn">${esc(x.snippet || '')}</div></div>`).join('') : `<div class="empty">${esc(r.error || t('Nenhum resultado.'))}</div>`;
+    $$('[data-u]', box).forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.u); });
+  };
+  const show = tb => {
+    cur = tb; tabs.forEach(x => { if (x.fr) x.fr.style.display = x === tb && !x.searching ? '' : 'none'; if (x.res) x.res.style.display = x === tb && x.searching ? '' : 'none'; });
+    url.value = tb.url && tb.url !== 'about:blank' ? tb.url : ''; draw(); place(true); if (native && tb.opened) infuse.call('browser', 'focus', { id: tb.id }).catch(() => { });
+  };
+  const add = u => { const tb = { id: 'b' + (++browserSeq) + '-' + Date.now(), url: u }; tabs.push(tb); if (!native) fallback(tb); show(tb); if (u) go(u); else setTimeout(() => url.focus(), 30); return tb; };
+  const closeTab = tb => { const i = tabs.indexOf(tb); tabs.splice(i, 1); if (tb.opened) infuse.call('browser', 'close', { id: tb.id }).catch(() => { }); tb.fr?.remove(); tb.res?.remove(); if (!tabs.length) add(''); else show(tabs[Math.min(i, tabs.length - 1)]); };
+  const go = async v => {
+    if (!cur) return; const typed = v.trim(); const addr = addressOf(typed) || (typed ? searchURL(typed) : ''); if (!addr) return;
+    cur.url = addr; cur.loading = true; url.value = addr; draw();
+    if (native) {
+      try { await infuse.call('browser', cur.opened ? 'navigate' : 'open', { id: cur.id, url: addr, ...rectNow(), visible: true }); cur.opened = true; place(true); return; }
+      catch (e) { native = false; tabs.forEach(x => { if (!x.fr) fallback(x); }); show(cur); }
+    }
+    if (!addressOf(typed)) { cur.searching = true; return results(cur, typed); }
+    const tb = cur, f = await api('/api/frameable?url=' + encodeURIComponent(addr));
+    if (f.frameable === false) { // the site refuses to be shown inside another page
+      tb.fr.style.display = 'none'; tb.loading = false; tb.title = label({ url: addr });
+      if (!tb.res) { tb.res = h('<div class="sres sel"></div>'); frames.appendChild(tb.res); }
+      tb.res.style.display = ''; tb.searching = true;
+      tb.res.innerHTML = `<div class="bblock"><b>${esc(label({ url: addr }))} ${t('não permite ser exibido dentro de outra página')}</b><span>${t('Na janela do infuse todo site abre aqui no painel. Nesta visualização no navegador, abra no navegador padrão.')}</span><button class="btn pri">${t('Abrir no navegador padrão')}</button></div>`;
+      $('.btn', tb.res).onclick = () => api('/api/open', { body: { url: addr } }); draw(); return;
+    }
+    tb.searching = false; if (tb.res) tb.res.style.display = 'none'; tb.fr.style.display = ''; tb.fr.src = addr;
+  };
+  const nav = op => { if (!cur) return; if (native && cur.opened) return infuse.call('browser', op, { id: cur.id }).catch(() => { }); try { if (op === 'back') cur.fr.contentWindow.history.back(); else if (op === 'forward') cur.fr.contentWindow.history.forward(); else if (cur.url) cur.fr.src = cur.url; } catch { } };
+  url.onkeydown = e => { if (e.key === 'Enter') { go(url.value); url.blur(); } if (e.key === 'Escape') { url.value = cur?.url || ''; url.blur(); } };
+  url.onfocus = () => url.select();
+  $('.back', pb).onclick = () => nav('back'); $('.fwd', pb).onclick = () => nav('forward'); $('.rl', pb).onclick = () => nav('reload');
+  $('.ext', pb).onclick = () => cur?.url && api('/api/open', { body: { url: cur.url } });
   $('.nt', extra).onclick = () => add('');
   $('.srv', extra).onclick = async e => {
     const anchor = e.currentTarget; const list = await api('/api/devservers', { root: c.root });
@@ -234,8 +294,7 @@ function mountBrowser(pb, extra, c) {
     menu(anchor, items, null, { alignRight: true });
   };
   add(lsGet('browserUrl:' + c.root, ''));
-  url.addEventListener('change', () => lsSet('browserUrl:' + c.root, url.value));
-  return { go };
+  return { go: v => { if (!cur) add(''); go(v); }, destroy: () => { clearInterval(timer); ro.disconnect(); tabs.forEach(tb => tb.opened && infuse.call('browser', 'close', { id: tb.id }).catch(() => { })); } };
 }
 
 // ---------------------------------------------------------------- Tasks, Plan
@@ -249,71 +308,140 @@ function mountPlan(pb) {
 }
 
 // ---------------------------------------------------------------- infuse: oracle, rules, journal, vices, map
-// Pronto: the executor's verdict (run by the user's "Pronto?" only), the executable criteria
-// (.infuse/oracle/checks.json) edited in place, and the criteria in prose for the agent to read.
-const CHECK_KINDS = { command: ['Comando', 'run', 'npm test', 'sai com código 0; contém…'], http: ['Página/HTTP', 'url', 'http://localhost:3000/', 'status 200; contém…'], file: ['Arquivo', 'path', 'src/login.ts', 'existe; contém…'], maxLines: ['Tamanho de arquivo', 'glob', 'src/**/*.ts', 'máximo de linhas'] };
+// Pronto: "Pronto?" runs the criteria in a frozen copy of the project and shows what passed. Criteria
+// read as sentences with the values in place; the project's own scripts become one-click suggestions.
+const CRIT_KINDS = {
+  command: { name: 'Um comando termina sem erro', ex: 'npm test · go test ./... · python -m pytest', help: 'Roda o comando numa cópia congelada do projeto. Passa quando o comando termina sem erro (código de saída 0). Pode exigir também um texto na saída, como "passed".', make: () => ({ kind: 'command', run: '', expect: { exit: 0 } }), title: 'Os testes passam' },
+  http: { name: 'Uma página ou API responde', ex: 'http://localhost:3000/login responde 200 e mostra "Entrar"', help: 'Pede o endereço e confere a resposta: o código (200 = ok, 404 = não encontrado) e, se quiser, um texto que precisa aparecer. O app precisa estar rodando — inicie pelo Navegador › Servidores.', make: () => ({ kind: 'http', url: 'http://localhost:3000/', expect: { status: 200 } }), title: 'A página abre' },
+  file: { name: 'Um arquivo existe ou contém um texto', ex: 'README.md contém "Instalação" · .env não existe', help: 'Confere um arquivo na cópia do projeto: que exista, que não exista (ex.: nenhum .env com senhas no repositório) ou que contenha um texto.', make: () => ({ kind: 'file', path: '', expect: {} }), title: 'O arquivo existe' },
+  maxLines: { name: 'Nenhum arquivo passa de N linhas', ex: 'src/**/*.ts com no máximo 400 linhas', help: 'Percorre os arquivos que casam com o padrão e reprova os que passam do limite. No padrão, ** quer dizer "qualquer pasta" e * "qualquer nome": src/**/*.ts são todos os .ts dentro de src.', make: () => ({ kind: 'maxLines', glob: '**/*.ts', max: 400 }), title: 'Nenhum arquivo grande demais' },
+};
+const ORACLE_EXAMPLE = `# Pronto quando
+- O login aceita e-mail e senha e mostra uma mensagem clara quando a senha está errada.
+- Nenhuma tela quebra no celular (largura de 375px).
+- Os testes que já existiam continuam passando.
+`;
+const oracleSpecs = {}; // root → the spec last loaded, for the titles in the verdict
+const critTitle = (root, id) => (oracleSpecs[root]?.checks || []).find(k => k.id === id)?.description || id;
 async function runOracleUI(c, out) {
-  out.innerHTML = `<div class="status"><span class="spin"></span>${t('executando os critérios num snapshot…')}</div>`;
+  out.innerHTML = `<div class="vbox"><div class="status"><span class="spin"></span>${t('copiando o projeto e rodando cada critério…')}</div></div>`;
   const L = curL();
   const r = await api('/api/oracle/run', { body: { session: L?.id || '' }, root: c.root, dir: c.dir });
   const v = r.verdict || {}; drawVerdict(c, out, v, r.error); if (L) { L.verdict = v; viewsOf(L).forEach(renderRail); }
+  out.dispatchEvent(new CustomEvent('verdict', { detail: v, bubbles: true }));
 }
 function drawVerdict(c, out, v, err) {
-  if (!v || !v.run) { out.innerHTML = err ? `<div class="errbox">${esc(err)}</div>` : `<div class="faint">${t('Ainda não executado.')}</div>`; return; }
-  const tag = { aprovado: 'ok', reprovado: 'bad', 'sem-criterios': 'warn', erro: 'bad' }[v.verdict] || '';
-  out.innerHTML = `<div class="row" style="margin-bottom:6px"><span class="tag ${tag}" style="font-size:12px;padding:2px 10px">${esc(t(v.verdict))}</span><span class="faint">${esc(v.summary || '')}</span><span class="grow"></span><span class="faint mono" title="${esc(t('snapshot imutável em que os critérios rodaram'))}">${esc(v.snapshot || '')}</span></div>
-    ${(v.checks || []).map(k => `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12.5px"><span class="${k.passed ? 'add' : 'del'}">${k.passed ? '✓' : '✗'}</span><b style="font-weight:500">${esc(k.id)}</b><span class="faint grow trunc">${esc(k.detail)}</span><span class="faint">${k.millis} ms</span>${k.evidence ? `<button class="btn sm" data-ev="${esc(k.evidence)}">${t('evidência')}</button>` : ''}</div>`).join('')}
+  if (!v || !v.run) { out.innerHTML = err ? `<div class="errbox">${esc(err)}</div>` : `<div class="vbox idle"><b>${t('Ainda não verificado')}</b><span>${t('Quando quiser conferir o trabalho, clique em Pronto?.')}</span></div>`; return; }
+  const checks = v.checks || [], passed = checks.filter(k => k.passed).length;
+  const head = { aprovado: [t('Pronto'), `${passed} ${t('de')} ${checks.length} ${t('critérios passaram')}`, 'ok'], reprovado: [t('Ainda não'), `${checks.length - passed} ${t('de')} ${checks.length} ${t('falharam — veja abaixo o motivo de cada um')}`, 'bad'], 'sem-criterios': [t('Nada para verificar'), t('Adicione pelo menos um critério abaixo.'), 'warn'], erro: [t('Não foi possível verificar'), v.summary || err || '', 'bad'] }[v.verdict] || [v.verdict, v.summary || '', ''];
+  out.innerHTML = `<div class="vbox ${head[2]}"><b>${esc(head[0])}</b><span>${esc(head[1])}</span><span class="grow"></span><span class="faint" title="${esc(t('identificador da cópia congelada em que os critérios rodaram'))}">${new Date(v.finished || v.started).toLocaleTimeString()}</span></div>
+    ${checks.map(k => `<div class="vrow"><span class="${k.passed ? 'add' : 'del'}">${k.passed ? '✓' : '✗'}</span><span class="vt">${esc(critTitle(c.root, k.id))}</span><span class="faint grow trunc" title="${esc(k.detail)}">${esc(k.detail)}</span><span class="faint">${k.millis < 1000 ? k.millis + ' ms' : (k.millis / 1000).toFixed(1) + ' s'}</span>${k.evidence ? `<button class="btn sm" data-ev="${esc(k.evidence)}">${t('ver saída')}</button>` : ''}</div>`).join('')}
     <div class="evbox"></div>`;
-  $$('[data-ev]', out).forEach(b => b.onclick = async () => { const e = await api(`/api/oracle/evidence?run=${encodeURIComponent(v.run)}&file=${encodeURIComponent(b.dataset.ev)}`, { root: c.root }); $('.evbox', out).innerHTML = `<pre class="out sel" style="max-height:300px;overflow:auto;margin-top:8px;white-space:pre-wrap;font-family:var(--mono);font-size:12px;background:var(--s2);border-radius:7px;padding:8px">${esc(e.content || e.error)}</pre>`; });
+  $$('[data-ev]', out).forEach(b => b.onclick = async () => { const box = $('.evbox', out); if (box.dataset.f === b.dataset.ev) { box.innerHTML = ''; box.dataset.f = ''; return; } const e = await api(`/api/oracle/evidence?run=${encodeURIComponent(v.run)}&file=${encodeURIComponent(b.dataset.ev)}`, { root: c.root }); box.dataset.f = b.dataset.ev; box.innerHTML = `<pre class="evpre sel">${esc(e.content || e.error || t('(saída vazia)'))}</pre>`; });
 }
 function mountOracle(pb, extra, c) {
+  extra.innerHTML = `<button class="ib help" title="${esc(t('Como funciona'))}">?</button>`;
+  let spec = { checks: [] }, sugg = [], last = null, helpOpen = lsGet('oracleHelp', null);
+  const save = debounce(() => api('/api/oracle/spec', { method: 'PUT', body: { spec }, root: c.root }).then(() => loadSugg()), 400);
+  const loadSugg = async () => { sugg = await api('/api/oracle/suggest', { root: c.root }); if (!Array.isArray(sugg)) sugg = []; drawSugg(); };
+  const uid = title => { const base = (title || 'criterio').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'criterio'; let id = base, n = 2; while (spec.checks.some(k => k.id === id)) id = base + '-' + n++; return id; };
   const draw = async () => {
     const [files, specR, hist] = await Promise.all([api('/api/oracle', { root: c.root }), api('/api/oracle/spec', { root: c.root }), api('/api/oracle/verdicts', { root: c.root })]);
-    const spec = specR.spec || { checks: [] };
-    pb.innerHTML = `<div class="plist">
-      <div class="row" style="margin-bottom:8px"><button class="btn pri run">${t('Pronto?')}</button><span class="faint grow">${t('Executa os critérios num snapshot imutável; a palavra do agente não conta.')}</span></div>
-      <div class="verdict" style="margin-bottom:14px"></div>
-      <div class="sect" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin:4px 0">${t('Critérios executáveis')}</div>
+    spec = specR.spec || { checks: [] }; spec.checks = spec.checks || []; oracleSpecs[c.root] = spec; last = hist[0];
+    if (helpOpen === null) helpOpen = !spec.checks.length;
+    pb.innerHTML = `<div class="plist oracle">
+      <div class="ohead"><button class="btn pri run">${t('Pronto?')}</button><span class="grow">${t('Confere o trabalho por conta própria: roda cada critério numa cópia congelada do projeto e mostra o que passou e o que falhou.')}</span></div>
+      <div class="howto" style="${helpOpen ? '' : 'display:none'}">
+        <div class="row"><b class="grow">${t('Como funciona')}</b><button class="ib hx" title="${esc(t('Fechar'))}">${I.close}</button></div>
+        <ol>
+          <li><b>${t('Diga o que precisa ser verdade')}</b> ${t('quando o trabalho estiver pronto. Use uma sugestão abaixo (um clique) ou adicione um critério — por exemplo, "os testes passam" ou "a página de login abre".')}</li>
+          <li><b>${t('Peça o trabalho ao agente')}</b> ${t('normalmente, na conversa. Ele lê estes critérios; nenhuma ferramenta dele consegue alterá-los.')}</li>
+          <li><b>${t('Clique em Pronto?')}</b> ${t('O infuse copia o projeto do jeito que está agora, roda cada critério nessa cópia e mostra ✓ ou ✗ com a saída de cada um. O resultado vem da execução, não do que o agente diz.')}</li>
+        </ol>
+        <div class="kinds">${Object.entries(CRIT_KINDS).map(([k, x]) => `<div><b>${t(x.name)}</b><span class="faint">${t('ex.:')} ${esc(x.ex)}</span></div>`).join('')}</div>
+      </div>
+      <div class="verdict"></div>
+      <div class="osect"><span class="grow">${t('O que precisa ser verdade')}</span><button class="btn sm addc">${I.plus} ${t('Adicionar critério')}</button></div>
       <div class="checks"></div>
-      <div class="row" style="margin-top:6px"><button class="btn sm addc">${I.plus} ${t('critério')}</button><span class="grow"></span><span class="faint">${t('preparação')}</span><input class="setup mono" style="flex:1;max-width:240px;padding:3px 8px;border-radius:6px;background:var(--s2);font-size:12px" placeholder="npm ci" value="${esc(spec.setup || '')}"></div>
-      <div class="sect" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin:18px 0 4px">${t('Critérios em texto (o agente lê)')}</div>
-      <div class="faint" style="margin-bottom:10px">${t('Critérios de pronto. O agente lê; não consegue alterar por nenhuma ferramenta (bloqueado e registrado no jornal).')}</div><div class="docs"></div><input class="nf" style="margin-top:10px;padding:6px 10px;border-radius:7px;background:var(--s2);width:100%" placeholder="${esc(t('novo arquivo de critérios (ex.: performance.md) e Enter'))}"></div>`;
-    drawVerdict(c, $('.verdict', pb), hist[0]);
+      <div class="sugg"></div>
+      <details class="odet"${spec.setup ? ' open' : ''}><summary>${t('Antes de verificar (opcional)')}</summary>
+        <div class="cs">${t('Rodar')} <input class="slot mono setup" value="${esc(spec.setup || '')}" placeholder="npm ci" spellcheck="false"> ${t('na cópia, antes dos critérios.')}</div>
+        <div class="faint chelp">${t('Normalmente não é preciso: a cópia já usa as dependências instaladas (node_modules, .venv). Use quando a verificação precisa de um passo antes, como instalar dependências do zero ou gerar código.')}</div>
+      </details>
+      <details class="odet"${files.some(f => f.name !== 'checks.json' && f.content.trim()) ? ' open' : ''}><summary>${t('Descrição em palavras (opcional)')}</summary>
+        <div class="faint chelp">${t('O agente lê este texto antes de trabalhar. Escreva em linguagem comum o que significa "pronto" — o que não dá para conferir com um comando.')}</div>
+        <div class="docs"></div>
+      </details></div>`;
     $('.run', pb).onclick = () => runOracleUI(c, $('.verdict', pb));
-    const saveSpec = debounce(() => api('/api/oracle/spec', { method: 'PUT', body: { spec }, root: c.root }), 500);
-    $('.setup', pb).oninput = e => { spec.setup = e.target.value; saveSpec(); };
-    const drawChecks = () => {
-      const box = $('.checks', pb); box.innerHTML = spec.checks.length ? '' : `<div class="faint">${t('Nenhum critério executável. Sem eles, "Pronto?" não tem o que verificar.')}</div>`;
-      spec.checks.forEach((k, i) => {
-        const [label, field, ph, expPh] = CHECK_KINDS[k.kind] || CHECK_KINDS.command; k.expect = k.expect || {};
-        const exp = k.kind === 'maxLines' ? String(k.max || '') : k.kind === 'http' ? `${k.expect.status || 200}${k.expect.contains ? '; ' + k.expect.contains : ''}` : k.kind === 'command' ? `${k.expect.exit ?? 0}${k.expect.contains ? '; ' + k.expect.contains : ''}` : (k.expect.exists === false ? 'não existe' : (k.expect.contains || ''));
-        const row = h(`<div class="rule" style="grid-template-columns:110px 120px 1fr 1fr 22px"><input class="cid" value="${esc(k.id || '')}" placeholder="${esc(t('nome'))}"><span class="chip kind" style="padding:2px 6px">${esc(t(label))} ${I.caret}</span><input class="tgt mono" value="${esc(k[field] || '')}" placeholder="${esc(ph)}"><input class="exp" value="${esc(exp)}" placeholder="${esc(t(expPh))}"><button class="ib del" style="width:22px;height:22px">${I.close}</button></div>`);
-        $('.cid', row).oninput = e => { k.id = e.target.value; saveSpec(); };
-        $('.tgt', row).oninput = e => { k[field] = e.target.value; saveSpec(); };
-        $('.exp', row).oninput = e => { const val = e.target.value.trim(); const [a, ...rest] = val.split(';'); const more = rest.join(';').trim(); k.expect = {};
-          if (k.kind === 'maxLines') k.max = parseInt(val) || 400;
-          else if (k.kind === 'http') { k.expect.status = parseInt(a) || 200; if (more) k.expect.contains = more; }
-          else if (k.kind === 'command') { if (/^\d+$/.test(a.trim())) { k.expect.exit = parseInt(a); if (more) k.expect.contains = more; } else if (val) k.expect.contains = val; }
-          else if (/^não existe$/i.test(val)) k.expect.exists = false; else if (val) k.expect.contains = val;
-          saveSpec(); };
-        $('.kind', row).onclick = e => menu(e.currentTarget, Object.entries(CHECK_KINDS).map(([kk, [l]]) => ({ label: l, check: k.kind === kk, f: () => { k.kind = kk; saveSpec(); drawChecks(); } })));
-        $('.del', row).onclick = () => { spec.checks.splice(i, 1); saveSpec(); drawChecks(); };
-        box.appendChild(row);
+    pb.addEventListener('verdict', e => { last = e.detail; drawChecks(); });
+    $('.hx', pb).onclick = () => toggleHelp(false);
+    $('.setup', pb).oninput = e => { spec.setup = e.target.value.trim(); save(); };
+    $('.addc', pb).onclick = e => menu(e.currentTarget, [{ h: 'Que tipo de critério?' }, ...Object.entries(CRIT_KINDS).map(([k, x]) => ({ label: x.name, d: t('ex.:') + ' ' + x.ex, f: () => addCheck({ ...x.make(), description: t(x.title) }, true) }))], null, { alignRight: true });
+    drawVerdict(c, $('.verdict', pb), last); drawChecks(); drawSugg(); drawDocs(files); loadSugg();
+  };
+  const toggleHelp = open => { helpOpen = open ?? !helpOpen; lsSet('oracleHelp', helpOpen); const hb = $('.howto', pb); if (hb) hb.style.display = helpOpen ? '' : 'none'; };
+  $('.help', extra).onclick = () => toggleHelp();
+  const addCheck = (k, focus) => { k.id = uid(k.description); spec.checks.push(k); save(); drawChecks(); if (focus) setTimeout(() => { const card = $$('.checks .crit', pb).pop(); (card && ($('.slot', card) || $('.ctitle', card)))?.focus(); }, 30); };
+  const drawSugg = () => {
+    const box = $('.sugg', pb); if (!box) return;
+    if (!sugg.length) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="osect"><span class="grow">${t('Sugestões para este projeto')}</span>${sugg.length > 1 ? `<button class="btn sm all">${t('Adicionar todas')}</button>` : ''}</div>${sugg.map((s, i) => `<div class="sug"><div class="grow"><b>${esc(t(s.title))}</b><div class="faint">${esc(s.why)}</div></div><button class="btn sm" data-i="${i}">${I.plus} ${t('Adicionar')}</button></div>`).join('')}`;
+    const take = s => { if (s.setup && !spec.setup) { spec.setup = s.setup; const inp = $('.setup', pb); if (inp) inp.value = s.setup; } addCheck({ ...s.check, description: t(s.title) }); };
+    $$('[data-i]', box).forEach(b => b.onclick = () => { take(sugg[+b.dataset.i]); sugg.splice(+b.dataset.i, 1); drawSugg(); });
+    const all = $('.all', box); if (all) all.onclick = () => { sugg.forEach(take); sugg = []; drawSugg(); };
+  };
+  const slot = (f, val, ph, mono = true) => `<input class="slot${mono ? ' mono' : ''}" data-f="${f}" value="${esc(val ?? '')}" placeholder="${esc(ph)}" spellcheck="false">`;
+  const sentence = k => {
+    const x = k.expect || (k.expect = {});
+    const extra = x.contains != null || k._more ? ` ${t(k.kind === 'command' ? 'e que a saída contenha' : 'e que a resposta contenha')} ${slot('contains', x.contains, t('um texto'), false)}` : '';
+    if (k.kind === 'command') return `${t('Rodar')} ${slot('run', k.run, 'npm test')} ${t('e esperar que termine sem erro')}${extra}`;
+    if (k.kind === 'http') return `${t('Abrir')} ${slot('url', k.url, 'http://localhost:3000/')} ${t('e esperar a resposta')} ${slot('status', x.status || 200, '200')}${extra}`;
+    if (k.kind === 'maxLines') return `${t('Nenhum arquivo')} ${slot('glob', k.glob, '**/*.ts')} ${t('passa de')} ${slot('max', k.max || 400, '400')} ${t('linhas')}`;
+    const mode = x.exists === false ? 'absent' : x.contains != null ? 'contains' : 'exists';
+    return `${t('O arquivo')} ${slot('path', k.path, 'README.md')} <span class="chip fmode">${t({ exists: 'existe', absent: 'não existe', contains: 'contém' }[mode])} ${I.caret}</span>${mode === 'contains' ? ' ' + slot('contains', x.contains, t('um texto'), false) : ''}`;
+  };
+  const drawChecks = () => {
+    const box = $('.checks', pb); if (!box) return;
+    const res = {}; (last?.checks || []).forEach(r => res[r.id] = r);
+    box.innerHTML = spec.checks.length ? '' : `<div class="oempty">${t('Nenhum critério ainda. Adicione uma sugestão abaixo ou clique em "Adicionar critério".')}</div>`;
+    spec.checks.forEach((k, i) => {
+      const r = res[k.id], kind = CRIT_KINDS[k.kind] || CRIT_KINDS.command;
+      const card = h(`<div class="crit"><div class="ch"><span class="cst ${r ? (r.passed ? 'ok' : 'bad') : ''}" title="${esc(r ? r.detail : t('ainda não verificado'))}">${r ? (r.passed ? '✓' : '✗') : '○'}</span><input class="ctitle" value="${esc(k.description || k.id)}" placeholder="${esc(t('nome do critério'))}" spellcheck="false"><span class="faint ckind">${esc(t(kind.name))}</span><button class="ib q" title="${esc(t('O que isto faz?'))}">?</button><button class="ib more" title="${esc(t('Mais'))}">⋯</button></div><div class="cs">${sentence(k)}</div><div class="chelp faint" style="display:none">${esc(t(kind.help))}</div>${r && !r.passed ? `<div class="cres">${esc(r.detail)}</div>` : ''}</div>`);
+      $('.ctitle', card).oninput = e => { k.description = e.target.value; save(); };
+      $$('.slot', card).forEach(inp => inp.oninput = () => {
+        const f = inp.dataset.f, val = inp.value; k.expect = k.expect || {};
+        if (f === 'contains') { if (val) k.expect.contains = val; else delete k.expect.contains; k._more = true; }
+        else if (f === 'status') k.expect.status = parseInt(val) || 200;
+        else if (f === 'max') k.max = parseInt(val) || 400;
+        else k[f] = val.trim();
+        save();
       });
-    };
-    drawChecks();
-    $('.addc', pb).onclick = () => { spec.checks.push({ id: 'criterio-' + (spec.checks.length + 1), kind: 'command', run: '', expect: {} }); drawChecks(); saveSpec(); setTimeout(() => $$('.checks .tgt', pb).pop()?.focus(), 30); };
+      $('.q', card).onclick = () => { const hp = $('.chelp', card); hp.style.display = hp.style.display ? '' : 'none'; };
+      const fm = $('.fmode', card);
+      if (fm) fm.onclick = e => menu(e.currentTarget, [['exists', 'existe'], ['absent', 'não existe'], ['contains', 'contém um texto']].map(([m, l]) => ({ label: l, f: () => { k.expect = m === 'absent' ? { exists: false } : m === 'contains' ? { contains: '' } : {}; save(); drawChecks(); } })));
+      $('.more', card).onclick = e => menu(e.currentTarget, [
+        (k.kind === 'command' || k.kind === 'http') && k.expect?.contains == null && { label: k.kind === 'command' ? 'Exigir um texto na saída' : 'Exigir um texto na resposta', f: () => { k._more = true; k.expect.contains = ''; drawChecks(); } },
+        { label: 'Duplicar', f: () => addCheck(JSON.parse(JSON.stringify({ ...k, description: (k.description || k.id) + ' ' + t('(cópia)') }))) },
+        { label: 'Explicar este tipo', f: () => $('.q', card).click() },
+        { sep: 1 },
+        { label: 'Remover', danger: 1, f: () => { spec.checks.splice(i, 1); save(); drawChecks(); } },
+      ], null, { alignRight: true });
+      box.appendChild(card);
+    });
+  };
+  const drawDocs = files => {
     const docs = $('.docs', pb);
-    const prose = files.filter(f => f.name !== 'checks.json'); // the executable criteria have their own editor above
+    const prose = files.filter(f => f.name !== 'checks.json');
     (prose.length ? prose : [{ name: 'pronto.md', content: '' }]).forEach(f => {
-      const d = h(`<div style="margin-bottom:12px"><div class="row" style="margin-bottom:4px"><span class="mono">.infuse/oracle/${esc(f.name)}</span><span class="faint st"></span></div><textarea class="doc" placeholder="${esc(t('Ex.: a página /login autentica com e-mail e senha; o teste e2e login.spec passa; nenhum arquivo acima de 400 linhas.'))}">${esc(f.content)}</textarea></div>`);
+      const d = h(`<div style="margin-bottom:10px">${prose.length > 1 ? `<div class="faint mono" style="margin-bottom:4px">${esc(f.name)}</div>` : ''}<textarea class="doc" placeholder="${esc(t('Ex.: o login aceita e-mail e senha e mostra uma mensagem clara quando a senha está errada.'))}">${esc(f.content)}</textarea><div class="row"><button class="btn sm ex">${t('Inserir exemplo')}</button><span class="faint st"></span></div></div>`);
       const ta = $('textarea', d), st = $('.st', d);
-      ta.oninput = debounce(async () => { await api('/api/oracle', { method: 'PUT', body: { name: f.name, content: ta.value }, root: c.root }); st.textContent = t('salvo'); setTimeout(() => st.textContent = '', 1200); }, 500);
+      const put = async () => { await api('/api/oracle', { method: 'PUT', body: { name: f.name, content: ta.value }, root: c.root }); st.textContent = t('salvo'); setTimeout(() => st.textContent = '', 1200); };
+      ta.oninput = debounce(put, 500);
+      $('.ex', d).onclick = () => { ta.value = (ta.value.trim() ? ta.value.trimEnd() + '\n\n' : '') + t(ORACLE_EXAMPLE); put(); ta.focus(); };
       docs.appendChild(d);
     });
-    $('.nf', pb).onkeydown = async e => { if (e.key === 'Enter' && e.target.value.trim()) { await api('/api/oracle', { method: 'PUT', body: { name: e.target.value.trim(), content: '' }, root: c.root }); draw(); } };
   };
-  draw(); return {};
+  draw(); return { refresh: () => loadSugg() };
 }
 function mountRules(pb, extra, c) {
   const draw = async () => {

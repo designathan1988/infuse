@@ -29,6 +29,23 @@ type Host interface {
 	Focused() bool
 }
 
+// BrowserHost is a window that can show sites in the browser pane natively (Windows: WebView2 views).
+type BrowserHost interface {
+	Browser(op string, a BrowserArgs) (any, error)
+}
+
+// BrowserArgs is what the page sends with each operation; the rectangle is in physical pixels of the
+// window's client area.
+type BrowserArgs struct {
+	ID      string `json:"id"`
+	URL     string `json:"url"`
+	X       int32  `json:"x"`
+	Y       int32  `json:"y"`
+	W       int32  `json:"w"`
+	H       int32  `json:"h"`
+	Visible bool   `json:"visible"`
+}
+
 type Bridge struct {
 	Dialogs NativeDialogs
 	Host    Host
@@ -121,7 +138,18 @@ func (b *Bridge) Call(method string, params []json.RawMessage) (any, error) {
 	case "reveal":
 		return nil, revealInFileManager(strArg(0))
 	case "platform":
-		return map[string]any{"os": runtime.GOOS, "version": version, "native": true}, nil
+		_, browser := b.Host.(BrowserHost)
+		return map[string]any{"os": runtime.GOOS, "version": version, "native": true, "browser": browser}, nil
+	case "browser":
+		bh, ok := b.Host.(BrowserHost)
+		if !ok {
+			return nil, fmt.Errorf("navegador nativo indisponível nesta plataforma")
+		}
+		var a BrowserArgs
+		if len(params) > 1 {
+			_ = json.Unmarshal(params[1], &a)
+		}
+		return bh.Browser(strArg(0), a)
 	}
 	return nil, fmt.Errorf("método desconhecido: %s", method)
 }

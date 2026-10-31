@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -174,11 +175,16 @@ type savedPlacement struct {
 	Maximized  bool
 }
 
+// The window, its WebView2 views and their message loop must stay on one OS thread: main() runs on the
+// main thread, and init pins the main goroutine to it.
+func init() { runtime.LockOSThread() }
+
 func placementFile() string { return filepath.Join(InfuseHome(), "window.json") }
 
 // RunWindow opens the application window on url and blocks until it closes.
 func RunWindow(url string) {
 	procSetProcessDpiAwarenessC.Call(^uintptr(3)) // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (-4)
+	_ = windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED)
 
 	// A second launch brings the running window forward instead of opening another.
 	cls, _ := windows.UTF16PtrFromString(windowClass)
