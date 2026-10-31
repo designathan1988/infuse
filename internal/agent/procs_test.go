@@ -49,10 +49,10 @@ func (e *procTestEnv) startAndFinish() {
 	if ps := s.procList(); len(ps) != 1 || ps[0]["description"] != "servidor de teste" {
 		t.Fatalf("%+v", ps)
 	}
-	for i := 0; i < 100 && s.proc("p1").State == "running"; i++ {
+	for i := 0; i < 100 && e.procState("p1") == "running"; i++ {
 		time.Sleep(100 * time.Millisecond)
 	}
-	if st := s.proc("p1").State; st != "exited" {
+	if st := e.procState("p1"); st != "exited" {
 		t.Fatalf("state %s", st)
 	}
 	// the agent is told it ended, once, on its next tool result
@@ -82,14 +82,14 @@ func (e *procTestEnv) killTree() {
 	}
 	if runtime.GOOS == "windows" && e.sleeps() != "1" {
 		txt, _ := s.proc("p2").out.since(0)
-		t.Fatalf("the child should be running before the stop: %q (p2 %s: %q)", e.sleeps(), s.proc("p2").State, txt)
+		t.Fatalf("the child should be running before the stop: %q (p2 %s: %q)", e.sleeps(), e.procState("p2"), txt)
 	}
 	if out, isErr := run("KillShell", `{"id":"p2"}`); isErr {
 		t.Fatal(out)
 	}
 	time.Sleep(800 * time.Millisecond)
-	if p := s.proc("p2"); p.State != "stopped" {
-		t.Fatalf("state %s", p.State)
+	if st := e.procState("p2"); st != "stopped" {
+		t.Fatalf("state %s", st)
 	}
 	// no process of the tree is left: the program the shell started ended with it
 	if runtime.GOOS == "windows" {
@@ -99,6 +99,17 @@ func (e *procTestEnv) killTree() {
 	} else if child, _ := strconv.Atoi(m[1]); processAlive(child) {
 		t.Fatal("child still running")
 	}
+}
+
+func (e *procTestEnv) procState(id string) string {
+	e.s.Mu.Lock()
+	defer e.s.Mu.Unlock()
+	for _, p := range e.s.procs {
+		if p.ID == id {
+			return p.State
+		}
+	}
+	return ""
 }
 
 func (e *procTestEnv) sleeps() string {

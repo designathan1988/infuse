@@ -60,20 +60,20 @@ func runScript(t *testing.T, steps ...func(ModelRequest) (ModelResult, error)) (
 	_ = writeJSON(settingsFile(), map[string]any{"userProhibitions": false})
 	s := newSession(t.TempDir())
 	s.Provider, s.Model, s.Mode = name, "script", "bypass"
+	s.Mu.Lock()
+	off := false
+	s.settings.RequireReview = &off // before the turn starts: the loop reads the settings without this lock
+	s.Mu.Unlock()
 	if err := s.Send("faça a tarefa", nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	s.Mu.Lock()
-	off := false
-	s.settings.RequireReview = &off
-	s.Mu.Unlock()
 	waitTurn(t, s)
 	return s, p
 }
 
 func waitTurn(t *testing.T, s *Session) {
 	t.Helper()
-	for i := 0; i < 1500; i++ {
+	for i := 0; i < 6000; i++ { // up to a minute: the race detector slows the scripted turns down
 		s.Mu.Lock()
 		st, working := s.State, s.Working
 		s.Mu.Unlock()

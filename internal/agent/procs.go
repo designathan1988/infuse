@@ -82,6 +82,21 @@ func (l *procLog) sinceFor(tc *ToolContext, off int64) (string, int64) {
 	return text, to
 }
 
+// tail returns the last n bytes kept and the total written, under the log's lock.
+func (l *procLog) tail(n int64) (string, int64) {
+	if n < 0 {
+		n = 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	off := l.total - n
+	first := l.total - int64(len(l.buf))
+	if off < first {
+		off = first
+	}
+	return string(l.buf[off-first:]), l.total
+}
+
 var allProcs sync.Map // every running process of every session, for shutdown
 
 // startBackground runs command in the session's shell and returns at once.
@@ -167,8 +182,8 @@ func (s *Session) procList() []map[string]any {
 func (s *Session) procListLocked() []map[string]any {
 	out := []map[string]any{}
 	for _, p := range s.procs {
-		tail, _ := p.out.since(p.out.total - 4000)
-		out = append(out, map[string]any{"id": p.ID, "command": p.Command, "description": p.Description, "started": p.Started, "ended": p.Ended, "exit": p.Exit, "state": p.State, "pid": p.PID, "bytes": p.out.total, "tail": tail})
+		tail, total := p.out.tail(4000)
+		out = append(out, map[string]any{"id": p.ID, "command": p.Command, "description": p.Description, "started": p.Started, "ended": p.Ended, "exit": p.Exit, "state": p.State, "pid": p.PID, "bytes": total, "tail": tail})
 	}
 	return out
 }
@@ -302,4 +317,3 @@ func (s *Session) procIDs() Msg {
 	}
 	return M("proc.list", "ids", strings.Join(ids, ", "))
 }
-

@@ -109,6 +109,7 @@ func (c *conPTY) Resize(cols, rows int) error {
 
 func (c *conPTY) Close() error {
 	_ = windows.TerminateProcess(c.process, 0)
+	_ = windows.CancelIoEx(c.out, nil) // a pending ReadFile must not hold the handle while it is closed
 	windows.ClosePseudoConsole(c.hpc)
 	windows.CloseHandle(c.in)
 	windows.CloseHandle(c.out)
