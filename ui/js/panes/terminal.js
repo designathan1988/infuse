@@ -7,7 +7,7 @@ function mountTerminal(pb, extra, c) {
   const tabs = []; let cur = null;
   const host = h('<div class="termhost"></div>'); pb.appendChild(host);
   const bar = h('<span class="row" style="gap:2px;min-width:0"></span>'); extra.appendChild(bar);
-  const addBtn = h(`<button class="ib" title="${esc(t('Novo terminal'))}">${I.plus}</button>`); extra.appendChild(addBtn);
+  const addBtn = h(`<button class="ib" title="${esc(t('ui.pane.terminal.novo-terminal.1ada5a'))}">${I.plus}</button>`); extra.appendChild(addBtn);
   const dark = () => document.documentElement.classList.contains('dark');
   const theme = () => { const cs = getComputedStyle(document.documentElement); return { background: cs.getPropertyValue('--surface').trim(), foreground: cs.getPropertyValue('--text').trim(), cursor: cs.getPropertyValue('--text2').trim(), selectionBackground: cs.getPropertyValue('--sel-bg').trim() }; };
   const drawTabs = () => { bar.innerHTML = ''; tabs.forEach((tb, i) => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}">${esc(tb.name)}<span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) return closeTab(tb); show(tb); }; bar.appendChild(el); }); };
@@ -25,8 +25,8 @@ function mountTerminal(pb, extra, c) {
     const tb = { id: r.id, term, fit, el, name: name || baseName(r.cwd) || 'shell' + (tabs.length + 1) };
     const es = new EventSource(`/api/term/${r.id}/stream?root=${encodeURIComponent(c.root)}`); tb.es = es;
     es.onmessage = e => { const bin = atob(e.data); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); term.write(bytes); };
-    es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('processo encerrado')}]\x1b[0m\r\n`); es.close(); tb.dead = true; });
-    es.onerror = () => { if (es.readyState === EventSource.CLOSED || tb.dead) return; fetch(`/api/term/${r.id}/resize?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ cols: term.cols, rows: term.rows }) }).then(x => { if (x.status === 404) { es.close(); tb.dead = true; term.write(`\r\n\x1b[2m[${t('terminal encerrado')}]\x1b[0m\r\n`); } }); };
+    es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('ui.pane.terminal.processo-encerrado.33bff5')}]\x1b[0m\r\n`); es.close(); tb.dead = true; });
+    es.onerror = () => { if (es.readyState === EventSource.CLOSED || tb.dead) return; fetch(`/api/term/${r.id}/resize?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ cols: term.cols, rows: term.rows }) }).then(x => { if (x.status === 404) { es.close(); tb.dead = true; term.write(`\r\n\x1b[2m[${t('ui.pane.terminal.terminal-encerrado.b3257b')}]\x1b[0m\r\n`); } }); };
     let pending = '', timer = null;
     term.onData(d => { if (tb.dead) return; pending += d; if (!timer) timer = setTimeout(() => { const data = pending; pending = ''; timer = null; fetch(`/api/term/${r.id}/input?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ data }) }); }, 8); });
     term.onResize(({ cols, rows }) => api(`/api/term/${r.id}/resize`, { body: { cols, rows }, root: c.root }));

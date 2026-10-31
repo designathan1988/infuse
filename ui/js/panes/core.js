@@ -50,7 +50,7 @@ function renderPanes() {
   P2.open.forEach((id, i) => {
     let p = $(`.pane[data-id="${id}"]`, host);
     if (!p) {
-      p = h(`<div class="pane" data-id="${id}"><div class="ph" draggable="true"><span class="ttl">${t(PANES[id].title)}</span><span class="extra row" style="gap:2px;min-width:0"></span><span class="sp"></span><button class="ib x" title="${esc(t('Fechar (Ctrl+\\)'))}">${I.close}</button></div><div class="pb"></div></div>`);
+      p = h(`<div class="pane" data-id="${id}"><div class="ph" draggable="true"><span class="ttl">${t(PANES[id].title)}</span><span class="extra row" style="gap:2px;min-width:0"></span><span class="sp"></span><button class="ib x" title="${esc(t('ui.pane.core.fechar-ctrl.f8b2e3'))}">${I.close}</button></div><div class="pb"></div></div>`);
       $('.x', p).onclick = () => closePane(id);
       p.addEventListener('mousedown', () => { P2.focus = id; $$('.pane', host).forEach(x => x.classList.toggle('focus', x.dataset.id === id)); });
       const ph = $('.ph', p);
@@ -69,7 +69,7 @@ function renderPanes() {
         if (inst?.destroy) inst.destroy();
         $('.pb', p).innerHTML = ''; $('.extra', p).innerHTML = '';
         const c = paneCtx();
-        if (!c.root) { $('.pb', p).innerHTML = `<div class="empty">${t('Escolha um projeto.')}</div>`; P2.inst[id] = { ctxKey }; }
+        if (!c.root) { $('.pb', p).innerHTML = `<div class="empty">${t('ui.pane.core.escolha-um-projeto.36d0d3')}</div>`; P2.inst[id] = { ctxKey }; }
         else { P2.inst[id] = PANES[id].mount($('.pb', p), $('.extra', p), c) || {}; P2.inst[id].ctxKey = ctxKey; P2.inst[id].root = c.root; }
       } else inst.ctxKey = ctxKey;
     }

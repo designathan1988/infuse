@@ -15,7 +15,7 @@ function vopts(v) {
   if (L?.snap) return { root: L.root, mode: L.snap.mode, provider: L.snap.provider, model: L.snap.model, effort: L.snap.effort, worktree: L.snap.worktree, branch: L.snap.branch, session: true };
   const d = v.draft; return { root: d.root, mode: d.mode || S.settings.mode || 'default', provider: d.provider || S.settings.provider, model: d.model || S.settings.model, effort: d.effort || S.settings.effort, worktree: d.worktree, session: false };
 }
-function modelLabel(o) { return o.model || t('Escolher modelo'); }
+function modelLabel(o) { return o.model || t('ui.composer.escolher-modelo.af3dd7'); }
 function renderComposer(v) {
   v = freshView(v);
   if (!elOf(v)) return;
@@ -23,30 +23,30 @@ function renderComposer(v) {
   const under = $('.under', elOf(v)); under.innerHTML = '';
   const add = el => under.appendChild(el);
   if (!o.session) {
-    add(h(`<span class="chip static" title="${esc(t('Ambiente: este computador'))}">${I.pc}<span class="v">${t('Local')}</span></span>`));
-    const fc = h(`<span class="chip" title="${esc(o.root || '')}">${I.folder}<span class="v">${esc(o.root ? projectLabel(o.root) : t('Escolher pasta'))}</span>${I.caret}</span>`);
+    add(h(`<span class="chip static" title="${esc(t('ui.composer.ambiente-este-computador.5fa034'))}">${I.pc}<span class="v">${t('ui.composer.local.939bb4')}</span></span>`));
+    const fc = h(`<span class="chip" title="${esc(o.root || '')}">${I.folder}<span class="v">${esc(o.root ? projectLabel(o.root) : t('ui.composer.escolher-pasta.882e08'))}</span>${I.caret}</span>`);
     fc.onclick = e => folderMenu(v, e.currentTarget); add(fc);
-    const wt = h(`<span class="chip" title="${esc(t('Criar um worktree git isolado para esta sessão'))}"><span class="sw${o.worktree ? ' on' : ''}"></span><span>${t('Worktree')}</span></span>`);
+    const wt = h(`<span class="chip" title="${esc(t('ui.composer.criar-um-worktree-git.2c61fe'))}"><span class="sw${o.worktree ? ' on' : ''}"></span><span>${t('ui.composer.worktree.94449c')}</span></span>`);
     wt.onclick = () => { View.draft(v.id, { worktree: !v.draft.worktree }); renderComposer(freshView(v)); }; add(wt);
   } else {
     add(h(`<span class="chip static" title="${esc(L.snap.workRoot || o.root)}">${I.folder}<span class="v">${esc(projectLabel(o.root))}</span></span>`));
   }
   add(h('<span style="flex:1"></span>'));
   const brow = $('.brow', elOf(v)); $('.modechip', brow)?.remove();
-  const mc = h(`<span class="chip modechip mode-${o.mode}" title="${esc(t('Modo de permissão (Shift+Tab ou Ctrl+Shift+M)'))}"><span class="v">${t(modeInfo[o.mode]?.[0] || o.mode)}</span>${I.caret}</span>`);
+  const mc = h(`<span class="chip modechip mode-${o.mode}" title="${esc(t('ui.composer.modo-de-permissao-shift.b8e6f6'))}"><span class="v">${t(modeInfo[o.mode]?.[0] || o.mode)}</span>${I.caret}</span>`);
   mc.onclick = e => modeMenu(v, e.currentTarget); brow.insertBefore(mc, $('.sp', brow));
-  const mo = h(`<span class="chip" title="${esc(t('Modelo e esforço (Ctrl+Shift+I)'))}"><span class="v">${esc(modelLabel(o))}</span><span class="faint">${t(effortInfo[o.effort] || '')}</span>${I.caret}</span>`);
+  const mo = h(`<span class="chip" title="${esc(t('ui.composer.modelo-e-esforco-ctrl.1cb45d'))}"><span class="v">${esc(modelLabel(o))}</span><span class="faint">${t(effortInfo[o.effort] || '')}</span>${I.caret}</span>`);
   mo.onclick = e => modelMenu(v, e.currentTarget); add(mo);
   // send / stop, queue, context ring
   const sendBtn = $('.send', elOf(v)); const isBusy = busy(L);
   sendBtn.classList.toggle('stop', !!(isBusy && !$('.prompt', elOf(v)).value.trim()));
   sendBtn.innerHTML = sendBtn.classList.contains('stop') ? I.stop : I.up; sendBtn.title = t(sendBtn.classList.contains('stop') ? 'Parar (Esc)' : isBusy ? 'Pôr na fila (Enter)' : 'Enviar (Enter)');
   const q = $('.queue', elOf(v)); q.innerHTML = '';
-  (L?.queue || []).forEach((m, i) => { const row = h(`<div class="qi"><span>⏎ ${esc(m.text)}</span><span class="faint">${t('na fila')}</span><button class="ib" style="width:20px;height:20px">${I.close}</button></div>`); $('button', row).onclick = () => { Live.queue(L.id, 'remove', null, i); renderComposer(freshView(v)); }; q.appendChild(row); });
+  (L?.queue || []).forEach((m, i) => { const row = h(`<div class="qi"><span>⏎ ${esc(m.text)}</span><span class="faint">${t('ui.composer.na-fila.eabe0d')}</span><button class="ib" style="width:20px;height:20px">${I.close}</button></div>`); $('button', row).onclick = () => { Live.queue(L.id, 'remove', null, i); renderComposer(freshView(v)); }; q.appendChild(row); });
   const ring = $('.ring', elOf(v)); const pct = L ? Math.min(100, Math.round(((L.lastIn || 0) / ctxLimit(L)) * 100)) : 0;
   const c = 2 * Math.PI * 8;
   ring.innerHTML = L ? `<svg width="18" height="18" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" stroke="var(--s3)"/><circle cx="10" cy="10" r="8" stroke="${pct > 80 ? 'var(--warn)' : 'var(--text2)'}" stroke-dasharray="${c * pct / 100} ${c}" transform="rotate(-90 10 10)"/></svg>` : '';
-  ring.title = L ? `${t('Contexto')}: ${pct}% · ${ktok(L.lastIn)} / ${ktok(ctxLimit(L))}` : '';
+  ring.title = L ? `${t('ui.composer.contexto.4b9a77')}: ${pct}% · ${ktok(L.lastIn)} / ${ktok(ctxLimit(L))}` : '';
   $('.box', elOf(v)).classList.toggle('vim', !!S.settings.vim);
   renderAtts(v);
 }
@@ -70,7 +70,7 @@ async function setSessionOpts(v, patch) {
 }
 function modeMenu(v, anchor) {
   const o = vopts(v);
-  menu(anchor, Object.entries(modeInfo).map(([k, [l, d]]) => ({ label: l, sub: d, check: o.mode === k, f: () => { setSessionOpts(v, { mode: k }); toast(t('Modo: ') + t(l)); } })), null, { above: true, numbers: true });
+  menu(anchor, Object.entries(modeInfo).map(([k, [l, d]]) => ({ label: l, sub: d, check: o.mode === k, f: () => { setSessionOpts(v, { mode: k }); toast(t('ui.composer.modo.3d33be') + t(l)); } })), null, { above: true, numbers: true });
 }
 async function modelMenu(v, anchor, effortOnly) {
   const o = vopts(v);
@@ -103,7 +103,7 @@ function renderAtts(v) {
   v = freshView(v);
   const el = $('.atts', elOf(v)); el.innerHTML = '';
   viewRT(v).atts.forEach((a, i) => { const c = h(`<span class="chipx" title="${esc(a.path)}">📎 <span>${esc(a.name)}</span><b>×</b></span>`); $('b', c).onclick = () => { viewRT(v).atts.splice(i, 1); renderAtts(v); }; el.appendChild(c); });
-  viewRT(v).images.forEach((im, i) => { const c = h(`<span class="chipx"><img src="data:${im.mediaType};base64,${im.data}"><span>${t('imagem')}</span><b>×</b></span>`); $('b', c).onclick = () => { viewRT(v).images.splice(i, 1); renderAtts(v); }; el.appendChild(c); });
+  viewRT(v).images.forEach((im, i) => { const c = h(`<span class="chipx"><img src="data:${im.mediaType};base64,${im.data}"><span>${t('ui.composer.imagem.f85427')}</span><b>×</b></span>`); $('b', c).onclick = () => { viewRT(v).images.splice(i, 1); renderAtts(v); }; el.appendChild(c); });
 }
 
 // The gray suggestion of the next message (Tab or → accepts), asked of the fast model after each turn.
@@ -126,7 +126,7 @@ async function send(v) {
     if (r.error) return toast(r.error);
     await openSession(d.root, r.id); L = S.live[r.id];
   }
-  const msg = { text: text || t('(anexos)'), attachments: viewRT(v).atts, images: viewRT(v).images };
+  const msg = { text: text || t('ui.composer.anexos.8aa72d'), attachments: viewRT(v).atts, images: viewRT(v).images };
   UI.history(text); viewRT(v).hi = -1;
   viewRT(v).atts = []; viewRT(v).images = []; P.value = ''; grow(P); hideAC();
   if (busy(L)) { Live.queue(L.id, 'push', msg); renderComposer(freshView(v)); return; }
@@ -166,7 +166,7 @@ async function slash(v, text) {
     case 'rename': if (L && arg) setSessionOpts(v, { title: arg }); else renameInline(v); return true;
     case 'review': case 'code-review': runReview(v, arg); return true;
     case 'mission': case 'missao': if (arg) $('.prompt', elOf(v)).value = arg; missionDialog(v); return true;
-    case 'init': $('.prompt', elOf(v)).value = t('Analise este projeto e escreva um INFUSE.md na raiz com: como compilar, testar e rodar; a arquitetura e onde cada responsabilidade mora; convenções do código. Seja conciso.'); return false;
+    case 'init': $('.prompt', elOf(v)).value = t('ui.composer.analise-este-projeto-e.b25208'); return false;
     case 'memory': togglePane('memory', true); return true;
     case 'terminal': togglePane('terminal', true); return true;
     case 'vim': await saveSetting({ vim: !S.settings.vim }); toast(S.settings.vim ? 'Modo vim ligado' : 'Modo vim desligado'); S.views.forEach(renderComposer); return true;
@@ -185,7 +185,7 @@ async function autocomplete(v) {
   const m = before.match(/(^|\s)([@/])([^\s]*)$/);
   if (!m || (m[2] === '/' && before.trim() !== m[2] + m[3])) return hideAC();
   const root = vopts(v).root; const q = m[3].toLowerCase(); let items;
-  if (m[2] === '@') { if (!root) return hideAC(); if (!S.files[root]) UI.sub('files', root, await api('/api/files/list', { root })); items = (S.files[root] || []).filter(f => f.toLowerCase().includes(q)).sort((a, b) => (a.toLowerCase().indexOf(q) - b.toLowerCase().indexOf(q)) || a.length - b.length).slice(0, 50).map(f => ({ v: f, d: f.endsWith('/') ? t('pasta') : '' })); }
+  if (m[2] === '@') { if (!root) return hideAC(); if (!S.files[root]) UI.sub('files', root, await api('/api/files/list', { root })); items = (S.files[root] || []).filter(f => f.toLowerCase().includes(q)).sort((a, b) => (a.toLowerCase().indexOf(q) - b.toLowerCase().indexOf(q)) || a.length - b.length).slice(0, 50).map(f => ({ v: f, d: f.endsWith('/') ? t('ui.composer.pasta.46139b') : '' })); }
   else items = (await getCommands(root)).filter(c => c.name.startsWith(q)).map(c => ({ v: c.name, d: c.description }));
   if (!items.length) return hideAC();
   AC = { v, kind: m[2], items, i: 0 }; renderAC();
@@ -243,5 +243,5 @@ function vimKey(v, e) {
     case 'd': if (viewRT(v).vimD) { P.value = val.slice(0, ls) + val.slice(Math.min(val.length, le + 1)); set(ls); viewRT(v).vimD = false; } else { viewRT(v).vimD = true; return true; } break;
     case 'Enter': send(v); break;
   }
-  viewRT(v).vimD = false; P.placeholder = viewRT(v).vim === 'NORMAL' ? '-- NORMAL --' : t('Peça algo… @ para arquivos, / para comandos'); grow(P); return true;
+  viewRT(v).vimD = false; P.placeholder = viewRT(v).vim === 'NORMAL' ? '-- NORMAL --' : t('ui.composer.peca-algo-para-arquivos.475ac8'); grow(P); return true;
 }

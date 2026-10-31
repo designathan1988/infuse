@@ -36,9 +36,9 @@ function renderLive(v) {
   for (const [id, tl] of Object.entries(L.tools)) { const inp = partialJSON(tl.input); parts.push(['tool:' + id, toolBlock(id, tl.name, inp, null, L.running?.id === id)]); }
   let out = '';
   const working = (L.snap?.agents || []).filter(a => a.state === 'running');
-  if (working.length && busy(L)) out += `<div class="status sub agentsgo" title="${esc(t('Abrir o painel Agentes'))}"><span class="spin"></span><span>${working.length === 1 ? t('1 subagente trabalhando') : working.length + ' ' + t('subagentes trabalhando')}: ${working.map(a => `<b>${esc(a.title)}</b> · ${a.steps} ${t('passos')}${a.tool ? ' · ' + esc(a.tool) : ''}`).join(' &nbsp;|&nbsp; ')}</span></div>`;
+  if (working.length && busy(L)) out += `<div class="status sub agentsgo" title="${esc(t('ui.feed.abrir-o-painel-agentes.96351b'))}"><span class="spin"></span><span>${working.length === 1 ? t('ui.feed.1-subagente-trabalhando.309695') : working.length + ' ' + t('ui.feed.subagentes-trabalhando.fd7c1d')}: ${working.map(a => `<b>${esc(a.title)}</b> · ${a.steps} ${t('ui.chat.passos.7734a8')}${a.tool ? ' · ' + esc(a.tool) : ''}`).join(' &nbsp;|&nbsp; ')}</span></div>`;
   const st = L.snap?.state;
-  if (st === 'thinking' || st === 'tool' || st === 'compacting') out += `<div class="status"><span class="spin"></span><span>${st === 'tool' ? t('executando ') + esc(L.running?.name || '') : st === 'compacting' ? t('compactando contexto') : t('pensando')}</span><span class="faint el" data-el="${L.id}"></span></div>`;
+  if (st === 'thinking' || st === 'tool' || st === 'compacting') out += `<div class="status"><span class="spin"></span><span>${st === 'tool' ? t('ui.feed.executando.0c69a4') + esc(L.running?.name || '') : st === 'compacting' ? t('ui.feed.compactando-contexto.c8cda1') : t('ui.feed.pensando.9bcf7a')}</span><span class="faint el" data-el="${L.id}"></span></div>`;
   if (out) parts.push(['status', `<div>${out}</div>`]);
   patchParts(v, el, parts);
   if (viewRT(v).stick !== false) toBottom(v); updateJump(v);

@@ -16,8 +16,9 @@ that way, and the known debt that remains.
 5. Data that describes behaviour is a table: provider presets (`internal/data/providers.json`), tool
    registration (`internal/agent/tool_register.go`), route groups (`internal/api/appGroups.go`,
    `studioGroups.go`), pane registry (`ui/js/panes/core.js`).
-6. User-facing text comes from catalogs, never from literals in handlers: Go through `core.M` (English
-   for the model, pt-BR for the user), UI through `t()` with `ui/locales/en.json` as data.
+6. User-facing text comes from catalogs, never from literals in handlers: Go through `core.M`, the UI
+   through `t('ui.…')`. Both read the same embedded catalog (`internal/core/ui.json` for the interface,
+   `core.RegisterMessages` catalogs for Go), with stable ids and English for the model.
 
 ## Packages
 
@@ -71,10 +72,13 @@ internal/
 
 - Go: `core.Msg` is an identifier plus named arguments; catalogs in `internal/core/msgs_*.go` carry
   English and pt-BR. The model reads English; the user reads their configured language.
-- UI: source strings are Portuguese; `ui/locales/en.json` is the translation data. `ui/i18n.js` loads
-  it at boot (`loadLocale`) and `t()` translates attributes and text nodes.
-- Remaining debt: the UI still keys translations by the source sentence and uses a `MutationObserver`;
-  the target is stable namespaced ids, no observer, and the same catalog served to both sides.
+- UI: messages have stable ids (`ui.<area>.<slug>.<hash>`) in `internal/core/ui.json`, embedded into
+  `core` and served by `/api/i18n`; `t(id, args)` renders the current language and falls back to the
+  Portuguese source only for labels that arrive as data. Static markup carries `data-i18n`,
+  `data-i18n-title` or `data-i18n-placeholder`, applied once at boot and again when the language changes.
+  There is no `MutationObserver`; switching language re-renders the interface in place.
+- `TestUICatalogIsComplete` and `TestUIMessagesUseCatalogIDs` fail the build on a missing language,
+  divergent placeholders, a literal sentence used as a key, or an id absent from the catalog.
 
 ## Frontend
 

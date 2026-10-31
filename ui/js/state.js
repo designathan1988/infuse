@@ -12,7 +12,7 @@ function initialState() {
     unread: lsGet('unread', []),
     hits: {}, hitsQ: '',
     viewMode: lsGet('viewMode', 'normal'), rail: lsGet('rail', true), recent: [], lang: 'pt', fold: {},
-    usage: null, version: '', shell: null,
+    pageArg: null, usage: null, version: '', shell: null,
   };
 }
 

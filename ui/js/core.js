@@ -15,7 +15,7 @@ const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = se
 const money = v => 'US$ ' + (v || 0).toFixed(v && v < 1 ? 3 : 2);
 const ktok = n => n >= 1e6 ? +(n / 1e6).toFixed(n % 1e6 ? 2 : 0) + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n || 0);
 const baseName = p => (p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
-const ago = ts => { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return t('agora'); if (s < 3600) return Math.floor(s / 60) + ' min'; if (s < 86400) return Math.floor(s / 3600) + ' h'; if (s < 7 * 86400) return Math.floor(s / 86400) + ' d'; return new Date(ts).toLocaleDateString(); };
+const ago = ts => { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return t('ui.common.agora.39a44d'); if (s < 3600) return Math.floor(s / 60) + ' min'; if (s < 86400) return Math.floor(s / 3600) + ' h'; if (s < 7 * 86400) return Math.floor(s / 86400) + ' d'; return new Date(ts).toLocaleDateString(); };
 const I = {
   branch: '<svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-11.5 7"/></svg>',
   pin: '<svg class="i" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 4 3v2H6v-2l4-3zM12 14v7"/></svg>',

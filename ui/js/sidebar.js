@@ -56,11 +56,11 @@ function renderView(v) {
   el.classList.toggle('home', !L);
   el.classList.toggle('norail', !S.rail);
   if (L?.snap) {
-    $('.title', el).textContent = L.snap.title || t('Nova sessão');
+    $('.title', el).textContent = L.snap.title || t('ui.sidebar.nova-sessao.a7ef08');
     $('.branch', el).innerHTML = L.snap.branch ? `${L.snap.worktree ? '⑂ ' : ''}${esc(L.snap.branch)}` : '';
-    $('.branch', el).title = L.snap.worktree ? t('Worktree: ') + L.snap.worktree : '';
+    $('.branch', el).title = L.snap.worktree ? t('ui.sidebar.worktree.e70b4a') + L.snap.worktree : '';
   } else {
-    $('.hsub', el).textContent = v.draft.root ? v.draft.root : t('Escolha a pasta do projeto abaixo da caixa de texto.');
+    $('.hsub', el).textContent = v.draft.root ? v.draft.root : t('ui.sidebar.escolha-a-pasta-do.9e41e4');
   }
   renderChat(v); renderComposer(v); renderRail(v); renderChangesBadge(v);
 }
@@ -86,7 +86,7 @@ function renderSidebar() {
   const row = s => {
     const L = S.live[s.id]; const st = L?.snap?.state || s.state;
     const hit = q && S.hits[s.id] && S.hits[s.id] !== s.title ? S.hits[s.id] : '';
-    const r = h(`<div class="srow${openIds[S.focus] === s.id ? ' on' : ''}${openIds.includes(s.id) && openIds[S.focus] !== s.id ? ' split' : ''}${S.unread.includes(s.id) ? ' unread' : ''}${hit ? ' hit' : ''}" draggable="true"><span class="st ${stateClass(st)}"></span><span class="t"><span class="tt">${s.pinned ? '<span class="pin">📌</span>' : ''}${esc(L?.snap?.title || s.title || t('Nova sessão'))}</span>${hit ? `<span class="snip">${esc(hit)}</span>` : ''}</span><span class="w">${ago(s.updated)}</span><button class="ib more act" data-act="${archivedMode ? 'delete' : 'archive'}" title="${esc(t(archivedMode ? 'Excluir' : 'Arquivar'))}">${archivedMode ? I.trash : I.archive}</button><button class="ib more" title="Mais">${I.more}</button></div>`);
+    const r = h(`<div class="srow${openIds[S.focus] === s.id ? ' on' : ''}${openIds.includes(s.id) && openIds[S.focus] !== s.id ? ' split' : ''}${S.unread.includes(s.id) ? ' unread' : ''}${hit ? ' hit' : ''}" draggable="true"><span class="st ${stateClass(st)}"></span><span class="t"><span class="tt">${s.pinned ? '<span class="pin">📌</span>' : ''}${esc(L?.snap?.title || s.title || t('ui.sidebar.nova-sessao.a7ef08'))}</span>${hit ? `<span class="snip">${esc(hit)}</span>` : ''}</span><span class="w">${ago(s.updated)}</span><button class="ib more act" data-act="${archivedMode ? 'delete' : 'archive'}" title="${esc(t(archivedMode ? 'Excluir' : 'Arquivar'))}">${archivedMode ? I.trash : I.archive}</button><button class="ib more" title="Mais">${I.more}</button></div>`);
     r.title = (s.branch ? s.branch + ' · ' : '') + s.root;
     r.onclick = e => { const act = e.target.closest('[data-act]'); if (act) { e.stopPropagation(); return act.dataset.act === 'delete' ? deleteSession(s) : archiveSession(s); } if (e.target.closest('.more')) return sessionRowMenu(s, e.target.closest('.more')); if (archivedMode) return; if (e.altKey) openInSplit(s.root, s.id); else openSession(s.root, s.id); };
     r.oncontextmenu = e => { e.preventDefault(); sessionRowMenu(s, null, e); };
@@ -94,7 +94,7 @@ function renderSidebar() {
     return r;
   };
   const pinned = archivedMode ? [] : list.filter(s => s.pinned);
-  if (pinned.length) { const g = h(`<div class="grp pinned"><div class="gh"><span class="trunc">${t('Fixadas')}</span></div></div>`); pinned.forEach(s => g.appendChild(row(s))); el.appendChild(g); list = list.filter(s => !s.pinned); }
+  if (pinned.length) { const g = h(`<div class="grp pinned"><div class="gh"><span class="trunc">${t('ui.sidebar.fixadas.74f7f1')}</span></div></div>`); pinned.forEach(s => g.appendChild(row(s))); el.appendChild(g); list = list.filter(s => !s.pinned); }
   if (S.sb.group === 'folder' && !archivedMode) {
     const roots = S.projects.map(p => p.root);
     for (const s of list) if (!roots.includes(s.root)) roots.push(s.root);
@@ -115,15 +115,15 @@ function renderSidebar() {
       g.ondragleave = () => g.classList.remove('drop');
       g.ondrop = e => { g.classList.remove('drop'); const from = e.dataTransfer.getData('text/infuse-project'); if (!from || from === root) return; e.preventDefault(); const l = S.projects.slice(); const i = l.findIndex(x => x.root === from), j = l.findIndex(x => x.root === root); if (i < 0 || j < 0) return; const [m] = l.splice(i, 1); l.splice(j, 0, m); api('/api/projects', { method: 'PUT', body: { projects: l }, root: '' }).then(loadSessions); };
       items.forEach(s => g.appendChild(row(s)));
-      if (!items.length) g.appendChild(h(`<div class="srow" style="color:var(--text3);font-size:12px;cursor:default">${t('Nenhuma sessão')}</div>`));
+      if (!items.length) g.appendChild(h(`<div class="srow" style="color:var(--text3);font-size:12px;cursor:default">${t('ui.sidebar.nenhuma-sessao.671ab1')}</div>`));
       el.appendChild(g);
     }
   } else list.forEach(s => el.appendChild(row(s)));
-  if (!S.projects.length && !list.length) el.appendChild(h(`<div class="empty">${t('Nenhuma sessão ainda.')}<br>${t('Clique em Nova sessão e escolha a pasta do projeto.')}</div>`));
+  if (!S.projects.length && !list.length) el.appendChild(h(`<div class="empty">${t('ui.sidebar.nenhuma-sessao-ainda.b45793')}<br>${t('ui.sidebar.clique-em-nova-sessao.2e05a2')}</div>`));
   if (archivedMode) {
-    const bar = h(`<div class="row" style="padding:2px 4px 6px"><button class="btn sm back">← ${t('Voltar às sessões')}</button><span class="grow"></span>${list.length ? `<button class="btn sm danger delall">${t('Excluir todas')}</button>` : ''}</div>`);
+    const bar = h(`<div class="row" style="padding:2px 4px 6px"><button class="btn sm back">← ${t('ui.sidebar.voltar-as-sessoes.856f6c')}</button><span class="grow"></span>${list.length ? `<button class="btn sm danger delall">${t('ui.sidebar.excluir-todas.0e78de')}</button>` : ''}</div>`);
     $('.back', bar).onclick = () => { setSb('show', ''); };
-    if ($('.delall', bar)) $('.delall', bar).onclick = async () => { if (!confirm(t('Excluir todas as sessões arquivadas e seus checkpoints? Isto não pode ser desfeito.'))) return; for (const x of list) await api(`/api/sessions/${x.id}`, { method: 'DELETE', root: x.root }); Server.set('archived', await api('/api/sessions/all?archived=1', { root: '' })); renderSidebar(); toast('Sessões excluídas'); };
+    if ($('.delall', bar)) $('.delall', bar).onclick = async () => { if (!confirm(t('ui.sidebar.excluir-todas-as-sessoes.e78074'))) return; for (const x of list) await api(`/api/sessions/${x.id}`, { method: 'DELETE', root: x.root }); Server.set('archived', await api('/api/sessions/all?archived=1', { root: '' })); renderSidebar(); toast('Sessões excluídas'); };
     el.prepend(bar);
   }
 }
@@ -151,7 +151,7 @@ function sessionRowMenu(s, anchor, ev) {
 }
 function openInItems(path) {
   return [{ label: native ? 'Mostrar no Explorador' : 'Mostrar na pasta', f: () => api('/api/open', { body: { path, app: 'explorer' }, root: '' }) },
-    ...S.editors.map(e => ({ label: t('Abrir no ') + e.name, f: () => api('/api/open', { body: { path, app: e.id }, root: '' }) }))];
+    ...S.editors.map(e => ({ label: t('ui.sidebar.abrir-no.41e06e') + e.name, f: () => api('/api/open', { body: { path, app: e.id }, root: '' }) }))];
 }
 function projectMenu(root, anchor, ev) {
   menu(anchor, [
@@ -163,12 +163,12 @@ function projectMenu(root, anchor, ev) {
 }
 async function archiveSession(s, force) {
   const r = await api(`/api/session/${s.id}/archive`, { body: { force: !!force }, root: s.root });
-  if (r.dirty) { if (confirm(t('O worktree desta sessão tem alterações não commitadas. Arquivar mesmo assim?'))) return archiveSession(s, true); return; }
+  if (r.dirty) { if (confirm(t('ui.sidebar.o-worktree-desta-sessao.50d039'))) return archiveSession(s, true); return; }
   S.views.forEach(v => { if (v.sid === s.id) { View.set(v.id, { sid: '' }); View.draft(v.id, { root: s.root }); } });
   closeLive(s.id); await loadSessions(); mountViews(); renderPanes(); toast('Sessão arquivada');
 }
 async function deleteSession(s) {
-  if (!confirm(t('Excluir esta sessão e seus checkpoints? Isto não pode ser desfeito.'))) return;
+  if (!confirm(t('ui.sidebar.excluir-esta-sessao-e.d7a2fd'))) return;
   await api(`/api/sessions/${s.id}`, { method: 'DELETE', root: s.root });
   S.views.forEach(v => { if (v.sid === s.id) { View.set(v.id, { sid: '' }); View.draft(v.id, { root: s.root }); } });
   closeLive(s.id); await loadSessions(); if (S.sb.show === 'archived') Server.set('archived', await api('/api/sessions/all?archived=1', { root: '' })); renderSidebar(); mountViews(); renderPanes();
@@ -275,7 +275,7 @@ const VIEW_MODES = [['normal', 'Normal', 'Texto completo; raciocínio e ferramen
 function setViewMode(k) {
   UI.set('fold', {}); UI.set('viewMode', k); S.views.forEach(renderChat);
   const L = curL(); const thinks = (L?.snap?.messages || []).some(m => (m.content || []).some(b => b.type === 'thinking'));
-  toast(t('Exibição: ') + t({ normal: 'Normal', thinking: 'Pensamento', verbose: 'Detalhado' }[k]) + (k !== 'normal' && L && !thinks ? ' · ' + t('esta sessão ainda não tem raciocínio: o esforço Baixo desliga o modo de pensamento') : ''));
+  toast(t('ui.sidebar.exibicao.7f5b87') + t({ normal: 'Normal', thinking: 'Pensamento', verbose: 'Detalhado' }[k]) + (k !== 'normal' && L && !thinks ? ' · ' + t('ui.sidebar.esta-sessao-ainda-nao.6966f2') : ''));
 }
 
 // ---------------------------------------------------------------- live sessions (SSE)

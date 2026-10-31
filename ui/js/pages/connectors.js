@@ -13,41 +13,41 @@ const MCP_PRESETS = [
 ];
 const MCP_STATE = { running: ['ok', 'conectado'], starting: ['warn', 'iniciando…'], error: ['bad', 'erro'], stopped: ['', 'parado'] };
 async function connectorsSection(el, root) {
-  el.append(h(`<div class="row"><h1 class="grow">${t('Conectores')}</h1><button class="ib help" title="${esc(t('Como funciona'))}">?</button></div>`), h(`<p class="lead">${t('Conectores dão ao agente ferramentas de outros programas: um navegador automatizado, documentação atualizada, o GitHub… É o padrão MCP, o mesmo do Claude Code: os arquivos .mcp.json do projeto já valem aqui.')}</p>`));
+  el.append(h(`<div class="row"><h1 class="grow">${t('ui.page.connectors.conectores.35b005')}</h1><button class="ib help" title="${esc(t('ui.page.connectors.como-funciona.9b4488'))}">?</button></div>`), h(`<p class="lead">${t('ui.page.connectors.conectores-dao-ao-agente.e3dd4c')}</p>`));
   const help = h(`<div class="howto" style="display:none;margin-bottom:14px"><ol>
-    <li><b>${t('Escolha um conector abaixo')}</b> ${t('e clique em Adicionar. Ele vale para este projeto ou para todos.')}</li>
-    <li><b>${t('Cada conector é um programa que roda no seu computador')}</b> ${t('— fora do filtro do infuse. Por isso só inicia depois da sua aprovação, e uma mudança no comando pede aprovação de novo (um .mcp.json escrito pelo agente nunca inicia sozinho).')}</li>
-    <li><b>${t('Na próxima mensagem')}</b> ${t('o agente já vê as ferramentas do conector. As marcadas como "só leitura" rodam direto; as outras pedem sua permissão, como os comandos.')}</li></ol></div>`);
+    <li><b>${t('ui.page.connectors.escolha-um-conector-abaixo.c29fd8')}</b> ${t('ui.page.connectors.e-clique-em-adicionar.5f22af')}</li>
+    <li><b>${t('ui.page.connectors.cada-conector-e-um.c1271a')}</b> ${t('ui.page.connectors.fora-do-filtro-do.480dfd')}</li>
+    <li><b>${t('ui.page.connectors.na-proxima-mensagem.f6f7e5')}</b> ${t('ui.page.connectors.o-agente-ja-ve.c4fcc3')}</li></ol></div>`);
   el.append(help); $('.help', el).onclick = () => help.style.display = help.style.display ? '' : 'none';
   const list = h('<div class="mcplist"></div>'); el.append(list);
   const act = async (path, body) => { const r = await api('/api/mcp/' + path, { body, root }); if (r.error) toast(r.error); draw(r.servers); };
   const draw = async servers => {
     servers = servers || await api('/api/mcp', { root });
-    list.innerHTML = servers.length ? '' : `<div class="oempty">${t('Nenhum conector ainda. Adicione um abaixo.')}</div>`;
+    list.innerHTML = servers.length ? '' : `<div class="oempty">${t('ui.page.connectors.nenhum-conector-ainda-adicione.4c32e2')}</div>`;
     for (const s of servers) {
       const [cls, label] = !s.approved ? ['warn', 'aguardando sua aprovação'] : s.disabled ? ['', 'desligado'] : MCP_STATE[s.state] || ['', s.state];
-      const card = h(`<div class="mcpcard"><div class="row"><span class="mdot ${cls}"></span><b>${esc(s.name)}</b><span class="tag">${t(s.scope === 'global' ? 'todos os projetos' : 'este projeto')}</span><span class="faint">${t(label)}${s.state === 'running' && !s.disabled ? ' · ' + s.tools.length + ' ' + t(s.tools.length === 1 ? 'ferramenta' : 'ferramentas') : ''}</span><span class="grow"></span>${s.approved ? `<span class="sw${s.disabled ? '' : ' on'} tg" title="${esc(t('Ligar ou desligar'))}"></span>` : ''}<button class="ib more" title="${esc(t('Mais'))}">${I.more}</button></div>
+      const card = h(`<div class="mcpcard"><div class="row"><span class="mdot ${cls}"></span><b>${esc(s.name)}</b><span class="tag">${t(s.scope === 'global' ? 'todos os projetos' : 'este projeto')}</span><span class="faint">${t(label)}${s.state === 'running' && !s.disabled ? ' · ' + s.tools.length + ' ' + t(s.tools.length === 1 ? 'ferramenta' : 'ferramentas') : ''}</span><span class="grow"></span>${s.approved ? `<span class="sw${s.disabled ? '' : ' on'} tg" title="${esc(t('ui.page.connectors.ligar-ou-desligar.2d5c2b'))}"></span>` : ''}<button class="ib more" title="${esc(t('ui.page.connectors.mais.4f728e'))}">${I.more}</button></div>
         <div class="mono faint mcptarget">${esc(s.target)}</div>
-        ${!s.approved ? `<div class="mcpappr"><span>${t('Este comando vai rodar no seu computador, fora do filtro. Confira antes de aprovar.')}</span><button class="btn sm pri ap">${t('Aprovar e iniciar')}</button></div>` : ''}
+        ${!s.approved ? `<div class="mcpappr"><span>${t('ui.page.connectors.este-comando-vai-rodar.70d93f')}</span><button class="btn sm pri ap">${t('ui.page.connectors.aprovar-e-iniciar.390a90')}</button></div>` : ''}
         ${s.error ? `<div class="errbox" style="margin-top:8px">${esc(s.error)}${s.stderr ? '\n\n' + esc(s.stderr) : ''}</div>` : ''}
-        ${s.tools.length ? `<details class="odet"><summary>${t('Ferramentas')} (${s.tools.length})</summary>${s.tools.map(x => `<div class="mtool"><span class="mono">${esc(x.name)}</span>${x.readOnly ? `<span class="tag ok">${t('só leitura')}</span>` : ''}<div class="faint">${esc(x.description || '')}</div></div>`).join('')}</details>` : ''}</div>`);
-      const ap = $('.ap', card); if (ap) ap.onclick = () => { ap.textContent = t('iniciando…'); act('approve', { scope: s.scope, name: s.name }); };
+        ${s.tools.length ? `<details class="odet"><summary>${t('ui.page.connectors.ferramentas.0cdcbe')} (${s.tools.length})</summary>${s.tools.map(x => `<div class="mtool"><span class="mono">${esc(x.name)}</span>${x.readOnly ? `<span class="tag ok">${t('ui.page.connectors.so-leitura.8d4a0f')}</span>` : ''}<div class="faint">${esc(x.description || '')}</div></div>`).join('')}</details>` : ''}</div>`);
+      const ap = $('.ap', card); if (ap) ap.onclick = () => { ap.textContent = t('ui.page.connectors.iniciando.08bd81'); act('approve', { scope: s.scope, name: s.name }); };
       const tg = $('.tg', card); if (tg) tg.onclick = () => act('toggle', { scope: s.scope, name: s.name, disabled: !s.disabled });
       $('.more', card).onclick = e => menu(e.currentTarget, [{ label: 'Reiniciar', f: () => act('restart', { scope: s.scope, name: s.name }) }, { sep: 1 }, { label: 'Remover', danger: 1, f: () => act('remove', { scope: s.scope, name: s.name }) }], null, { alignRight: true });
       list.append(card);
     }
     drawPresets(servers);
   };
-  const presets = h('<div></div>'); el.append(h(`<h2>${t('Adicionar conector')}</h2>`), presets);
+  const presets = h('<div></div>'); el.append(h(`<h2>${t('ui.page.connectors.adicionar-conector.80a931')}</h2>`), presets);
   const addCfg = (name, cfg, scope) => act('add', { name, scope, config: cfg, approve: true });
   const drawPresets = servers => {
     const have = new Set(servers.map(s => s.name));
-    presets.innerHTML = `<div class="mcpgrid">${MCP_PRESETS.map((p, i) => `<div class="mcppre${have.has(p.name) ? ' on' : ''}"><b>${t(p.title)}</b><span class="faint">${t(p.what)}</span><span class="mono faint">${esc(p.cfg.url || [p.cfg.command, ...p.cfg.args].join(' '))}</span><span class="faint">${t('precisa de')} ${t(p.needs)}</span><div class="row">${have.has(p.name) ? `<span class="tag ok">${t('adicionado')}</span>` : `<button class="btn sm" data-p="${i}" data-sc="project">${I.plus} ${t('Este projeto')}</button><button class="btn sm" data-p="${i}" data-sc="global">${t('Todos os projetos')}</button>`}</div></div>`).join('')}</div>
-      <div class="mcpcustom"><b>${t('Outro conector')}</b><div class="cs">${t('Nome')} <input class="slot mono cn" placeholder="meu-servidor" spellcheck="false"> · ${t('rodar')} <input class="slot mono cc" placeholder="npx -y pacote-mcp" spellcheck="false"> ${t('ou conectar a')} <input class="slot mono cu" placeholder="https://exemplo.com/mcp" spellcheck="false"></div><div class="row"><button class="btn sm pri cadd">${t('Adicionar a este projeto')}</button><span class="faint">${t('O comando é dividido nos espaços; para argumentos com espaço, edite o .mcp.json.')}</span></div></div>`;
+    presets.innerHTML = `<div class="mcpgrid">${MCP_PRESETS.map((p, i) => `<div class="mcppre${have.has(p.name) ? ' on' : ''}"><b>${t(p.title)}</b><span class="faint">${t(p.what)}</span><span class="mono faint">${esc(p.cfg.url || [p.cfg.command, ...p.cfg.args].join(' '))}</span><span class="faint">${t('ui.page.connectors.precisa-de.75e090')} ${t(p.needs)}</span><div class="row">${have.has(p.name) ? `<span class="tag ok">${t('ui.page.connectors.adicionado.be0a03')}</span>` : `<button class="btn sm" data-p="${i}" data-sc="project">${I.plus} ${t('ui.page.connectors.este-projeto.1d86ac')}</button><button class="btn sm" data-p="${i}" data-sc="global">${t('ui.page.connectors.todos-os-projetos.23728b')}</button>`}</div></div>`).join('')}</div>
+      <div class="mcpcustom"><b>${t('ui.page.connectors.outro-conector.f17827')}</b><div class="cs">${t('ui.page.connectors.nome.de4da4')} <input class="slot mono cn" placeholder="meu-servidor" spellcheck="false"> · ${t('ui.page.connectors.rodar.d25c49')} <input class="slot mono cc" placeholder="npx -y pacote-mcp" spellcheck="false"> ${t('ui.page.connectors.ou-conectar-a.3cb037')} <input class="slot mono cu" placeholder="https://exemplo.com/mcp" spellcheck="false"></div><div class="row"><button class="btn sm pri cadd">${t('ui.page.connectors.adicionar-a-este-projeto.21f0cd')}</button><span class="faint">${t('ui.page.connectors.o-comando-e-dividido.109e81')}</span></div></div>`;
     $$('[data-p]', presets).forEach(b => b.onclick = () => { const p = MCP_PRESETS[+b.dataset.p]; addCfg(p.name, p.cfg, b.dataset.sc); });
     $('.cadd', presets).onclick = () => {
       const name = $('.cn', presets).value.trim(), cmd = $('.cc', presets).value.trim(), url = $('.cu', presets).value.trim();
-      if (!name || (!cmd && !url)) return toast(t('Informe o nome e o comando (ou o endereço)'));
+      if (!name || (!cmd && !url)) return toast(t('ui.page.connectors.informe-o-nome-e.a52654'));
       const parts = cmd.split(/\s+/); addCfg(name, url && !cmd ? { type: 'http', url } : { command: parts[0], args: parts.slice(1) }, 'project');
     };
   };

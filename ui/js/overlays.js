@@ -14,13 +14,13 @@ function rewindDialog(v, preselect) {
   const L = v.sid && S.live[v.sid]; if (!L?.snap?.turn) return toast('Nada para voltar ainda');
   if (busy(L)) return toast('Pare o agente antes de voltar');
   const s = L.snap; const turns = s.turnStarts.map((idx, i) => ({ n: i + 1, text: (s.messages[idx]?.content || []).find(b => b.type === 'text')?.text || '', files: (s.checkpoints[i + 1] || []).length })).reverse();
-  const dlg = h(`<div class="dlg"><div class="dh">${t('Voltar no tempo')}</div><div class="faint" style="padding:0 18px 8px">${t('Escolha o ponto: a mensagem e tudo depois dela.')}</div><div class="db"></div></div>`);
+  const dlg = h(`<div class="dlg"><div class="dh">${t('ui.overlays.voltar-no-tempo.1ebfc5')}</div><div class="faint" style="padding:0 18px 8px">${t('ui.overlays.escolha-o-ponto-a.d4464c')}</div><div class="db"></div></div>`);
   const close = overlay(dlg); const db = $('.db', dlg); let k = 0;
   const list = () => {
-    db.innerHTML = ''; turns.forEach((tu, i) => { const it = h(`<div class="it${i === k ? ' k' : ''}"><span class="faint">${tu.n}</span><span class="trunc grow">${esc(tu.text.split('\n')[0] || '—')}</span><span class="d">${tu.files ? tu.files + ' ' + t('arquivo(s)') : t('sem alterações de código')}</span></div>`); it.onclick = () => choose(tu); db.appendChild(it); });
+    db.innerHTML = ''; turns.forEach((tu, i) => { const it = h(`<div class="it${i === k ? ' k' : ''}"><span class="faint">${tu.n}</span><span class="trunc grow">${esc(tu.text.split('\n')[0] || '—')}</span><span class="d">${tu.files ? tu.files + ' ' + t('ui.overlays.arquivo-s.8e3594') : t('ui.overlays.sem-alteracoes-de-codigo.141d8f')}</span></div>`); it.onclick = () => choose(tu); db.appendChild(it); });
   };
   const choose = tu => {
-    db.innerHTML = `<div class="faint" style="padding:6px 12px">${t('Turno')} ${tu.n}: ${esc(tu.text.split('\n')[0].slice(0, 90))}</div>`;
+    db.innerHTML = `<div class="faint" style="padding:6px 12px">${t('ui.overlays.turno.bf9e3d')} ${tu.n}: ${esc(tu.text.split('\n')[0].slice(0, 90))}</div>`;
     const opts = [
       tu.files && { l: 'Restaurar código e conversa', f: () => run({ turn: tu.n, code: true, conversation: true }) },
       { l: 'Restaurar conversa', d: 'mantém o código atual', f: () => run({ turn: tu.n, code: false, conversation: true }) },
@@ -29,9 +29,9 @@ function rewindDialog(v, preselect) {
       { l: 'Deixa pra lá', f: () => list() },
     ].filter(Boolean);
     opts.forEach((o, i) => { const it = h(`<div class="it">${t(o.l)}<span class="d">${o.d ? t(o.d) + ' · ' : ''}${i + 1}</span></div>`); it.onclick = o.f; db.appendChild(it); });
-    const ctx = h(`<input class="ctx" placeholder="${esc(t('contexto para o resumo (opcional)'))}">`); if (tu.n > 1) db.appendChild(ctx);
+    const ctx = h(`<input class="ctx" placeholder="${esc(t('ui.overlays.contexto-para-o-resumo.15dd5f'))}">`); if (tu.n > 1) db.appendChild(ctx);
     dlg.onkeydown = e => { const n = +e.key; if (n >= 1 && n <= opts.length && document.activeElement !== ctx) { e.preventDefault(); opts[n - 1].f(); } };
-    const summarize = async n => { db.innerHTML = `<div class="status" style="padding:14px"><span class="spin"></span>${t('resumindo…')}</div>`; const r = await api(`/api/session/${L.id}/summarize`, { body: { turn: n, hint: ctx.value }, root: L.root }); close(); if (r.error) return toast(r.error); L.snap = norm(r.session); viewsOf(L).forEach(renderView); toast('Conversa resumida'); };
+    const summarize = async n => { db.innerHTML = `<div class="status" style="padding:14px"><span class="spin"></span>${t('ui.overlays.resumindo.1db6f1')}</div>`; const r = await api(`/api/session/${L.id}/summarize`, { body: { turn: n, hint: ctx.value }, root: L.root }); close(); if (r.error) return toast(r.error); L.snap = norm(r.session); viewsOf(L).forEach(renderView); toast('Conversa resumida'); };
   };
   const run = async body => {
     const r = await api(`/api/session/${L.id}/rewind`, { body, root: L.root }); close();
@@ -46,13 +46,13 @@ function rewindDialog(v, preselect) {
 async function contextDialog(v) {
   const L = v.sid && S.live[v.sid]; if (!L) return;
   const r = await api(`/api/session/${L.id}/context`, { root: L.root }); const u = L.snap.usage || {};
-  const dlg = h(`<div class="dlg"><div class="dh">${t('Contexto e custo')}</div><div class="db" style="padding:0 18px 16px"></div></div>`); overlay(dlg);
+  const dlg = h(`<div class="dlg"><div class="dh">${t('ui.overlays.contexto-e-custo.6e6abf')}</div><div class="db" style="padding:0 18px 16px"></div></div>`); overlay(dlg);
   const pct = x => Math.round(x / (r.limit || 200000) * 100);
   $('.db', dlg).innerHTML = `<div class="bar100" style="height:8px;display:flex">${r.categories.map((c, i) => `<i style="width:${pct(c.tokens)}%;background:hsl(${210 + i * 25},${i % 2 ? 35 : 45}%,${55 + (i % 3) * 7}%)"></i>`).join('')}</div>
   <table class="tbl">${r.categories.map((c, i) => `<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:hsl(${210 + i * 25},${i % 2 ? 35 : 45}%,${55 + (i % 3) * 7}%)"></span> ${t(c.name)}</td><td class="mono">${ktok(c.tokens)}</td><td class="faint">${pct(c.tokens)}%</td></tr>`).join('')}
-  <tr><td><b>${t('Total estimado')}</b></td><td class="mono"><b>${ktok(r.total)}</b></td><td class="faint">${t('de')} ${ktok(r.limit)}</td></tr></table>
-  <h4 style="margin:16px 0 6px;font-size:12px">${t('Esta sessão')}</h4><div class="kv"><span>${t('Entrada')}</span><span class="mono">${ktok((u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0))} tokens</span></div><div class="kv"><span>${t('Saída')}</span><span class="mono">${ktok(u.output)} tokens</span></div><div class="kv"><span>${t('Custo')}</span><span class="mono">${money(L.snap.cost)}</span></div>
-  <div class="faint" style="margin-top:8px">${t('Compactação automática em 75% do limite. Custos são estimativas pela tabela de preços (Configurações > Modelos e custos).')}</div>`;
+  <tr><td><b>${t('ui.overlays.total-estimado.fe8c12')}</b></td><td class="mono"><b>${ktok(r.total)}</b></td><td class="faint">${t('ui.chat.de.600ccd')} ${ktok(r.limit)}</td></tr></table>
+  <h4 style="margin:16px 0 6px;font-size:12px">${t('ui.overlays.esta-sessao.6d8bb1')}</h4><div class="kv"><span>${t('ui.overlays.entrada.a9df7a')}</span><span class="mono">${ktok((u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0))} tokens</span></div><div class="kv"><span>${t('ui.overlays.saida.3b08da')}</span><span class="mono">${ktok(u.output)} tokens</span></div><div class="kv"><span>${t('ui.overlays.custo.19a010')}</span><span class="mono">${money(L.snap.cost)}</span></div>
+  <div class="faint" style="margin-top:8px">${t('ui.overlays.compactacao-automatica-em-75.f808fb')}</div>`;
 }
 function palette(kind) {
   const all = paletteItems(kind);
@@ -63,7 +63,7 @@ function palette(kind) {
   draw(); q.focus();
 }
 function paletteItems(kind) {
-  const sess = S.sessions.map(s => ({ label: s.title || t('Nova sessão'), d: projectLabel(s.root) + ' · ' + ago(s.updated), f: () => openSession(s.root, s.id) }));
+  const sess = S.sessions.map(s => ({ label: s.title || t('ui.sidebar.nova-sessao.a7ef08'), d: projectLabel(s.root) + ' · ' + ago(s.updated), f: () => openSession(s.root, s.id) }));
   if (kind === 'sessions') return sess;
   const v = V();
   return [
@@ -72,7 +72,7 @@ function paletteItems(kind) {
     { label: 'Voltar no tempo…', d: 'Esc Esc', f: () => rewindDialog(v) }, { label: 'Pergunta paralela', d: 'Ctrl ;', f: () => openSide(v) },
     { label: 'Alterações', d: 'Ctrl Shift D', f: () => togglePane('changes', true) }, { label: 'Terminal', d: 'Ctrl `', f: () => togglePane('terminal', true) }, { label: 'Arquivos', f: () => togglePane('files', true) }, { label: 'Navegador', d: 'Ctrl Shift B', f: () => togglePane('browser', true) },
     { label: 'Tarefas', f: () => togglePane('tasks', true) }, { label: 'Plano', f: () => togglePane('plan', true) }, { label: 'Processos', f: () => togglePane('procs', true) }, { label: 'Agentes', f: () => togglePane('agents', true) }, { label: 'Pronto (critérios)', f: () => togglePane('oracle', true) }, { label: 'Memória', f: () => togglePane('memory', true) }, { label: 'Regras', f: () => togglePane('rules', true) }, { label: 'Jornal', f: () => togglePane('journal', true) }, { label: 'Vícios', f: () => togglePane('vices', true) }, { label: 'Mapa do projeto', f: () => togglePane('map', true) },
-    ...Object.entries(modeInfo).map(([k, [l]]) => ({ label: t('Modo: ') + t(l), f: () => setSessionOpts(v, { mode: k }) })),
+    ...Object.entries(modeInfo).map(([k, [l]]) => ({ label: t('ui.composer.modo.3d33be') + t(l), f: () => setSessionOpts(v, { mode: k }) })),
     { label: 'Exibição: Normal', f: () => setViewMode('normal') }, { label: 'Exibição: Pensamento', f: () => setViewMode('thinking') }, { label: 'Exibição: Detalhado', d: 'Ctrl O', f: () => setViewMode('verbose') },
     { label: 'Barra lateral', d: 'Ctrl B', f: () => document.body.classList.toggle('nosb') }, { label: 'Atalhos de teclado', d: 'Ctrl /', f: shortcutsDialog },
     ...sess,
@@ -82,12 +82,12 @@ function shortcutsDialog() {
   const rows = [['Nova sessão', 'Ctrl N'], ['Paleta de comandos', 'Ctrl K'], ['Trocar de sessão', 'Ctrl Tab'], ['Próxima / anterior na lista', 'Ctrl Shift ] / ['], ['Fechar sessão', 'Ctrl W'], ['Parar o agente', 'Esc'], ['Voltar no tempo', 'Esc Esc'], ['Ciclar modo de permissão', 'Shift Tab'],
     ['Menu de modo', 'Ctrl Shift M'], ['Menu de modelo', 'Ctrl Shift I'], ['Menu de esforço', 'Ctrl Shift E'], ['Alterações', 'Ctrl Shift D'], ['Navegador', 'Ctrl Shift B'], ['Terminal', 'Ctrl `'], ['Fechar painel em foco', 'Ctrl \\'], ['Sair da tela dividida', 'Ctrl Alt W'],
     ['Pergunta paralela', 'Ctrl ;'], ['Ciclar exibição', 'Ctrl O'], ['Barra lateral', 'Ctrl B'], ['Aprovar / sempre / negar', 'Y / A / N'], ['Histórico de prompts', '↑ / ↓'], ['Item do menu aberto', '1–9'], ['Enviar comentários do diff', 'Ctrl Enter'], ['Abrir sessão lado a lado', 'Alt + clique']];
-  const dlg = h(`<div class="dlg"><div class="dh">${t('Atalhos de teclado')}</div><div class="db"><div class="sc">${rows.map(([a, b]) => `<span>${t(a)}</span><span class="kbd">${b}</span>`).join('')}</div></div></div>`); overlay(dlg);
+  const dlg = h(`<div class="dlg"><div class="dh">${t('ui.overlays.atalhos-de-teclado.287af6')}</div><div class="db"><div class="sc">${rows.map(([a, b]) => `<span>${t(a)}</span><span class="kbd">${b}</span>`).join('')}</div></div></div>`); overlay(dlg);
 }
 function openSide(v, first) {
   const L = v.sid && S.live[v.sid]; if (!L) return toast('Abra uma sessão primeiro');
   if (viewRT(v).sideEl) { viewRT(v).sideEl.remove(); viewRT(v).sideEl = null; if (!first) return; }
-  const el = h(`<div class="side"><div class="sh">${t('Pergunta paralela')}<span class="faint" style="font-weight:400">${t('não entra no histórico')}</span><span class="grow"></span><button class="ib">${I.close}</button></div><div class="sb"></div><textarea rows="1" placeholder="${esc(t('Pergunte sobre a sessão… Enter envia'))}"></textarea></div>`);
+  const el = h(`<div class="side"><div class="sh">${t('ui.sidebar.pergunta-paralela.aad6c9')}<span class="faint" style="font-weight:400">${t('ui.overlays.nao-entra-no-historico.64e4e8')}</span><span class="grow"></span><button class="ib">${I.close}</button></div><div class="sb"></div><textarea rows="1" placeholder="${esc(t('ui.overlays.pergunte-sobre-a-sessao.22723f'))}"></textarea></div>`);
   viewRT(v).sideEl = el; elOf(v).appendChild(el); const sb = $('.sb', el), ta = $('textarea', el);
   $('.sh button', el).onclick = () => { el.remove(); viewRT(v).sideEl = null; };
   const ask = async q => { sb.appendChild(h(`<div class="sq">${esc(q)}</div>`)); const w = h(`<div class="status"><span class="spin"></span></div>`); sb.appendChild(w); sb.scrollTop = sb.scrollHeight; const r = await api(`/api/session/${L.id}/btw`, { body: { question: q }, root: L.root }); w.replaceWith(h(`<div class="md sel">${r.ok ? md(r.answer) : `<span class="del">${esc(r.error)}</span>`}</div>`)); sb.scrollTop = sb.scrollHeight; };

@@ -1,35 +1,57 @@
 'use strict';
-// Interface language. The source strings are Portuguese; translations are data (`/locales/<lang>.json`),
-// loaded once at boot, so adding a language never touches the code that renders it.
-let EN = {};
-let LANG = 'pt';
+// Interface language: one catalog served by the API (the same entries Go uses). Messages are stable
+// ids with named arguments; the Portuguese source text is only a fallback for labels that come from
+// data (a menu label, a task note), so adding a language never touches the rendering code.
 
-async function loadLocale(lang) {
-  LANG = lang === 'en' ? 'en' : 'pt';
-  if (LANG !== 'en') { EN = {}; return; }
+let BUNDLE = {};
+let PT_INDEX = {};
+let LANG = 'pt-BR';
+
+function langKey(lang) {
+  return String(lang || '').toLowerCase().startsWith('en') ? 'en' : 'pt-BR';
+}
+
+async function loadMessages(lang) {
+  LANG = langKey(lang);
   try {
-    const r = await fetch('/locales/en.json', { cache: 'no-cache' });
-    EN = await r.json();
-  } catch { EN = {}; }
+    const r = await fetch('/api/i18n', { cache: 'no-cache' });
+    BUNDLE = await r.json();
+  } catch { BUNDLE = {}; }
+  PT_INDEX = {};
+  for (const [id, langs] of Object.entries(BUNDLE)) {
+    if (!id.startsWith('ui.')) continue;
+    const pt = langs['pt-BR'];
+    if (pt && PT_INDEX[pt.trim()] === undefined) PT_INDEX[pt.trim()] = id;
+  }
 }
 
-function t(s) {
-  if (LANG !== 'en' || typeof s !== 'string') return s;
-  const k = s.trim();
-  return EN[k] !== undefined ? s.replace(k, EN[k]) : s;
+function t(id, args) {
+  if (typeof id !== 'string') return id;
+  let entry = BUNDLE[id];
+  if (!entry) {
+    const mapped = PT_INDEX[id.trim()];
+    if (mapped) entry = BUNDLE[mapped];
+  }
+  if (!entry) return id;
+  let s = entry[LANG] ?? entry['en'] ?? id;
+  if (args) s = s.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, k) => args[k] !== undefined ? String(args[k]) : m);
+  return s;
 }
 
-function trNode(n) {
-  if (n.nodeType === 3) { const v = t(n.nodeValue); if (v !== n.nodeValue) n.nodeValue = v; return; }
-  if (n.nodeType !== 1 || n.tagName === 'SCRIPT' || n.tagName === 'STYLE' || n.classList?.contains('xterm')) return;
-  for (const a of ['placeholder', 'title']) if (n.hasAttribute(a)) { const v = t(n.getAttribute(a)); if (v !== n.getAttribute(a)) n.setAttribute(a, v); }
-  for (const c of n.childNodes) trNode(c);
+function applyStaticTranslations(root = document) {
+  root.querySelectorAll('[data-i18n]').forEach(el => { const v = t(el.dataset.i18n); if (v !== el.textContent) el.textContent = v; });
+  root.querySelectorAll('[data-i18n-title]').forEach(el => el.setAttribute('title', t(el.dataset.i18nTitle)));
+  root.querySelectorAll('[data-i18n-placeholder]').forEach(el => el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder)));
 }
 
 function startTranslation() {
-  LANG = S.lang;
-  if (LANG !== 'en') return;
-  document.documentElement.lang = 'en';
-  trNode(document.body);
-  new MutationObserver(ms => { for (const m of ms) { if (m.type === 'childList') m.addedNodes.forEach(trNode); else trNode(m.target); } }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['placeholder', 'title'] });
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'pt-BR';
+  applyStaticTranslations();
+}
+
+// Switching language re-renders the interface in place: no reload, no lost connection.
+async function setLanguage(lang) {
+  await loadMessages(lang);
+  startTranslation();
+  if (typeof remountUI === 'function') await remountUI();
 }

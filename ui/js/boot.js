@@ -5,12 +5,12 @@
 // ---------------------------------------------------------------- settings helpers & boot
 async function saveSetting(patch) { const r = await api('/api/settings', { method: 'PUT', body: patch, root: '' }); if (r.error) toast(r.error); Server.set('settings', { ...S.settings, ...patch }); return r; }
 async function loadSettings() { const r = await api('/api/settings/full', { root: '' }); Server.set('settings', r.settings || {}); Server.set('version', r.version); Server.set('shell', r.shell); }
-async function loadUsage() { const u = await api('/api/usage', { root: '' }); Server.set('usage', u); $('#usageToday').textContent = u.today ? t('hoje ') + money(u.today) : ''; }
+async function loadUsage() { const u = await api('/api/usage', { root: '' }); Server.set('usage', u); $('#usageToday').textContent = u.today ? t('ui.boot.hoje.b5f0cd') + money(u.today) : ''; }
 
 async function boot() {
   await loadSettings(); applyTheme();
   UI.set('lang', (S.settings.language || '').toLowerCase().startsWith('en') ? 'en' : 'pt');
-  await loadLocale(S.lang);
+  await loadMessages(S.lang);
   startTranslation();
   await loadSessions();
   api('/api/editors', { root: '' }).then(x => Server.set('editors', Array.isArray(x) ? x : []));
@@ -28,6 +28,29 @@ async function boot() {
   if (!S.settings.provider) setTimeout(() => toast('Conecte um provedor de IA em Configurações > Provedores'), 600);
   $('#navNew').onclick = () => newSessionScreen(); $('#navScheduled').onclick = () => openScheduled(); $('#navCustomize').onclick = () => openCustomize(); $('#btnSettings').onclick = () => openSettings();
   setInterval(loadSessions, 30000);
+}
+
+// Re-render the interface in place after a language change: views keep their composer text and
+// attachments, panes that own a process (terminal, browser) keep running.
+async function remountUI() {
+  const drafts = S.views.map(v => $('.prompt', elOf(v))?.value || '');
+  S.views.forEach(v => { viewRT(v).el?.remove(); setViewEl(v, null); });
+  mountViews();
+  drafts.forEach((val, i) => { const P = S.views[i] && $('.prompt', elOf(S.views[i])); if (P && val) P.value = val; });
+  renderSidebar();
+  loadUsage();
+  for (const id of [...P2.open]) {
+    const p = $(`.pane[data-id="${id}"]`);
+    if (PANES[id]?.keep) { if (p) $('.ttl', p).textContent = t(PANES[id].title); P2.inst[id]?.refresh?.(); continue; }
+    P2.inst[id]?.destroy?.();
+    delete P2.inst[id];
+    p?.remove();
+  }
+  renderPanes();
+  const page = S.page, arg = S.pageArg;
+  if (page === 'settings') await openSettings(arg || 'general');
+  else if (page === 'scheduled') await openScheduled(arg || undefined);
+  else if (page === 'customize') await openCustomize(arg || 'commands');
 }
 
 boot();

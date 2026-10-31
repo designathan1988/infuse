@@ -60,7 +60,7 @@ go vet ./...
 messages, paths), `config`/`connections`/`llm`, `filter` (the interposed shell), `knowledge`,
 `browser`, `mcp`, `oracle`, `workspace`, `terminal`, `scheduler`, `agent` (session loop, gates,
 tools), `api` (HTTP/SSE), `desktop` (window, WebView2, dialogs). The frontend is `ui/js` (one file
-per area and pane), `ui/styles` (tokens and area CSS) and `ui/locales` (JSON translations). The
+per area and pane), `ui/styles` (tokens and area CSS) and `internal/core/ui.json` (the shared message catalog). The
 architecture rules are executable: `go test ./internal/architecture`.
 
 `legacy/ts` holds the original TypeScript implementation of slice 1, kept for reference.

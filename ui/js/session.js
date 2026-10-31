@@ -30,7 +30,7 @@ function onEvent(id, ev) {
     case 'tool_run': vs.forEach(renderLive); break;
     case 'stream_reset': vs.forEach(renderLive); break;
     case 'tool_result': vs.forEach(renderChat); refreshChanges(L); break;
-    case 'permission': vs.forEach(renderChat); attention(L, 'infuse precisa de você', t('Aprovar ') + d.tool + '?'); break;
+    case 'permission': vs.forEach(renderChat); attention(L, 'infuse precisa de você', t('ui.session.aprovar.ec21f0') + d.tool + '?'); break;
     case 'question': vs.forEach(renderChat); attention(L, 'infuse tem uma pergunta', d.question); break;
     case 'done': re(); vs.forEach(renderRail); attention(L, 'infuse terminou', L.snap.title || ''); if (!S.views.some(x => x.sid === L.id) || !document.hasFocus()) setUnread(L.id, true); refreshChanges(L); loadUsage(); if (!d.reason) suggestNext(L); break;
     case 'error': re(); attention(L, 'infuse: erro', String(d)); break;
@@ -40,7 +40,7 @@ function onEvent(id, ev) {
     case 'procs': vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('procs'); break;
     case 'agents': vs.forEach(renderLive); vs.forEach(refreshAgentBlocks); vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('agents'); break;
     case 'memory': paneRefresh('memory'); break;
-    case 'gate': toast(t('infuse interveio: ') + String(d.display || d.message || '').replace(/^\[infuse\] /, '').split('\n')[0].slice(0, 140)); break;
+    case 'gate': toast(t('ui.session.infuse-interveio.0ebaf9') + String(d.display || d.message || '').replace(/^\[infuse\] /, '').split('\n')[0].slice(0, 140)); break;
     case 'subagent': vs.forEach(renderLive); break;
     case 'mission': vs.forEach(renderRail); break;
     case 'report': vs.forEach(renderChat); break;

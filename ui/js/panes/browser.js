@@ -20,10 +20,10 @@ let browserSeq = 0;
 const keyMods = e => (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
 function mountBrowser(pb, extra, c) {
   const tabs = []; let cur = null; let native = !!(window.infuse && window.infuse.native); let picking = false;
-  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('Voltar'))}">‹</button><button class="ib fwd" title="${esc(t('Avançar'))}">›</button><button class="ib rl" title="${esc(t('Recarregar'))}">${I.reload}</button><input class="url" placeholder="${esc(t('Endereço ou pesquisa — ex.: localhost:3000, github.com, como usar fetch'))}"><span class="spin bload" style="display:none"></span><button class="ib pick" title="${esc(t('Selecionar um elemento da página para a mensagem (Ctrl+Shift+S)'))}">⌖</button><button class="ib ext" title="${esc(t('Abrir no navegador padrão'))}">${I.pop}</button></div><div class="frames" style="flex:1;display:flex;min-height:0;position:relative;overflow:hidden"></div>`;
-  extra.innerHTML = `<span class="row tabs" style="gap:2px;min-width:0"></span><button class="ib nt" title="${esc(t('Nova aba'))}">${I.plus}</button><button class="btn sm srv">${t('Servidores')} ${I.caret}</button>`;
+  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('ui.page.voltar.1505ad'))}">‹</button><button class="ib fwd" title="${esc(t('ui.pane.browser.avancar.81dae5'))}">›</button><button class="ib rl" title="${esc(t('ui.pane.browser.recarregar.6b6960'))}">${I.reload}</button><input class="url" placeholder="${esc(t('ui.pane.browser.endereco-ou-pesquisa-ex.70b87a'))}"><span class="spin bload" style="display:none"></span><button class="ib pick" title="${esc(t('ui.pane.browser.selecionar-um-elemento-da.d27c69'))}">⌖</button><button class="ib ext" title="${esc(t('ui.pane.browser.abrir-no-navegador-padrao.b49f1a'))}">${I.pop}</button></div><div class="frames" style="flex:1;display:flex;min-height:0;position:relative;overflow:hidden"></div>`;
+  extra.innerHTML = `<span class="row tabs" style="gap:2px;min-width:0"></span><button class="ib nt" title="${esc(t('ui.pane.browser.nova-aba.de48fd'))}">${I.plus}</button><button class="btn sm srv">${t('ui.pane.browser.servidores.ae86a5')} ${I.caret}</button>`;
   const frames = $('.frames', pb), url = $('.url', pb), bar = $('.tabs', extra), spin = $('.bload', pb);
-  const label = tb => tb.title || (tb.url ? tb.url.replace(/^https?:\/\/(www\.)?/, '').split(/[/?#]/)[0] : t('Nova aba'));
+  const label = tb => tb.title || (tb.url ? tb.url.replace(/^https?:\/\/(www\.)?/, '').split(/[/?#]/)[0] : t('ui.pane.browser.nova-aba.de48fd'));
   const draw = () => { bar.innerHTML = ''; tabs.forEach(tb => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}" title="${esc(tb.url || '')}"><span class="trunc" style="max-width:120px">${esc(label(tb))}</span><span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) return closeTab(tb); show(tb); }; bar.appendChild(el); }); spin.style.display = cur?.loading ? '' : 'none'; };
   const onEv = ev => { const tb = tabs.find(x => x.id === ev.id); if (!tb) return; if (ev.url !== undefined) tb.url = ev.url; if (ev.title !== undefined) tb.title = ev.title; tb.loading = !!ev.loading; if (tb === cur && document.activeElement !== url) url.value = tb.url === 'about:blank' ? '' : (tb.url || ''); if (tb.url && tb.url !== 'about:blank') lsSet('browserUrl:' + c.root, tb.url); draw(); };
 
@@ -51,7 +51,7 @@ function mountBrowser(pb, extra, c) {
     const btn = e => ['left', 'middle', 'right'][e.button] || 'left';
     img.onmousedown = async e => {
       e.preventDefault(); setTimeout(() => kb.focus(), 0);
-      if (picking) { picking = false; img.classList.remove('picking'); const r = await input(tb, { kind: 'pick', ...at(e) }); if (r.pick) insertPick(r.pick); else toast(r.error || t('Nada nesse ponto')); return; }
+      if (picking) { picking = false; img.classList.remove('picking'); const r = await input(tb, { kind: 'pick', ...at(e) }); if (r.pick) insertPick(r.pick); else toast(r.error || t('ui.pane.browser.nada-nesse-ponto.20df73')); return; }
       input(tb, { kind: 'mouse', type: 'mousePressed', ...at(e), button: btn(e), clickCount: e.detail || 1, modifiers: keyMods(e) });
     };
     img.onmouseup = e => { if (!picking) input(tb, { kind: 'mouse', type: 'mouseReleased', ...at(e), button: btn(e), clickCount: e.detail || 1, modifiers: keyMods(e) }); };
@@ -95,7 +95,7 @@ function mountBrowser(pb, extra, c) {
       catch (e) { native = false; tabs.forEach(x => { if (!x.img) stream(x); }); show(cur); }
     }
     const r = await api('/api/view/open', { body: { id: cur.id, url: addr, ...size() }, root: c.root });
-    if (!r.ok) { cur.loading = false; draw(); toast(r.error || t('Não abriu')); }
+    if (!r.ok) { cur.loading = false; draw(); toast(r.error || t('ui.pane.browser.nao-abriu.6fa7de')); }
     cur.kb?.focus();
   };
   const nav = op => { if (!cur) return; if (native && cur.opened) return infuse.call('browser', op, { id: cur.id }).catch(() => { }); if (cur.img) input(cur, { kind: op }); };
@@ -105,15 +105,15 @@ function mountBrowser(pb, extra, c) {
   $('.ext', pb).onclick = () => cur?.url && api('/api/open', { body: { url: cur.url } });
   $('.nt', extra).onclick = () => add('');
   const pick = async () => {
-    if (!cur?.url) return toast(t('Abra uma página primeiro'));
-    if (native && cur.opened) { toast(t('Clique num elemento da página · Esc cancela')); return infuse.call('browser', 'pick', { id: cur.id }).catch(e => toast(e.message)); }
-    picking = true; cur.img?.classList.add('picking'); toast(t('Clique num elemento da página'));
+    if (!cur?.url) return toast(t('ui.pane.browser.abra-uma-pagina-primeiro.70164d'));
+    if (native && cur.opened) { toast(t('ui.pane.browser.clique-num-elemento-da.0bf27b')); return infuse.call('browser', 'pick', { id: cur.id }).catch(e => toast(e.message)); }
+    picking = true; cur.img?.classList.add('picking'); toast(t('ui.pane.browser.clique-num-elemento-da.b24e5f'));
   };
   $('.pick', pb).onclick = pick;
   $('.srv', extra).onclick = async e => {
     const anchor = e.currentTarget; const list = await api('/api/devservers', { root: c.root });
-    const items = list.length ? list.flatMap(s => [{ label: s.name, d: `:${s.port} · ${s.running || s.listening ? t('rodando') : t('parado')}${s.approved ? '' : ' · ' + t('não aprovado')}`, f: async () => { if (!s.running && !s.listening) { let r = await api('/api/devservers', { body: { action: 'start', name: s.name }, root: c.root }); if (r.needsApproval) { if (!confirm(t('Executar este comando de launch.json? Ele roda com as suas permissões, fora do filtro.') + '\n\n' + r.command)) return; r = await api('/api/devservers', { body: { action: 'approve', name: s.name }, root: c.root }); } if (r.error) return toast(r.error); toast(t('Iniciando ') + s.name); setTimeout(() => go(s.url), 2500); } else go(s.url); } }]) : [{ label: 'Nenhum servidor configurado', sub: 'Declare em .infuse/launch.json ou .claude/launch.json', f: () => { } }];
-    if (list.some(s => s.running)) items.push({ sep: 1 }, ...list.filter(s => s.running).map(s => ({ label: t('Parar ') + s.name, f: () => api('/api/devservers', { body: { action: 'stop', name: s.name }, root: c.root }) })), { label: 'Parar todos', danger: 1, f: () => api('/api/devservers', { body: { action: 'stopall' }, root: c.root }) });
+    const items = list.length ? list.flatMap(s => [{ label: s.name, d: `:${s.port} · ${s.running || s.listening ? t('ui.pane.browser.rodando.cb3b19') : t('ui.chat.parado.ca805e')}${s.approved ? '' : ' · ' + t('ui.pane.browser.nao-aprovado.88d9fb')}`, f: async () => { if (!s.running && !s.listening) { let r = await api('/api/devservers', { body: { action: 'start', name: s.name }, root: c.root }); if (r.needsApproval) { if (!confirm(t('ui.pane.browser.executar-este-comando-de.8fcd45') + '\n\n' + r.command)) return; r = await api('/api/devservers', { body: { action: 'approve', name: s.name }, root: c.root }); } if (r.error) return toast(r.error); toast(t('ui.pane.browser.iniciando.3ff323') + s.name); setTimeout(() => go(s.url), 2500); } else go(s.url); } }]) : [{ label: 'Nenhum servidor configurado', sub: 'Declare em .infuse/launch.json ou .claude/launch.json', f: () => { } }];
+    if (list.some(s => s.running)) items.push({ sep: 1 }, ...list.filter(s => s.running).map(s => ({ label: t('ui.pane.browser.parar.5d3458') + s.name, f: () => api('/api/devservers', { body: { action: 'stop', name: s.name }, root: c.root }) })), { label: 'Parar todos', danger: 1, f: () => api('/api/devservers', { body: { action: 'stopall' }, root: c.root }) });
     menu(anchor, items, null, { alignRight: true });
   };
   add(lsGet('browserUrl:' + c.root, ''));

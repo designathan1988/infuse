@@ -14,7 +14,7 @@ function showPage(name) {
 }
 function pageShell(title, sections, active, onSelect) {
   const pg = showPage(title);
-  const nav = h(`<nav class="pnav"><div class="nav" style="margin-bottom:12px;color:var(--text3)">← ${t('Voltar')}</div></nav>`);
+  const nav = h(`<nav class="pnav"><div class="nav" style="margin-bottom:12px;color:var(--text3)">← ${t('ui.page.voltar.1505ad')}</div></nav>`);
   nav.firstChild.onclick = () => showPage(null);
   sections.forEach(([id, label]) => { const n = h(`<div class="nav${id === active ? ' on' : ''}">${esc(t(label))}</div>`); n.onclick = () => onSelect(id); nav.appendChild(n); });
   const content = h('<div class="pcontent"><div class="inner"></div></div>');

@@ -3,5 +3,5 @@ package ui
 
 import "embed"
 
-//go:embed index.html js i18n.js vendor styles locales
+//go:embed index.html js i18n.js vendor styles
 var FS embed.FS
