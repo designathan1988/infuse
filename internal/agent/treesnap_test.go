@@ -44,9 +44,14 @@ func TestChangesCountRemovalsWhateverMadeThem(t *testing.T) {
 		t.Fatal("dependencies counted")
 	}
 
+	checkNextTurnSnapshot(t, root)
+}
+
+func checkNextTurnSnapshot(t *testing.T, root string) {
+	t.Helper()
 	// next turn: edits that remove lines of a file created before
 	snapshotTurn(root, root, "s1", 2)
-	w("cli.js", "a\nD\n")
+	_ = os.WriteFile(filepath.Join(root, "cli.js"), []byte("a\nD\n"), 0o644)
 	turn := changesByPath(LocalChanges(root, root, "s1", "turn"))
 	if f := turn["cli.js"]; f.Status != "M" || f.Removed != 3 || f.Added != 1 || len(turn) != 1 {
 		t.Fatalf("this turn's edit: %+v (all: %+v)", f, turn)

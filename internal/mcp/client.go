@@ -288,21 +288,10 @@ func (c *Client) Notify(ctx context.Context, method string, params any) error {
 
 // post sends one message over Streamable HTTP; the answer comes as JSON or as an event stream.
 func (c *Client) Post(ctx context.Context, body []byte, id int64) (RPCMessage, error) {
-	req, err := http.NewRequestWithContext(ctx, "POST", c.cfg.URL, bytes.NewReader(body))
+	req, err := c.newPostRequest(ctx, body)
 	if err != nil {
 		return RPCMessage{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("MCP-Protocol-Version", mcpProtocol)
-	for k, v := range c.cfg.Headers {
-		req.Header.Set(k, os.ExpandEnv(v))
-	}
-	c.mu.Lock()
-	if c.sessionID != "" {
-		req.Header.Set("Mcp-Session-Id", c.sessionID)
-	}
-	c.mu.Unlock()
 	resp, err := c.httpc.Do(req)
 	if err != nil {
 		return RPCMessage{}, err
@@ -321,28 +310,7 @@ func (c *Client) Post(ctx context.Context, body []byte, id int64) (RPCMessage, e
 		return RPCMessage{}, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 	if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
-		sc := bufio.NewScanner(resp.Body)
-		sc.Buffer(make([]byte, 64<<10), 32<<20)
-		var data strings.Builder
-		for sc.Scan() {
-			line := sc.Text()
-			if strings.HasPrefix(line, "data:") {
-				data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
-				continue
-			}
-			if line == "" && data.Len() > 0 {
-				var m RPCMessage
-				if json.Unmarshal([]byte(data.String()), &m) == nil {
-					if m.Method != "" {
-						c.Dispatch(m)
-					} else if m.ID != nil && *m.ID == id {
-						return m, nil
-					}
-				}
-				data.Reset()
-			}
-		}
-		return RPCMessage{}, core.ErrMsg(core.M("mcp.stream_ended"))
+		return c.readEventStream(resp.Body, id)
 	}
 	var m RPCMessage
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {

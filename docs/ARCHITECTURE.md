@@ -103,13 +103,14 @@ internal/
 
 - i18n: UI translations are keyed by the Portuguese source sentence and a `MutationObserver` applies
   them; the target is stable namespaced ids and a shared catalog, with no observer.
-- A few functions are still above the 60-line target (the turn loop, the largest route group, provider
-  stream parsers, the heredoc parser); files are all under 400 lines and packages are acyclic.
+- Every Go function body is now at most 60 lines (`TestFunctionsStaySmall` in `internal/architecture`)
+  and every frontend function is checked by `tools/check-frontend.mjs`; files stay under 400 lines.
 
 ## Verification
 
 - `go vet ./...`, `go test ./...` and `go test ./internal/architecture`.
 - Cross builds: `GOOS=windows CGO_ENABLED=0 go build ./...`, `CGO_ENABLED=0 GOOS=linux go build ./...`,
   `CGO_ENABLED=0 GOOS=darwin go build ./...`.
-- Frontend: `node --check` on every `ui/js` file, and every screen/pane exercised in the preview.
+- Frontend: `node --check` on every `ui/js` file, `tools/check-frontend.mjs` for file/function size,
+  inline styles and colour literals, and every screen/pane exercised in the preview.
 - CI runs all of the above (`.github/workflows/ci.yml`).

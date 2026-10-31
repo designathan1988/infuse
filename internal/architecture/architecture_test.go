@@ -3,6 +3,7 @@
 package architecture
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -72,6 +73,34 @@ func TestNoGodFiles(t *testing.T) {
 	})
 }
 
+// TestFunctionsStaySmall: every Go function body fits in 60 lines, tests included.
+func TestFunctionsStaySmall(t *testing.T) {
+	root := repoRoot(t)
+	walk(t, root, func(rel, abs string) {
+		if !strings.HasSuffix(rel, ".go") {
+			return
+		}
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, abs, nil, 0)
+		if err != nil {
+			t.Errorf("%s: %v", rel, err)
+			return
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			fn, ok := n.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				return true
+			}
+			start := fset.Position(fn.Body.Lbrace).Line
+			end := fset.Position(fn.Body.Rbrace).Line
+			if lines := end - start - 1; lines > 60 {
+				t.Errorf("%s:%d %s has %d lines (limit 60)", rel, fset.Position(fn.Pos()).Line, fn.Name.Name, lines)
+			}
+			return true
+		})
+	})
+}
+
 // TestNoLiteralColoursOrInlineStyles: colours live only in the token file, and no static declaration
 // is written in markup. A dynamic geometry value may travel as a CSS custom property.
 func TestNoLiteralColoursOrInlineStyles(t *testing.T) {
@@ -136,16 +165,16 @@ func TestPackageMainOnlyInCmd(t *testing.T) {
 func TestImportsFollowTheLayers(t *testing.T) {
 	root := repoRoot(t)
 	forbidden := map[string][]string{
-		"internal/filter":      {"internal/agent", "internal/knowledge", "internal/api", "internal/desktop"},
-		"internal/desktop":     {"internal/agent", "internal/api"},
-		"internal/core":        {"internal/agent", "internal/api", "internal/desktop", "internal/filter", "internal/llm", "internal/knowledge"},
-		"internal/data":        {"internal/agent", "internal/api", "internal/desktop"},
-		"internal/llm":         {"internal/agent", "internal/api", "internal/desktop", "internal/govern"},
-		"internal/knowledge":   {"internal/agent", "internal/api", "internal/desktop"},
-		"internal/browser":     {"internal/agent", "internal/api", "internal/desktop"},
-		"internal/mcp":         {"internal/agent", "internal/api", "internal/desktop"},
-		"internal/workspace":   {"internal/agent", "internal/api", "internal/desktop"},
-		"internal/oracle":      {"internal/agent", "internal/api", "internal/desktop"},
+		"internal/filter":    {"internal/agent", "internal/knowledge", "internal/api", "internal/desktop"},
+		"internal/desktop":   {"internal/agent", "internal/api"},
+		"internal/core":      {"internal/agent", "internal/api", "internal/desktop", "internal/filter", "internal/llm", "internal/knowledge"},
+		"internal/data":      {"internal/agent", "internal/api", "internal/desktop"},
+		"internal/llm":       {"internal/agent", "internal/api", "internal/desktop", "internal/govern"},
+		"internal/knowledge": {"internal/agent", "internal/api", "internal/desktop"},
+		"internal/browser":   {"internal/agent", "internal/api", "internal/desktop"},
+		"internal/mcp":       {"internal/agent", "internal/api", "internal/desktop"},
+		"internal/workspace": {"internal/agent", "internal/api", "internal/desktop"},
+		"internal/oracle":    {"internal/agent", "internal/api", "internal/desktop"},
 	}
 	seen := map[string]bool{}
 	walk(t, root, func(rel, abs string) {

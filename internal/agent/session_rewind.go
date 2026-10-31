@@ -21,17 +21,7 @@ func (s *Session) RewindTo(toTurn int, code, conversation bool) (string, error) 
 		s.Mu.Unlock()
 		return "", errors.New(M("session.no_turn").Render(s.uiLang()))
 	}
-	prompt := ""
-	if toTurn-1 < len(s.TurnStarts) {
-		if i := s.TurnStarts[toTurn-1]; i < len(s.Messages) {
-			for _, b := range s.Messages[i].Content {
-				if b.Type == "text" {
-					prompt = b.Text
-					break
-				}
-			}
-		}
-	}
+	prompt := s.rewindPromptLocked(toTurn)
 	s.Mu.Unlock()
 	if code && conversation {
 		return prompt, s.Revert(toTurn)
@@ -39,40 +29,64 @@ func (s *Session) RewindTo(toTurn int, code, conversation bool) (string, error) 
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 	if code {
-		for t := s.Turn; t >= toTurn; t-- {
-			files := s.Checkpoints[t]
-			for i := len(files) - 1; i >= 0; i-- {
-				c := files[i]
-				abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
-				if c.New {
-					_ = os.Remove(abs)
-					continue
-				}
-				src := filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t), filepath.FromSlash(c.Path))
-				if b, err := os.ReadFile(src); err == nil {
-					_ = os.MkdirAll(filepath.Dir(abs), 0o755)
-					_ = os.WriteFile(abs, b, 0o644)
-				}
-			}
-			_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
-			delete(s.Checkpoints, t)
-		}
-		Journal(s.Root, JournalEntry{Kind: "revert", Detail: fmt.Sprintf("sessão %s: código restaurado a antes do turno %d", s.ID, toTurn)})
+		s.restoreCodeLocked(toTurn)
 	}
 	if conversation {
-		for t := s.Turn; t >= toTurn; t-- { // later checkpoints no longer belong to any turn
-			_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
-			delete(s.Checkpoints, t)
-		}
-		if toTurn-1 < len(s.TurnStarts) {
-			s.Messages = s.Messages[:s.TurnStarts[toTurn-1]]
-			s.TurnStarts = s.TurnStarts[:toTurn-1]
-		}
-		s.Turn = toTurn - 1
+		s.cutConversationLocked(toTurn)
 	}
 	s.save()
 	s.scheduleMapRefreshLocked()
 	return prompt, nil
+}
+
+func (s *Session) rewindPromptLocked(toTurn int) string {
+	if toTurn-1 >= len(s.TurnStarts) {
+		return ""
+	}
+	i := s.TurnStarts[toTurn-1]
+	if i >= len(s.Messages) {
+		return ""
+	}
+	for _, b := range s.Messages[i].Content {
+		if b.Type == "text" {
+			return b.Text
+		}
+	}
+	return ""
+}
+
+func (s *Session) restoreCodeLocked(toTurn int) {
+	for t := s.Turn; t >= toTurn; t-- {
+		files := s.Checkpoints[t]
+		for i := len(files) - 1; i >= 0; i-- {
+			c := files[i]
+			abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
+			if c.New {
+				_ = os.Remove(abs)
+				continue
+			}
+			src := filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t), filepath.FromSlash(c.Path))
+			if b, err := os.ReadFile(src); err == nil {
+				_ = os.MkdirAll(filepath.Dir(abs), 0o755)
+				_ = os.WriteFile(abs, b, 0o644)
+			}
+		}
+		_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
+		delete(s.Checkpoints, t)
+	}
+	Journal(s.Root, JournalEntry{Kind: "revert", Detail: fmt.Sprintf("sessão %s: código restaurado a antes do turno %d", s.ID, toTurn)})
+}
+
+func (s *Session) cutConversationLocked(toTurn int) {
+	for t := s.Turn; t >= toTurn; t-- { // later checkpoints no longer belong to any turn
+		_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
+		delete(s.Checkpoints, t)
+	}
+	if toTurn-1 < len(s.TurnStarts) {
+		s.Messages = s.Messages[:s.TurnStarts[toTurn-1]]
+		s.TurnStarts = s.TurnStarts[:toTurn-1]
+	}
+	s.Turn = toTurn - 1
 }
 
 // SummarizeUpTo compresses the conversation before turn upTo into a summary; later turns stay verbatim.

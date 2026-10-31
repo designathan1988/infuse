@@ -56,16 +56,39 @@ func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verd
 	defer cleanup()
 	v.Snapshot = snapID
 
-	if strings.TrimSpace(spec.Setup) != "" {
-		res := runCheckCommand(ctx, snapDir, spec.Setup, 600)
-		_ = os.WriteFile(filepath.Join(dir, "setup.log"), []byte(res.out), 0o644)
-		if res.exit != 0 {
-			v.Verdict, v.Summary = "erro", fmt.Sprintf("preparação falhou (exit %d) — veja setup.log", res.exit)
-			return finish()
-		}
+	if summary, ok := runSetup(ctx, snapDir, dir, spec.Setup); !ok {
+		v.Verdict, v.Summary = "erro", summary
+		return finish()
 	}
+	var passed int
+	v.Checks, passed = runChecks(ctx, snapDir, dir, spec.Checks)
+	if passed == len(spec.Checks) {
+		v.Verdict = "aprovado"
+	} else {
+		v.Verdict = "reprovado"
+	}
+	v.Summary = fmt.Sprintf("%d de %d verificações passaram", passed, len(spec.Checks))
+	return finish()
+}
+
+// runSetup runs the spec's preparation command against the snapshot; ok is false when it failed.
+func runSetup(ctx context.Context, snapDir, dir, setup string) (summary string, ok bool) {
+	if strings.TrimSpace(setup) == "" {
+		return "", true
+	}
+	res := runCheckCommand(ctx, snapDir, setup, 600)
+	_ = os.WriteFile(filepath.Join(dir, "setup.log"), []byte(res.out), 0o644)
+	if res.exit != 0 {
+		return fmt.Sprintf("preparação falhou (exit %d) — veja setup.log", res.exit), false
+	}
+	return "", true
+}
+
+// runChecks runs every check against the snapshot in order and returns the results and how many passed.
+func runChecks(ctx context.Context, snapDir, dir string, checks []OracleCheck) ([]CheckResult, int) {
+	results := make([]CheckResult, 0, len(checks))
 	passed := 0
-	for i, c := range spec.Checks {
+	for i, c := range checks {
 		if c.ID == "" {
 			c.ID = fmt.Sprintf("check-%d", i+1)
 		}
@@ -79,15 +102,9 @@ func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verd
 		if r.Passed {
 			passed++
 		}
-		v.Checks = append(v.Checks, r)
+		results = append(results, r)
 	}
-	if passed == len(spec.Checks) {
-		v.Verdict = "aprovado"
-	} else {
-		v.Verdict = "reprovado"
-	}
-	v.Summary = fmt.Sprintf("%d de %d verificações passaram", passed, len(spec.Checks))
-	return finish()
+	return results, passed
 }
 
 type cmdResult struct {
@@ -117,116 +134,146 @@ func runCheckCommand(ctx context.Context, dir, command string, timeoutSec int) c
 }
 
 func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResult {
-	r := CheckResult{ID: c.ID, Kind: c.Kind}
-	evidence := func(name, content string) {
-		r.Evidence = name
-		_ = os.WriteFile(filepath.Join(evDir, name), []byte(content), 0o644)
-	}
-	textOK := func(text string) (bool, string) {
-		if c.Expect.Contains != "" && !strings.Contains(text, c.Expect.Contains) {
-			return false, fmt.Sprintf("não contém %q", c.Expect.Contains)
-		}
-		if c.Expect.NotContains != "" && strings.Contains(text, c.Expect.NotContains) {
-			return false, fmt.Sprintf("contém %q", c.Expect.NotContains)
-		}
-		if c.Expect.Matches != "" {
-			re, err := regexp.Compile(c.Expect.Matches)
-			if err != nil {
-				return false, "regex inválida: " + err.Error()
-			}
-			if !re.MatchString(text) {
-				return false, fmt.Sprintf("não casa com /%s/", c.Expect.Matches)
-			}
-		}
-		return true, ""
-	}
 	safe := regexp.MustCompile(`[^\w.-]+`).ReplaceAllString(c.ID, "_")
 	switch c.Kind {
 	case "command":
-		res := runCheckCommand(ctx, snap, c.Run, c.TimeoutSec)
-		evidence(safe+".log", fmt.Sprintf("$ %s\n%s\n[exit %d]\n", c.Run, res.out, res.exit))
-		want := 0
-		if c.Expect.Exit != nil {
-			want = *c.Expect.Exit
-		}
-		if res.exit != want {
-			r.Detail = fmt.Sprintf("exit %d (esperado %d)", res.exit, want)
-			return r
-		}
-		ok, why := textOK(res.out)
-		r.Passed, r.Detail = ok, core.FirstNonEmpty(why, fmt.Sprintf("exit %d", res.exit))
+		return checkCommand(ctx, snap, evDir, safe, c)
 	case "http":
-		cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-		defer cancel()
-		req, err := http.NewRequestWithContext(cctx, "GET", c.URL, nil)
-		if err != nil {
-			r.Detail = err.Error()
-			return r
-		}
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			r.Detail = "sem resposta: " + err.Error()
-			return r
-		}
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-		evidence(safe+".http", fmt.Sprintf("GET %s\nHTTP %d\n\n%s", c.URL, resp.StatusCode, b))
-		want := c.Expect.Status
-		if want == 0 {
-			want = 200
-		}
-		if resp.StatusCode != want {
-			r.Detail = fmt.Sprintf("HTTP %d (esperado %d)", resp.StatusCode, want)
-			return r
-		}
-		ok, why := textOK(string(b))
-		r.Passed, r.Detail = ok, core.FirstNonEmpty(why, fmt.Sprintf("HTTP %d", resp.StatusCode))
+		return checkHTTP(ctx, evDir, safe, c)
 	case "file":
-		p := filepath.Join(snap, filepath.FromSlash(c.Path))
-		b, err := os.ReadFile(p)
-		exists := err == nil
-		wantExists := true
-		if c.Expect.Exists != nil {
-			wantExists = *c.Expect.Exists
-		}
-		if exists != wantExists {
-			r.Detail = map[bool]string{true: "o arquivo existe", false: "o arquivo não existe"}[exists]
-			return r
-		}
-		if !exists {
-			r.Passed, r.Detail = true, "não existe, como esperado"
-			return r
-		}
-		ok, why := textOK(string(b))
-		r.Passed, r.Detail = ok, core.FirstNonEmpty(why, fmt.Sprintf("%d bytes", len(b)))
+		return checkFile(snap, c)
 	case "maxLines":
-		re := lang.GlobToRegex(c.Glob)
-		var over []string
-		_ = fsx.Walk(snap, fsx.Snapshot, func(p string, d os.DirEntry, err error) error {
-			if err != nil {
-				return nil
-			}
-			if d.IsDir() {
-				return nil
-			}
-			rel := filepath.ToSlash(core.RelTo(snap, p))
-			if !re.MatchString(rel) {
-				return nil
-			}
-			if b, err := os.ReadFile(p); err == nil {
-				if n := strings.Count(string(b), "\n") + 1; n > c.Max {
-					over = append(over, fmt.Sprintf("%s: %d linhas", rel, n))
-				}
-			}
-			return nil
-		})
-		sort.Strings(over)
-		evidence(safe+".txt", strings.Join(over, "\n"))
-		r.Passed = len(over) == 0
-		r.Detail = map[bool]string{true: fmt.Sprintf("nenhum arquivo acima de %d linhas", c.Max), false: fmt.Sprintf("%d arquivo(s) acima de %d linhas", len(over), c.Max)}[r.Passed]
+		return checkMaxLines(snap, evDir, safe, c)
 	default:
-		r.Detail = "tipo de verificação desconhecido: " + c.Kind
+		return CheckResult{ID: c.ID, Kind: c.Kind, Detail: "tipo de verificação desconhecido: " + c.Kind}
 	}
+}
+
+// writeEvidence records a check's evidence file under the run directory.
+func writeEvidence(r *CheckResult, evDir, name, content string) {
+	r.Evidence = name
+	_ = os.WriteFile(filepath.Join(evDir, name), []byte(content), 0o644)
+}
+
+// textOK applies the expectation's text conditions to a check's output.
+func textOK(c OracleCheck, text string) (bool, string) {
+	if c.Expect.Contains != "" && !strings.Contains(text, c.Expect.Contains) {
+		return false, fmt.Sprintf("não contém %q", c.Expect.Contains)
+	}
+	if c.Expect.NotContains != "" && strings.Contains(text, c.Expect.NotContains) {
+		return false, fmt.Sprintf("contém %q", c.Expect.NotContains)
+	}
+	if c.Expect.Matches != "" {
+		re, err := regexp.Compile(c.Expect.Matches)
+		if err != nil {
+			return false, "regex inválida: " + err.Error()
+		}
+		if !re.MatchString(text) {
+			return false, fmt.Sprintf("não casa com /%s/", c.Expect.Matches)
+		}
+	}
+	return true, ""
+}
+
+// checkCommand runs a command in the snapshot and checks its exit code and output.
+func checkCommand(ctx context.Context, snap, evDir, safe string, c OracleCheck) CheckResult {
+	r := CheckResult{ID: c.ID, Kind: c.Kind}
+	res := runCheckCommand(ctx, snap, c.Run, c.TimeoutSec)
+	writeEvidence(&r, evDir, safe+".log", fmt.Sprintf("$ %s\n%s\n[exit %d]\n", c.Run, res.out, res.exit))
+	want := 0
+	if c.Expect.Exit != nil {
+		want = *c.Expect.Exit
+	}
+	if res.exit != want {
+		r.Detail = fmt.Sprintf("exit %d (esperado %d)", res.exit, want)
+		return r
+	}
+	ok, why := textOK(c, res.out)
+	r.Passed, r.Detail = ok, core.FirstNonEmpty(why, fmt.Sprintf("exit %d", res.exit))
+	return r
+}
+
+// checkHTTP requests a URL and checks the response status and body.
+func checkHTTP(ctx context.Context, evDir, safe string, c OracleCheck) CheckResult {
+	r := CheckResult{ID: c.ID, Kind: c.Kind}
+	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(cctx, "GET", c.URL, nil)
+	if err != nil {
+		r.Detail = err.Error()
+		return r
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		r.Detail = "sem resposta: " + err.Error()
+		return r
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	writeEvidence(&r, evDir, safe+".http", fmt.Sprintf("GET %s\nHTTP %d\n\n%s", c.URL, resp.StatusCode, b))
+	want := c.Expect.Status
+	if want == 0 {
+		want = 200
+	}
+	if resp.StatusCode != want {
+		r.Detail = fmt.Sprintf("HTTP %d (esperado %d)", resp.StatusCode, want)
+		return r
+	}
+	ok, why := textOK(c, string(b))
+	r.Passed, r.Detail = ok, core.FirstNonEmpty(why, fmt.Sprintf("HTTP %d", resp.StatusCode))
+	return r
+}
+
+// checkFile checks whether a file in the snapshot exists as expected and its content.
+func checkFile(snap string, c OracleCheck) CheckResult {
+	r := CheckResult{ID: c.ID, Kind: c.Kind}
+	p := filepath.Join(snap, filepath.FromSlash(c.Path))
+	b, err := os.ReadFile(p)
+	exists := err == nil
+	wantExists := true
+	if c.Expect.Exists != nil {
+		wantExists = *c.Expect.Exists
+	}
+	if exists != wantExists {
+		r.Detail = map[bool]string{true: "o arquivo existe", false: "o arquivo não existe"}[exists]
+		return r
+	}
+	if !exists {
+		r.Passed, r.Detail = true, "não existe, como esperado"
+		return r
+	}
+	ok, why := textOK(c, string(b))
+	r.Passed, r.Detail = ok, core.FirstNonEmpty(why, fmt.Sprintf("%d bytes", len(b)))
+	return r
+}
+
+// checkMaxLines checks that no file matching the glob in the snapshot exceeds the line limit.
+func checkMaxLines(snap, evDir, safe string, c OracleCheck) CheckResult {
+	r := CheckResult{ID: c.ID, Kind: c.Kind}
+	re := lang.GlobToRegex(c.Glob)
+	var over []string
+	_ = fsx.Walk(snap, fsx.Snapshot, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel := filepath.ToSlash(core.RelTo(snap, p))
+		if !re.MatchString(rel) {
+			return nil
+		}
+		if b, err := os.ReadFile(p); err == nil {
+			if n := strings.Count(string(b), "\n") + 1; n > c.Max {
+				over = append(over, fmt.Sprintf("%s: %d linhas", rel, n))
+			}
+		}
+		return nil
+	})
+	sort.Strings(over)
+	writeEvidence(&r, evDir, safe+".txt", strings.Join(over, "\n"))
+	r.Passed = len(over) == 0
+	r.Detail = map[bool]string{true: fmt.Sprintf("nenhum arquivo acima de %d linhas", c.Max), false: fmt.Sprintf("%d arquivo(s) acima de %d linhas", len(over), c.Max)}[r.Passed]
 	return r
 }
 

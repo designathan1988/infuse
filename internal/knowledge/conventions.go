@@ -80,113 +80,154 @@ func (t Tally) Top() (string, int, int) {
 
 func pct(n, total int) string { return fmt.Sprintf("%d%%", n*100/max(total, 1)) }
 
+var (
+	jsLikeExts = map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true, ".vue": true, ".svelte": true}
+	srcExts    = map[string]bool{".go": true, ".py": true, ".rs": true, ".java": true, ".kt": true, ".cs": true, ".rb": true, ".php": true, ".css": true, ".scss": true, ".html": true}
+)
+
+type conventionScan struct {
+	indent, quotes, semis, modules, eol, lang, tests Tally
+	naming                                           map[string]Tally
+	lengths                                          []int
+	files                                            int
+}
+
 // LearnConventions analyses the project and returns the rules as Markdown.
 func LearnConventions(root string) string {
-	indent, quotes, semis, modules, naming, eol, lang := Tally{}, Tally{}, Tally{}, Tally{}, map[string]Tally{}, Tally{}, Tally{}
-	tests := Tally{}
-	var lengths []int
-	files := 0
-	jsLike := map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true, ".vue": true, ".svelte": true}
-	src := map[string]bool{".go": true, ".py": true, ".rs": true, ".java": true, ".kt": true, ".cs": true, ".rb": true, ".php": true, ".css": true, ".scss": true, ".html": true}
-	_ = fsx.Walk(root, fsx.Project, func(p string, d os.DirEntry, err error) error {
-		if err != nil || files >= 400 {
-			return nil
-		}
-		if d.IsDir() {
-			if d.Name() == "tests" || d.Name() == "test" || d.Name() == "__tests__" {
-				tests["folder "+d.Name()+"/"]++
-			}
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(p))
-		if !jsLike[ext] && !src[ext] {
-			return nil
-		}
-		name := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
-		switch {
-		case strings.HasSuffix(name, ".test") || strings.HasSuffix(name, ".spec"):
-			tests["*"+name[strings.LastIndex(name, "."):]+ext]++
-			name = name[:strings.LastIndex(name, ".")]
-		case strings.HasSuffix(name, "_test") && ext == ".go":
-			tests["*_test.go"]++
-		case strings.HasPrefix(name, "test_") && ext == ".py":
-			tests["test_*.py"]++
-		}
-		if naming[ext] == nil {
-			naming[ext] = Tally{}
-		}
-		switch {
-		case ReKebab.MatchString(name):
-			naming[ext]["kebab-case"]++
-		case ReSnake.MatchString(name):
-			naming[ext]["snake_case"]++
-		case ReCamel.MatchString(name):
-			naming[ext]["camelCase"]++
-		case RePascal.MatchString(name):
-			naming[ext]["PascalCase"]++
-		}
-		b, err := os.ReadFile(p)
-		if err != nil || len(b) > 400<<10 {
-			return nil
-		}
-		files++
-		text := string(b)
-		if strings.Contains(text, "\r\n") {
-			eol["CRLF"]++
-		} else {
-			eol["LF"]++
-		}
-		fileIndent := Tally{}
-		for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-			lengths = append(lengths, len([]rune(line)))
-			trimmed := strings.TrimLeft(line, " \t")
-			if trimmed == "" {
-				continue
-			}
-			if lead := line[:len(line)-len(trimmed)]; strings.HasPrefix(lead, "\t") { // indentation, on indented lines only
-				fileIndent["tabs"]++
-			} else if n := len(lead); n%4 == 0 && n > 0 {
-				fileIndent["4 spaces"]++
-			} else if n%2 == 0 && n > 0 {
-				fileIndent["2 spaces"]++
-			}
-			if c := strings.TrimSpace(trimmed); strings.HasPrefix(c, "//") || strings.HasPrefix(c, "#") || strings.HasPrefix(c, "/*") || strings.HasPrefix(c, "*") {
-				if rePtWord.MatchString(c) {
-					lang["Portuguese"]++
-				} else if reEnWord.MatchString(c) {
-					lang["English"]++
-				}
-			}
-			if jsLike[ext] {
-				if strings.HasPrefix(trimmed, "import ") || strings.Contains(trimmed, "require(") {
-					if strings.Contains(trimmed, "'") {
-						quotes["single quotes"]++
-					} else if strings.Contains(trimmed, `"`) {
-						quotes["double quotes"]++
-					}
-					if strings.HasPrefix(trimmed, "import ") {
-						modules["ESM (import/export)"]++
-					} else {
-						modules["CommonJS (require)"]++
-					}
-				}
-				if strings.HasSuffix(trimmed, ";") {
-					semis["with semicolons"]++
-				} else if strings.HasSuffix(trimmed, ")") || strings.HasSuffix(trimmed, "'") || strings.HasSuffix(trimmed, `"`) {
-					semis["without semicolons"]++
-				}
-			}
-		}
-		if k, _, _ := fileIndent.Top(); k != "" {
-			indent[k]++
-		}
-		return nil
-	})
-	if files == 0 {
+	sc := &conventionScan{
+		indent: Tally{}, quotes: Tally{}, semis: Tally{}, modules: Tally{}, eol: Tally{}, lang: Tally{}, tests: Tally{},
+		naming: map[string]Tally{},
+	}
+	_ = fsx.Walk(root, fsx.Project, sc.visit)
+	if sc.files == 0 {
 		return ""
 	}
+	rules := sc.rules()
+	_ = os.MkdirAll(filepath.Join(root, core.InfuseDirName), 0o755)
+	_ = core.WriteJSON(ConventionRulesFile(root), rules)
+	return sc.markdown()
+}
+
+func (sc *conventionScan) visit(p string, d os.DirEntry, err error) error {
+	if err != nil || sc.files >= 400 {
+		return nil
+	}
+	if d.IsDir() {
+		if d.Name() == "tests" || d.Name() == "test" || d.Name() == "__tests__" {
+			sc.tests["folder "+d.Name()+"/"]++
+		}
+		return nil
+	}
+	ext := strings.ToLower(filepath.Ext(p))
+	if !jsLikeExts[ext] && !srcExts[ext] {
+		return nil
+	}
+	sc.fileName(d.Name(), ext)
+	b, err := os.ReadFile(p)
+	if err != nil || len(b) > 400<<10 {
+		return nil
+	}
+	sc.files++
+	sc.fileText(string(b), ext)
+	return nil
+}
+
+func (sc *conventionScan) fileName(file, ext string) {
+	name := strings.TrimSuffix(file, filepath.Ext(file))
+	switch {
+	case strings.HasSuffix(name, ".test") || strings.HasSuffix(name, ".spec"):
+		sc.tests["*"+name[strings.LastIndex(name, "."):]+ext]++
+		name = name[:strings.LastIndex(name, ".")]
+	case strings.HasSuffix(name, "_test") && ext == ".go":
+		sc.tests["*_test.go"]++
+	case strings.HasPrefix(name, "test_") && ext == ".py":
+		sc.tests["test_*.py"]++
+	}
+	if sc.naming[ext] == nil {
+		sc.naming[ext] = Tally{}
+	}
+	switch {
+	case ReKebab.MatchString(name):
+		sc.naming[ext]["kebab-case"]++
+	case ReSnake.MatchString(name):
+		sc.naming[ext]["snake_case"]++
+	case ReCamel.MatchString(name):
+		sc.naming[ext]["camelCase"]++
+	case RePascal.MatchString(name):
+		sc.naming[ext]["PascalCase"]++
+	}
+}
+
+func (sc *conventionScan) fileText(text, ext string) {
+	if strings.Contains(text, "\r\n") {
+		sc.eol["CRLF"]++
+	} else {
+		sc.eol["LF"]++
+	}
+	fileIndent := Tally{}
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		sc.lengths = append(sc.lengths, len([]rune(line)))
+		trimmed := strings.TrimLeft(line, " \t")
+		if trimmed == "" {
+			continue
+		}
+		sc.lineIndent(fileIndent, line, trimmed)
+		sc.lineComment(trimmed)
+		if jsLikeExts[ext] {
+			sc.lineJS(trimmed)
+		}
+	}
+	if k, _, _ := fileIndent.Top(); k != "" {
+		sc.indent[k]++
+	}
+}
+
+func (sc *conventionScan) lineIndent(tally Tally, line, trimmed string) {
+	lead := line[:len(line)-len(trimmed)]
+	if strings.HasPrefix(lead, "\t") { // indentation, on indented lines only
+		tally["tabs"]++
+	} else if n := len(lead); n%4 == 0 && n > 0 {
+		tally["4 spaces"]++
+	} else if n%2 == 0 && n > 0 {
+		tally["2 spaces"]++
+	}
+}
+
+func (sc *conventionScan) lineComment(trimmed string) {
+	c := strings.TrimSpace(trimmed)
+	if !strings.HasPrefix(c, "//") && !strings.HasPrefix(c, "#") && !strings.HasPrefix(c, "/*") && !strings.HasPrefix(c, "*") {
+		return
+	}
+	if rePtWord.MatchString(c) {
+		sc.lang["Portuguese"]++
+	} else if reEnWord.MatchString(c) {
+		sc.lang["English"]++
+	}
+}
+
+func (sc *conventionScan) lineJS(trimmed string) {
+	if strings.HasPrefix(trimmed, "import ") || strings.Contains(trimmed, "require(") {
+		if strings.Contains(trimmed, "'") {
+			sc.quotes["single quotes"]++
+		} else if strings.Contains(trimmed, `"`) {
+			sc.quotes["double quotes"]++
+		}
+		if strings.HasPrefix(trimmed, "import ") {
+			sc.modules["ESM (import/export)"]++
+		} else {
+			sc.modules["CommonJS (require)"]++
+		}
+	}
+	if strings.HasSuffix(trimmed, ";") {
+		sc.semis["with semicolons"]++
+	} else if strings.HasSuffix(trimmed, ")") || strings.HasSuffix(trimmed, "'") || strings.HasSuffix(trimmed, `"`) {
+		sc.semis["without semicolons"]++
+	}
+}
+
+func (sc *conventionScan) rules() ConventionRules {
 	// the enforceable rules, with the share of samples behind each (protocol.go refuses writes against them)
-	rules := ConventionRules{Files: files, Naming: map[string]string{}, NamingShare: map[string]float64{}, NamingN: map[string]int{}}
+	rules := ConventionRules{Files: sc.files, Naming: map[string]string{}, NamingShare: map[string]float64{}, NamingN: map[string]int{}}
 	share := func(t Tally) (string, float64) {
 		k, n, total := t.Top()
 		if total == 0 {
@@ -194,59 +235,61 @@ func LearnConventions(root string) string {
 		}
 		return k, float64(n) / float64(total)
 	}
-	if k, sh := share(indent); k != "" {
+	if k, sh := share(sc.indent); k != "" {
 		rules.Indent, rules.IndentShare = map[string]string{"tabs": "tabs", "2 spaces": "2", "4 spaces": "4"}[k], sh
 	}
-	if k, sh := share(quotes); k != "" {
+	if k, sh := share(sc.quotes); k != "" {
 		rules.Quotes, rules.QuotesShare = map[string]string{"single quotes": "single", "double quotes": "double"}[k], sh
 	}
-	if k, sh := share(semis); k != "" {
+	if k, sh := share(sc.semis); k != "" {
 		rules.Semis, rules.SemisShare = map[string]string{"with semicolons": "with", "without semicolons": "without"}[k], sh
 	}
-	if k, sh := share(modules); k != "" {
+	if k, sh := share(sc.modules); k != "" {
 		rules.Modules, rules.ModShare = map[string]string{"ESM (import/export)": "esm", "CommonJS (require)": "cjs"}[k], sh
 	}
-	for e, t := range naming {
+	for e, t := range sc.naming {
 		if k, n, total := t.Top(); k != "" {
 			rules.Naming[e], rules.NamingShare[e], rules.NamingN[e] = k, float64(n)/float64(total), total
 		}
 	}
-	_ = os.MkdirAll(filepath.Join(root, core.InfuseDirName), 0o755)
-	_ = core.WriteJSON(ConventionRulesFile(root), rules)
+	return rules
+}
+
+func (sc *conventionScan) markdown() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Project conventions\n\nDetected in %d code files (counted, not assumed). Edit freely: the agent reads this file on every turn.\n\n", files)
+	fmt.Fprintf(&b, "# Project conventions\n\nDetected in %d code files (counted, not assumed). Edit freely: the agent reads this file on every turn.\n\n", sc.files)
 	line := func(label string, t Tally) {
 		if k, n, total := t.Top(); k != "" && total > 0 {
 			fmt.Fprintf(&b, "- %s: %s (%s)\n", label, k, pct(n, total))
 		}
 	}
-	line("Indentation", indent)
-	line("Quotes in imports", quotes)
-	line("End of statement (JS/TS)", semis)
-	line("Modules", modules)
-	line("Line endings", eol)
-	line("Comment language", lang)
-	exts := make([]string, 0, len(naming))
-	for e := range naming {
+	line("Indentation", sc.indent)
+	line("Quotes in imports", sc.quotes)
+	line("End of statement (JS/TS)", sc.semis)
+	line("Modules", sc.modules)
+	line("Line endings", sc.eol)
+	line("Comment language", sc.lang)
+	exts := make([]string, 0, len(sc.naming))
+	for e := range sc.naming {
 		exts = append(exts, e)
 	}
 	sort.Strings(exts)
 	for _, e := range exts {
-		if k, n, total := naming[e].Top(); k != "" && total >= 3 {
+		if k, n, total := sc.naming[e].Top(); k != "" && total >= 3 {
 			fmt.Fprintf(&b, "- File names %s: %s (%s)\n", e, k, pct(n, total))
 		}
 	}
-	if len(tests) > 0 {
-		keys := make([]string, 0, len(tests))
-		for k := range tests {
+	if len(sc.tests) > 0 {
+		keys := make([]string, 0, len(sc.tests))
+		for k := range sc.tests {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		fmt.Fprintf(&b, "- Tests: %s\n", strings.Join(keys, ", "))
 	}
-	if len(lengths) > 20 {
-		sort.Ints(lengths)
-		fmt.Fprintf(&b, "- Line length: 95%% of lines up to %d characters\n", lengths[len(lengths)*95/100])
+	if len(sc.lengths) > 20 {
+		sort.Ints(sc.lengths)
+		fmt.Fprintf(&b, "- Line length: 95%% of lines up to %d characters\n", sc.lengths[len(sc.lengths)*95/100])
 	}
 	return b.String()
 }

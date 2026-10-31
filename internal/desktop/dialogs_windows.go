@@ -94,60 +94,96 @@ func (d winDialogs) show(title string, folders bool) ([]string, error) {
 }
 
 func (d winDialogs) showSTA(title string, folders bool) ([]string, error) {
-	hr, _, _ := procCoInitializeEx.Call(0, coinitApartment)
-	if hr == 0 || hr == 1 {
-		defer procCoUninitialize.Call()
-	} else if hr != 0x80010106 { // RPC_E_CHANGED_MODE
-		return nil, hresultErr("CoInitializeEx", hr)
+	uninit, err := initSTA()
+	if err != nil {
+		return nil, err
 	}
-	var dialog unsafe.Pointer
-	hr, _, _ = procCoCreateInst.Call(uintptr(unsafe.Pointer(&clsidFileOpenDialog)), 0, 0x1|0x4,
-		uintptr(unsafe.Pointer(&iidIFileOpenDialog)), uintptr(unsafe.Pointer(&dialog)))
-	if hr != 0 || dialog == nil {
-		return nil, hresultErr("CoCreateInstance(FileOpenDialog)", hr)
+	if uninit != nil {
+		defer uninit()
+	}
+	dialog, err := newFileDialog(title, folders)
+	if err != nil {
+		return nil, err
 	}
 	defer comCall(dialog, vtRelease)
-
-	var opts uint32
-	comCall(dialog, vtGetOptions, uintptr(unsafe.Pointer(&opts)))
-	if hr := comCall(dialog, vtSetOptions, uintptr(opts)|dialogOptions(folders)); hr != 0 {
-		return nil, hresultErr("SetOptions", hr)
-	}
-	if t, err := windows.UTF16PtrFromString(title); err == nil {
-		comCall(dialog, vtSetTitle, uintptr(unsafe.Pointer(t)))
-	}
-	var owner uintptr
-	if d.owner != nil {
-		owner = d.owner()
-	}
-	if owner == 0 {
-		// Opened from the local server (the UI in a browser). A window of another process cannot own a
-		// modal dialog (Show returns at once, cancelled), and a background process cannot take the
-		// foreground. So the dialog gets an owner of its own: a tiny transparent window brought to the
-		// front with the foreground thread's input attached, then removed when the dialog closes.
-		owner = frontOwner()
-		defer procDestroyWindow.Call(owner)
-	}
+	owner, release := d.dialogOwner()
+	defer release()
 	if hr := comCall(dialog, vtShow, owner); hr != 0 {
 		if hr == hrCancelled {
 			return nil, nil
 		}
 		return nil, hresultErr("Show", hr)
 	}
-
 	if folders {
-		var item unsafe.Pointer
-		if hr := comCall(dialog, vtGetResult, uintptr(unsafe.Pointer(&item))); hr != 0 || item == nil {
-			return nil, hresultErr("GetResult", hr)
-		}
-		defer comCall(item, vtRelease)
-		p, err := shellItemPath(item)
-		if err != nil {
-			return nil, err
-		}
-		return []string{p}, nil
+		return dialogFolder(dialog)
 	}
+	return dialogFiles(dialog)
+}
 
+// initSTA puts the calling thread into a single-threaded apartment. The returned function undoes that;
+// it is nil when COM was already initialised on the thread (nothing to undo).
+func initSTA() (func(), error) {
+	hr, _, _ := procCoInitializeEx.Call(0, coinitApartment)
+	if hr == 0 || hr == 1 {
+		return func() { procCoUninitialize.Call() }, nil
+	}
+	if hr != 0x80010106 { // RPC_E_CHANGED_MODE
+		return nil, hresultErr("CoInitializeEx", hr)
+	}
+	return nil, nil
+}
+
+// newFileDialog creates the Explorer open dialog and gives it its option set and title.
+func newFileDialog(title string, folders bool) (unsafe.Pointer, error) {
+	var dialog unsafe.Pointer
+	hr, _, _ := procCoCreateInst.Call(uintptr(unsafe.Pointer(&clsidFileOpenDialog)), 0, 0x1|0x4,
+		uintptr(unsafe.Pointer(&iidIFileOpenDialog)), uintptr(unsafe.Pointer(&dialog)))
+	if hr != 0 || dialog == nil {
+		return nil, hresultErr("CoCreateInstance(FileOpenDialog)", hr)
+	}
+	var opts uint32
+	comCall(dialog, vtGetOptions, uintptr(unsafe.Pointer(&opts)))
+	if hr := comCall(dialog, vtSetOptions, uintptr(opts)|dialogOptions(folders)); hr != 0 {
+		comCall(dialog, vtRelease)
+		return nil, hresultErr("SetOptions", hr)
+	}
+	if t, err := windows.UTF16PtrFromString(title); err == nil {
+		comCall(dialog, vtSetTitle, uintptr(unsafe.Pointer(t)))
+	}
+	return dialog, nil
+}
+
+// dialogOwner returns the window the dialog is modal to and how to dispose of it afterwards. Opened
+// from the local server (the UI in a browser) there is no such window: the dialog gets an owner of its
+// own, a tiny transparent window brought to the front with the foreground thread's input attached,
+// removed again when the dialog closes. A window of another process cannot own a modal dialog (Show
+// returns at once, cancelled), and a background process cannot take the foreground.
+func (d winDialogs) dialogOwner() (uintptr, func()) {
+	if d.owner != nil {
+		if owner := d.owner(); owner != 0 {
+			return owner, func() {}
+		}
+	}
+	owner := frontOwner()
+	return owner, func() { procDestroyWindow.Call(owner) }
+}
+
+// dialogFolder reads the single folder the user picked.
+func dialogFolder(dialog unsafe.Pointer) ([]string, error) {
+	var item unsafe.Pointer
+	if hr := comCall(dialog, vtGetResult, uintptr(unsafe.Pointer(&item))); hr != 0 || item == nil {
+		return nil, hresultErr("GetResult", hr)
+	}
+	defer comCall(item, vtRelease)
+	p, err := shellItemPath(item)
+	if err != nil {
+		return nil, err
+	}
+	return []string{p}, nil
+}
+
+// dialogFiles reads the files the user picked.
+func dialogFiles(dialog unsafe.Pointer) ([]string, error) {
 	var arr unsafe.Pointer
 	if hr := comCall(dialog, vtGetResults, uintptr(unsafe.Pointer(&arr))); hr != 0 || arr == nil {
 		return nil, hresultErr("GetResults", hr)

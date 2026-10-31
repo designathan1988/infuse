@@ -8,10 +8,10 @@ package agent
 //   general — any tool except Agent itself.
 
 import (
-	"infuse/internal/mcp"
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/mcp"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,12 +46,47 @@ func subagentSystem(s *Session, kind string) string {
 
 // RunSubagent runs task in a fresh conversation and returns the final text.
 func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (string, error) {
-	provider, err := providerFor(s.settings, s.providerID())
+	provider, rules, specs, allowed, err := s.subagentSetup(ctx, kind)
 	if err != nil {
 		return "", err
 	}
 	if kind == "" {
 		kind = "general"
+	}
+	id := "a" + randomHex(6)
+	run := s.agentStart(id, kind, title, task)
+	defer s.agentUpdate(run, func(a *AgentRun) { // an error or the step limit: the run shows as failed
+		if a.State == "running" {
+			a.State = "failed"
+		}
+	})
+	s.emit("subagent", map[string]any{"id": id, "kind": kind, "title": title, "state": "start"})
+	msgs := []Message{{Role: "user", Content: []Block{{Type: "text", Text: task}}, TS: time.Now().UnixMilli()}}
+	var breaker loopBreaker
+	for iter := 0; iter < 60; iter++ {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		res, done, out, err := s.subagentTurn(ctx, provider, specs, kind, run, id, iter, &msgs)
+		if err != nil {
+			return "", err
+		}
+		if done {
+			return out, nil
+		}
+		results, err := s.subagentToolTurn(ctx, rules, allowed, res.Content, run, id, &breaker)
+		if err != nil {
+			return "", err
+		}
+		msgs = append(msgs, Message{Role: "user", Content: results})
+	}
+	return "", errMsg(M("agent.step_limit"))
+}
+
+func (s *Session) subagentSetup(ctx context.Context, kind string) (Provider, *RuleSet, []ToolSpec, func(string) bool, error) {
+	provider, err := providerFor(s.settings, s.providerID())
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 	rules := LoadRules(s.Root)
 	mcp.For(s.Root).Ensure(ctx)
@@ -68,89 +103,103 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 			specs = append(specs, sp)
 		}
 	}
-	id := "a" + randomHex(6)
-	run := s.agentStart(id, kind, title, task)
-	defer s.agentUpdate(run, func(a *AgentRun) { // an error or the step limit: the run shows as failed
-		if a.State == "running" {
-			a.State = "failed"
+	return provider, rules, specs, allowed, nil
+}
+
+// subagentTurn asks the model once and records its cost and trail.
+func (s *Session) subagentTurn(ctx context.Context, provider Provider, specs []ToolSpec, kind string, run int, id string, iter int, msgs *[]Message) (ModelResult, bool, string, error) {
+	res, err := provider.Stream(ctx, ModelRequest{Model: s.Model, System: subagentSystem(s, kind), Messages: *msgs, Tools: specs, MaxTokens: s.settings.MaxTokens}, func(StreamEvent) {})
+	if err != nil {
+		return res, false, "", err
+	}
+	cost := s.settings.CostOf(s.Model, res.Usage)
+	s.Mu.Lock()
+	s.Cost += cost
+	s.Usage.Input += res.Usage.Input
+	s.Usage.Output += res.Usage.Output
+	s.Mu.Unlock()
+	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cost: cost})
+	*msgs = append(*msgs, Message{Role: "assistant", Content: res.Content})
+	for _, b := range res.Content { // what the subagent says between its steps joins its trail
+		if b.Type == "text" && strings.TrimSpace(b.Text) != "" && res.StopReason == "tool_use" {
+			text := truncate(strings.TrimSpace(b.Text), 1200)
+			s.agentUpdate(run, func(a *AgentRun) { a.addStep(AgentStep{Kind: "text", Text: text}) })
+		}
+	}
+	if res.StopReason != "tool_use" {
+		out := strings.TrimSpace(msgText(Message{Content: res.Content}))
+		s.emit("subagent", map[string]any{"id": id, "state": "done", "steps": iter})
+		s.agentUpdate(run, func(a *AgentRun) { a.State, a.Result = "done", truncate(out, 12000) }) // steps stay the tool calls counted live
+		return res, true, out, nil
+	}
+	return res, false, "", nil
+}
+
+func (s *Session) subagentToolTurn(ctx context.Context, rules *RuleSet, allowed func(string) bool, content []Block, run int, id string, breaker *loopBreaker) ([]Block, error) {
+	var results []Block
+	for _, b := range content {
+		if b.Type != "tool_use" {
+			continue
+		}
+		out, isErr, err := s.subagentTool(ctx, rules, allowed, b, run, id, breaker)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr})
+	}
+	return results, nil
+}
+
+func (s *Session) subagentTool(ctx context.Context, rules *RuleSet, allowed func(string) bool, b Block, run int, id string, breaker *loopBreaker) (string, bool, error) {
+	input := truncate(string(b.Input), 2000)
+	step := -1
+	s.agentUpdate(run, func(a *AgentRun) { // the step shows while it runs, as the main agent's do
+		a.Steps++
+		a.Tool, a.Summary = b.Name, truncate(firstLine(string(b.Input)), 160)
+		step = a.addStep(AgentStep{Kind: "tool", Tool: b.Name, Input: input, State: "running", Started: time.Now().UnixMilli()})
+	})
+	t0 := time.Now()
+	var out string
+	var isErr bool
+	if !allowed(b.Name) {
+		out, isErr = s.say(b.ID, M("agent.tool_unavailable", "tool", b.Name)), true
+	} else {
+		out, isErr = s.safeRunTool(ctx, rules, b)
+		out = redactSecrets(out)
+	}
+	display := displayFor(s.uiLang(), out, s.takeCallMsgs(b.ID)) // the trail shows infuse's messages in the user's language
+	s.emit("subagent", map[string]any{"id": id, "state": "tool", "tool": b.Name, "summary": firstLine(string(b.Input))})
+	ms := time.Since(t0).Milliseconds()
+	s.agentUpdate(run, func(a *AgentRun) {
+		if step >= 0 && step < len(a.Trail) {
+			a.Trail[step].State, a.Trail[step].Ms, a.Trail[step].Output = map[bool]string{true: "error", false: "ok"}[isErr], ms, truncate(out, 1500)
+			if display != "" {
+				a.Trail[step].Display = truncate(display, 1500)
+			}
 		}
 	})
-	s.emit("subagent", map[string]any{"id": id, "kind": kind, "title": title, "state": "start"})
-	msgs := []Message{{Role: "user", Content: []Block{{Type: "text", Text: task}}, TS: time.Now().UnixMilli()}}
-	var breaker loopBreaker
-	for iter := 0; iter < 60; iter++ {
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		res, err := provider.Stream(ctx, ModelRequest{Model: s.Model, System: subagentSystem(s, kind), Messages: msgs, Tools: specs, MaxTokens: s.settings.MaxTokens}, func(StreamEvent) {})
-		if err != nil {
-			return "", err
-		}
-		cost := s.settings.CostOf(s.Model, res.Usage)
-		s.Mu.Lock()
-		s.Cost += cost
-		s.Usage.Input += res.Usage.Input
-		s.Usage.Output += res.Usage.Output
-		s.Mu.Unlock()
-		recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cost: cost})
-		msgs = append(msgs, Message{Role: "assistant", Content: res.Content})
-		for _, b := range res.Content { // what the subagent says between its steps joins its trail
-			if b.Type == "text" && strings.TrimSpace(b.Text) != "" && res.StopReason == "tool_use" {
-				text := truncate(strings.TrimSpace(b.Text), 1200)
-				s.agentUpdate(run, func(a *AgentRun) { a.addStep(AgentStep{Kind: "text", Text: text}) })
-			}
-		}
-		if res.StopReason != "tool_use" {
-			out := strings.TrimSpace(msgText(Message{Content: res.Content}))
-			s.emit("subagent", map[string]any{"id": id, "state": "done", "steps": iter})
-			s.agentUpdate(run, func(a *AgentRun) { a.State, a.Result = "done", truncate(out, 12000) }) // steps stay the tool calls counted live
-			return out, nil
-		}
-		var results []Block
-		for _, b := range res.Content {
-			if b.Type != "tool_use" {
-				continue
-			}
-			var out string
-			var isErr bool
-			input := truncate(string(b.Input), 2000)
-			step := -1
-			s.agentUpdate(run, func(a *AgentRun) { // the step shows while it runs, as the main agent's do
-				a.Steps++
-				a.Tool, a.Summary = b.Name, truncate(firstLine(string(b.Input)), 160)
-				step = a.addStep(AgentStep{Kind: "tool", Tool: b.Name, Input: input, State: "running", Started: time.Now().UnixMilli()})
-			})
-			t0 := time.Now()
-			if !allowed(b.Name) {
-				out, isErr = s.say(b.ID, M("agent.tool_unavailable", "tool", b.Name)), true
-			} else {
-				out, isErr = s.safeRunTool(ctx, rules, b)
-				out = redactSecrets(out)
-			}
-			display := displayFor(s.uiLang(), out, s.takeCallMsgs(b.ID)) // the trail shows infuse's messages in the user's language
-			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr})
-			s.emit("subagent", map[string]any{"id": id, "state": "tool", "tool": b.Name, "summary": firstLine(string(b.Input))})
-			ms := time.Since(t0).Milliseconds()
-			s.agentUpdate(run, func(a *AgentRun) {
-				if step >= 0 && step < len(a.Trail) {
-					a.Trail[step].State, a.Trail[step].Ms, a.Trail[step].Output = map[bool]string{true: "error", false: "ok"}[isErr], ms, truncate(out, 1500)
-					if display != "" {
-						a.Trail[step].Display = truncate(display, 1500)
-					}
-				}
-			})
-			if err := breaker.record(b.Name, b.Input, isErr); err != nil {
-				return "", errMsg(M("agent.stopped", "error", errArg(err)))
-			}
-		}
-		msgs = append(msgs, Message{Role: "user", Content: results})
+	if err := breaker.record(b.Name, b.Input, isErr); err != nil {
+		return "", false, errMsg(M("agent.stopped", "error", errArg(err)))
 	}
-	return "", errMsg(M("agent.step_limit"))
+	return out, isErr, nil
 }
 
 // reviewMaterial is what the reviewer sees: the request, the plan, the criteria and the diff.
 func (s *Session) reviewMaterial(focus string) string {
 	var b strings.Builder
+	s.reviewPreamble(&b, focus)
+	diff := s.reviewChanges()
+	if len(diff) > 60000 {
+		diff = diff[:60000] + "\n[… diff cut]"
+	}
+	if strings.TrimSpace(diff) == "" {
+		diff = "(no changes found)"
+	}
+	b.WriteString("## Changes\n```diff\n" + diff + "\n```\n")
+	return b.String()
+}
+
+func (s *Session) reviewPreamble(b *strings.Builder, focus string) {
 	if req := s.turnRequest(); req != "" {
 		b.WriteString("## User's request\n" + req + "\n\n")
 	}
@@ -160,9 +209,9 @@ func (s *Session) reviewMaterial(focus string) string {
 	if len(tasks) > 0 {
 		b.WriteString("## Plan\n")
 		for _, t := range tasks {
-			fmt.Fprintf(&b, "- [%s] %s", t.Status, t.Text)
+			fmt.Fprintf(b, "- [%s] %s", t.Status, t.Text)
 			if t.Proof != "" {
-				fmt.Fprintf(&b, " (proof: %s)", t.Proof)
+				fmt.Fprintf(b, " (proof: %s)", t.Proof)
 			}
 			b.WriteString("\n")
 		}
@@ -177,48 +226,52 @@ func (s *Session) reviewMaterial(focus string) string {
 	if focus != "" {
 		b.WriteString("## Requested focus\n" + focus + "\n\n")
 	}
+}
+
+func (s *Session) reviewChanges() string {
 	root := s.workRoot()
 	const budget = 60000
-	diff := ""
 	if exists(filepath.Join(root, ".git")) {
-		diff, _ = gitRun(root, "diff", "HEAD")
-		if untracked, _ := gitRun(root, "ls-files", "--others", "--exclude-standard"); strings.TrimSpace(untracked) != "" {
-			for _, f := range strings.Split(strings.TrimSpace(untracked), "\n") {
-				if len(diff) > budget {
-					break
-				}
-				if c, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f))); err == nil && len(c) < 40000 {
-					diff += "\n--- /dev/null\n+++ b/" + f + " (new file)\n" + string(c)
-				}
+		return reviewGitDiff(root, budget)
+	}
+	return s.reviewCheckpointFiles(root, budget)
+}
+
+func reviewGitDiff(root string, budget int) string {
+	diff, _ := gitRun(root, "diff", "HEAD")
+	if untracked, _ := gitRun(root, "ls-files", "--others", "--exclude-standard"); strings.TrimSpace(untracked) != "" {
+		for _, f := range strings.Split(strings.TrimSpace(untracked), "\n") {
+			if len(diff) > budget {
+				break
 			}
-		}
-	} else {
-		s.Mu.Lock()
-		seen := map[string]bool{}
-		var files []string
-		for _, cps := range s.Checkpoints {
-			for _, c := range cps {
-				if !seen[c.Path] {
-					seen[c.Path] = true
-					files = append(files, c.Path)
-				}
-			}
-		}
-		s.Mu.Unlock()
-		for _, f := range files {
-			if c, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f))); err == nil && len(diff) < budget {
-				diff += "\n=== " + f + " (changed in this session)\n" + string(c)
+			if c, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f))); err == nil && len(c) < 40000 {
+				diff += "\n--- /dev/null\n+++ b/" + f + " (new file)\n" + string(c)
 			}
 		}
 	}
-	if len(diff) > budget {
-		diff = diff[:budget] + "\n[… diff cut]"
+	return diff
+}
+
+func (s *Session) reviewCheckpointFiles(root string, budget int) string {
+	s.Mu.Lock()
+	seen := map[string]bool{}
+	var files []string
+	for _, cps := range s.Checkpoints {
+		for _, c := range cps {
+			if !seen[c.Path] {
+				seen[c.Path] = true
+				files = append(files, c.Path)
+			}
+		}
 	}
-	if strings.TrimSpace(diff) == "" {
-		diff = "(no changes found)"
+	s.Mu.Unlock()
+	diff := ""
+	for _, f := range files {
+		if c, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f))); err == nil && len(diff) < budget {
+			diff += "\n=== " + f + " (changed in this session)\n" + string(c)
+		}
 	}
-	b.WriteString("## Changes\n```diff\n" + diff + "\n```\n")
-	return b.String()
+	return diff
 }
 
 // ---------------------------------------------------------------- the agent's tool
@@ -248,7 +301,6 @@ func (agentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 	}
 	return out, false
 }
-
 
 // IndependentReview runs the reviewer on the current changes (asked by the user) and records its
 // findings in the conversation, where the agent sees them on the next turn. The two messages say what

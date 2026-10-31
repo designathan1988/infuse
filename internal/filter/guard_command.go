@@ -32,6 +32,11 @@ type shellSeg struct {
 	sep        string // operator after this segment: ; && || | & newline, or ""
 }
 
+type guardEdit struct {
+	start, end int
+	with       string
+}
+
 // GuardCommand inspects a shell command before it runs. It returns the (possibly rewritten) command,
 // notes for the model (English), or an error when the command must not run at all (the error carries
 // its message: msgOf). GuardCommandMsgs gives the notes as messages.
@@ -51,37 +56,17 @@ func (g *Guard) GuardCommandMsgs(cmd, cwd string) (string, []core.Msg, error) {
 }
 
 func (g *Guard) guard(cmd, cwd string, nested bool) (string, []core.Msg, error) {
-	// mask heredoc bodies (same length, newlines kept): offsets stay valid and document text is inert
-	masked := []byte(cmd)
 	hds := FindHeredocs(cmd)
-	for _, h := range hds {
-		for i := h.BodyStart; i < h.BlockEnd && i < len(masked); i++ {
-			if masked[i] != '\n' {
-				masked[i] = ' '
-			}
-		}
-	}
-	segs := splitSegments(string(masked))
+	segs := splitSegments(maskHeredocBodies(cmd, hds))
 	var notes []core.Msg
-	type edit struct {
-		start, end int
-		with       string
-	}
-	var edits []edit
+	var edits []guardEdit
 	dir := cwd
 	var stack []string
 	pipeStart := 0
 	for i, sg := range segs {
 		fields := shellFields(sg.text)
-		// a heredoc whose command is this segment: its target, with the directory in effect here
-		for _, h := range hds {
-			if h.OpStart >= sg.start && h.OpStart < sg.end {
-				if intent := DetectFileWrite(strings.TrimSpace(cmd[sg.start:h.OpEnd])); intent != nil {
-					if rel, ok := g.Protects(dir, intent.Path); ok {
-						return "", nil, g.block(rel, core.M("guard.heredoc"))
-					}
-				}
-			}
+		if err := g.checkHeredocTargets(sg, cmd, dir, hds); err != nil {
+			return "", nil, err
 		}
 		if len(fields) > 0 {
 			if err := g.checkSimple(fields, dir, sg.text); err != nil {
@@ -89,56 +74,116 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []core.Msg, error) 
 			}
 			// xargs running a writer: everything the pipeline names is a potential target
 			if baseCmd(fields[0]) == "xargs" && xargsWrites(fields) {
-				for _, p := range segs[pipeStart : i+1] {
-					for _, f := range shellFields(p.text) {
-						if rel, ok := g.Protects(dir, f); ok {
-							return "", nil, g.block(rel, core.M("guard.xargs"))
-						}
-					}
+				if err := g.checkXargsSegments(segs, pipeStart, i, dir); err != nil {
+					return "", nil, err
 				}
 			}
 		}
-		// redirections into protected paths
-		for _, loc := range ReRedir.FindAllStringSubmatchIndex(sg.text, -1) {
-			target := sg.text[loc[6]:loc[7]]
-			if rel, ok := g.Protects(dir, target); ok {
-				if nested {
-					return "", nil, g.block(rel, core.M("guard.nested_redir"))
-				}
-				notes = append(notes, core.M("guard.redirected", "file", rel))
-				_ = g.block(rel, core.M("guard.redir_blocked"))
-				edits = append(edits, edit{sg.start + loc[6], sg.start + loc[7], "/dev/null"})
-			}
+		ns, es, err := g.redirEdits(sg, dir, nested)
+		if err != nil {
+			return "", nil, err
 		}
+		notes = append(notes, ns...)
+		edits = append(edits, es...)
 		// the directory for the next segment
 		if len(fields) > 0 {
-			switch baseCmd(fields[0]) {
-			case "cd", "chdir", "set-location", "sl":
-				if t := firstArg(fields); t != "" && t != "-" {
-					dir = resolveDir(dir, t)
-				} else if t == "" {
-					dir = g.Root
-				}
-			case "pushd", "push-location":
-				if t := firstArg(fields); t != "" {
-					stack = append(stack, dir)
-					dir = resolveDir(dir, t)
-				}
-			case "popd", "pop-location":
-				if n := len(stack); n > 0 {
-					dir, stack = stack[n-1], stack[:n-1]
-				}
-			}
+			dir = g.nextDir(fields, dir, &stack)
 		}
 		if sg.sep != "|" {
 			pipeStart = i + 1
 		}
 	}
+	return applyGuardEdits(cmd, edits), notes, nil
+}
+
+// maskHeredocBodies blanks heredoc bodies (same length, newlines kept): offsets stay valid and
+// document text is inert.
+func maskHeredocBodies(cmd string, hds []Heredoc) string {
+	masked := []byte(cmd)
+	for _, h := range hds {
+		for i := h.BodyStart; i < h.BlockEnd && i < len(masked); i++ {
+			if masked[i] != '\n' {
+				masked[i] = ' '
+			}
+		}
+	}
+	return string(masked)
+}
+
+// checkHeredocTargets refuses a heredoc whose command writes a protected path, with the directory in
+// effect at that segment.
+func (g *Guard) checkHeredocTargets(sg shellSeg, cmd, dir string, hds []Heredoc) error {
+	for _, h := range hds {
+		if h.OpStart >= sg.start && h.OpStart < sg.end {
+			if intent := DetectFileWrite(strings.TrimSpace(cmd[sg.start:h.OpEnd])); intent != nil {
+				if rel, ok := g.Protects(dir, intent.Path); ok {
+					return g.block(rel, core.M("guard.heredoc"))
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// checkXargsSegments refuses a pipeline in which xargs runs a writer that names a protected path.
+func (g *Guard) checkXargsSegments(segs []shellSeg, pipeStart, i int, dir string) error {
+	for _, p := range segs[pipeStart : i+1] {
+		for _, f := range shellFields(p.text) {
+			if rel, ok := g.Protects(dir, f); ok {
+				return g.block(rel, core.M("guard.xargs"))
+			}
+		}
+	}
+	return nil
+}
+
+// redirEdits neutralizes redirections into protected paths; inside a nested shell it refuses instead.
+func (g *Guard) redirEdits(sg shellSeg, dir string, nested bool) ([]core.Msg, []guardEdit, error) {
+	var notes []core.Msg
+	var edits []guardEdit
+	for _, loc := range ReRedir.FindAllStringSubmatchIndex(sg.text, -1) {
+		target := sg.text[loc[6]:loc[7]]
+		if rel, ok := g.Protects(dir, target); ok {
+			if nested {
+				return nil, nil, g.block(rel, core.M("guard.nested_redir"))
+			}
+			notes = append(notes, core.M("guard.redirected", "file", rel))
+			_ = g.block(rel, core.M("guard.redir_blocked"))
+			edits = append(edits, guardEdit{sg.start + loc[6], sg.start + loc[7], "/dev/null"})
+		}
+	}
+	return notes, edits, nil
+}
+
+// nextDir returns the directory in effect for the segments after fields, following cd / pushd / popd.
+func (g *Guard) nextDir(fields []string, dir string, stack *[]string) string {
+	switch baseCmd(fields[0]) {
+	case "cd", "chdir", "set-location", "sl":
+		if t := firstArg(fields); t != "" && t != "-" {
+			dir = resolveDir(dir, t)
+		} else if t == "" {
+			dir = g.Root
+		}
+	case "pushd", "push-location":
+		if t := firstArg(fields); t != "" {
+			*stack = append(*stack, dir)
+			dir = resolveDir(dir, t)
+		}
+	case "popd", "pop-location":
+		if n := len(*stack); n > 0 {
+			dir, *stack = (*stack)[n-1], (*stack)[:n-1]
+		}
+	}
+	return dir
+}
+
+// applyGuardEdits rewrites the command, last edit first so earlier offsets stay valid.
+func applyGuardEdits(cmd string, edits []guardEdit) string {
 	out := cmd
 	for i := len(edits) - 1; i >= 0; i-- {
 		out = out[:edits[i].start] + edits[i].with + out[edits[i].end:]
 	}
-	return out, notes, nil
+	return out
 }
 
 // checkSimple refuses a simple command that writes, moves or deletes a protected path.

@@ -27,15 +27,24 @@ func isDelimEnd(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ';' || c == '|' || c == '&' || c == '<' || c == '>' || c == ')'
 }
 
+type heredocOp struct {
+	start, end int
+	delim      string
+	quoted     bool
+	strip      bool
+}
+
 // FindHeredocs scans the command outside quotes and finds `<<` / `<<-` operators (not `<<<`).
 func FindHeredocs(cmd string) []Heredoc {
-	type op struct {
-		start, end int
-		delim      string
-		quoted     bool
-		strip      bool
+	ops := scanHeredocOps(cmd)
+	if len(ops) == 0 {
+		return nil
 	}
-	var ops []op
+	return buildHeredocs(cmd, ops)
+}
+
+func scanHeredocOps(cmd string) []heredocOp {
+	var ops []heredocOp
 	n := len(cmd)
 	inSingle, inDouble := false, false
 	for i := 0; i < n; {
@@ -68,119 +77,133 @@ func FindHeredocs(cmd string) []Heredoc {
 				i++
 			}
 		case c == '<' && i+1 < n && cmd[i+1] == '<' && (i+2 >= n || cmd[i+2] != '<') && (i == 0 || cmd[i-1] != '<'):
-			start := i
-			i += 2
-			strip := false
-			if i < n && cmd[i] == '-' {
-				strip = true
-				i++
+			op, next, ok := parseHeredocOp(cmd, i)
+			i = next
+			if ok {
+				ops = append(ops, op)
 			}
-			for i < n && (cmd[i] == ' ' || cmd[i] == '\t') {
-				i++
-			}
-			quoted := false
-			var delim strings.Builder
-			if i < n && (cmd[i] == '\'' || cmd[i] == '"') {
-				q := cmd[i]
-				quoted = true
-				i++
-				for i < n && cmd[i] != q {
-					delim.WriteByte(cmd[i])
-					i++
-				}
-				if i < n { // the closing quote (an unterminated one ends at the end of the command)
-					i++
-				}
-			} else {
-				for i < n && !isDelimEnd(cmd[i]) {
-					if cmd[i] == '\\' {
-						quoted = true
-						i++
-						if i >= n {
-							break
-						}
-					}
-					delim.WriteByte(cmd[i])
-					i++
-				}
-			}
-			if delim.Len() == 0 {
-				continue
-			}
-			ops = append(ops, op{start, i, delim.String(), quoted, strip})
 		default:
 			i++
 		}
 	}
-	if len(ops) == 0 {
-		return nil
-	}
+	return ops
+}
 
+func parseHeredocOp(cmd string, start int) (heredocOp, int, bool) {
+	n := len(cmd)
+	i := start + 2
+	strip := false
+	if i < n && cmd[i] == '-' {
+		strip = true
+		i++
+	}
+	for i < n && (cmd[i] == ' ' || cmd[i] == '\t') {
+		i++
+	}
+	quoted := false
+	var delim strings.Builder
+	if i < n && (cmd[i] == '\'' || cmd[i] == '"') {
+		q := cmd[i]
+		quoted = true
+		i++
+		for i < n && cmd[i] != q {
+			delim.WriteByte(cmd[i])
+			i++
+		}
+		if i < n { // the closing quote (an unterminated one ends at the end of the command)
+			i++
+		}
+	} else {
+		for i < n && !isDelimEnd(cmd[i]) {
+			if cmd[i] == '\\' {
+				quoted = true
+				i++
+				if i >= n {
+					break
+				}
+			}
+			delim.WriteByte(cmd[i])
+			i++
+		}
+	}
+	if delim.Len() == 0 {
+		return heredocOp{}, i, false
+	}
+	return heredocOp{start, i, delim.String(), quoted, strip}, i, true
+}
+
+func buildHeredocs(cmd string, ops []heredocOp) []Heredoc {
 	var result []Heredoc
 	cursor := 0      // end of the previous heredoc block
 	opsLineEnd := -2 // newline ending the command line of the previous operator
 	for _, o := range ops {
-		h := Heredoc{OpStart: o.start, OpEnd: o.end, Delimiter: o.delim, Quoted: o.quoted, StripTabs: o.strip}
-		var bodyStart int
-		if o.start < opsLineEnd {
-			bodyStart = cursor // same command line as the previous operator
-		} else {
-			nl := strings.IndexByte(cmd[o.end:], '\n')
-			if nl == -1 {
-				h.BodyStart, h.BodyEnd, h.BlockEnd = n, n, n
-				result = append(result, h)
-				cursor, opsLineEnd = n, n
-				continue
-			}
-			opsLineEnd = o.end + nl
-			bodyStart = opsLineEnd + 1
+		h, nextCursor, nextLineEnd, ok := buildHeredoc(cmd, o, cursor, opsLineEnd)
+		cursor, opsLineEnd = nextCursor, nextLineEnd
+		if ok {
+			result = append(result, h)
 		}
-		var lines []string
-		pos := bodyStart
-		h.BodyStart = bodyStart
-		h.BodyEnd, h.BlockEnd = n, n
-		for pos <= n {
-			nl := -1
-			if pos < n {
-				nl = strings.IndexByte(cmd[pos:], '\n')
-			}
-			var raw string
-			if nl == -1 {
-				raw = cmd[pos:]
-			} else {
-				raw = cmd[pos : pos+nl]
-			}
-			line := strings.TrimSuffix(raw, "\r")
-			probe := line
-			if o.strip {
-				probe = strings.TrimLeft(line, "\t")
-			}
-			if strings.TrimSpace(probe) == o.delim {
-				h.TerminatorFound = true
-				h.BodyEnd = pos
-				if nl == -1 {
-					h.BlockEnd = n
-				} else {
-					h.BlockEnd = pos + nl + 1
-				}
-				break
-			}
-			if o.strip {
-				line = strings.TrimLeft(line, "\t")
-			}
-			lines = append(lines, line)
-			if nl == -1 {
-				break
-			}
-			pos += nl + 1
-		}
-		if len(lines) > 0 {
-			h.Body = strings.Join(lines, "\n") + "\n"
-		}
-		result = append(result, h)
-		cursor = h.BlockEnd
 	}
 	return result
+}
+
+func buildHeredoc(cmd string, o heredocOp, cursor, opsLineEnd int) (Heredoc, int, int, bool) {
+	n := len(cmd)
+	h := Heredoc{OpStart: o.start, OpEnd: o.end, Delimiter: o.delim, Quoted: o.quoted, StripTabs: o.strip}
+	var bodyStart int
+	if o.start < opsLineEnd {
+		bodyStart = cursor // same command line as the previous operator
+	} else {
+		nl := strings.IndexByte(cmd[o.end:], '\n')
+		if nl == -1 {
+			h.BodyStart, h.BodyEnd, h.BlockEnd = n, n, n
+			return h, n, n, true
+		}
+		opsLineEnd = o.end + nl
+		bodyStart = opsLineEnd + 1
+	}
+	var lines []string
+	pos := bodyStart
+	h.BodyStart = bodyStart
+	h.BodyEnd, h.BlockEnd = n, n
+	for pos <= n {
+		nl := -1
+		if pos < n {
+			nl = strings.IndexByte(cmd[pos:], '\n')
+		}
+		var raw string
+		if nl == -1 {
+			raw = cmd[pos:]
+		} else {
+			raw = cmd[pos : pos+nl]
+		}
+		line := strings.TrimSuffix(raw, "\r")
+		probe := line
+		if o.strip {
+			probe = strings.TrimLeft(line, "\t")
+		}
+		if strings.TrimSpace(probe) == o.delim {
+			h.TerminatorFound = true
+			h.BodyEnd = pos
+			if nl == -1 {
+				h.BlockEnd = n
+			} else {
+				h.BlockEnd = pos + nl + 1
+			}
+			break
+		}
+		if o.strip {
+			line = strings.TrimLeft(line, "\t")
+		}
+		lines = append(lines, line)
+		if nl == -1 {
+			break
+		}
+		pos += nl + 1
+	}
+	if len(lines) > 0 {
+		h.Body = strings.Join(lines, "\n") + "\n"
+	}
+	return h, h.BlockEnd, opsLineEnd, true
 }
 
 type FileWriteIntent struct {

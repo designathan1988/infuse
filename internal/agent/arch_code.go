@@ -85,76 +85,90 @@ var (
 // functionMetrics measures every function of a file.
 func functionMetrics(code, ext string) []funcMetric {
 	s := stripCode(code, ext)
-	var out []funcMetric
 	lineOf := func(pos int) int { return strings.Count(s[:pos], "\n") + 1 }
 	switch {
 	case ext == ".py":
-		lines := strings.Split(s, "\n")
-		for _, m := range rePyFunc.FindAllStringSubmatchIndex(s, -1) {
-			indent := len(s[m[2]:m[3]])
-			start := lineOf(m[0]) - 1
-			end, nest := start, 0
-			for k := start + 1; k < len(lines); k++ {
-				t := strings.TrimLeft(lines[k], " \t")
-				if t == "" {
-					continue
-				}
-				in := len(lines[k]) - len(t)
-				if in <= indent {
-					break
-				}
-				end = k
-				if d := (in - indent) / 4; d > nest {
-					nest = d
-				}
-			}
-			body := strings.Join(lines[start:end+1], "\n")
-			out = append(out, funcMetric{name: s[m[4]:m[5]], line: start + 1, lines: end - start + 1, cyc: 1 + len(reBranchPy.FindAllString(body, -1)), nest: max(0, nest-1)})
-		}
-		return out
+		return pythonMetrics(s, lineOf)
 	case ext == ".go" || jsLikeExts[ext] || ext == ".java" || ext == ".cs" || ext == ".rs" || ext == ".php" || ext == ".kt":
-		re, branch := reJSFunc, reBranchC
-		if ext == ".go" {
-			re, branch = reGoFunc, reBranchGo
+		return braceMetrics(s, ext, lineOf)
+	}
+	return nil
+}
+
+func pythonMetrics(s string, lineOf func(int) int) []funcMetric {
+	var out []funcMetric
+	lines := strings.Split(s, "\n")
+	for _, m := range rePyFunc.FindAllStringSubmatchIndex(s, -1) {
+		indent := len(s[m[2]:m[3]])
+		start := lineOf(m[0]) - 1
+		end, nest := start, 0
+		for k := start + 1; k < len(lines); k++ {
+			t := strings.TrimLeft(lines[k], " \t")
+			if t == "" {
+				continue
+			}
+			in := len(lines[k]) - len(t)
+			if in <= indent {
+				break
+			}
+			end = k
+			if d := (in - indent) / 4; d > nest {
+				nest = d
+			}
 		}
-		for _, m := range re.FindAllStringSubmatchIndex(s, -1) {
-			name := ""
-			for g := 2; g+1 < len(m); g += 2 {
-				if m[g] >= 0 {
-					name = s[m[g]:m[g+1]]
-					break
-				}
-			}
-			if name == "" || notFuncNames[name] {
-				continue
-			}
-			open := strings.IndexByte(s[m[1]-1:], '{')
-			if open < 0 || strings.Count(s[m[1]-1:m[1]-1+open], "\n") > 3 { // an arrow without a block, or no body
-				continue
-			}
-			open += m[1] - 1
-			depth, maxDepth, end := 0, 0, -1
-			for k := open; k < len(s); k++ {
-				switch s[k] {
-				case '{':
-					depth++
-					maxDepth = max(maxDepth, depth)
-				case '}':
-					depth--
-				}
-				if depth == 0 {
-					end = k
-					break
-				}
-			}
-			if end < 0 {
-				continue
-			}
-			body := s[open : end+1]
-			out = append(out, funcMetric{name: name, line: lineOf(m[0]), lines: lineOf(end) - lineOf(m[0]) + 1, cyc: 1 + len(branch.FindAllString(body, -1)), nest: maxDepth - 1})
-		}
+		body := strings.Join(lines[start:end+1], "\n")
+		out = append(out, funcMetric{name: s[m[4]:m[5]], line: start + 1, lines: end - start + 1, cyc: 1 + len(reBranchPy.FindAllString(body, -1)), nest: max(0, nest-1)})
 	}
 	return out
+}
+
+func braceMetrics(s, ext string, lineOf func(int) int) []funcMetric {
+	var out []funcMetric
+	re, branch := reJSFunc, reBranchC
+	if ext == ".go" {
+		re, branch = reGoFunc, reBranchGo
+	}
+	for _, m := range re.FindAllStringSubmatchIndex(s, -1) {
+		name := ""
+		for g := 2; g+1 < len(m); g += 2 {
+			if m[g] >= 0 {
+				name = s[m[g]:m[g+1]]
+				break
+			}
+		}
+		if name == "" || notFuncNames[name] {
+			continue
+		}
+		open := strings.IndexByte(s[m[1]-1:], '{')
+		if open < 0 || strings.Count(s[m[1]-1:m[1]-1+open], "\n") > 3 { // an arrow without a block, or no body
+			continue
+		}
+		open += m[1] - 1
+		end, maxDepth := braceEnd(s, open)
+		if end < 0 {
+			continue
+		}
+		body := s[open : end+1]
+		out = append(out, funcMetric{name: name, line: lineOf(m[0]), lines: lineOf(end) - lineOf(m[0]) + 1, cyc: 1 + len(branch.FindAllString(body, -1)), nest: maxDepth - 1})
+	}
+	return out
+}
+
+func braceEnd(s string, open int) (int, int) {
+	depth, maxDepth := 0, 0
+	for k := open; k < len(s); k++ {
+		switch s[k] {
+		case '{':
+			depth++
+			maxDepth = max(maxDepth, depth)
+		case '}':
+			depth--
+		}
+		if depth == 0 {
+			return k, maxDepth
+		}
+	}
+	return -1, maxDepth
 }
 
 // archFunctions: a function may not become a god function — too long, too many branches, too deep.

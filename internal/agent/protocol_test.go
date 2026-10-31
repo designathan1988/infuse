@@ -62,6 +62,11 @@ func TestProtocolDecidesNotTheModel(t *testing.T) {
 	}
 
 	// 4. the turn cannot end with the plan open
+	checkTurnObligations(t, s, root)
+}
+
+func checkTurnObligations(t *testing.T, s *Session, root string) {
+	t.Helper()
 	s.Turn, s.TurnStarts = 1, []int{0}
 	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "crie soma"}}}}
 	if why := s.turnObligation(context.Background()); why.ID != "turn.open_tasks" {

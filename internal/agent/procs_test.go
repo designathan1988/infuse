@@ -12,15 +12,34 @@ import (
 	"time"
 )
 
-func TestBackgroundProcesses(t *testing.T) {
+type procTestEnv struct {
+	t   *testing.T
+	s   *Session
+	run func(name, in string) (string, bool)
+}
+
+func newProcTestEnv(t *testing.T) *procTestEnv {
+	t.Helper()
 	testHome(t)
-	root := t.TempDir()
-	s := newSession(root)
+	s := newSession(t.TempDir())
 	s.gate.diagnosed = true // this test is about another gate
 	s.Mode = "bypass"
-	run := func(name, in string) (string, bool) {
+	return &procTestEnv{t: t, s: s, run: func(name, in string) (string, bool) {
 		return s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "x", Name: name, Input: json.RawMessage(in)})
+	}}
+}
+
+func TestBackgroundProcesses(t *testing.T) {
+	e := newProcTestEnv(t)
+	e.startAndFinish()
+	e.killTree()
+	if out, _ := e.run("BashOutput", `{"id":"p9"}`); !strings.Contains(out, "p1") {
+		t.Fatalf("unknown id should list the session's processes: %s", out)
 	}
+}
+
+func (e *procTestEnv) startAndFinish() {
+	t, s, run := e.t, e.s, e.run
 	// returns at once with the id and the first output, while the command goes on
 	start := time.Now()
 	out, isErr := run("Bash", `{"command":"echo pronto; sleep 3; echo fim","run_in_background":true,"description":"servidor de teste"}`)
@@ -51,27 +70,21 @@ func TestBackgroundProcesses(t *testing.T) {
 	if out, _ = run("BashOutput", `{"id":"p1"}`); !strings.Contains(out, "no new output") {
 		t.Fatal(out)
 	}
+}
+
+func (e *procTestEnv) killTree() {
+	t, s, run := e.t, e.s, e.run
 	// stopping ends the whole tree: the shell and the program it started
-	out, _ = run("Bash", `{"command":"sleep 60 & echo filho $!; wait","run_in_background":true}`)
+	out, _ := run("Bash", `{"command":"sleep 60 & echo filho $!; wait","run_in_background":true}`)
 	m := regexp.MustCompile(`filho (\d+)`).FindStringSubmatch(out)
 	if m == nil {
 		t.Fatalf("child pid: %s", out)
 	}
-	sleeps := func() string {
-		if runtime.GOOS != "windows" {
-			return ""
-		}
-		ps, err := exec.Command("powershell", "-NoProfile", "-Command", `@(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'sleep.exe' -and $_.CommandLine -like '*sleep*60*' }).Count`).CombinedOutput()
-		if err != nil {
-			t.Fatalf("process query: %v %s", err, ps)
-		}
-		return strings.TrimSpace(string(ps))
-	}
-	if runtime.GOOS == "windows" && sleeps() != "1" {
+	if runtime.GOOS == "windows" && e.sleeps() != "1" {
 		txt, _ := s.proc("p2").out.since(0)
-		t.Fatalf("the child should be running before the stop: %q (p2 %s: %q)", sleeps(), s.proc("p2").State, txt)
+		t.Fatalf("the child should be running before the stop: %q (p2 %s: %q)", e.sleeps(), s.proc("p2").State, txt)
 	}
-	if out, isErr = run("KillShell", `{"id":"p2"}`); isErr {
+	if out, isErr := run("KillShell", `{"id":"p2"}`); isErr {
 		t.Fatal(out)
 	}
 	time.Sleep(800 * time.Millisecond)
@@ -80,15 +93,23 @@ func TestBackgroundProcesses(t *testing.T) {
 	}
 	// no process of the tree is left: the program the shell started ended with it
 	if runtime.GOOS == "windows" {
-		if n := sleeps(); n != "" && n != "0" {
+		if n := e.sleeps(); n != "" && n != "0" {
 			t.Fatalf("%s process(es) of the stopped tree still running", n)
 		}
 	} else if child, _ := strconv.Atoi(m[1]); processAlive(child) {
 		t.Fatal("child still running")
 	}
-	if out, _ = run("BashOutput", `{"id":"p9"}`); !strings.Contains(out, "p1") {
-		t.Fatalf("unknown id should list the session's processes: %s", out)
+}
+
+func (e *procTestEnv) sleeps() string {
+	if runtime.GOOS != "windows" {
+		return ""
 	}
+	ps, err := exec.Command("powershell", "-NoProfile", "-Command", `@(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'sleep.exe' -and $_.CommandLine -like '*sleep*60*' }).Count`).CombinedOutput()
+	if err != nil {
+		e.t.Fatalf("process query: %v %s", err, ps)
+	}
+	return strings.TrimSpace(string(ps))
 }
 
 func TestParallelSubagentsAreEachRecorded(t *testing.T) {

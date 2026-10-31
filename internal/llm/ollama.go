@@ -14,6 +14,29 @@ import (
 func (p *ollamaProvider) Name() string { return "ollama" }
 
 func (p *ollamaProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
+	resp, err := postJSON(ctx, p.client, p.base+"/api/chat", nil, ollamaBody(req))
+	if err != nil {
+		return ModelResult{}, fmt.Errorf("Ollama não respondeu em %s: %w", p.base, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return ModelResult{}, httpError("Ollama", resp)
+	}
+	o := &ollamaStream{}
+	sc := sseScanner(resp.Body)
+	for sc.Scan() {
+		if err := o.event(sc.Bytes(), emit); err != nil {
+			return o.res, err
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return o.res, err
+	}
+	o.content()
+	return o.res, nil
+}
+
+func ollamaBody(req ModelRequest) map[string]any {
 	body := map[string]any{"model": req.Model, "stream": true, "messages": ollamaMessages(req.System, req.Messages)}
 	if req.MaxTokens > 0 {
 		body["options"] = map[string]any{"num_predict": req.MaxTokens}
@@ -31,72 +54,68 @@ func (p *ollamaProvider) Stream(ctx context.Context, req ModelRequest, emit func
 		}
 		body["tools"] = ts
 	}
-	resp, err := postJSON(ctx, p.client, p.base+"/api/chat", nil, body)
-	if err != nil {
-		return ModelResult{}, fmt.Errorf("Ollama não respondeu em %s: %w", p.base, err)
+	return body
+}
+
+type ollamaStream struct {
+	res   ModelResult
+	calls []Block
+	text  strings.Builder
+}
+
+func (o *ollamaStream) event(line []byte, emit func(StreamEvent)) error {
+	var ev struct {
+		Message struct {
+			Content   string `json:"content"`
+			ToolCalls []struct {
+				Function struct {
+					Name      string          `json:"name"`
+					Arguments json.RawMessage `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
+		} `json:"message"`
+		Done            bool   `json:"done"`
+		PromptEvalCount int    `json:"prompt_eval_count"`
+		EvalCount       int    `json:"eval_count"`
+		Error           string `json:"error"`
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return ModelResult{}, httpError("Ollama", resp)
+	if json.Unmarshal(line, &ev) != nil {
+		return nil
 	}
-	var text strings.Builder
-	var calls []Block
-	var res ModelResult
-	sc := sseScanner(resp.Body)
-	for sc.Scan() {
-		var ev struct {
-			Message struct {
-				Content   string `json:"content"`
-				ToolCalls []struct {
-					Function struct {
-						Name      string          `json:"name"`
-						Arguments json.RawMessage `json:"arguments"`
-					} `json:"function"`
-				} `json:"tool_calls"`
-			} `json:"message"`
-			Done            bool   `json:"done"`
-			PromptEvalCount int    `json:"prompt_eval_count"`
-			EvalCount       int    `json:"eval_count"`
-			Error           string `json:"error"`
-		}
-		if json.Unmarshal(sc.Bytes(), &ev) != nil {
-			continue
-		}
-		if ev.Error != "" {
-			return res, errors.New(ev.Error)
-		}
-		if ev.Message.Content != "" {
-			text.WriteString(ev.Message.Content)
-			emit(StreamEvent{Kind: "text", Text: ev.Message.Content})
-		}
-		for _, tc := range ev.Message.ToolCalls {
-			id := fmt.Sprintf("o%d", len(calls)+1)
-			args := tc.Function.Arguments
-			if len(args) == 0 {
-				args = json.RawMessage("{}")
-			}
-			calls = append(calls, Block{Type: "tool_use", ID: id, Name: tc.Function.Name, Input: args})
-			emit(StreamEvent{Kind: "tool_start", ID: id, Name: tc.Function.Name})
-			emit(StreamEvent{Kind: "tool_input", ID: id, Text: string(args)})
-			emit(StreamEvent{Kind: "tool_end", ID: id, Name: tc.Function.Name})
-		}
-		if ev.Done {
-			res.Usage = Usage{Input: ev.PromptEvalCount, Output: ev.EvalCount}
-		}
+	if ev.Error != "" {
+		return errors.New(ev.Error)
 	}
-	if err := sc.Err(); err != nil {
-		return res, err
+	if ev.Message.Content != "" {
+		o.text.WriteString(ev.Message.Content)
+		emit(StreamEvent{Kind: "text", Text: ev.Message.Content})
 	}
-	if text.Len() > 0 {
-		res.Content = append(res.Content, Block{Type: "text", Text: text.String()})
+	for _, tc := range ev.Message.ToolCalls {
+		id := fmt.Sprintf("o%d", len(o.calls)+1)
+		args := tc.Function.Arguments
+		if len(args) == 0 {
+			args = json.RawMessage("{}")
+		}
+		o.calls = append(o.calls, Block{Type: "tool_use", ID: id, Name: tc.Function.Name, Input: args})
+		emit(StreamEvent{Kind: "tool_start", ID: id, Name: tc.Function.Name})
+		emit(StreamEvent{Kind: "tool_input", ID: id, Text: string(args)})
+		emit(StreamEvent{Kind: "tool_end", ID: id, Name: tc.Function.Name})
 	}
-	res.Content = append(res.Content, calls...)
-	if len(calls) > 0 {
-		res.StopReason = "tool_use"
+	if ev.Done {
+		o.res.Usage = Usage{Input: ev.PromptEvalCount, Output: ev.EvalCount}
+	}
+	return nil
+}
+
+func (o *ollamaStream) content() {
+	if o.text.Len() > 0 {
+		o.res.Content = append(o.res.Content, Block{Type: "text", Text: o.text.String()})
+	}
+	o.res.Content = append(o.res.Content, o.calls...)
+	if len(o.calls) > 0 {
+		o.res.StopReason = "tool_use"
 	} else {
-		res.StopReason = "end_turn"
+		o.res.StopReason = "end_turn"
 	}
-	return res, nil
 }
 
 func ollamaMessages(system string, msgs []Message) []map[string]any {

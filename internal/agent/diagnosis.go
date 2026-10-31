@@ -61,32 +61,12 @@ func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	if err := json.Unmarshal(input, &d); err != nil {
 		return tc.Say(M("diag.invalid", "error", err.Error())), true
 	}
-	s := tc.S
 	var cont struct {
 		Continues bool `json:"continues"`
 	}
 	_ = json.Unmarshal(input, &cont)
 	if cont.Continues { // the previous turn's diagnosis carries over, visibly, when nothing contradicted it
-		s.Mu.Lock()
-		n, turn, redo := len(s.Diagnoses), s.Turn, s.gate.redoWhy
-		var last Diagnosis
-		if n > 0 {
-			last = s.Diagnoses[n-1]
-		}
-		ok := n > 0 && last.Turn == turn-1 && redo.Empty()
-		if ok {
-			last.Turn, last.At, last.Continuing, last.Redo = turn, time.Now().UnixMilli(), true, Msg{}
-			s.Diagnoses = append(s.Diagnoses, last)
-			s.gate.diagnosed = true
-		}
-		list := append([]Diagnosis{}, s.Diagnoses...)
-		s.Mu.Unlock()
-		if !ok {
-			return tc.Say(M("diag.continue_refused")), true
-		}
-		s.emit("diagnoses", list)
-		s.save()
-		return tc.Say(M("diag.continued")), false
+		return continueDiagnosis(tc)
 	}
 	for _, f := range []struct{ name, v string }{{"problem", d.Problem}, {"root_cause", d.RootCause}, {"approach", d.Approach}, {"why_cause", d.WhyCause}} {
 		if len(strings.Fields(f.v)) < 4 {
@@ -96,9 +76,47 @@ func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	if len(d.Evidence) < 2 {
 		return tc.Say(M("diag.need_two")), true
 	}
+	knowledge := knowledgeInventory(tc.S.Root)
+	problems, fromKnowledge := evidenceProblems(tc.S, d, knowledge)
+	if len(problems) == 0 && len(knowledge) > 0 && !fromKnowledge {
+		problems = append(problems, M("diag.no_knowledge", "docs", strings.Join(firstN(knowledge, 8), ", ")))
+	}
+	if len(problems) == 0 {
+		problems = staleDiagnosis(tc.S, d, true)
+	}
+	if len(problems) > 0 {
+		return tc.Say(M("diag.refused", "items", problems)), true
+	}
+	return registerDiagnosis(tc, d), false
+}
+
+func continueDiagnosis(tc *ToolContext) (string, bool) {
+	s := tc.S
+	s.Mu.Lock()
+	n, turn, redo := len(s.Diagnoses), s.Turn, s.gate.redoWhy
+	var last Diagnosis
+	if n > 0 {
+		last = s.Diagnoses[n-1]
+	}
+	ok := n > 0 && last.Turn == turn-1 && redo.Empty()
+	if ok {
+		last.Turn, last.At, last.Continuing, last.Redo = turn, time.Now().UnixMilli(), true, Msg{}
+		s.Diagnoses = append(s.Diagnoses, last)
+		s.gate.diagnosed = true
+	}
+	list := append([]Diagnosis{}, s.Diagnoses...)
+	s.Mu.Unlock()
+	if !ok {
+		return tc.Say(M("diag.continue_refused")), true
+	}
+	s.emit("diagnoses", list)
+	s.save()
+	return tc.Say(M("diag.continued")), false
+}
+
+func evidenceProblems(s *Session, d Diagnosis, knowledge []string) ([]Msg, bool) {
 	var problems []Msg
 	fromKnowledge := false
-	knowledge := knowledgeInventory(s.Root)
 	for i, e := range d.Evidence {
 		n := i + 1
 		rel := strings.TrimPrefix(filepath.ToSlash(e.File), "./")
@@ -124,37 +142,44 @@ func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 			fromKnowledge = true
 		}
 	}
-	if len(problems) == 0 && len(knowledge) > 0 && !fromKnowledge {
-		problems = append(problems, M("diag.no_knowledge", "docs", strings.Join(firstN(knowledge, 8), ", ")))
-	}
+	return problems, fromKnowledge
+}
+
+// staleDiagnosis refuses a redone diagnosis that repeats the old evidence or cause.
+func staleDiagnosis(s *Session, d Diagnosis, clean bool) []Msg {
 	s.Mu.Lock()
 	redo := s.gate.redoWhy
 	prev := append([]Diagnosis{}, s.Diagnoses...)
 	s.Mu.Unlock()
-	if len(problems) == 0 && !redo.Empty() {
-		cited := map[string]bool{}
-		for _, p := range prev {
-			for _, e := range p.Evidence {
-				cited[normSpace(e.File)+"|"+normSpace(e.Quote)] = true
-			}
-		}
-		fresh := false
-		for _, e := range d.Evidence {
-			if !cited[normSpace(e.File)+"|"+normSpace(e.Quote)] {
-				fresh = true
-			}
-		}
-		if !fresh {
-			problems = append(problems, M("diag.not_new", "why", redo))
-		}
-		if len(prev) > 0 && normSpace(prev[len(prev)-1].RootCause) == normSpace(d.RootCause) {
-			problems = append(problems, M("diag.same_cause", "why", redo))
+	if !clean || redo.Empty() {
+		return nil
+	}
+	cited := map[string]bool{}
+	for _, p := range prev {
+		for _, e := range p.Evidence {
+			cited[normSpace(e.File)+"|"+normSpace(e.Quote)] = true
 		}
 	}
-	if len(problems) > 0 {
-		return tc.Say(M("diag.refused", "items", problems)), true
+	fresh := false
+	for _, e := range d.Evidence {
+		if !cited[normSpace(e.File)+"|"+normSpace(e.Quote)] {
+			fresh = true
+		}
 	}
+	var problems []Msg
+	if !fresh {
+		problems = append(problems, M("diag.not_new", "why", redo))
+	}
+	if len(prev) > 0 && normSpace(prev[len(prev)-1].RootCause) == normSpace(d.RootCause) {
+		problems = append(problems, M("diag.same_cause", "why", redo))
+	}
+	return problems
+}
+
+func registerDiagnosis(tc *ToolContext, d Diagnosis) string {
+	s := tc.S
 	s.Mu.Lock()
+	redo := s.gate.redoWhy
 	d.Turn, d.At, d.Redo = s.Turn, time.Now().UnixMilli(), redo
 	if !redo.Empty() {
 		d.RedoText = redo.Render(s.uiLang())
@@ -165,7 +190,7 @@ func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	s.Mu.Unlock()
 	s.emit("diagnoses", list)
 	s.save()
-	return tc.Say(M("diag.registered", "count", len(d.Evidence))), false
+	return tc.Say(M("diag.registered", "count", len(d.Evidence)))
 }
 
 func firstN(xs []string, n int) []string {

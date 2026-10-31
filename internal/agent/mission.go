@@ -186,6 +186,21 @@ func (s *Session) missionStep() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	step := MissionStep{Turn: turn, At: time.Now().UnixMilli(), Cost: stepCost}
+	s.verifyMissionStep(ctx, &step)
+	s.Mu.Lock()
+	m.Steps = append(m.Steps, step)
+	spent, turns := cost-m.StartCost, turn-m.StartTurn
+	s.Mu.Unlock()
+	s.emit("mission", s.missionSnapshot())
+	if s.endMissionIfDone(m, step, spent, turns) {
+		return
+	}
+	if err := s.sendMission(missionNextMsg(m, step, turns, spent), missionNote{Goal: m.Goal, Turn: turns + 1, MaxTurns: m.MaxTurns, Spent: spent, Budget: m.BudgetUSD, Verdict: step.Verdict}); err != nil {
+		s.endMissionMsg("parada", M("mission.end_cannot_continue", "error", errArg(err)))
+	}
+}
+
+func (s *Session) verifyMissionStep(ctx context.Context, step *MissionStep) {
 	v, err := RunOracle(ctx, s.Root, s.workRoot(), s.ID)
 	step.Verdict, step.Run = v.Verdict, v.Run
 	if err != nil {
@@ -203,24 +218,26 @@ func (s *Session) missionStep() {
 		}
 	}
 	step.Auditor = s.auditTurn(ctx)
-	s.Mu.Lock()
-	m.Steps = append(m.Steps, step)
-	spent, turns := cost-m.StartCost, turn-m.StartTurn
-	s.Mu.Unlock()
-	s.emit("mission", s.missionSnapshot())
+}
 
+// endMissionIfDone closes the mission on approval or budget/turn exhaustion.
+func (s *Session) endMissionIfDone(m *Mission, step MissionStep, spent float64, turns int) bool {
 	usd := func(v float64) string { return fmt.Sprintf("%.2f", v) }
 	switch {
 	case step.Verdict == "aprovado":
 		s.endMissionMsg("aprovada", M("mission.end_passed"))
-		return
 	case spent >= m.BudgetUSD:
 		s.endMissionMsg("orcamento", M("mission.end_budget", "spent", usd(spent), "budget", usd(m.BudgetUSD)))
-		return
 	case turns >= m.MaxTurns:
 		s.endMissionMsg("orcamento", M("mission.end_turns", "max", m.MaxTurns))
-		return
+	default:
+		return false
 	}
+	return true
+}
+
+func missionNextMsg(m *Mission, step MissionStep, turns int, spent float64) Msg {
+	usd := func(v float64) string { return fmt.Sprintf("%.2f", v) }
 	var body Msg
 	switch step.Verdict {
 	case "sem-criterios":
@@ -234,11 +251,7 @@ func (s *Session) missionStep() {
 	if step.Auditor != "" {
 		auditor = M("mission.auditor", "note", step.Auditor)
 	}
-	next := M("mission.next", "turn", turns+1, "max", m.MaxTurns, "spent", usd(spent), "budget", usd(m.BudgetUSD), "body", body, "auditor", auditor)
-	note := missionNote{Goal: m.Goal, Turn: turns + 1, MaxTurns: m.MaxTurns, Spent: spent, Budget: m.BudgetUSD, Verdict: step.Verdict}
-	if err := s.sendMission(next, note); err != nil {
-		s.endMissionMsg("parada", M("mission.end_cannot_continue", "error", errArg(err)))
-	}
+	return M("mission.next", "turn", turns+1, "max", m.MaxTurns, "spent", usd(spent), "budget", usd(m.BudgetUSD), "body", body, "auditor", auditor)
 }
 
 // auditTurn asks the fast model for one or two sentences on the last turn's course: loops, ignored
@@ -319,4 +332,3 @@ func (impasseTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	s.endMission("impasse", im.Reason) // the agent's own words, shown as it wrote them
 	return tc.Say(M("impasse.recorded")), false
 }
-

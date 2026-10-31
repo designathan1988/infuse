@@ -22,13 +22,15 @@ func (bashTool) Spec() ToolSpec {
 		InputSchema: schema(`{"type":"object","properties":{"command":{"type":"string","description":"Command to run"},"timeout":{"type":"integer","description":"Timeout in seconds (default 120, maximum 600)"},"description":{"type":"string","description":"Short description of what the command does"},"run_in_background":{"type":"boolean","description":"runs without waiting for it to finish"}},"required":["command"]}`)}
 }
 
+type bashInput struct {
+	Command     string `json:"command"`
+	Timeout     int    `json:"timeout"`
+	Description string `json:"description"`
+	Background  bool   `json:"run_in_background"`
+}
+
 func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
-	var in struct {
-		Command     string `json:"command"`
-		Timeout     int    `json:"timeout"`
-		Description string `json:"description"`
-		Background  bool   `json:"run_in_background"`
-	}
+	var in bashInput
 	_ = json.Unmarshal(input, &in)
 	if strings.TrimSpace(in.Command) == "" {
 		return tc.Say(M("bash.empty")), true
@@ -39,11 +41,22 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if in.Timeout > 600 {
 		in.Timeout = 600
 	}
+	command, tr, notes, started, errMsg, ok := prepareBash(tc, &in)
+	if !ok {
+		return errMsg, true
+	}
+	if in.Background {
+		return runBackground(ctx, tc, &in, command)
+	}
+	return runForeground(ctx, tc, &in, command, tr, notes, started)
+}
+
+// prepareBash applies the guard, checkpoints heredoc targets, transforms and rules the command.
+func prepareBash(tc *ToolContext, in *bashInput) (string, TransformResult, []Msg, int64, string, bool) {
 	started := time.Now().UnixMilli()
-	// The guard runs first: protected targets are refused or neutralized before the transform can write.
 	guarded, guardNotes, gerr := newGuard(tc.Root, tc.S.settings.ProtectedPaths).GuardCommandMsgs(in.Command, tc.Cwd)
 	if gerr != nil {
-		return tc.SayErr(gerr), true
+		return "", TransformResult{}, nil, started, tc.SayErr(gerr), false
 	}
 	in.Command = guarded
 	// Heredoc file writes happen inside TransformCommand: checkpoint their targets first.
@@ -66,34 +79,39 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 			Journal(tc.Root, JournalEntry{Kind: "transform", Path: a.Path, Bytes: a.Bytes, Detail: a.Detail})
 		}
 	}
-	if in.Background {
-		p, err := tc.S.startBackground(command, in.Description, tc.Cwd)
-		if err != nil {
-			return tc.Say(M("bash.not_started", "error", errArg(err))), true
-		}
-		// the first moments of output: a command that fails at once says so now
-		deadline := time.Now().Add(2 * time.Second)
-		for time.Now().Before(deadline) && ctx.Err() == nil {
-			if tc.S.proc(p.ID).State != "running" {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		first, off := p.out.since(0)
-		tc.S.Mu.Lock()
-		p.read = off
-		state := p.State
-		tc.S.Mu.Unlock()
-		m := M("bash.bg_running", "id", p.ID, "pid", p.PID)
-		if state != "running" {
-			m = M("bash.bg_finished", "id", p.ID, "pid", p.PID)
-		}
-		msg := tc.Say(m)
-		if strings.TrimSpace(first) != "" {
-			msg += "\n" + tc.Say(M("bash.bg_first")) + "\n" + tc.clip(first)
-		}
-		return msg, state != "running" && p.Exit != nil && *p.Exit != 0
+	return command, tr, append(guardNotes, ruleLines...), started, "", true
+}
+
+func runBackground(ctx context.Context, tc *ToolContext, in *bashInput, command string) (string, bool) {
+	p, err := tc.S.startBackground(command, in.Description, tc.Cwd)
+	if err != nil {
+		return tc.Say(M("bash.not_started", "error", errArg(err))), true
 	}
+	// the first moments of output: a command that fails at once says so now
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && ctx.Err() == nil {
+		if tc.S.proc(p.ID).State != "running" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	first, off := p.out.since(0)
+	tc.S.Mu.Lock()
+	p.read = off
+	state := p.State
+	tc.S.Mu.Unlock()
+	m := M("bash.bg_running", "id", p.ID, "pid", p.PID)
+	if state != "running" {
+		m = M("bash.bg_finished", "id", p.ID, "pid", p.PID)
+	}
+	msg := tc.Say(m)
+	if strings.TrimSpace(first) != "" {
+		msg += "\n" + tc.Say(M("bash.bg_first")) + "\n" + tc.clip(first)
+	}
+	return msg, state != "running" && p.Exit != nil && *p.Exit != 0
+}
+
+func runForeground(ctx context.Context, tc *ToolContext, in *bashInput, command string, tr TransformResult, notes []Msg, started int64) (string, bool) {
 	// Track the working directory across commands, as a human shell would.
 	wrapped := command + "\nprintf '\\n__INFUSE_CWD__%s' \"$PWD\""
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(in.Timeout)*time.Second)
@@ -123,7 +141,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		isErr = true
 	}
 	var trailer []string
-	for _, m := range trailerMsgs(tc.Root, tc.Cwd, in.Command, tr.Actions, started, tc.Rules, append(guardNotes, ruleLines...)) {
+	for _, m := range trailerMsgs(tc.Root, tc.Cwd, in.Command, tr.Actions, started, tc.Rules, notes) {
 		trailer = append(trailer, tc.Say(m)) // each note recorded: the user reads it in their language
 	}
 	if len(trailer) > 0 {

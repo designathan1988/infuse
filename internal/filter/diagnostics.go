@@ -23,74 +23,109 @@ func FileDiagnostics(root, abs string) string {
 	ext := strings.ToLower(filepath.Ext(abs))
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
-	run := func(dir, name string, args ...string) (string, bool) {
-		exe, err := exec.LookPath(name)
-		if err != nil {
-			return "", true // checker not installed: nothing to say
-		}
-		cmd := exec.CommandContext(ctx, exe, args...)
-		process.NoConsoleWindow(cmd)
-		cmd.Dir = dir
-		var out bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &out, &out
-		err = cmd.Run()
-		return strings.TrimSpace(out.String()), err == nil
-	}
 	rel := filepath.ToSlash(core.RelTo(root, abs))
 	switch ext {
 	case ".json":
-		b, err := os.ReadFile(abs)
-		if err == nil && !json.Valid(b) {
-			var v any
-			err := json.Unmarshal(b, &v)
-			return rel + ": JSON inválido: " + err.Error()
-		}
+		return jsonDiagnostics(abs, rel)
 	case ".js", ".mjs", ".cjs":
-		if out, ok := run(filepath.Dir(abs), "node", "--check", abs); !ok && out != "" {
-			return core.Truncate(out, 1500)
-		}
+		return nodeDiagnostics(ctx, abs)
 	case ".py":
-		if out, ok := run(filepath.Dir(abs), "python", "-m", "py_compile", abs); !ok && out != "" {
-			return core.Truncate(out, 1500)
-		}
+		return pythonDiagnostics(ctx, abs)
 	case ".go":
-		mod := findUp(filepath.Dir(abs), "go.mod")
-		if mod == "" {
-			return ""
-		}
-		if out, ok := run(filepath.Dir(abs), "gofmt", "-e", "-l", abs); !ok && out != "" {
-			return core.Truncate(out, 1500)
-		}
-		if out, ok := run(filepath.Dir(abs), "go", "vet", "."); !ok && out != "" {
-			return core.Truncate(out, 2000)
-		}
+		return goDiagnostics(ctx, abs)
 	case ".ts", ".tsx", ".mts", ".cts":
-		dir := findUp(filepath.Dir(abs), "tsconfig.json")
-		if dir == "" {
-			return ""
-		}
-		tsc := filepath.Join(dir, "node_modules", ".bin", "tsc")
-		if _, err := os.Stat(tsc); err != nil {
-			if _, err := os.Stat(tsc + ".cmd"); err != nil {
-				return "" // TypeScript not installed in the project
-			}
-			tsc += ".cmd"
-		}
-		out, ok := run(dir, tsc, "--noEmit", "--pretty", "false", "-p", ".")
-		if ok || out == "" {
-			return ""
-		}
-		// only the lines about this file: the rest of the project is not this edit's concern
-		var mine []string
-		base := filepath.ToSlash(core.RelTo(dir, abs))
-		for _, l := range strings.Split(out, "\n") {
-			if strings.HasPrefix(filepath.ToSlash(l), base+"(") {
-				mine = append(mine, l)
-			}
-		}
-		return core.Truncate(strings.Join(mine, "\n"), 2000)
+		return typescriptDiagnostics(ctx, abs)
 	}
 	return ""
+}
+
+// runChecker runs a project checker, reporting its trimmed output and whether it succeeded.
+func runChecker(ctx context.Context, dir, name string, args ...string) (string, bool) {
+	exe, err := exec.LookPath(name)
+	if err != nil {
+		return "", true // checker not installed: nothing to say
+	}
+	cmd := exec.CommandContext(ctx, exe, args...)
+	process.NoConsoleWindow(cmd)
+	cmd.Dir = dir
+	var out bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &out
+	err = cmd.Run()
+	return strings.TrimSpace(out.String()), err == nil
+}
+
+// jsonDiagnostics checks that the file is valid JSON.
+func jsonDiagnostics(abs, rel string) string {
+	b, err := os.ReadFile(abs)
+	if err == nil && !json.Valid(b) {
+		var v any
+		err := json.Unmarshal(b, &v)
+		return rel + ": JSON inválido: " + err.Error()
+	}
+	return ""
+}
+
+// nodeDiagnostics checks JavaScript with node --check.
+func nodeDiagnostics(ctx context.Context, abs string) string {
+	if out, ok := runChecker(ctx, filepath.Dir(abs), "node", "--check", abs); !ok && out != "" {
+		return core.Truncate(out, 1500)
+	}
+	return ""
+}
+
+// pythonDiagnostics checks Python with py_compile.
+func pythonDiagnostics(ctx context.Context, abs string) string {
+	if out, ok := runChecker(ctx, filepath.Dir(abs), "python", "-m", "py_compile", abs); !ok && out != "" {
+		return core.Truncate(out, 1500)
+	}
+	return ""
+}
+
+// goDiagnostics checks Go with gofmt and go vet, inside a module.
+func goDiagnostics(ctx context.Context, abs string) string {
+	if findUp(filepath.Dir(abs), "go.mod") == "" {
+		return ""
+	}
+	if out, ok := runChecker(ctx, filepath.Dir(abs), "gofmt", "-e", "-l", abs); !ok && out != "" {
+		return core.Truncate(out, 1500)
+	}
+	if out, ok := runChecker(ctx, filepath.Dir(abs), "go", "vet", "."); !ok && out != "" {
+		return core.Truncate(out, 2000)
+	}
+	return ""
+}
+
+// typescriptDiagnostics checks TypeScript with the project's own tsc.
+func typescriptDiagnostics(ctx context.Context, abs string) string {
+	dir := findUp(filepath.Dir(abs), "tsconfig.json")
+	if dir == "" {
+		return ""
+	}
+	tsc := filepath.Join(dir, "node_modules", ".bin", "tsc")
+	if _, err := os.Stat(tsc); err != nil {
+		if _, err := os.Stat(tsc + ".cmd"); err != nil {
+			return "" // TypeScript not installed in the project
+		}
+		tsc += ".cmd"
+	}
+	out, ok := runChecker(ctx, dir, tsc, "--noEmit", "--pretty", "false", "-p", ".")
+	if ok || out == "" {
+		return ""
+	}
+	return typeScriptErrorsFor(dir, abs, out)
+}
+
+// typeScriptErrorsFor keeps only the checker's lines about this file: the rest of the project is not
+// this edit's concern.
+func typeScriptErrorsFor(dir, abs, out string) string {
+	var mine []string
+	base := filepath.ToSlash(core.RelTo(dir, abs))
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(filepath.ToSlash(l), base+"(") {
+			mine = append(mine, l)
+		}
+	}
+	return core.Truncate(strings.Join(mine, "\n"), 2000)
 }
 
 // findUp returns the nearest directory from dir upward that contains name.

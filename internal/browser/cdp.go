@@ -156,42 +156,30 @@ func (b *Browser) newPage(url string) (*Browser, error) {
 	return p, nil
 }
 
+// cdpMessage is one DevTools protocol message, a response or an event.
+type cdpMessage struct {
+	ID     int64           `json:"id"`
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params"`
+	Result json.RawMessage `json:"result"`
+	Error  *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
 func (b *Browser) readLoop() {
 	for {
 		raw, err := b.ws.readMessage()
 		if err != nil {
-			b.mu.Lock()
-			b.closed = true
-			for id, ch := range b.pending {
-				close(ch)
-				delete(b.pending, id)
-			}
-			b.mu.Unlock()
+			b.failPending()
 			return
 		}
-		var m struct {
-			ID     int64           `json:"id"`
-			Method string          `json:"method"`
-			Params json.RawMessage `json:"params"`
-			Result json.RawMessage `json:"result"`
-			Error  *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		}
+		var m cdpMessage
 		if json.Unmarshal(raw, &m) != nil {
 			continue
 		}
 		if m.ID != 0 {
-			b.mu.Lock()
-			ch := b.pending[m.ID]
-			delete(b.pending, m.ID)
-			if m.Error != nil {
-				b.errs[m.ID] = m.Error.Message
-			}
-			b.mu.Unlock()
-			if ch != nil {
-				ch <- m.Result
-			}
+			b.deliverResponse(m)
 			continue
 		}
 		b.mu.Lock()
@@ -200,43 +188,73 @@ func (b *Browser) readLoop() {
 		if hook != nil {
 			hook(m.Method, m.Params)
 		}
-		switch m.Method {
-		case "Runtime.consoleAPICalled":
-			var p struct {
-				Type string `json:"type"`
-				Args []struct {
-					Value       any    `json:"value"`
-					Description string `json:"description"`
-				} `json:"args"`
-			}
-			_ = json.Unmarshal(m.Params, &p)
-			var parts []string
-			for _, a := range p.Args {
-				if a.Value != nil {
-					parts = append(parts, fmt.Sprint(a.Value))
-				} else {
-					parts = append(parts, a.Description)
-				}
-			}
-			b.addConsole(p.Type + ": " + strings.Join(parts, " "))
-		case "Runtime.exceptionThrown":
-			var p struct {
-				Details struct {
-					Text      string `json:"text"`
-					Exception struct {
-						Description string `json:"description"`
-					} `json:"exception"`
-				} `json:"exceptionDetails"`
-			}
-			_ = json.Unmarshal(m.Params, &p)
-			b.addConsole("exceção: " + core.FirstNonEmpty(p.Details.Exception.Description, p.Details.Text))
-		case "Log.entryAdded":
-			var p struct {
-				Entry struct{ Level, Text, URL string } `json:"entry"`
-			}
-			_ = json.Unmarshal(m.Params, &p)
-			b.addConsole(p.Entry.Level + ": " + p.Entry.Text + " " + p.Entry.URL)
+		b.logConsoleEvent(m)
+	}
+}
+
+// failPending marks the browser closed and wakes everyone waiting on a response.
+func (b *Browser) failPending() {
+	b.mu.Lock()
+	b.closed = true
+	for id, ch := range b.pending {
+		close(ch)
+		delete(b.pending, id)
+	}
+	b.mu.Unlock()
+}
+
+// deliverResponse hands a command's result (or error) to its caller.
+func (b *Browser) deliverResponse(m cdpMessage) {
+	b.mu.Lock()
+	ch := b.pending[m.ID]
+	delete(b.pending, m.ID)
+	if m.Error != nil {
+		b.errs[m.ID] = m.Error.Message
+	}
+	b.mu.Unlock()
+	if ch != nil {
+		ch <- m.Result
+	}
+}
+
+// logConsoleEvent keeps console messages, exceptions and log entries for the console tool.
+func (b *Browser) logConsoleEvent(m cdpMessage) {
+	switch m.Method {
+	case "Runtime.consoleAPICalled":
+		var p struct {
+			Type string `json:"type"`
+			Args []struct {
+				Value       any    `json:"value"`
+				Description string `json:"description"`
+			} `json:"args"`
 		}
+		_ = json.Unmarshal(m.Params, &p)
+		var parts []string
+		for _, a := range p.Args {
+			if a.Value != nil {
+				parts = append(parts, fmt.Sprint(a.Value))
+			} else {
+				parts = append(parts, a.Description)
+			}
+		}
+		b.addConsole(p.Type + ": " + strings.Join(parts, " "))
+	case "Runtime.exceptionThrown":
+		var p struct {
+			Details struct {
+				Text      string `json:"text"`
+				Exception struct {
+					Description string `json:"description"`
+				} `json:"exception"`
+			} `json:"exceptionDetails"`
+		}
+		_ = json.Unmarshal(m.Params, &p)
+		b.addConsole("exceção: " + core.FirstNonEmpty(p.Details.Exception.Description, p.Details.Text))
+	case "Log.entryAdded":
+		var p struct {
+			Entry struct{ Level, Text, URL string } `json:"entry"`
+		}
+		_ = json.Unmarshal(m.Params, &p)
+		b.addConsole(p.Entry.Level + ": " + p.Entry.Text + " " + p.Entry.URL)
 	}
 }
 

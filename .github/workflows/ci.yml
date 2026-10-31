@@ -27,5 +27,7 @@ jobs:
       - name: frontend syntax
         run: |
           for f in $(find ui -name '*.js' -not -path '*/vendor/*'); do node --check "$f"; done
+      - name: frontend architecture
+        run: node tools/check-frontend.mjs
       - name: locale data
         run: node -e "JSON.parse(require('fs').readFileSync('internal/core/catalog.json','utf8'))"

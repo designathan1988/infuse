@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -16,6 +17,22 @@ import (
 func (p *openAIProvider) Name() string { return "openai" }
 
 func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
+	headers := map[string]string{}
+	if p.key != "" {
+		headers["authorization"] = "Bearer " + p.key
+	}
+	resp, err := postJSON(ctx, p.client, p.base+"/v1/chat/completions", headers, p.body(req))
+	if err != nil {
+		return ModelResult{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return ModelResult{}, httpError("OpenAI", resp)
+	}
+	return readOpenAIStream(resp.Body, emit)
+}
+
+func (p *openAIProvider) body(req ModelRequest) map[string]any {
 	ds := strings.Contains(p.base, "deepseek.com")
 	body := map[string]any{"model": req.Model, "stream": true, "stream_options": map[string]any{"include_usage": true}, "messages": openAIMessages(req.System, req.Messages, ds)}
 	if ds {
@@ -34,26 +51,24 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 	if req.ForceTool != "" {
 		body["tool_choice"] = map[string]any{"type": "function", "function": map[string]any{"name": req.ForceTool}}
 	}
-	headers := map[string]string{}
-	if p.key != "" {
-		headers["authorization"] = "Bearer " + p.key
-	}
-	resp, err := postJSON(ctx, p.client, p.base+"/v1/chat/completions", headers, body)
-	if err != nil {
-		return ModelResult{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return ModelResult{}, httpError("OpenAI", resp)
-	}
-	type call struct {
-		id, name string
-		args     strings.Builder
-	}
-	calls := map[int]*call{}
-	var text, reasoning strings.Builder
-	var res ModelResult
-	sc := sseScanner(resp.Body)
+	return body
+}
+
+type openAICall struct {
+	id, name string
+	args     strings.Builder
+}
+
+type openAIStream struct {
+	res       ModelResult
+	calls     map[int]*openAICall
+	text      strings.Builder
+	reasoning strings.Builder
+}
+
+func readOpenAIStream(r io.Reader, emit func(StreamEvent)) (ModelResult, error) {
+	a := &openAIStream{calls: map[int]*openAICall{}}
+	sc := sseScanner(r)
 	for sc.Scan() {
 		line := sc.Bytes()
 		if !bytes.HasPrefix(line, []byte("data:")) {
@@ -63,91 +78,108 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 		if bytes.Equal(data, []byte("[DONE]")) {
 			break
 		}
-		var ev struct {
-			Choices []struct {
-				FinishReason string `json:"finish_reason"`
-				Delta        struct {
-					Content          string `json:"content"`
-					ReasoningContent string `json:"reasoning_content"` // DeepSeek reasoner
-					Reasoning        string `json:"reasoning"`         // OpenRouter
-					ToolCalls        []struct {
-						Index    int    `json:"index"`
-						ID       string `json:"id"`
-						Function struct {
-							Name      string `json:"name"`
-							Arguments string `json:"arguments"`
-						} `json:"function"`
-					} `json:"tool_calls"`
-				} `json:"delta"`
-			} `json:"choices"`
-			Usage *struct {
-				PromptTokens     int `json:"prompt_tokens"`
-				CompletionTokens int `json:"completion_tokens"`
-				PromptDetails    struct {
-					Cached int `json:"cached_tokens"`
-				} `json:"prompt_tokens_details"`
-			} `json:"usage"`
-			Error *struct{ Message string } `json:"error"`
-		}
-		if json.Unmarshal(data, &ev) != nil {
-			continue
-		}
-		if ev.Error != nil {
-			return res, errors.New(ev.Error.Message)
-		}
-		if ev.Usage != nil {
-			res.Usage = Usage{Input: ev.Usage.PromptTokens - ev.Usage.PromptDetails.Cached, Output: ev.Usage.CompletionTokens, CacheRead: ev.Usage.PromptDetails.Cached}
-		}
-		if len(ev.Choices) == 0 {
-			continue
-		}
-		d := ev.Choices[0].Delta
-		if r := d.ReasoningContent + d.Reasoning; r != "" {
-			reasoning.WriteString(r)
-			emit(StreamEvent{Kind: "thinking", Text: r})
-		}
-		if d.Content != "" {
-			text.WriteString(d.Content)
-			emit(StreamEvent{Kind: "text", Text: d.Content})
-		}
-		for _, tc := range d.ToolCalls {
-			c := calls[tc.Index]
-			if c == nil {
-				c = &call{}
-				calls[tc.Index] = c
-			}
-			if tc.ID != "" {
-				c.id = tc.ID
-			}
-			if tc.Function.Name != "" {
-				c.name = tc.Function.Name
-				emit(StreamEvent{Kind: "tool_start", ID: c.id, Name: c.name, Index: tc.Index})
-			}
-			if tc.Function.Arguments != "" {
-				c.args.WriteString(tc.Function.Arguments)
-				emit(StreamEvent{Kind: "tool_input", ID: c.id, Text: tc.Function.Arguments, Index: tc.Index})
-			}
-		}
-		if ev.Choices[0].FinishReason != "" {
-			res.StopReason = ev.Choices[0].FinishReason
+		if err := a.event(data, emit); err != nil {
+			return a.res, err
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return res, err
+		return a.res, err
 	}
-	if reasoning.Len() > 0 { // kept with the message: DeepSeek needs it back in later requests (openAIMessages)
-		res.Content = append(res.Content, Block{Type: "thinking", Thinking: reasoning.String()})
+	a.content(emit)
+	return a.res, nil
+}
+
+func (a *openAIStream) event(data []byte, emit func(StreamEvent)) error {
+	var ev struct {
+		Choices []struct {
+			FinishReason string `json:"finish_reason"`
+			Delta        struct {
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"` // DeepSeek reasoner
+				Reasoning        string `json:"reasoning"`         // OpenRouter
+				ToolCalls        []struct {
+					Index    int    `json:"index"`
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"delta"`
+		} `json:"choices"`
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			PromptDetails    struct {
+				Cached int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+		} `json:"usage"`
+		Error *struct{ Message string } `json:"error"`
 	}
-	if text.Len() > 0 {
-		res.Content = append(res.Content, Block{Type: "text", Text: text.String()})
+	if json.Unmarshal(data, &ev) != nil {
+		return nil
 	}
-	idx := make([]int, 0, len(calls))
-	for i := range calls {
+	if ev.Error != nil {
+		return errors.New(ev.Error.Message)
+	}
+	if ev.Usage != nil {
+		a.res.Usage = Usage{Input: ev.Usage.PromptTokens - ev.Usage.PromptDetails.Cached, Output: ev.Usage.CompletionTokens, CacheRead: ev.Usage.PromptDetails.Cached}
+	}
+	if len(ev.Choices) == 0 {
+		return nil
+	}
+	d := ev.Choices[0].Delta
+	if r := d.ReasoningContent + d.Reasoning; r != "" {
+		a.reasoning.WriteString(r)
+		emit(StreamEvent{Kind: "thinking", Text: r})
+	}
+	if d.Content != "" {
+		a.text.WriteString(d.Content)
+		emit(StreamEvent{Kind: "text", Text: d.Content})
+	}
+	for _, tc := range d.ToolCalls {
+		a.toolDelta(tc.Index, tc.ID, tc.Function.Name, tc.Function.Arguments, emit)
+	}
+	if ev.Choices[0].FinishReason != "" {
+		a.res.StopReason = ev.Choices[0].FinishReason
+	}
+	return nil
+}
+
+func (a *openAIStream) toolDelta(index int, id, name, args string, emit func(StreamEvent)) {
+	c := a.calls[index]
+	if c == nil {
+		c = &openAICall{}
+		a.calls[index] = c
+	}
+	if id != "" {
+		c.id = id
+	}
+	if name != "" {
+		c.name = name
+		emit(StreamEvent{Kind: "tool_start", ID: c.id, Name: c.name, Index: index})
+	}
+	if args != "" {
+		c.args.WriteString(args)
+		emit(StreamEvent{Kind: "tool_input", ID: c.id, Text: args, Index: index})
+	}
+}
+
+func (a *openAIStream) content(emit func(StreamEvent)) {
+	res := &a.res
+	if a.reasoning.Len() > 0 { // kept with the message: DeepSeek needs it back in later requests (openAIMessages)
+		res.Content = append(res.Content, Block{Type: "thinking", Thinking: a.reasoning.String()})
+	}
+	if a.text.Len() > 0 {
+		res.Content = append(res.Content, Block{Type: "text", Text: a.text.String()})
+	}
+	idx := make([]int, 0, len(a.calls))
+	for i := range a.calls {
 		idx = append(idx, i)
 	}
 	sort.Ints(idx)
 	for _, i := range idx {
-		c := calls[i]
+		c := a.calls[i]
 		args := strings.TrimSpace(c.args.String())
 		if args == "" {
 			args = "{}"
@@ -155,14 +187,13 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 		res.Content = append(res.Content, Block{Type: "tool_use", ID: c.id, Name: c.name, Input: json.RawMessage(args)})
 		emit(StreamEvent{Kind: "tool_end", ID: c.id, Name: c.name, Index: i})
 	}
-	if len(calls) > 0 {
+	if len(a.calls) > 0 {
 		if res.StopReason != "length" { // cut at the limit: the calls may be half-written (see truncatedReply)
 			res.StopReason = "tool_use"
 		}
 	} else if res.StopReason == "" || res.StopReason == "stop" {
 		res.StopReason = "end_turn"
 	}
-	return res, nil
 }
 
 // DeepSeek thinking mode (https://api-docs.deepseek.com/guides/thinking_mode, read 2026-10-31):

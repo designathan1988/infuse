@@ -91,9 +91,15 @@ func (s *Session) turnSources() []ReportSource {
 
 func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-// verifyClaim compares one claim with the turn's tool calls and checkpoints.
-func (s *Session) verifyClaim(c *ReportClaim) {
+type claimContext struct {
+	msgs    []Message
+	written map[string]bool
+	root    string
+}
+
+func (s *Session) claimContext() claimContext {
 	s.Mu.Lock()
+	defer s.Mu.Unlock()
 	start := 0
 	if s.Turn-1 < len(s.TurnStarts) && s.Turn > 0 {
 		start = s.TurnStarts[s.Turn-1]
@@ -104,76 +110,19 @@ func (s *Session) verifyClaim(c *ReportClaim) {
 	for _, f := range s.Checkpoints[s.Turn] {
 		written[f.Path] = true
 	}
-	root := s.workRoot()
-	s.Mu.Unlock()
+	return claimContext{msgs: msgs, written: written, root: s.workRoot()}
+}
 
+// verifyClaim compares one claim with the turn's tool calls and checkpoints.
+func (s *Session) verifyClaim(c *ReportClaim) {
+	ctx := s.claimContext()
 	switch c.Kind {
 	case "command":
-		ref := squash(c.Ref)
-		if ref == "" {
-			c.Status, c.Evidence = "sem-evidencia", M("report.ev_no_command")
-			return
-		}
-		results := map[string]Block{}
-		for _, m := range msgs {
-			for _, b := range m.Content {
-				if b.Type == "tool_result" {
-					results[b.ToolUseID] = b
-				}
-			}
-		}
-		found, failed := false, ""
-		for _, m := range msgs {
-			for _, b := range m.Content {
-				if b.Type != "tool_use" || b.Name != "Bash" {
-					continue
-				}
-				var in struct{ Command string }
-				_ = json.Unmarshal(b.Input, &in)
-				if !strings.Contains(squash(in.Command), ref) {
-					continue
-				}
-				r, ok := results[b.ID]
-				if ok && !r.IsError {
-					found = true
-				} else if ok {
-					failed = firstLine(r.Content)
-				}
-			}
-		}
-		switch {
-		case found:
-			c.Status, c.Evidence = "confirmado", M("report.ev_ran")
-		case failed != "":
-			c.Status, c.Evidence = "nao-confirmado", M("report.ev_failed", "output", failed)
-		default:
-			c.Status, c.Evidence = "nao-confirmado", M("report.ev_not_run")
-		}
+		s.verifyCommandClaim(c, ctx)
 	case "file":
-		rel := filepath.ToSlash(strings.TrimPrefix(filepath.Clean(c.Ref), filepath.Clean(root)+string(filepath.Separator)))
-		rel = strings.TrimPrefix(rel, "./")
-		_, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
-		switch {
-		case written[rel] && err == nil:
-			c.Status, c.Evidence = "confirmado", M("report.ev_changed")
-		case written[rel]:
-			c.Status, c.Evidence = "confirmado", M("report.ev_removed")
-		case err == nil:
-			c.Status, c.Evidence = "parcial", M("report.ev_unchanged")
-		default:
-			c.Status, c.Evidence = "nao-confirmado", M("report.ev_missing")
-		}
+		verifyFileClaim(c, ctx)
 	case "read": // "I read X": the lines infuse showed the agent, not its word
-		abs := filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(filepath.ToSlash(c.Ref), "./")))
-		seen, total, _ := s.readProgress(abs)
-		switch {
-		case total > 0 && seen >= total:
-			c.Status, c.Evidence = "confirmado", M("report.ev_read_full", "total", total)
-		case seen > 0:
-			c.Status, c.Evidence = "parcial", M("report.ev_read_partial", "seen", seen, "total", total)
-		default:
-			c.Status, c.Evidence = "nao-confirmado", M("report.ev_not_read")
-		}
+		s.verifyReadClaim(c, ctx.root)
 	case "url": // "this page says…": the page was fetched in this session
 		if len(s.unfetchedCitations(c.Ref)) == 0 && strings.TrimSpace(c.Ref) != "" {
 			c.Status, c.Evidence = "confirmado", M("report.ev_fetched")
@@ -182,6 +131,78 @@ func (s *Session) verifyClaim(c *ReportClaim) {
 		}
 	default:
 		c.Kind, c.Status, c.Evidence = "other", "sem-evidencia", M("report.ev_none")
+	}
+}
+
+func (s *Session) verifyCommandClaim(c *ReportClaim, ctx claimContext) {
+	ref := squash(c.Ref)
+	if ref == "" {
+		c.Status, c.Evidence = "sem-evidencia", M("report.ev_no_command")
+		return
+	}
+	results := map[string]Block{}
+	for _, m := range ctx.msgs {
+		for _, b := range m.Content {
+			if b.Type == "tool_result" {
+				results[b.ToolUseID] = b
+			}
+		}
+	}
+	found, failed := false, ""
+	for _, m := range ctx.msgs {
+		for _, b := range m.Content {
+			if b.Type != "tool_use" || b.Name != "Bash" {
+				continue
+			}
+			var in struct{ Command string }
+			_ = json.Unmarshal(b.Input, &in)
+			if !strings.Contains(squash(in.Command), ref) {
+				continue
+			}
+			r, ok := results[b.ID]
+			if ok && !r.IsError {
+				found = true
+			} else if ok {
+				failed = firstLine(r.Content)
+			}
+		}
+	}
+	switch {
+	case found:
+		c.Status, c.Evidence = "confirmado", M("report.ev_ran")
+	case failed != "":
+		c.Status, c.Evidence = "nao-confirmado", M("report.ev_failed", "output", failed)
+	default:
+		c.Status, c.Evidence = "nao-confirmado", M("report.ev_not_run")
+	}
+}
+
+func verifyFileClaim(c *ReportClaim, ctx claimContext) {
+	rel := filepath.ToSlash(strings.TrimPrefix(filepath.Clean(c.Ref), filepath.Clean(ctx.root)+string(filepath.Separator)))
+	rel = strings.TrimPrefix(rel, "./")
+	_, err := os.Stat(filepath.Join(ctx.root, filepath.FromSlash(rel)))
+	switch {
+	case ctx.written[rel] && err == nil:
+		c.Status, c.Evidence = "confirmado", M("report.ev_changed")
+	case ctx.written[rel]:
+		c.Status, c.Evidence = "confirmado", M("report.ev_removed")
+	case err == nil:
+		c.Status, c.Evidence = "parcial", M("report.ev_unchanged")
+	default:
+		c.Status, c.Evidence = "nao-confirmado", M("report.ev_missing")
+	}
+}
+
+func (s *Session) verifyReadClaim(c *ReportClaim, root string) {
+	abs := filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(filepath.ToSlash(c.Ref), "./")))
+	seen, total, _ := s.readProgress(abs)
+	switch {
+	case total > 0 && seen >= total:
+		c.Status, c.Evidence = "confirmado", M("report.ev_read_full", "total", total)
+	case seen > 0:
+		c.Status, c.Evidence = "parcial", M("report.ev_read_partial", "seen", seen, "total", total)
+	default:
+		c.Status, c.Evidence = "nao-confirmado", M("report.ev_not_read")
 	}
 }
 
@@ -251,7 +272,6 @@ func (s *Session) attachToCall(callID string, data any) {
 	}
 }
 
-
 // ---------------------------------------------------------------- tools
 
 type reportTool struct{}
@@ -319,4 +339,3 @@ func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	tc.S.emit("memory", map[string]any{"action": "contract"})
 	return tc.Say(M("contract.confirmed")), false
 }
-

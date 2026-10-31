@@ -19,38 +19,49 @@ import (
 func takeSnapshot(workDir, evDir string) (string, string, func(), error) {
 	snap := filepath.Join(os.TempDir(), "infuse-oracle-"+filepath.Base(evDir))
 	if core.Exists(filepath.Join(workDir, ".git")) {
-		idx := filepath.Join(os.TempDir(), "infuse-index-"+filepath.Base(evDir))
-		defer os.Remove(idx)
-		git := func(args ...string) (string, error) {
-			cmd := exec.Command("git", args...)
-			process.NoConsoleWindow(cmd)
-			cmd.Dir = workDir
-			cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+idx)
-			out, err := cmd.CombinedOutput()
-			return strings.TrimSpace(string(out)), err
-		}
-		if _, err := git("add", "-A", "--", ".", ":(exclude).infuse"); err != nil {
-			return "", "", nil, errors.New("git add (índice temporário) falhou")
-		}
-		tree, err := git("write-tree")
-		if err != nil {
-			return "", "", nil, errors.New("git write-tree falhou: " + tree)
-		}
-		parent := []string{}
-		if head, err := git("rev-parse", "--verify", "HEAD"); err == nil && head != "" {
-			parent = []string{"-p", head}
-		}
-		commit, err := git(append(append([]string{"commit-tree", tree}, parent...), "-m", "infuse oracle snapshot "+filepath.Base(evDir))...)
-		if err != nil {
-			return "", "", nil, errors.New("git commit-tree falhou: " + commit)
-		}
-		if out, err := workspace.GitRun(workDir, "worktree", "add", "--detach", snap, commit); err != nil {
-			return "", "", nil, errors.New("git worktree add falhou: " + strings.TrimSpace(out))
-		}
-		linkDependencies(workDir, snap)
-		_ = os.WriteFile(filepath.Join(evDir, "snapshot.txt"), []byte("git commit "+commit+"\ntree "+tree+"\n"), 0o644)
-		return snap, "git:" + commit[:12], func() { _, _ = workspace.GitRun(workDir, "worktree", "remove", "--force", snap) }, nil
+		return takeGitSnapshot(workDir, evDir, snap)
 	}
+	return takeCopySnapshot(workDir, evDir, snap)
+}
+
+// takeGitSnapshot commits the whole tree through a temporary index and checks it out in a detached
+// worktree under snap.
+func takeGitSnapshot(workDir, evDir, snap string) (string, string, func(), error) {
+	idx := filepath.Join(os.TempDir(), "infuse-index-"+filepath.Base(evDir))
+	defer os.Remove(idx)
+	git := func(args ...string) (string, error) {
+		cmd := exec.Command("git", args...)
+		process.NoConsoleWindow(cmd)
+		cmd.Dir = workDir
+		cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+idx)
+		out, err := cmd.CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	if _, err := git("add", "-A", "--", ".", ":(exclude).infuse"); err != nil {
+		return "", "", nil, errors.New("git add (índice temporário) falhou")
+	}
+	tree, err := git("write-tree")
+	if err != nil {
+		return "", "", nil, errors.New("git write-tree falhou: " + tree)
+	}
+	parent := []string{}
+	if head, err := git("rev-parse", "--verify", "HEAD"); err == nil && head != "" {
+		parent = []string{"-p", head}
+	}
+	commit, err := git(append(append([]string{"commit-tree", tree}, parent...), "-m", "infuse oracle snapshot "+filepath.Base(evDir))...)
+	if err != nil {
+		return "", "", nil, errors.New("git commit-tree falhou: " + commit)
+	}
+	if out, err := workspace.GitRun(workDir, "worktree", "add", "--detach", snap, commit); err != nil {
+		return "", "", nil, errors.New("git worktree add falhou: " + strings.TrimSpace(out))
+	}
+	linkDependencies(workDir, snap)
+	_ = os.WriteFile(filepath.Join(evDir, "snapshot.txt"), []byte("git commit "+commit+"\ntree "+tree+"\n"), 0o644)
+	return snap, "git:" + commit[:12], func() { _, _ = workspace.GitRun(workDir, "worktree", "remove", "--force", snap) }, nil
+}
+
+// takeCopySnapshot copies the tree under snap and returns the sha256 of its manifest.
+func takeCopySnapshot(workDir, evDir, snap string) (string, string, func(), error) {
 	h := sha256.New()
 	var manifest strings.Builder
 	err := fsx.Walk(workDir, fsx.Snapshot, func(p string, d os.DirEntry, err error) error {

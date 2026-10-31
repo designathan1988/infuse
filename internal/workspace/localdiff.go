@@ -33,16 +33,29 @@ func sessionsDir(root string) string {
 	return filepath.Join(root, core.InfuseDirName, "sessions")
 }
 
+// sessionCheckpoints is one session's checkpoints, keyed by turn.
+type sessionCheckpoints struct {
+	id      string
+	created int64
+	cps     map[int][]core.CheckpointFile
+}
+
 // projectBaselines maps each file any session of the project changed to its content before the first
 // change (earliest session, earliest turn); "" and isNew for files a session created.
 func projectBaselines(root string, src SnapshotSource, keep func(session string, created int64, turn int) bool) map[string]baseline {
-	entries, _ := os.ReadDir(sessionsDir(root))
-	type sess struct {
-		id      string
-		created int64
-		cps     map[int][]core.CheckpointFile
+	list := loadSessionCheckpoints(root)
+	// a session running now has checkpoints not saved yet
+	if src != nil {
+		list = mergeLiveSessions(root, list, src)
 	}
-	var list []sess
+	sort.Slice(list, func(i, j int) bool { return list[i].created < list[j].created })
+	return collectBaselines(root, list, keep)
+}
+
+// loadSessionCheckpoints reads the checkpoints saved for each session of the project.
+func loadSessionCheckpoints(root string) []sessionCheckpoints {
+	entries, _ := os.ReadDir(sessionsDir(root))
+	var list []sessionCheckpoints
 	for _, e := range entries {
 		if !strings.HasSuffix(e.Name(), ".json") {
 			continue
@@ -53,24 +66,30 @@ func projectBaselines(root string, src SnapshotSource, keep func(session string,
 			Checkpoints map[int][]core.CheckpointFile `json:"checkpoints"`
 		}
 		if core.ReadJSON(filepath.Join(sessionsDir(root), e.Name()), &d) == nil && len(d.Checkpoints) > 0 {
-			list = append(list, sess{d.ID, d.Created, d.Checkpoints})
+			list = append(list, sessionCheckpoints{d.ID, d.Created, d.Checkpoints})
 		}
 	}
-	// a session running now has checkpoints not saved yet
-	if src != nil {
-		for _, live := range src.LiveSessions(root) {
-			replaced := false
-			for i := range list {
-				if list[i].id == live.ID {
-					list[i].cps, replaced = live.Checkpoints, true
-				}
-			}
-			if !replaced && len(live.Checkpoints) > 0 {
-				list = append(list, sess{live.ID, live.Created, live.Checkpoints})
+	return list
+}
+
+// mergeLiveSessions lets the sessions running now replace their saved checkpoints with the live ones.
+func mergeLiveSessions(root string, list []sessionCheckpoints, src SnapshotSource) []sessionCheckpoints {
+	for _, live := range src.LiveSessions(root) {
+		replaced := false
+		for i := range list {
+			if list[i].id == live.ID {
+				list[i].cps, replaced = live.Checkpoints, true
 			}
 		}
+		if !replaced && len(live.Checkpoints) > 0 {
+			list = append(list, sessionCheckpoints{live.ID, live.Created, live.Checkpoints})
+		}
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].created < list[j].created })
+	return list
+}
+
+// collectBaselines keeps the earliest baseline per path, walking sessions and turns in time order.
+func collectBaselines(root string, list []sessionCheckpoints, keep func(session string, created int64, turn int) bool) map[string]baseline {
 	out := map[string]baseline{}
 	for _, se := range list {
 		turns := make([]int, 0, len(se.cps))

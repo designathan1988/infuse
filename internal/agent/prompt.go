@@ -17,6 +17,15 @@ import (
 func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	var b strings.Builder
 	b.WriteString(responseLanguageRule(s.uiLang()) + "\n\n")
+	writePromptIdentity(&b)
+	writePromptEnvironment(&b, s)
+	// The project's knowledge — the grounds of the filter.
+	writePromptGrounds(&b, s, rules)
+	writePromptInstructions(&b, s)
+	return b.String()
+}
+
+func writePromptIdentity(b *strings.Builder) {
 	b.WriteString("You are the software engineering agent of infuse Studio, working directly in the user's project with the tools available.\n\n")
 	b.WriteString("Working principles:\n")
 	b.WriteString("- Understand before acting: read the files involved and the project map; identify dependents before changing anything.\n")
@@ -33,19 +42,23 @@ func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	b.WriteString("3. The code follows the project's conventions and the file size limit.\n")
 	b.WriteString("4. Two failures in a row require investigation before another attempt.\n")
 	b.WriteString("5. The turn only ends with the plan completed (done or blocked), the project's checker reporting no errors in the changed files, a checked Report, and the findings of the independent review addressed.\n\n")
-	fmt.Fprintf(&b, "Environment: %s/%s · date %s · project directory: %s · current directory: %s\n", runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"), s.Root, s.Cwd)
+}
+
+func writePromptEnvironment(b *strings.Builder, s *Session) {
+	fmt.Fprintf(b, "Environment: %s/%s · date %s · project directory: %s · current directory: %s\n", runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"), s.Root, s.Cwd)
 	if branch := gitOutput(s.Root, "rev-parse", "--abbrev-ref", "HEAD"); branch != "" {
-		fmt.Fprintf(&b, "Git: branch %s", branch)
+		fmt.Fprintf(b, "Git: branch %s", branch)
 		if st := gitOutput(s.Root, "status", "--porcelain"); st != "" {
-			fmt.Fprintf(&b, " · %d file(s) with changes", len(strings.Split(strings.TrimSpace(st), "\n")))
+			fmt.Fprintf(b, " · %d file(s) with changes", len(strings.Split(strings.TrimSpace(st), "\n")))
 		}
 		b.WriteString("\n")
 	}
 	if s.mode() == "plan" {
 		b.WriteString("PLAN MODE: you may read and investigate, but writing and execution are disabled. Produce a plan for approval.\n")
 	}
+}
 
-	// The project's knowledge — the grounds of the filter.
+func writePromptGrounds(b *strings.Builder, s *Session, rules *RuleSet) {
 	if m := LoadOrBuildMap(s.Root); m != nil {
 		b.WriteString("\n## Project map (generated from the code)\n")
 		b.WriteString(DescribeDir(m, ".") + "\n")
@@ -55,7 +68,7 @@ func buildSystemPrompt(s *Session, rules *RuleSet) string {
 				if i >= 8 {
 					break
 				}
-				fmt.Fprintf(&b, "- %s (%d lines)\n", h.Path, h.Lines)
+				fmt.Fprintf(b, "- %s (%d lines)\n", h.Path, h.Lines)
 			}
 		}
 		b.WriteString("Use LS on any folder to see its map; when you write a file you are told what depends on it.\n")
@@ -69,6 +82,9 @@ func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	if l := lessonsSummary(s.Root); l != "" {
 		b.WriteString("\n## Bad habits already seen in this project (do not repeat them)\n" + l + "\n")
 	}
+}
+
+func writePromptInstructions(b *strings.Builder, s *Session) {
 	if lock := instructionsPrompt(s.Root); lock != "" {
 		b.WriteString(lock + "\n")
 	}
@@ -90,7 +106,6 @@ func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	if items := memoryPrompt(s); items != "" {
 		b.WriteString("\n## Structured memory (most important first; record and remove items with the Memory tool)\n" + items)
 	}
-	return b.String()
 }
 
 func gitOutput(root string, args ...string) string {

@@ -26,16 +26,38 @@ func RunWindow(url string) {
 	_ = windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED)
 
 	// A second launch brings the running window forward instead of opening another.
-	cls, _ := windows.UTF16PtrFromString(windowClass)
-	if h, _, _ := procFindWindowW.Call(uintptr(unsafe.Pointer(cls)), 0); h != 0 {
-		procPostMessageW.Call(h, wmAppShow, 0, 0)
+	if bringExistingWindowForward() {
 		return
 	}
+	w, ok := newMainWindow()
+	if !ok {
+		return
+	}
+	if !w.attachWebView() {
+		return
+	}
+	w.startPage(url)
+	runMessageLoop()
+}
 
+// bringExistingWindowForward asks a running window to show itself; false when none was found.
+func bringExistingWindowForward() bool {
+	cls, _ := windows.UTF16PtrFromString(windowClass)
+	h, _, _ := procFindWindowW.Call(uintptr(unsafe.Pointer(cls)), 0)
+	if h == 0 {
+		return false
+	}
+	procPostMessageW.Call(h, wmAppShow, 0, 0)
+	return true
+}
+
+// newMainWindow registers the window class and creates the top-level window; false when that fails.
+func newMainWindow() (*winWindow, bool) {
 	w := &winWindow{}
 	mainWin = w
 	w.bridge = &Bridge{Dialogs: OSDialogs(func() uintptr { return w.hwnd }), Host: w}
 	w.icon = makeIcon(32)
+	cls, _ := windows.UTF16PtrFromString(windowClass)
 
 	var inst windows.Handle
 	_ = windows.GetModuleHandleEx(0, nil, &inst)
@@ -50,17 +72,21 @@ func RunWindow(url string) {
 		cwUseDefault, cwUseDefault, 1280, 820, 0, 0, uintptr(inst), 0)
 	if w.hwnd == 0 {
 		fatalBox("Não foi possível criar a janela.")
-		return
+		return nil, false
 	}
 	w.applyTheme()
 	w.restorePlacement()
+	return w, true
+}
 
+// attachWebView embeds the WebView2 control in the window and applies its settings.
+func (w *winWindow) attachWebView() bool {
 	w.chromium = edge.NewChromium()
 	w.chromium.DataPath = filepath.Join(core.InfuseHome(), "webview")
 	w.chromium.SetPermission(edge.CoreWebView2PermissionKindClipboardRead, edge.CoreWebView2PermissionStateAllow)
 	if !w.chromium.Embed(w.hwnd) {
 		fatalBox("O Microsoft Edge WebView2 Runtime não está disponível neste computador.\n\nInstale-o em https://go.microsoft.com/fwlink/p/?LinkId=2124703 e abra o infuse de novo.")
-		return
+		return false
 	}
 	w.ready = true
 	if settings, err := w.chromium.GetSettings(); err == nil {
@@ -70,6 +96,11 @@ func RunWindow(url string) {
 		_ = settings.PutIsZoomControlEnabled(false)
 	}
 	w.hookMessages()
+	return true
+}
+
+// startPage injects the bridge, loads url and shows the window's chrome.
+func (w *winWindow) startPage(url string) {
 	w.chromium.Init(`window.__infusePost = function(s){ window.chrome.webview.postMessage(s) };
 window.__infusePostFiles = function(s, files){ window.chrome.webview.postMessageWithAdditionalObjects(s, files) };
 window.addEventListener('error', function(e){ window.__infusePost(JSON.stringify({id:1, method:'log', params:['error', String(e.message), String(e.filename)+':'+e.lineno]})) });
@@ -81,7 +112,10 @@ window.addEventListener('unhandledrejection', function(e){ window.__infusePost(J
 		w.addTray("")
 	}
 	w.chromium.Focus()
+}
 
+// runMessageLoop pumps the window's messages until it closes.
+func runMessageLoop() {
 	var m winMsg
 	for {
 		r, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)
@@ -127,40 +161,55 @@ func wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 			w.applyTheme()
 		}
 	case wmClose:
-		w.savePlacement()
-		if !w.quitting && config.LoadSettings().CloseToTray && w.trayOn {
-			procShowWindow.Call(hwnd, swHide)
-			return 0
-		}
-		procDestroyWindow.Call(hwnd)
-		return 0
+		return w.closeWindow(hwnd)
 	case wmDestroy:
 		w.removeTray()
 		procPostQuitMessage.Call(0)
 		return 0
 	case wmAppDispatch:
-		w.mu.Lock()
-		q := w.queue
-		w.queue = nil
-		w.mu.Unlock()
-		for _, f := range q {
-			f()
-		}
+		w.flushQueue()
 		return 0
 	case wmAppShow:
 		w.show()
 		return 0
 	case wmAppTray:
-		switch lp & 0xFFFF {
-		case wmLButtonUp, wmLButtonDblClk, ninBalloonClick:
-			w.show()
-		case wmRButtonUp:
-			w.trayMenu()
-		}
+		w.trayEvent(lp)
 		return 0
 	}
 	r, _, _ := procDefWindowProcW.Call(hwnd, msg, wp, lp)
 	return r
+}
+
+// closeWindow saves the placement and hides to the tray when it is on, otherwise destroys the window.
+func (w *winWindow) closeWindow(hwnd uintptr) uintptr {
+	w.savePlacement()
+	if !w.quitting && config.LoadSettings().CloseToTray && w.trayOn {
+		procShowWindow.Call(hwnd, swHide)
+		return 0
+	}
+	procDestroyWindow.Call(hwnd)
+	return 0
+}
+
+// flushQueue runs the functions dispatch queued on the window thread.
+func (w *winWindow) flushQueue() {
+	w.mu.Lock()
+	q := w.queue
+	w.queue = nil
+	w.mu.Unlock()
+	for _, f := range q {
+		f()
+	}
+}
+
+// trayEvent handles a click on the tray icon.
+func (w *winWindow) trayEvent(lp uintptr) {
+	switch lp & 0xFFFF {
+	case wmLButtonUp, wmLButtonDblClk, ninBalloonClick:
+		w.show()
+	case wmRButtonUp:
+		w.trayMenu()
+	}
 }
 
 // dispatch runs f on the window thread (WebView2 calls must happen there).

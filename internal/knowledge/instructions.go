@@ -59,15 +59,35 @@ func InvalidateRules(root string) { rulesCache.Delete(root) }
 
 // LoadProjectRules reads the instruction files (from git when deleted) and extracts their locks.
 func LoadProjectRules(root string) ProjectRules {
+	stamp := rulesStamp(root)
+	if c, ok := rulesCache.Load(root); ok && c.(cachedRules).stamp == stamp && time.Since(c.(cachedRules).at) < 15*time.Second {
+		return c.(cachedRules).rules
+	}
+	r, texts := readInstructionFiles(root)
+	r.Text = strings.Join(texts, "\n\n")
+	clean := reURL.ReplaceAllString(r.Text, " ")
+	seenReq := map[string]bool{}
+	addRequired := func(p string) { r.addRequired(root, p, seenReq) }
+	requiredFromText(clean, addRequired)
+	applyCompiledRules(root, &r, addRequired)
+	sort.Strings(r.Required)
+	rulesCache.Store(root, cachedRules{stamp, time.Now(), r})
+	return r
+}
+
+// rulesStamp fingerprints the instruction files' names and modification times.
+func rulesStamp(root string) string {
 	stamp := ""
 	for _, n := range InstructionNames {
 		if fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(n))); err == nil {
 			stamp += n + fi.ModTime().String()
 		}
 	}
-	if c, ok := rulesCache.Load(root); ok && c.(cachedRules).stamp == stamp && time.Since(c.(cachedRules).at) < 15*time.Second {
-		return c.(cachedRules).rules
-	}
+	return stamp
+}
+
+// readInstructionFiles reads each instruction file (from git when deleted) and resolves its imports.
+func readInstructionFiles(root string) (ProjectRules, []string) {
 	var r ProjectRules
 	var texts []string
 	for _, n := range InstructionNames {
@@ -83,48 +103,54 @@ func LoadProjectRules(root string) ProjectRules {
 		r.Files = append(r.Files, n)
 		texts = append(texts, ResolveInstructionImports(root, filepath.Dir(filepath.Join(root, filepath.FromSlash(n))), string(b), 0))
 	}
-	r.Text = strings.Join(texts, "\n\n")
-	clean := reURL.ReplaceAllString(r.Text, " ")
-	seenReq := map[string]bool{}
-	addRequired := func(p string) {
-		p = strings.TrimSuffix(strings.TrimPrefix(filepath.ToSlash(p), "./"), "/")
-		fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(p)))
-		if err != nil || fi.IsDir() || !docExts[strings.ToLower(filepath.Ext(p))] || fi.Size() >= 400<<10 || seenReq[p] || core.Contains(r.Files, p) || len(r.Required) >= 24 {
-			return
-		}
-		seenReq[p] = true
-		r.Required = append(r.Required, p)
+	return r, texts
+}
+
+// addRequired records p as a document to read in full, when it is an existing, small document.
+func (r *ProjectRules) addRequired(root, p string, seen map[string]bool) {
+	p = strings.TrimSuffix(strings.TrimPrefix(filepath.ToSlash(p), "./"), "/")
+	fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(p)))
+	if err != nil || fi.IsDir() || !docExts[strings.ToLower(filepath.Ext(p))] || fi.Size() >= 400<<10 || seen[p] || core.Contains(r.Files, p) || len(r.Required) >= 24 {
+		return
 	}
-	// documents the instructions point to: paths are paths in any language
+	seen[p] = true
+	r.Required = append(r.Required, p)
+}
+
+// requiredFromText adds the documents the instructions point to: paths are paths in any language.
+func requiredFromText(clean string, addRequired func(string)) {
 	for _, m := range rePathToken.FindAllStringSubmatch(clean, -1) {
 		if !strings.Contains(m[1], "*") && !strings.HasPrefix(m[1], "node_modules") {
 			addRequired(m[1])
 		}
 	}
-	// what the words mean (references, documents to follow, commands to verify): compiled, quote-checked
-	if c := LoadCompiledRules(root); c != nil {
-		for _, cr := range c.Rules {
-			if cr.Disabled {
-				continue
+}
+
+// applyCompiledRules adds what the words mean: references, documents to follow, commands to verify
+// (compiled and quote-checked).
+func applyCompiledRules(root string, r *ProjectRules, addRequired func(string)) {
+	c := LoadCompiledRules(root)
+	if c == nil {
+		return
+	}
+	for _, cr := range c.Rules {
+		if cr.Disabled {
+			continue
+		}
+		switch cr.Kind {
+		case "read":
+			addRequired(cr.Path)
+		case "reference":
+			if p := strings.Trim(strings.TrimPrefix(filepath.ToSlash(cr.Path), "./"), "/"); !core.Contains(r.Reference, p) {
+				r.Reference = append(r.Reference, p)
 			}
-			switch cr.Kind {
-			case "read":
-				addRequired(cr.Path)
-			case "reference":
-				if p := strings.Trim(strings.TrimPrefix(filepath.ToSlash(cr.Path), "./"), "/"); !core.Contains(r.Reference, p) {
-					r.Reference = append(r.Reference, p)
-				}
-			case "verify":
-				r.Commands = append(r.Commands, cr.Command)
-				if cr.When == "after-change" {
-					r.AfterChange = append(r.AfterChange, cr.Command)
-				}
+		case "verify":
+			r.Commands = append(r.Commands, cr.Command)
+			if cr.When == "after-change" {
+				r.AfterChange = append(r.AfterChange, cr.Command)
 			}
 		}
 	}
-	sort.Strings(r.Required)
-	rulesCache.Store(root, cachedRules{stamp, time.Now(), r})
-	return r
 }
 
 // resolveImports inlines Claude Code style "@path" lines (a file imported by the instructions).

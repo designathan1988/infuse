@@ -68,6 +68,28 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	}
 	var toolInput any
 	_ = json.Unmarshal(b.Input, &toolInput)
+	if refusal, refused := s.preflight(ctx, tool, b, toolInput); refused {
+		return refusal, true
+	}
+	if refusal, refused := s.writeGuards(ctx, tool, b); refused {
+		return refusal, true
+	}
+	if refusal, refused := s.commandGuards(ctx, tool, b); refused {
+		return refusal, true
+	}
+	if why := s.gateCheck(b.Name, tool.Category(), b.Input); !why.Empty() { // research before another attempt
+		return s.refuse(b.ID, "", why)
+	}
+	shortcutWarn, refusal, refused := s.shortcutGuard(ctx, tool, b)
+	if refused {
+		return refusal, true
+	}
+	out, isErr := s.runToolChecked(ctx, rules, tool, b)
+	s.recordToolOutcome(tool, b, out, isErr)
+	return s.finishToolOutput(ctx, b, toolInput, out, isErr, shortcutWarn), isErr
+}
+
+func (s *Session) preflight(ctx context.Context, tool Tool, b Block, toolInput any) (string, bool) {
 	if o := s.runHooks(ctx, "PreToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput}); o.Block {
 		return s.say(b.ID, o.blockMsg()), true
 	}
@@ -85,29 +107,39 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	if m := s.diagnosisGate(b.Name, tool.Category(), b.Input); !m.Empty() { // the cause, from the project's knowledge, before acting
 		return s.refuse(b.ID, "", m)
 	}
-	if tool.Category() == "write" {
-		s.noteFileStateBefore(toolPath(b.Input))
+	return "", false
+}
+
+func (s *Session) writeGuards(ctx context.Context, tool Tool, b Block) (string, bool) {
+	if tool.Category() != "write" {
+		return "", false
 	}
-	if tool.Category() == "write" { // the protocol: plan, docs before use, conventions, size
-		if why := s.protocolCheckWrite(b.Name, b.Input); !why.Empty() {
+	s.noteFileStateBefore(toolPath(b.Input))
+	// the protocol: plan, docs before use, conventions, size
+	if why := s.protocolCheckWrite(b.Name, b.Input); !why.Empty() {
+		return s.refuse(b.ID, "", why)
+	}
+	p, before, after, ok := editedContent(s.workRoot(), s.Cwd, b.Name, b.Input)
+	if !ok {
+		return "", false
+	}
+	rel := relTo(s.workRoot(), p)
+	if why := s.largeRemoval(rel, before, after); !why.Empty() {
+		return s.refuse(b.ID, "", why)
+	}
+	if why := cheatWriteCheck(s.workRoot(), rel, before, after); !why.Empty() {
+		if why.ID != "cheat.test_infra" {
 			return s.refuse(b.ID, "", why)
 		}
-		if p, before, after, ok := editedContent(s.workRoot(), s.Cwd, b.Name, b.Input); ok {
-			rel := relTo(s.workRoot(), p)
-			if why := s.largeRemoval(rel, before, after); !why.Empty() {
-				return s.refuse(b.ID, "", why)
-			}
-			if why := cheatWriteCheck(s.workRoot(), rel, before, after); !why.Empty() {
-				if why.ID != "cheat.test_infra" {
-					return s.refuse(b.ID, "", why)
-				}
-				// the test infrastructure may have to change: the user decides, every time
-				if !s.askPermissionWhy(ctx, tool, b.Input, "cheat:"+rel, why) {
-					return s.say(b.ID, M("perm.user_refused", "why", why)), true
-				}
-			}
+		// the test infrastructure may have to change: the user decides, every time
+		if !s.askPermissionWhy(ctx, tool, b.Input, "cheat:"+rel, why) {
+			return s.say(b.ID, M("perm.user_refused", "why", why)), true
 		}
 	}
+	return "", false
+}
+
+func (s *Session) commandGuards(ctx context.Context, tool Tool, b Block) (string, bool) {
 	if b.Name == "Bash" { // docs before commands: options the agent has not read about are refused
 		var in struct{ Command string }
 		_ = json.Unmarshal(b.Input, &in)
@@ -120,39 +152,48 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 		if why := unknownPackages(ctx, in.Command); !why.Empty() { // packages exist before they are installed
 			return s.refuse(b.ID, in.Command, why)
 		}
-	} else if tool.Category() == "write" {
+		return "", false
+	}
+	if tool.Category() == "write" {
 		if open := s.docs.unfinished(); len(open) > 0 {
 			return s.refuse(b.ID, "", M("docs.write_partial", "pages", open))
 		}
 	}
-	if why := s.gateCheck(b.Name, tool.Category(), b.Input); !why.Empty() { // research before another attempt
-		return s.refuse(b.ID, "", why)
+	return "", false
+}
+
+func (s *Session) shortcutGuard(ctx context.Context, tool Tool, b Block) ([]Msg, string, bool) {
+	if tool.Category() != "write" || s.mode() == "plan" {
+		return nil, "", false
 	}
-	var shortcutWarn []Msg
-	if tool.Category() == "write" && s.mode() != "plan" {
-		if p, before, after, ok := editedContent(s.workRoot(), s.Cwd, b.Name, b.Input); ok {
-			ask, warn := detectShortcuts(p, before, after)
-			shortcutWarn = warn
-			if len(ask) > 0 {
-				why := M("shortcut.weakens_tests", "items", ask)
-				key := "shortcut"
-				for _, a := range ask {
-					key += ":" + a.ID
-				}
-				s.Mu.Lock()
-				silenced := s.allowAlways["sentinel:"+key]
-				s.Mu.Unlock()
-				if !silenced {
-					Journal(s.Root, JournalEntry{Kind: "sentinel", Path: p, Detail: why.Render(s.uiLang())})
-					if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
-						Lesson(s.Root, "atalho-em-teste", why.String()+" in "+p)
-						return s.say(b.ID, M("shortcut.user_refused", "why", why)), true
-					}
-				}
-			}
-		}
+	p, before, after, ok := editedContent(s.workRoot(), s.Cwd, b.Name, b.Input)
+	if !ok {
+		return nil, "", false
 	}
-	out, isErr := s.runToolChecked(ctx, rules, tool, b)
+	ask, warn := detectShortcuts(p, before, after)
+	if len(ask) == 0 {
+		return warn, "", false
+	}
+	why := M("shortcut.weakens_tests", "items", ask)
+	key := "shortcut"
+	for _, a := range ask {
+		key += ":" + a.ID
+	}
+	s.Mu.Lock()
+	silenced := s.allowAlways["sentinel:"+key]
+	s.Mu.Unlock()
+	if silenced {
+		return warn, "", false
+	}
+	Journal(s.Root, JournalEntry{Kind: "sentinel", Path: p, Detail: why.Render(s.uiLang())})
+	if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
+		Lesson(s.Root, "atalho-em-teste", why.String()+" in "+p)
+		return warn, s.say(b.ID, M("shortcut.user_refused", "why", why)), true
+	}
+	return warn, "", false
+}
+
+func (s *Session) recordToolOutcome(tool Tool, b Block, out string, isErr bool) {
 	s.gateRecord(b.ID, b.Name, tool.Category(), out, isErr)
 	if b.Name == "Bash" {
 		s.recordRun(bashCommand(b.Input), !isErr)
@@ -168,6 +209,9 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 			s.noteAuthored(abs, writtenTexts(b.Input)...)
 		}
 	}
+}
+
+func (s *Session) finishToolOutput(ctx context.Context, b Block, toolInput any, out string, isErr bool, shortcutWarn []Msg) string {
 	if !isErr {
 		switch b.Name {
 		case "Browser":
@@ -199,7 +243,7 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	if o := s.runHooks(ctx, "PostToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput, "tool_response": out}); o.Message != "" {
 		out += "\n" + s.say(b.ID, M("hook.post", "message", o.Message))
 	}
-	return out, isErr
+	return out
 }
 
 // runToolChecked applies sentinels and permissions, then runs the tool.

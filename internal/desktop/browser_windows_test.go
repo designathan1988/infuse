@@ -22,12 +22,31 @@ func testDesktopHome(t *testing.T) {
 	t.Setenv("INFUSE_HOME", t.TempDir())
 }
 
+type nativeBrowserEvent struct {
+	url, title string
+	loading    bool
+}
+
+type nativeBrowserTest struct {
+	t       *testing.T
+	w       *winWindow
+	got     []nativeBrowserEvent
+	pumpFor func(time.Duration, func() bool) bool
+}
+
 func TestNativeBrowserLoadsAnySite(t *testing.T) {
 	if os.Getenv("INFUSE_LIVE") == "" {
 		t.Skip("INFUSE_LIVE not set (needs WebView2 and the network)")
 	}
+	e := newNativeBrowserTest(t)
+	e.loadsPages()
+	e.picksElement()
+}
+
+func newNativeBrowserTest(t *testing.T) *nativeBrowserTest {
+	t.Helper()
 	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
+	t.Cleanup(runtime.UnlockOSThread)
 	testDesktopHome(t)
 	_ = windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED)
 	cls, _ := windows.UTF16PtrFromString("STATIC")
@@ -35,74 +54,84 @@ func TestNativeBrowserLoadsAnySite(t *testing.T) {
 	if hwnd == 0 {
 		t.Fatal("window")
 	}
-	defer procDestroyWindow.Call(hwnd)
+	t.Cleanup(func() { procDestroyWindow.Call(hwnd) })
 	w := &winWindow{hwnd: hwnd}
 	saved := mainWin
 	mainWin = w
-	defer func() { mainWin = saved; browserEventHook = nil }()
+	t.Cleanup(func() { mainWin = saved; browserEventHook = nil; browserPickHook = nil })
 
-	type ev struct {
-		url, title string
-		loading    bool
+	e := &nativeBrowserTest{t: t, w: w}
+	browserEventHook = func(id, url, title string, loading bool) {
+		e.got = append(e.got, nativeBrowserEvent{url, title, loading})
 	}
-	var got []ev
-	browserEventHook = func(id, url, title string, loading bool) { got = append(got, ev{url, title, loading}) }
-	pumpFor := func(d time.Duration, until func() bool) bool {
-		deadline := time.Now().Add(d)
-		var m winMsg
-		for time.Now().Before(deadline) {
-			for {
-				r, _, _ := procPeekMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0, 1)
-				if r == 0 {
-					break
-				}
-				procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
-				procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
+	e.pumpFor = pumpNativeMessages
+	return e
+}
+
+func pumpNativeMessages(d time.Duration, until func() bool) bool {
+	deadline := time.Now().Add(d)
+	var m winMsg
+	for time.Now().Before(deadline) {
+		for {
+			r, _, _ := procPeekMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0, 1)
+			if r == 0 {
+				break
 			}
-			if until() {
+			procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
+			procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
+		}
+		if until() {
+			return true
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return false
+}
+
+func (e *nativeBrowserTest) pump(until func() bool) bool { return e.pumpFor(30*time.Second, until) }
+
+func (e *nativeBrowserTest) loaded(host string) func() bool {
+	return func() bool {
+		for _, ev := range e.got {
+			if !ev.loading && strings.Contains(ev.url, host) {
 				return true
 			}
-			time.Sleep(20 * time.Millisecond)
 		}
 		return false
 	}
-	pump := func(until func() bool) bool { return pumpFor(30*time.Second, until) }
-	loaded := func(host string) func() bool {
-		return func() bool {
-			for _, e := range got {
-				if !e.loading && strings.Contains(e.url, host) {
-					return true
-				}
-			}
-			return false
-		}
-	}
+}
+
+func (e *nativeBrowserTest) loadsPages() {
+	t, w := e.t, e.w
 	if _, err := w.browserOp("open", BrowserArgs{ID: "t1", URL: "https://github.com/", X: 0, Y: 0, W: 900, H: 600, Visible: true}); err != nil {
 		t.Fatal(err)
 	}
-	if !pump(loaded("github.com")) {
-		t.Fatalf("github.com did not load: %+v", got)
+	if !e.pump(e.loaded("github.com")) {
+		t.Fatalf("github.com did not load: %+v", e.got)
 	}
 	if _, err := w.browserOp("navigate", BrowserArgs{ID: "t1", URL: "https://www.google.com/search?q=infuse"}); err != nil {
 		t.Fatal(err)
 	}
-	if !pump(loaded("google.")) {
-		t.Fatalf("google did not load: %+v", got)
+	if !e.pump(e.loaded("google.")) {
+		t.Fatalf("google did not load: %+v", e.got)
 	}
-	last := got[len(got)-1]
+	last := e.got[len(e.got)-1]
 	t.Logf("last: %s | %s", last.url, last.title)
-	got = nil
+	e.got = nil
 	_, _ = w.browserOp("back", BrowserArgs{ID: "t1"})
-	if !pump(loaded("github.com")) {
-		t.Fatalf("back did not return to github: %+v", got)
+	if !e.pump(e.loaded("github.com")) {
+		t.Fatalf("back did not return to github: %+v", e.got)
 	}
+}
+
+func (e *nativeBrowserTest) picksElement() {
+	t, w := e.t, e.w
 	// element picker: a page message counts only while the user is picking
 	var picked string
 	browserPickHook = func(p string) { picked = p }
-	defer func() { browserPickHook = nil }()
 	tb := browserTabs["t1"]
 	tb.ch.Eval(`window.chrome.webview.postMessage(JSON.stringify({infusePick:{selector:"forjado"}}))`)
-	pumpFor(1500*time.Millisecond, func() bool { return false })
+	e.pumpFor(1500*time.Millisecond, func() bool { return false })
 	if picked != "" {
 		t.Fatal("a page message was taken as a pick without the user picking")
 	}
@@ -110,7 +139,7 @@ func TestNativeBrowserLoadsAnySite(t *testing.T) {
 		t.Fatal(err)
 	}
 	tb.ch.Eval(`setTimeout(() => { const el = document.querySelector('a, button, h1, div'); el.dispatchEvent(new MouseEvent('mousemove', {bubbles: true})); el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true})); }, 300)`)
-	if !pump(func() bool { return picked != "" }) || !strings.Contains(picked, `"selector"`) || !strings.Contains(picked, `"html"`) {
+	if !e.pump(func() bool { return picked != "" }) || !strings.Contains(picked, `"selector"`) || !strings.Contains(picked, `"html"`) {
 		t.Fatalf("pick: %q", picked)
 	}
 	if _, err := w.browserOp("close", BrowserArgs{ID: "t1"}); err != nil || browserTabs["t1"] != nil {

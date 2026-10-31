@@ -21,74 +21,86 @@ func viewAPI(w http.ResponseWriter, r *http.Request, root, path string, body map
 	}
 	switch path {
 	case "/api/view/stream":
-		t, err := browser.ViewTab(root, id, 1024, 700)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return true
-		}
-		fl, ok := w.(http.Flusher)
-		if !ok {
-			return true
-		}
-		w.Header().Set("content-type", "text/event-stream")
-		w.Header().Set("cache-control", "no-cache")
-		frame, url, title, ch, detach := t.Attach()
-		defer detach()
-		nav, _ := json.Marshal(map[string]any{"type": "nav", "url": url, "title": title})
-		fmt.Fprintf(w, "data: %s\n\n", nav)
-		if frame != nil {
-			fmt.Fprintf(w, "data: %s\n\n", frame)
-		}
-		fl.Flush()
-		ping := time.NewTicker(20 * time.Second)
-		defer ping.Stop()
-		for {
-			select {
-			case b := <-ch:
-				fmt.Fprintf(w, "data: %s\n\n", b)
-				fl.Flush()
-			case <-ping.C:
-				fmt.Fprint(w, ": ping\n\n")
-				fl.Flush()
-			case <-r.Context().Done():
-				return true
-			}
-		}
+		viewStream(w, r, root, id)
 	case "/api/view/open":
-		t, err := browser.ViewTab(root, id, int(num("width")), int(num("height")))
-		if err != nil {
-			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
-			return true
-		}
-		t.Resize(int(num("width")), int(num("height")), num("dpr"))
-		if u := str("url"); u != "" {
-			navErr, err := t.Navigate(r.Context(), u)
-			if err != nil || navErr != "" {
-				sendJSON(w, 200, map[string]any{"ok": false, "error": core.FirstNonEmpty(navErr, errString(err))})
-				return true
-			}
-		}
-		sendJSON(w, 200, map[string]any{"ok": true})
+		viewOpen(w, r, root, id, str, num)
 	case "/api/view/input":
-		t, err := browser.ViewTab(root, id, 0, 0)
-		if err != nil {
-			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
-			return true
-		}
-		pick, err := t.Input(r.Context(), str("kind"), body)
-		if str("kind") == "pick" {
-			if err != nil || pick == nil {
-				sendJSON(w, 200, map[string]any{"ok": false, "error": core.FirstNonEmpty(errString(err), "nada nesse ponto")})
-				return true
-			}
-			sendJSON(w, 200, map[string]any{"ok": true, "pick": pick})
-			return true
-		}
-		sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err)})
+		viewInput(w, r, root, id, body, str)
 	default:
 		return false
 	}
 	return true
+}
+
+func viewStream(w http.ResponseWriter, r *http.Request, root, id string) {
+	t, err := browser.ViewTab(root, id, 1024, 700)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	fl, ok := w.(http.Flusher)
+	if !ok {
+		return
+	}
+	w.Header().Set("content-type", "text/event-stream")
+	w.Header().Set("cache-control", "no-cache")
+	frame, url, title, ch, detach := t.Attach()
+	defer detach()
+	nav, _ := json.Marshal(map[string]any{"type": "nav", "url": url, "title": title})
+	fmt.Fprintf(w, "data: %s\n\n", nav)
+	if frame != nil {
+		fmt.Fprintf(w, "data: %s\n\n", frame)
+	}
+	fl.Flush()
+	ping := time.NewTicker(20 * time.Second)
+	defer ping.Stop()
+	for {
+		select {
+		case b := <-ch:
+			fmt.Fprintf(w, "data: %s\n\n", b)
+			fl.Flush()
+		case <-ping.C:
+			fmt.Fprint(w, ": ping\n\n")
+			fl.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+func viewOpen(w http.ResponseWriter, r *http.Request, root, id string, str func(string) string, num func(string) float64) {
+	t, err := browser.ViewTab(root, id, int(num("width")), int(num("height")))
+	if err != nil {
+		sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	t.Resize(int(num("width")), int(num("height")), num("dpr"))
+	if u := str("url"); u != "" {
+		navErr, err := t.Navigate(r.Context(), u)
+		if err != nil || navErr != "" {
+			sendJSON(w, 200, map[string]any{"ok": false, "error": core.FirstNonEmpty(navErr, errString(err))})
+			return
+		}
+	}
+	sendJSON(w, 200, map[string]any{"ok": true})
+}
+
+func viewInput(w http.ResponseWriter, r *http.Request, root, id string, body map[string]any, str func(string) string) {
+	t, err := browser.ViewTab(root, id, 0, 0)
+	if err != nil {
+		sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	pick, err := t.Input(r.Context(), str("kind"), body)
+	if str("kind") == "pick" {
+		if err != nil || pick == nil {
+			sendJSON(w, 200, map[string]any{"ok": false, "error": core.FirstNonEmpty(errString(err), "nada nesse ponto")})
+			return
+		}
+		sendJSON(w, 200, map[string]any{"ok": true, "pick": pick})
+		return
+	}
+	sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err)})
 }
 
 func closeViewBrowsers() { browser.CloseViewTabs() }

@@ -82,6 +82,18 @@ func cheatWriteCheck(work, rel, before, after string) Msg {
 	if !codeExts[ext] || ext == ".css" || ext == ".html" {
 		return Msg{}
 	}
+	if m := cheatMarkers(rel, ext, before, after); !m.Empty() {
+		return m
+	}
+	// B7: the tests' expected values used as conditions in production code
+	if isTestPath(rel) {
+		return Msg{}
+	}
+	return cheatSpecialCase(work, rel, added)
+}
+
+// cheatMarkers catches unfinished-work markers and a function hollowed into a stub.
+func cheatMarkers(rel, ext, before, after string) Msg {
 	// B10: markers of unfinished work
 	if n, o := len(reMarker.FindAllString(after, -1)), len(reMarker.FindAllString(before, -1)); n > o {
 		return M("cheat.markers", "file", rel, "count", n-o)
@@ -108,14 +120,13 @@ func cheatWriteCheck(work, rel, before, after string) Msg {
 			return M("cheat.stub", "function", f.name, "file", rel, "before", o.lines)
 		}
 	}
-	// B7: the tests' expected values used as conditions in production code
-	if isTestPath(rel) {
-		return Msg{}
-	}
+	return Msg{}
+}
+
+func cheatSpecialCase(work, rel string, added []string) Msg {
 	lits := testLiterals(work)
 	found := map[string]string{}
-	for _, l := range added {
-		code := l
+	for _, code := range added {
 		if !reConditionPos.MatchString(code) {
 			continue
 		}
@@ -130,18 +141,18 @@ func cheatWriteCheck(work, rel, before, after string) Msg {
 			}
 		}
 	}
-	if len(found) >= 2 {
-		var vals, tests []string
-		for v, t := range found {
-			vals = append(vals, v)
-			if !contains(tests, t) {
-				tests = append(tests, t)
-			}
-		}
-		sort.Strings(vals)
-		return M("cheat.special_case", "file", rel, "values", strings.Join(firstN(vals, 5), ", "), "tests", strings.Join(tests, ", "))
+	if len(found) < 2 {
+		return Msg{}
 	}
-	return Msg{}
+	var vals, tests []string
+	for v, t := range found {
+		vals = append(vals, v)
+		if !contains(tests, t) {
+			tests = append(tests, t)
+		}
+	}
+	sort.Strings(vals)
+	return M("cheat.special_case", "file", rel, "values", strings.Join(firstN(vals, 5), ", "), "tests", strings.Join(tests, ", "))
 }
 
 // readFileLimited reads at most limit bytes of a file as text.

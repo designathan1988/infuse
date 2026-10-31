@@ -9,12 +9,18 @@ import (
 	"testing"
 )
 
-func TestReportClaimsCheckedAgainstTheTurn(t *testing.T) {
+func reportTestSession(t *testing.T) (*Session, string) {
+	t.Helper()
 	testHome(t)
 	root := t.TempDir()
 	s := newSession(root)
 	_ = os.WriteFile(filepath.Join(root, "a.js"), []byte("x\n"), 0o644)
 	_ = os.WriteFile(filepath.Join(root, "old.js"), []byte("x\n"), 0o644)
+	return s, root
+}
+
+func TestReportClaimsCheckedAgainstTheTurn(t *testing.T) {
+	s, root := reportTestSession(t)
 	s.Turn = 1
 	s.TurnStarts = []int{0}
 	s.Checkpoints[1] = []CheckpointFile{{Path: "a.js", New: true}}
@@ -40,6 +46,16 @@ func TestReportClaimsCheckedAgainstTheTurn(t *testing.T) {
 	if isErr {
 		t.Fatal(out)
 	}
+	checkReportOutput(t, out)
+	checkReportMeta(t, s)
+	// the user reads the same check in their language: the messages recorded with the call replace the English
+	if d := displayFor("pt-BR", out, s.takeCallMsgs("R")); !strings.Contains(d, "- [não confirmado] build ok — executado neste turno, mas falhou: exit 1") || strings.Contains(d, "run in this turn") {
+		t.Fatal(d)
+	}
+}
+
+func checkReportOutput(t *testing.T, out string) {
+	t.Helper()
 	claim := func(status, text string, ev Msg) string {
 		return M("report.claim", "status", claimStatus(status), "text", text, "evidence", ev).String()
 	}
@@ -57,6 +73,10 @@ func TestReportClaimsCheckedAgainstTheTurn(t *testing.T) {
 			t.Fatalf("missing %q in\n%s", want, out)
 		}
 	}
+}
+
+func checkReportMeta(t *testing.T, s *Session) {
+	t.Helper()
 	// the screen reads the check from data attached to the call, never from the text
 	var r TurnReport
 	if err := json.Unmarshal(s.Messages[3].Content[0].Meta, &r); err != nil {
@@ -71,9 +91,5 @@ func TestReportClaimsCheckedAgainstTheTurn(t *testing.T) {
 	}
 	if r.Claims[1].Display != M("report.ev_failed", "output", "exit 1").Render(s.uiLang()) || len(r.Sources) != 1 || r.Sources[0] != (ReportSource{"search", "vite config"}) {
 		t.Fatalf("%+v", r)
-	}
-	// the user reads the same check in their language: the messages recorded with the call replace the English
-	if d := displayFor("pt-BR", out, s.takeCallMsgs("R")); !strings.Contains(d, "- [não confirmado] build ok — executado neste turno, mas falhou: exit 1") || strings.Contains(d, "run in this turn") {
-		t.Fatal(d)
 	}
 }

@@ -49,10 +49,9 @@ func TransformCommand(cmd, cwd string) TransformResult {
 		h := hs[i]
 		lineStart, lineEnd, lineText := CommandLineOf(out, h)
 		intent := DetectFileWrite(lineText)
-		body := h.Body
 		literal := h.Quoted
 
-		if !h.Quoted && intent != nil && LooksLikeLiteralIntent(body) {
+		if !h.Quoted && intent != nil && LooksLikeLiteralIntent(h.Body) {
 			literal = true
 			actions = append(actions, TransformAction{Kind: ActLesson, Vice: "unquoted-heredoc-with-code",
 				Detail: fmt.Sprintf("heredoc for %s had an unquoted delimiter but contains `/$(/${; treated as literal", intent.Path)})
@@ -64,51 +63,89 @@ func TransformCommand(cmd, cwd string) TransformResult {
 
 		switch {
 		case intent != nil && literal:
-			target := ResolveIn(cwd, core.FromMsysPath(intent.Path))
-			_ = os.MkdirAll(filepath.Dir(target), 0o755)
-			flag := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-			if intent.Append {
-				flag = os.O_WRONLY | os.O_CREATE | os.O_APPEND
-			}
-			if f, err := os.OpenFile(target, flag, 0o644); err == nil {
-				_, _ = f.WriteString(body)
-				_ = f.Close()
-			}
-			verb := "wrote"
-			if intent.Append {
-				verb = "appended"
-			}
-			actions = append(actions, TransformAction{Kind: ActHeredocToFile, Path: target, Bytes: len(body),
-				Detail: fmt.Sprintf("%s %s (%d bytes) without heredoc", verb, intent.Path, len(body))})
-			out = out[:lineStart] + ":\n" + out[h.BlockEnd:]
+			action, line := heredocDirectWrite(cwd, intent, h.Body)
+			actions = append(actions, action)
+			out = spliceHeredoc(out, h, lineStart, line)
 		case intent != nil:
-			redir := ">"
-			verb := "write"
-			if intent.Append {
-				redir, verb = ">>", "append to"
-			}
-			printf := fmt.Sprintf("printf '%%s' %s %s %s", doubleQuote(body), redir, ShellQuote(intent.Path))
-			actions = append(actions, TransformAction{Kind: ActHeredocToFile, Path: ResolveIn(cwd, core.FromMsysPath(intent.Path)), Bytes: len(body),
-				Detail: fmt.Sprintf("%s %s via printf (shell expansion kept) without heredoc", verb, intent.Path)})
-			out = out[:lineStart] + printf + "\n" + out[h.BlockEnd:]
+			action, line := heredocPrintf(cwd, intent, h.Body)
+			actions = append(actions, action)
+			out = spliceHeredoc(out, h, lineStart, line)
 		case literal:
-			tmp, err := os.CreateTemp("", "infuse-hd-*")
-			if err == nil {
-				_, _ = tmp.WriteString(body)
-				_ = tmp.Close()
-				actions = append(actions, TransformAction{Kind: ActHeredocToStdin, Path: tmp.Name(), Bytes: len(body),
-					Detail: "heredoc body routed through " + tmp.Name()})
-				afterOp := out[h.OpEnd:lineEnd]
-				out = out[:h.OpStart] + "< " + ShellQuote(core.ToBashPath(tmp.Name())) + afterOp + "\n" + out[h.BlockEnd:]
+			if action, line, ok := heredocTempFile(h, out, lineEnd); ok {
+				actions = append(actions, action)
+				out = spliceHeredoc(out, h, h.OpStart, line)
 			}
 		default:
-			actions = append(actions, TransformAction{Kind: ActHeredocToStdin, Bytes: len(body),
-				Detail: "heredoc body routed through process substitution (shell expansion kept)"})
-			afterOp := out[h.OpEnd:lineEnd]
-			out = out[:h.OpStart] + "< <(printf '%s' " + doubleQuote(body) + ")" + afterOp + "\n" + out[h.BlockEnd:]
+			action, line := heredocProcessSubst(h, out, lineEnd)
+			actions = append(actions, action)
+			out = spliceHeredoc(out, h, h.OpStart, line)
 		}
 	}
 	return TransformResult{Command: out, Actions: actions}
+}
+
+// spliceHeredoc replaces the command text from from through the heredoc block's end with line.
+func spliceHeredoc(out string, h Heredoc, from int, line string) string {
+	return out[:from] + line + "\n" + out[h.BlockEnd:]
+}
+
+// heredocDirectWrite writes a literal body to the intent's file and returns its action and the no-op
+// line that replaces the command.
+func heredocDirectWrite(cwd string, intent *FileWriteIntent, body string) (TransformAction, string) {
+	target := ResolveIn(cwd, core.FromMsysPath(intent.Path))
+	_ = os.MkdirAll(filepath.Dir(target), 0o755)
+	flag := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	if intent.Append {
+		flag = os.O_WRONLY | os.O_CREATE | os.O_APPEND
+	}
+	if f, err := os.OpenFile(target, flag, 0o644); err == nil {
+		_, _ = f.WriteString(body)
+		_ = f.Close()
+	}
+	verb := "wrote"
+	if intent.Append {
+		verb = "appended"
+	}
+	action := TransformAction{Kind: ActHeredocToFile, Path: target, Bytes: len(body),
+		Detail: fmt.Sprintf("%s %s (%d bytes) without heredoc", verb, intent.Path, len(body))}
+	return action, ":"
+}
+
+// heredocPrintf rewrites an expanded body as a double-quoted printf in the same shell, keeping
+// expansion semantics.
+func heredocPrintf(cwd string, intent *FileWriteIntent, body string) (TransformAction, string) {
+	redir := ">"
+	verb := "write"
+	if intent.Append {
+		redir, verb = ">>", "append to"
+	}
+	line := fmt.Sprintf("printf '%%s' %s %s %s", doubleQuote(body), redir, ShellQuote(intent.Path))
+	action := TransformAction{Kind: ActHeredocToFile, Path: ResolveIn(cwd, core.FromMsysPath(intent.Path)), Bytes: len(body),
+		Detail: fmt.Sprintf("%s %s via printf (shell expansion kept) without heredoc", verb, intent.Path)}
+	return action, line
+}
+
+// heredocTempFile routes a literal body through a temp file fed to the command's stdin. ok is false
+// when the temp file cannot be created.
+func heredocTempFile(h Heredoc, out string, lineEnd int) (action TransformAction, line string, ok bool) {
+	tmp, err := os.CreateTemp("", "infuse-hd-*")
+	if err != nil {
+		return TransformAction{}, "", false
+	}
+	_, _ = tmp.WriteString(h.Body)
+	_ = tmp.Close()
+	action = TransformAction{Kind: ActHeredocToStdin, Path: tmp.Name(), Bytes: len(h.Body),
+		Detail: "heredoc body routed through " + tmp.Name()}
+	afterOp := out[h.OpEnd:lineEnd]
+	return action, "< " + ShellQuote(core.ToBashPath(tmp.Name())) + afterOp, true
+}
+
+// heredocProcessSubst routes an expanded body through process substitution.
+func heredocProcessSubst(h Heredoc, out string, lineEnd int) (TransformAction, string) {
+	action := TransformAction{Kind: ActHeredocToStdin, Bytes: len(h.Body),
+		Detail: "heredoc body routed through process substitution (shell expansion kept)"}
+	afterOp := out[h.OpEnd:lineEnd]
+	return action, "< <(printf '%s' " + doubleQuote(h.Body) + ")" + afterOp
 }
 
 // doubleQuote wraps a heredoc body in double quotes preserving unquoted-heredoc semantics:

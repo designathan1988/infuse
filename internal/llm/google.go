@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -19,6 +20,19 @@ func (p *googleProvider) Stream(ctx context.Context, req ModelRequest, emit func
 	if p.key == "" {
 		return ModelResult{}, errors.New("chave de API do Google não configurada")
 	}
+	url := p.base + "/v1beta/models/" + req.Model + ":streamGenerateContent?alt=sse"
+	resp, err := postJSON(ctx, p.client, url, map[string]string{"x-goog-api-key": p.key}, googleBody(req))
+	if err != nil {
+		return ModelResult{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return ModelResult{}, httpError("Gemini", resp)
+	}
+	return readGoogleStream(resp.Body, emit)
+}
+
+func googleBody(req ModelRequest) map[string]any {
 	body := map[string]any{"contents": googleContents(req.Messages)}
 	if req.System != "" {
 		body["systemInstruction"] = map[string]any{"parts": []map[string]any{{"text": req.System}}}
@@ -43,97 +57,112 @@ func (p *googleProvider) Stream(ctx context.Context, req ModelRequest, emit func
 	if req.ForceTool != "" {
 		body["toolConfig"] = map[string]any{"functionCallingConfig": map[string]any{"mode": "ANY", "allowedFunctionNames": []string{req.ForceTool}}}
 	}
-	url := p.base + "/v1beta/models/" + req.Model + ":streamGenerateContent?alt=sse"
-	resp, err := postJSON(ctx, p.client, url, map[string]string{"x-goog-api-key": p.key}, body)
-	if err != nil {
-		return ModelResult{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return ModelResult{}, httpError("Gemini", resp)
-	}
-	var text, thought strings.Builder
-	var calls []Block
-	var res ModelResult
-	sc := sseScanner(resp.Body)
+	return body
+}
+
+type googlePart struct {
+	Text         string `json:"text"`
+	Thought      bool   `json:"thought"`
+	FunctionCall *struct {
+		Name string          `json:"name"`
+		Args json.RawMessage `json:"args"`
+	} `json:"functionCall"`
+}
+
+type googleStream struct {
+	res     ModelResult
+	calls   []Block
+	text    strings.Builder
+	thought strings.Builder
+}
+
+func readGoogleStream(r io.Reader, emit func(StreamEvent)) (ModelResult, error) {
+	g := &googleStream{}
+	sc := sseScanner(r)
 	for sc.Scan() {
 		line := sc.Bytes()
 		if !bytes.HasPrefix(line, []byte("data:")) {
 			continue
 		}
-		var ev struct {
-			Candidates []struct {
-				FinishReason string `json:"finishReason"`
-				Content      struct {
-					Parts []struct {
-						Text         string `json:"text"`
-						Thought      bool   `json:"thought"`
-						FunctionCall *struct {
-							Name string          `json:"name"`
-							Args json.RawMessage `json:"args"`
-						} `json:"functionCall"`
-					} `json:"parts"`
-				} `json:"content"`
-			} `json:"candidates"`
-			UsageMetadata *struct {
-				PromptTokenCount        int `json:"promptTokenCount"`
-				CandidatesTokenCount    int `json:"candidatesTokenCount"`
-				ThoughtsTokenCount      int `json:"thoughtsTokenCount"`
-				CachedContentTokenCount int `json:"cachedContentTokenCount"`
-			} `json:"usageMetadata"`
-			Error *struct{ Message string } `json:"error"`
-		}
-		if json.Unmarshal(bytes.TrimSpace(line[5:]), &ev) != nil {
-			continue
-		}
-		if ev.Error != nil {
-			return res, errors.New(ev.Error.Message)
-		}
-		if u := ev.UsageMetadata; u != nil {
-			res.Usage = Usage{Input: u.PromptTokenCount - u.CachedContentTokenCount, Output: u.CandidatesTokenCount + u.ThoughtsTokenCount, CacheRead: u.CachedContentTokenCount}
-		}
-		for _, c := range ev.Candidates {
-			for _, part := range c.Content.Parts {
-				switch {
-				case part.FunctionCall != nil:
-					id := fmt.Sprintf("g%d", len(calls)+1)
-					args := part.FunctionCall.Args
-					if len(args) == 0 {
-						args = json.RawMessage("{}")
-					}
-					calls = append(calls, Block{Type: "tool_use", ID: id, Name: part.FunctionCall.Name, Input: args})
-					emit(StreamEvent{Kind: "tool_start", ID: id, Name: part.FunctionCall.Name})
-					emit(StreamEvent{Kind: "tool_input", ID: id, Text: string(args)})
-					emit(StreamEvent{Kind: "tool_end", ID: id, Name: part.FunctionCall.Name})
-				case part.Thought:
-					thought.WriteString(part.Text)
-					emit(StreamEvent{Kind: "thinking", Text: part.Text})
-				case part.Text != "":
-					text.WriteString(part.Text)
-					emit(StreamEvent{Kind: "text", Text: part.Text})
-				}
-			}
-			if c.FinishReason != "" {
-				res.StopReason = strings.ToLower(c.FinishReason)
-			}
+		if err := g.event(bytes.TrimSpace(line[5:]), emit); err != nil {
+			return g.res, err
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return res, err
+		return g.res, err
 	}
-	if thought.Len() > 0 {
-		res.Content = append(res.Content, Block{Type: "thinking", Thinking: thought.String()})
+	g.content()
+	return g.res, nil
+}
+
+func (g *googleStream) event(data []byte, emit func(StreamEvent)) error {
+	var ev struct {
+		Candidates []struct {
+			FinishReason string                       `json:"finishReason"`
+			Content      struct{ Parts []googlePart } `json:"content"`
+		} `json:"candidates"`
+		UsageMetadata *struct {
+			PromptTokenCount        int `json:"promptTokenCount"`
+			CandidatesTokenCount    int `json:"candidatesTokenCount"`
+			ThoughtsTokenCount      int `json:"thoughtsTokenCount"`
+			CachedContentTokenCount int `json:"cachedContentTokenCount"`
+		} `json:"usageMetadata"`
+		Error *struct{ Message string } `json:"error"`
 	}
-	if text.Len() > 0 {
-		res.Content = append(res.Content, Block{Type: "text", Text: text.String()})
+	if json.Unmarshal(data, &ev) != nil {
+		return nil
 	}
-	res.Content = append(res.Content, calls...)
-	if len(calls) > 0 {
-		res.StopReason = "tool_use"
+	if ev.Error != nil {
+		return errors.New(ev.Error.Message)
+	}
+	if u := ev.UsageMetadata; u != nil {
+		g.res.Usage = Usage{Input: u.PromptTokenCount - u.CachedContentTokenCount, Output: u.CandidatesTokenCount + u.ThoughtsTokenCount, CacheRead: u.CachedContentTokenCount}
+	}
+	for _, c := range ev.Candidates {
+		for _, part := range c.Content.Parts {
+			g.part(part, emit)
+		}
+		if c.FinishReason != "" {
+			g.res.StopReason = strings.ToLower(c.FinishReason)
+		}
+	}
+	return nil
+}
+
+func (g *googleStream) part(part googlePart, emit func(StreamEvent)) {
+	switch {
+	case part.FunctionCall != nil:
+		id := fmt.Sprintf("g%d", len(g.calls)+1)
+		args := part.FunctionCall.Args
+		if len(args) == 0 {
+			args = json.RawMessage("{}")
+		}
+		g.calls = append(g.calls, Block{Type: "tool_use", ID: id, Name: part.FunctionCall.Name, Input: args})
+		emit(StreamEvent{Kind: "tool_start", ID: id, Name: part.FunctionCall.Name})
+		emit(StreamEvent{Kind: "tool_input", ID: id, Text: string(args)})
+		emit(StreamEvent{Kind: "tool_end", ID: id, Name: part.FunctionCall.Name})
+	case part.Thought:
+		g.thought.WriteString(part.Text)
+		emit(StreamEvent{Kind: "thinking", Text: part.Text})
+	case part.Text != "":
+		g.text.WriteString(part.Text)
+		emit(StreamEvent{Kind: "text", Text: part.Text})
+	}
+}
+
+func (g *googleStream) content() {
+	if g.thought.Len() > 0 {
+		g.res.Content = append(g.res.Content, Block{Type: "thinking", Thinking: g.thought.String()})
+	}
+	if g.text.Len() > 0 {
+		g.res.Content = append(g.res.Content, Block{Type: "text", Text: g.text.String()})
+	}
+	g.res.Content = append(g.res.Content, g.calls...)
+	if len(g.calls) > 0 {
+		g.res.StopReason = "tool_use"
 	} else {
-		res.StopReason = "end_turn"
+		g.res.StopReason = "end_turn"
 	}
-	return res, nil
 }
 
 // geminiSchema drops JSON-Schema keywords Gemini rejects.

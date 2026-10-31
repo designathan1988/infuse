@@ -49,12 +49,16 @@ func main() {
 		return
 	}
 	process.AttachParentConsole()
-	args := os.Args[2:]
+	os.Exit(runCommand(os.Args[1], os.Args[2:]))
+}
+
+// runCommand dispatches one CLI command and returns the process exit code.
+func runCommand(command string, args []string) int {
 	cwd, _ := os.Getwd()
 	root := core.FindRoot(cwd)
-	switch os.Args[1] {
+	switch command {
 	case "shell":
-		os.Exit(filter.RunShell(args, shellPolicy))
+		return filter.RunShell(args, shellPolicy)
 	case "ui", "panel", "window":
 		api.Start(true)
 	case "serve":
@@ -63,66 +67,101 @@ func main() {
 		}
 		api.Start(false)
 	case "install":
-		res := filter.Install()
-		if res.Error != "" {
-			fmt.Println("[infuse] ERROR:", res.Error)
-			os.Exit(1)
-		}
-		fmt.Printf("[infuse] interposed shell installed: %s\n[infuse] real bash: %s\n[infuse] Claude Code pointed at it via %s (%s)\n[infuse] restart Claude Code. From then on every Bash tool command passes through the filter.\n", res.Shim, res.RealBash, res.SettingsFile, res.EnvKey)
+		return installCommand()
 	case "uninstall":
-		res := filter.Uninstall()
-		fmt.Println("[infuse] removed. Claude Code is back to its own shell detection (restart it).")
-		if res.Error != "" {
-			fmt.Println("[infuse] warning:", res.Error)
-		}
+		uninstallCommand()
 	case "status":
-		filter.PrintJSON(filter.GetStatus())
-		pid, alive := filter.WatcherAlive(root)
-		fmt.Printf("project root here: %s\nwatcher: pid %d alive=%v\n", root, pid, alive)
+		statusCommand(root)
 	case "watch":
-		if len(args) > 0 {
-			root = args[0]
-		}
-		idle := 45 * time.Minute
-		if v, err := strconv.Atoi(os.Getenv("INFUSE_WATCHER_IDLE_MIN")); err == nil && v > 0 {
-			idle = time.Duration(v) * time.Minute
-		}
-		filter.RunWatcher(root, idle)
+		watchCommand(root, args)
 	case "map":
-		m := projectmap.BuildMap(root)
-		projectmap.WriteMap(root, m)
-		fmt.Printf("[infuse] map: %d files, %d dirs, %d hotspot(s) → %s\n", len(m.Files), len(m.Dirs), len(m.Hotspots), projectmap.MapFile(root))
-		for _, h := range m.Hotspots {
-			fmt.Printf("  ⚠ %s: %d lines\n", h.Path, h.Lines)
-		}
+		mapCommand(root)
 	case "journal":
-		n := 20
-		if len(args) > 0 {
-			n, _ = strconv.Atoi(args[0])
-		}
-		for _, e := range tailJSONL(filepath.Join(root, core.InfuseDirName, "journal.jsonl"), n) {
-			cmdText, _ := e["command"].(string)
-			p, _ := e["path"].(string)
-			if p == "" {
-				p = core.Truncate(cmdText, 80)
-			}
-			fmt.Printf("%s %-9s %s %s\n", tsOf(e), e["kind"], p, e["detail"])
-		}
+		journalCommand(root, args)
 	case "lessons":
-		for _, e := range tailJSONL(filepath.Join(root, core.InfuseDirName, "lessons.jsonl"), 50) {
-			fmt.Printf("%s %s: %s\n", tsOf(e), e["vice"], e["detail"])
-		}
+		lessonsCommand(root)
 	case "rules":
-		set := filter.LoadRules(root)
-		fmt.Printf("[infuse] rule files in effect: %s\n", strings.Join(set.Sources, ", "))
-		for i, r := range set.Rules {
-			fmt.Printf("  %d. [%s] %s match=/%s/\n", i+1, r.When, r.ID, r.Match)
-		}
+		rulesCommand(root)
 	case "version", "--version", "-v":
 		fmt.Println("infuse", version)
 	default:
 		fmt.Println("usage: infuse [ui | install | uninstall | status | map | journal [n] | lessons | rules | shell -c <cmd> | watch <root> | version]")
-		os.Exit(1)
+		return 1
+	}
+	return 0
+}
+
+// installCommand installs the interposed shell; 1 when installation failed.
+func installCommand() int {
+	res := filter.Install()
+	if res.Error != "" {
+		fmt.Println("[infuse] ERROR:", res.Error)
+		return 1
+	}
+	fmt.Printf("[infuse] interposed shell installed: %s\n[infuse] real bash: %s\n[infuse] Claude Code pointed at it via %s (%s)\n[infuse] restart Claude Code. From then on every Bash tool command passes through the filter.\n", res.Shim, res.RealBash, res.SettingsFile, res.EnvKey)
+	return 0
+}
+
+func uninstallCommand() {
+	res := filter.Uninstall()
+	fmt.Println("[infuse] removed. Claude Code is back to its own shell detection (restart it).")
+	if res.Error != "" {
+		fmt.Println("[infuse] warning:", res.Error)
+	}
+}
+
+func statusCommand(root string) {
+	filter.PrintJSON(filter.GetStatus())
+	pid, alive := filter.WatcherAlive(root)
+	fmt.Printf("project root here: %s\nwatcher: pid %d alive=%v\n", root, pid, alive)
+}
+
+func watchCommand(root string, args []string) {
+	if len(args) > 0 {
+		root = args[0]
+	}
+	idle := 45 * time.Minute
+	if v, err := strconv.Atoi(os.Getenv("INFUSE_WATCHER_IDLE_MIN")); err == nil && v > 0 {
+		idle = time.Duration(v) * time.Minute
+	}
+	filter.RunWatcher(root, idle)
+}
+
+func mapCommand(root string) {
+	m := projectmap.BuildMap(root)
+	projectmap.WriteMap(root, m)
+	fmt.Printf("[infuse] map: %d files, %d dirs, %d hotspot(s) → %s\n", len(m.Files), len(m.Dirs), len(m.Hotspots), projectmap.MapFile(root))
+	for _, h := range m.Hotspots {
+		fmt.Printf("  ⚠ %s: %d lines\n", h.Path, h.Lines)
+	}
+}
+
+func journalCommand(root string, args []string) {
+	n := 20
+	if len(args) > 0 {
+		n, _ = strconv.Atoi(args[0])
+	}
+	for _, e := range tailJSONL(filepath.Join(root, core.InfuseDirName, "journal.jsonl"), n) {
+		cmdText, _ := e["command"].(string)
+		p, _ := e["path"].(string)
+		if p == "" {
+			p = core.Truncate(cmdText, 80)
+		}
+		fmt.Printf("%s %-9s %s %s\n", tsOf(e), e["kind"], p, e["detail"])
+	}
+}
+
+func lessonsCommand(root string) {
+	for _, e := range tailJSONL(filepath.Join(root, core.InfuseDirName, "lessons.jsonl"), 50) {
+		fmt.Printf("%s %s: %s\n", tsOf(e), e["vice"], e["detail"])
+	}
+}
+
+func rulesCommand(root string) {
+	set := filter.LoadRules(root)
+	fmt.Printf("[infuse] rule files in effect: %s\n", strings.Join(set.Sources, ", "))
+	for i, r := range set.Rules {
+		fmt.Printf("  %d. [%s] %s match=/%s/\n", i+1, r.When, r.ID, r.Match)
 	}
 }
 

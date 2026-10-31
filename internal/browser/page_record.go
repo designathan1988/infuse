@@ -156,6 +156,15 @@ func markCursor(mask []bool, pt cursorPoint, cssW, cssH, rx, ry int) {
 	}
 }
 
+// frameCandidate is a frame kept while recording, with the change measured against the previous one.
+type frameCandidate struct {
+	f       recFrame
+	im      image.Image
+	sig     []uint8
+	changed float64
+	regions []image.Rectangle
+}
+
 // stopRecording picks the keyframes, saves them in dir and returns them with the timeline.
 func (p *Page) stopRecording(dir string, maxFrames int) ([]keyframe, []recEvent, time.Duration, int, error) {
 	_, _ = p.b.call(context.Background(), "Page.stopScreencast", nil)
@@ -172,14 +181,16 @@ func (p *Page) stopRecording(dir string, maxFrames int) ([]keyframe, []recEvent,
 	if maxFrames <= 0 || maxFrames > 24 {
 		maxFrames = 12
 	}
-	type cand struct {
-		f       recFrame
-		im      image.Image
-		sig     []uint8
-		changed float64
-		regions []image.Rectangle
-	}
-	var cands []cand
+	cands := p.recordingCandidates(frames, cssW, cssH)
+	cands = trimCandidates(cands, maxFrames)
+	_ = os.MkdirAll(dir, 0o755)
+	out := writeRecordedFrames(cands, dir, cssW, cssH)
+	return out, events, dur, len(frames), nil
+}
+
+// recordingCandidates decodes the recorded frames and keeps those whose screen changed.
+func (p *Page) recordingCandidates(frames []recFrame, cssW, cssH int) []frameCandidate {
+	var cands []frameCandidate
 	for i, f := range frames {
 		im, err := jpeg.Decode(bytes.NewReader(f.jpeg))
 		if err != nil {
@@ -187,14 +198,14 @@ func (p *Page) stopRecording(dir string, maxFrames int) ([]keyframe, []recEvent,
 		}
 		sig := signature(im)
 		if len(cands) == 0 {
-			cands = append(cands, cand{f, im, sig, 1, nil})
+			cands = append(cands, frameCandidate{f, im, sig, 1, nil})
 			continue
 		}
 		last := cands[len(cands)-1]
 		cells, n := changedCells(last.sig, sig, p.cursorMask(last.f.at, f.at, cssW, cssH))
 		if n == 0 {
 			if i == len(frames)-1 && last.f.at != f.at {
-				cands = append(cands, cand{f, im, sig, 0, nil}) // the final state, even if unchanged
+				cands = append(cands, frameCandidate{f, im, sig, 0, nil}) // the final state, even if unchanged
 			}
 			continue
 		}
@@ -205,28 +216,36 @@ func (p *Page) stopRecording(dir string, maxFrames int) ([]keyframe, []recEvent,
 				continue
 			}
 		}
-		cands = append(cands, cand{f, im, sig, float64(n) / float64(sigW*sigH), changeRegions(cells)})
+		cands = append(cands, frameCandidate{f, im, sig, float64(n) / float64(sigW*sigH), changeRegions(cells)})
 	}
-	// too many: keep the first, the last and the biggest changes, in time order
-	if len(cands) > maxFrames {
-		idx := make([]int, 0, len(cands)-2)
-		for i := 1; i < len(cands)-1; i++ {
-			idx = append(idx, i)
-		}
-		sort.Slice(idx, func(a, b int) bool { return cands[idx[a]].changed > cands[idx[b]].changed })
-		keep := map[int]bool{0: true, len(cands) - 1: true}
-		for _, i := range idx[:maxFrames-2] {
-			keep[i] = true
-		}
-		var kept []cand
-		for i, c := range cands {
-			if keep[i] {
-				kept = append(kept, c)
-			}
-		}
-		cands = kept
+	return cands
+}
+
+// trimCandidates keeps the first, the last and the biggest changes, in time order.
+func trimCandidates(cands []frameCandidate, maxFrames int) []frameCandidate {
+	if len(cands) <= maxFrames {
+		return cands
 	}
-	_ = os.MkdirAll(dir, 0o755)
+	idx := make([]int, 0, len(cands)-2)
+	for i := 1; i < len(cands)-1; i++ {
+		idx = append(idx, i)
+	}
+	sort.Slice(idx, func(a, b int) bool { return cands[idx[a]].changed > cands[idx[b]].changed })
+	keep := map[int]bool{0: true, len(cands) - 1: true}
+	for _, i := range idx[:maxFrames-2] {
+		keep[i] = true
+	}
+	var kept []frameCandidate
+	for i, c := range cands {
+		if keep[i] {
+			kept = append(kept, c)
+		}
+	}
+	return kept
+}
+
+// writeRecordedFrames saves each kept frame and describes the areas that changed.
+func writeRecordedFrames(cands []frameCandidate, dir string, cssW, cssH int) []keyframe {
 	var out []keyframe
 	for i, c := range cands {
 		kf := keyframe{at: c.f.at, jpeg: c.f.jpeg, changed: c.changed}
@@ -250,7 +269,7 @@ func (p *Page) stopRecording(dir string, maxFrames int) ([]keyframe, []recEvent,
 		_ = os.WriteFile(filepath.Join(dir, fmt.Sprintf("%02d-%06.2fs.jpg", i+1, c.f.at.Seconds())), c.f.jpeg, 0o644)
 		out = append(out, kf)
 	}
-	return out, events, dur, len(frames), nil
+	return out
 }
 
 // ---------------------------------------------------------------- diagnostics

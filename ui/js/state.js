@@ -21,19 +21,6 @@ const MAP_KEYS = new Set(['commands', 'files', 'hits', 'fold', 'sb']);
 
 function reducer(state, action) {
   switch (action.type) {
-    case 'server/set':
-      return { ...state, [action.key]: action.value };
-    case 'ui/set':
-      return { ...state, [action.key]: action.value };
-    case 'ui/sub':
-      return { ...state, [action.key]: { ...(state[action.key] || {}), [action.sub]: action.value } };
-    case 'ui/del': {
-      const m = { ...(state[action.key] || {}) };
-      delete m[action.sub];
-      return { ...state, [action.key]: m };
-    }
-    case 'ui/merge':
-      return { ...state, [action.key]: { ...(state[action.key] || {}), ...action.value } };
     case 'unread': {
       const has = state.unread.includes(action.id);
       if (has === action.on) return state;
@@ -44,35 +31,71 @@ function reducer(state, action) {
       if (list.length > 300) list.shift();
       return { ...state, history: list };
     }
-    case 'views/set':
+  }
+  const [group, kind] = action.type.split('/');
+  switch (group) {
+    case 'server': return serverReducer(state, action, kind);
+    case 'ui': return uiReducer(state, action, kind);
+    case 'views': return viewsReducer(state, action, kind);
+    case 'view': return viewReducer(state, action, kind);
+    case 'live': return liveReducer(state, action, kind);
+  }
+  return state;
+}
+
+function serverReducer(state, action, kind) {
+  return kind === 'set' ? { ...state, [action.key]: action.value } : state;
+}
+
+function uiReducer(state, action, kind) {
+  switch (kind) {
+    case 'set': return { ...state, [action.key]: action.value };
+    case 'sub': return { ...state, [action.key]: { ...(state[action.key] || {}), [action.sub]: action.value } };
+    case 'del': {
+      const m = { ...(state[action.key] || {}) };
+      delete m[action.sub];
+      return { ...state, [action.key]: m };
+    }
+    case 'merge': return { ...state, [action.key]: { ...(state[action.key] || {}), ...action.value } };
+  }
+  return state;
+}
+
+function viewsReducer(state, action, kind) {
+  switch (kind) {
+    case 'set':
       return { ...state, views: action.views, focus: Math.min(state.focus, Math.max(0, action.views.length - 1)) };
-    case 'views/add':
+    case 'add':
       return { ...state, views: [...state.views, action.view], focus: state.views.length };
-    case 'views/remove': {
+    case 'remove': {
       let focus = state.focus;
       const views = state.views.filter((_, i) => i !== action.index);
       if (action.index < focus) focus--;
       if (focus >= views.length) focus = Math.max(0, views.length - 1);
       return { ...state, views, focus };
     }
-    case 'view/set':
-      return withView(state, action.id, v => ({ ...v, ...action.patch }));
-    case 'view/draft':
-      return withView(state, action.id, v => ({ ...v, draft: { ...v.draft, ...action.patch } }));
-    case 'live/set':
+  }
+  return state;
+}
+
+function viewReducer(state, action, kind) {
+  if (kind === 'set') return withView(state, action.id, v => ({ ...v, ...action.patch }));
+  if (kind === 'draft') return withView(state, action.id, v => ({ ...v, draft: { ...v.draft, ...action.patch } }));
+  return state;
+}
+
+function liveReducer(state, action, kind) {
+  const current = state.live[action.id];
+  switch (kind) {
+    case 'set':
       return { ...state, live: { ...state.live, [action.id]: action.value } };
-    case 'live/patch': {
-      const current = state.live[action.id];
+    case 'patch':
       if (!current) return state;
       return { ...state, live: { ...state.live, [action.id]: { ...current, ...action.patch } } };
-    }
-    case 'live/snap': {
-      const current = state.live[action.id];
+    case 'snap':
       if (!current?.snap) return state;
       return { ...state, live: { ...state.live, [action.id]: { ...current, snap: { ...current.snap, ...action.patch } } } };
-    }
-    case 'live/queue': {
-      const current = state.live[action.id];
+    case 'queue': {
       if (!current) return state;
       const q = [...(current.queue || [])];
       if (action.op === 'push') q.push(action.item);
@@ -81,20 +104,17 @@ function reducer(state, action) {
       else if (action.op === 'remove') q.splice(action.index, 1);
       return { ...state, live: { ...state.live, [action.id]: { ...current, queue: q } } };
     }
-    case 'live/event': {
-      const current = state.live[action.id];
+    case 'event':
       if (!current) return state;
       return { ...state, live: { ...state.live, [action.id]: applyEvent(current, action.ev, action.ts) } };
-    }
-    case 'live/delete': {
+    case 'delete': {
       if (!(action.id in state.live)) return state;
       const live = { ...state.live };
       delete live[action.id];
       return { ...state, live };
     }
-    default:
-      return state;
   }
+  return state;
 }
 
 function withView(state, id, fn) {
@@ -117,92 +137,107 @@ function busySnap(snap) { return !!(snap && snap.state !== 'idle' && snap.state 
 // renders after the dispatch, reading the new state.
 function applyEvent(L, ev, ts) {
   const d = ev.data;
-  const snap = L.snap;
   switch (ev.type) {
-    case 'session': {
-      const next = normSnap(d);
-      return {
-        ...L, snap: next, lastIn: d.lastInput || L.lastIn,
-        ...(busySnap(next) ? {} : { text: '', think: '', tools: {} }),
-      };
-    }
-    case 'state':
-      if (!snap) return L;
-      return {
-        ...L,
-        snap: { ...snap, state: d.state },
-        ...(d.state === 'thinking' ? { text: '', think: '', started: L.started || ts } : {}),
-        ...(d.state === 'idle' || d.state === 'error' ? { started: 0 } : {}),
-      };
-    case 'turn': {
-      if (!snap) return L;
-      const messages = [...snap.messages, { role: 'user', content: [{ type: 'text', text: d.text }], ts }];
-      return { ...L, snap: { ...snap, turn: d.turn, title: d.title, turnStarts: [...snap.turnStarts, snap.messages.length], messages } };
-    }
-    case 'stream': {
-      if (d.kind === 'text') return { ...L, text: L.text + d.text };
-      if (d.kind === 'thinking') return { ...L, think: L.think + d.text };
-      if (d.kind === 'tool_start') return { ...L, tools: { ...L.tools, [d.id]: { name: d.name, input: '' } } };
-      if (d.kind === 'tool_input') {
-        const tool = L.tools[d.id] || { name: '', input: '' };
-        return { ...L, tools: { ...L.tools, [d.id]: { ...tool, input: tool.input + d.text } } };
-      }
-      return L;
-    }
-    case 'message':
-      if (!snap) return L;
-      return {
-        ...L,
-        snap: { ...snap, messages: [...snap.messages, d.message], usage: d.totalUsage, cost: d.cost },
-        lastIn: d.lastInput, lastOut: d.usage?.output || 0, text: '', think: '', tools: {},
-      };
-    case 'tool_run':
-      return { ...L, running: d };
-    case 'stream_reset':
-      return { ...L, text: '', think: '', tools: {} };
-    case 'tool_result':
-      if (!snap) return L;
-      return {
-        ...L, running: null,
-        snap: { ...snap, messages: [...snap.messages, { role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, display: d.display, is_error: d.isError, ms: d.ms }], ts }] },
-      };
-    case 'permission':
-      return snap ? { ...L, snap: { ...snap, pendingPermission: d } } : L;
-    case 'question':
-      return snap ? { ...L, snap: { ...snap, pendingQuestion: d } } : L;
-    case 'done':
-      return snap ? { ...L, snap: { ...snap, pendingPermission: null, pendingQuestion: null, cost: d.cost, usage: d.usage } } : L;
-    case 'error':
-      return snap ? { ...L, snap: { ...snap, error: d, pendingPermission: null, pendingQuestion: null } } : L;
-    case 'tasks':
-      return snap ? { ...L, snap: { ...snap, tasks: d } } : L;
-    case 'diagnoses':
-      return snap ? { ...L, snap: { ...snap, diagnoses: d } } : L;
-    case 'procs':
-      return snap ? { ...L, snap: { ...snap, procs: d } } : L;
-    case 'agents':
-      return snap ? { ...L, snap: { ...snap, agents: d } } : L;
-    case 'mission':
-      return snap ? { ...L, snap: { ...snap, mission: d } } : L;
-    case 'cwd':
-      return snap ? { ...L, snap: { ...snap, cwd: d } } : L;
-    case 'bans':
-      return { ...L, bans: d };
-    case 'subagent':
-      return { ...L, sub: d.state === 'done' ? null : { ...(L.sub || {}), ...d, steps: (L.sub?.steps || 0) + (d.state === 'tool' ? 1 : 0) } };
-    case 'checkpoint':
-      if (!snap) return L;
-      return { ...L, snap: { ...snap, checkpoints: { ...snap.checkpoints, [d.turn]: [...(snap.checkpoints[d.turn] || []), { path: d.path }] } } };
-    case 'report': {
-      if (!snap) return L;
-      const messages = snap.messages.map(m => {
-        if (!(m.content || []).some(b => b.type === 'tool_use' && b.id === d.callId)) return m;
-        return { ...m, content: m.content.map(b => b.type === 'tool_use' && b.id === d.callId ? { ...b, meta: d } : b) };
-      });
-      return { ...L, snap: { ...snap, messages } };
-    }
+    case 'session': return applySnapshotEvent(L, d);
+    case 'state': return applyStateEvent(L, d, ts);
+    case 'turn': return applyTurnEvent(L, d, ts);
+    case 'stream': return applyStreamEvent(L, d);
+    case 'message': return applyMessageEvent(L, d);
+    case 'tool_result': return applyToolResultEvent(L, d, ts);
+    case 'tool_run': return { ...L, running: d };
+    case 'stream_reset': return { ...L, text: '', think: '', tools: {} };
+    case 'permission', 'question', 'done', 'error': return applyPendingEvent(L, ev.type, d);
+    case 'tasks', 'diagnoses', 'procs', 'agents', 'mission', 'cwd': return applySnapFieldEvent(L, ev.type, d);
+    case 'bans': return { ...L, bans: d };
+    case 'subagent': return applySubagentEvent(L, d);
+    case 'checkpoint': return applyCheckpointEvent(L, d);
+    case 'report': return applyReportEvent(L, d);
   }
   return L;
+}
+
+function applySnapshotEvent(L, d) {
+  const next = normSnap(d);
+  return {
+    ...L, snap: next, lastIn: d.lastInput || L.lastIn,
+    ...(busySnap(next) ? {} : { text: '', think: '', tools: {} }),
+  };
+}
+
+function applyStateEvent(L, d, ts) {
+  if (!L.snap) return L;
+  return {
+    ...L,
+    snap: { ...L.snap, state: d.state },
+    ...(d.state === 'thinking' ? { text: '', think: '', started: L.started || ts } : {}),
+    ...(d.state === 'idle' || d.state === 'error' ? { started: 0 } : {}),
+  };
+}
+
+function applyTurnEvent(L, d, ts) {
+  const snap = L.snap;
+  if (!snap) return L;
+  const messages = [...snap.messages, { role: 'user', content: [{ type: 'text', text: d.text }], ts }];
+  return { ...L, snap: { ...snap, turn: d.turn, title: d.title, turnStarts: [...snap.turnStarts, snap.messages.length], messages } };
+}
+
+function applyStreamEvent(L, d) {
+  if (d.kind === 'text') return { ...L, text: L.text + d.text };
+  if (d.kind === 'thinking') return { ...L, think: L.think + d.text };
+  if (d.kind === 'tool_start') return { ...L, tools: { ...L.tools, [d.id]: { name: d.name, input: '' } } };
+  if (d.kind === 'tool_input') {
+    const tool = L.tools[d.id] || { name: '', input: '' };
+    return { ...L, tools: { ...L.tools, [d.id]: { ...tool, input: tool.input + d.text } } };
+  }
+  return L;
+}
+
+function applyMessageEvent(L, d) {
+  if (!L.snap) return L;
+  return {
+    ...L,
+    snap: { ...L.snap, messages: [...L.snap.messages, d.message], usage: d.totalUsage, cost: d.cost },
+    lastIn: d.lastInput, lastOut: d.usage?.output || 0, text: '', think: '', tools: {},
+  };
+}
+
+function applyToolResultEvent(L, d, ts) {
+  if (!L.snap) return L;
+  return {
+    ...L, running: null,
+    snap: { ...L.snap, messages: [...L.snap.messages, { role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, display: d.display, is_error: d.isError, ms: d.ms }], ts }] },
+  };
+}
+
+function applyPendingEvent(L, type, d) {
+  if (!L.snap) return L;
+  if (type === 'permission') return { ...L, snap: { ...L.snap, pendingPermission: d } };
+  if (type === 'question') return { ...L, snap: { ...L.snap, pendingQuestion: d } };
+  if (type === 'done') return { ...L, snap: { ...L.snap, pendingPermission: null, pendingQuestion: null, cost: d.cost, usage: d.usage } };
+  return { ...L, snap: { ...L.snap, error: d, pendingPermission: null, pendingQuestion: null } };
+}
+
+function applySnapFieldEvent(L, type, d) {
+  if (!L.snap) return L;
+  return { ...L, snap: { ...L.snap, [type]: d } };
+}
+
+function applySubagentEvent(L, d) {
+  return { ...L, sub: d.state === 'done' ? null : { ...(L.sub || {}), ...d, steps: (L.sub?.steps || 0) + (d.state === 'tool' ? 1 : 0) } };
+}
+
+function applyCheckpointEvent(L, d) {
+  if (!L.snap) return L;
+  return { ...L, snap: { ...L.snap, checkpoints: { ...L.snap.checkpoints, [d.turn]: [...(L.snap.checkpoints[d.turn] || []), { path: d.path }] } } };
+}
+
+function applyReportEvent(L, d) {
+  if (!L.snap) return L;
+  const messages = L.snap.messages.map(m => {
+    if (!(m.content || []).some(b => b.type === 'tool_use' && b.id === d.callId)) return m;
+    return { ...m, content: m.content.map(b => b.type === 'tool_use' && b.id === d.callId ? { ...b, meta: d } : b) };
+  });
+  return { ...L, snap: { ...L.snap, messages } };
 }
 
 const store = createStore(reducer, initialState(), {
