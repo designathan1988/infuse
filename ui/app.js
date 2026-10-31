@@ -319,6 +319,7 @@ function sessionMenu(v, anchor) {
       { label: S.settings.showThinking === false ? 'Mostrar raciocínio' : 'Ocultar raciocínio', f: () => { saveSetting({ showThinking: S.settings.showThinking === false }); for (const k of Object.keys(S.fold)) if (k.includes(':')) delete S.fold[k]; S.views.forEach(renderChat); } },
     ] },
     { label: 'Copiar', items: [
+      { label: 'Revisão independente', sub: 'Um revisor com contexto limpo confere as alterações', f: () => runReview(v) },
       { label: 'Copiar conversa', sub: 'Markdown, com ferramentas e raciocínio', f: () => copyText(transcriptMarkdown(L), 'Conversa copiada') },
       { label: 'Copiar última resposta', f: () => { const m = [...L.snap.messages].reverse().find(x => x.role === 'assistant' && msgText(x)); if (m) copyText(msgText(m), 'Resposta copiada'); } },
       { label: 'Exportar conversa…', sub: 'Salvar como arquivo .md', f: () => exportTranscript(L) },
@@ -444,11 +445,13 @@ function renderChat(v) {
       const texts = m.content.filter(b => b.type === 'text'), imgs = m.content.filter(b => b.type === 'image');
       if (!texts.length && !imgs.length) return;
       const main = texts[0]?.text || '';
+      if (main.startsWith('[Revisão independente]')) { out += reviewBlock(main.slice(22).trim(), i); return; }
       if (main.startsWith('[Conversa resumida]') || main.startsWith('[Contexto compactado')) { out += `<div class="marker" title="${esc(main.slice(0, 600))}">${t('Conversa resumida')}</div>`; return; }
       const attached = texts.slice(1).map(b => (b.text.match(/path="([^"]+)"/) || [])[1]).filter(Boolean);
       out += `<div class="umsg"><div class="msgacts">${m.ts ? `<span class="mtime" title="${esc(new Date(m.ts).toLocaleString())}">${fmtClock(m.ts)}</span>` : ''}<button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button>${turnOf(s, i) ? `<button class="ib" data-rw="${turnOf(s, i)}" title="${esc(t('Voltar aqui'))}">↶</button>` : ''}</div><div class="u sel">${esc(main)}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div></div>`;
     } else {
       if (m.content.length === 2 && m.content[0]?.text === 'Entendido, continuo a partir desse estado.') return;
+      if (msgText(m) === 'Revisão recebida.') return;
       let inner = '';
       for (const [bi, b] of m.content.entries()) {
         if (b.type === 'text' && b.text?.trim()) inner += `<div class="md sel">${md(b.text.trim())}</div>`;
@@ -487,6 +490,17 @@ function turnSummary(s, msgs, from, to) {
   const bits = [dur != null && `${t('Trabalhou por')} ${fmtDur(dur)}`, tools && `${tools} ${t(tools === 1 ? 'ferramenta' : 'ferramentas')}`, tokens && `${fmtTok(tokens)} tokens`].filter(Boolean).join('<span class="dotsep">·</span>');
   return `<div class="turnsum"><span class="ok">✓</span><span class="meta">${bits}</span><span class="grow"></span>${texts ? `<button class="btn sm ghost" data-copy-turn="${from}:${to}" title="${esc(t('Copiar todas as respostas deste turno'))}">${I.copy} ${t('Copiar')}</button>` : ''}</div>`;
 }
+// Independent review: a reviewer with a clean context reads the diff, the plan and the criteria.
+function reviewBlock(text, i) {
+  return `<div class="report review"><div class="rh"><b>${t('Revisão independente')}</b><span class="faint">${t('um revisor com contexto limpo leu o diff, o plano e os critérios')}</span><span class="grow"></span><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button></div><div class="md sel">${md(text)}</div><div class="rnext"><span class="grow faint">${t('O agente vê estes achados na próxima mensagem.')}</span><button class="btn sm pri" data-fixreview>${t('Pedir correções')}</button></div></div>`;
+}
+async function runReview(v, focus) {
+  const L = v.sid && S.live[v.sid]; if (!L) return toast(t('Abra uma sessão para revisar'));
+  if (busy(L)) return toast(t('Espere o agente terminar para revisar'));
+  const st = $('.live', v.el); if (st) st.innerHTML = `<div class="status"><span class="spin"></span>${t('revisor independente lendo as alterações…')}</div>`;
+  const r = await api(`/api/session/${L.id}/review`, { body: { focus: focus || '' }, root: L.root });
+  if (!r.ok) { toast(r.error || t('Revisão falhou')); renderChat(v); }
+}
 function turnOf(s, msgIndex) { const k = s.turnStarts.indexOf(msgIndex); return k >= 0 ? k + 1 : 0; }
 function msgText(m) { return (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim(); }
 function copyText(txt, what) { navigator.clipboard.writeText(txt).then(() => toast(t(what || 'Copiado')), () => toast('Não foi possível copiar')); }
@@ -514,6 +528,7 @@ function bindChat(v, root) {
   $$('[data-copy-msg]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const m = L.snap.messages[+b.dataset.copyMsg]; copyText(msgText(m), 'Mensagem copiada'); });
   $$('[data-copy-turn]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const [a, z] = b.dataset.copyTurn.split(':').map(Number); copyText(L.snap.messages.slice(a + 1, z + 1).filter(m => m.role === 'assistant').map(msgText).filter(Boolean).join('\n\n'), 'Respostas copiadas'); });
   $$('.codecopy', root).forEach(b => b.onclick = () => copyText(b.nextElementSibling.innerText, 'Código copiado'));
+  $$('[data-fixreview]', root).forEach(b => b.onclick = () => { const P = $('.prompt', v.el); P.value = t('Corrija os achados da revisão independente acima. Para cada um, diga o que mudou ou por que não procede.'); send(v); });
   $$('[data-next]', root).forEach(b => b.onclick = () => { const P = $('.prompt', v.el); P.value = b.dataset.next; grow(P); P.focus(); });
   $$('[data-copy-think]', root).forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.closest('.tool').querySelector('.thinktext')?.innerText || '', 'Raciocínio copiado'); });
   $$('[data-copy-tool]', root).forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.closest('.tool').querySelector(b.dataset.copyTool === 'out' ? '.res' : '.inp')?.innerText || '', 'Copiado'); });
@@ -773,7 +788,7 @@ async function slash(v, text) {
     case 'config': case 'settings': openSettings(); return true;
     case 'resume': palette('sessions'); return true;
     case 'rename': if (L && arg) setSessionOpts(v, { title: arg }); else renameInline(v); return true;
-    case 'review': case 'code-review': $('.prompt', v.el).value = t('Revise as alterações não commitadas deste projeto (git diff) procurando bugs de correção. Liste cada achado com arquivo:linha, o problema e a correção sugerida.') + (arg ? '\n' + arg : ''); return false;
+    case 'review': case 'code-review': runReview(v, arg); return true;
     case 'init': $('.prompt', v.el).value = t('Analise este projeto e escreva um INFUSE.md na raiz com: como compilar, testar e rodar; a arquitetura e onde cada responsabilidade mora; convenções do código. Seja conciso.'); return false;
     case 'memory': togglePane('memory', true); return true;
     case 'terminal': togglePane('terminal', true); return true;
@@ -869,7 +884,8 @@ function renderRail(v) {
   ${tasks.length ? `<div class="card" style="cursor:pointer" data-open="tasks"><div class="ch">${t('Tarefas')}<span class="r">${tasks.filter(x => x.status === 'done').length}/${tasks.length}</span></div>${tasks.slice(0, 5).map(x => `<div style="font-size:12px;color:${x.status === 'done' ? 'var(--text3)' : 'var(--text)'}">${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text)}</div>`).join('')}</div>` : ''}
   <div class="card"><div class="ch">${t('Pronto')}<span class="r">${L.verdict ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[L.verdict.verdict] || 'warn'}">${esc(t(L.verdict.verdict))}</span>` : `<span class="faint">${t('não verificado')}</span>`}</span></div>
     <div class="faint" style="margin-bottom:6px">${L.verdict ? esc(L.verdict.summary) : t('Só a execução dos critérios decide; a palavra do agente não conta.')}</div>
-    <div class="row"><button class="btn sm line oraclego">${t('Pronto?')}</button><button class="btn sm" data-open="oracle">${t('Critérios')}</button></div></div>`;
+    <div class="row"><button class="btn sm line oraclego">${t('Pronto?')}</button><button class="btn sm" data-open="oracle">${t('Critérios')}</button><button class="btn sm revgo" title="${esc(t('Um revisor com contexto limpo lê o diff, o plano e os critérios e aponta problemas'))}">${t('Revisar')}</button></div></div>`;
+  $('.revgo', el).onclick = () => runReview(v);
   $('.oraclego', el).onclick = () => { togglePane('oracle', true); setTimeout(() => { const out = $('.pane[data-id="oracle"] .verdict'); if (out) runOracleUI({ root: L.root, dir: L.snap.workRoot || L.root }, out); }, 400); };
   $$('[data-f]', el).forEach(x => x.onclick = () => { togglePane('changes', true); setTimeout(() => paneCall('changes', 'select', x.dataset.f), 50); });
   $('.ctxcard', el).onclick = () => contextDialog(v);

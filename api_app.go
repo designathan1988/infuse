@@ -359,6 +359,9 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				return true
 			}
 			sendJSON(w, 200, map[string]any{"ok": true, "answer": ans})
+		case "review": // independent reviewer on the current changes, asked by the user
+			out, err := s.IndependentReview(r.Context(), str("focus"))
+			sendJSON(w, 200, map[string]any{"ok": err == nil, "review": out, "error": errString(err)})
 		case "suggest": // the gray suggestion in the prompt box
 			text, err := s.SuggestNext(r.Context())
 			sendJSON(w, 200, map[string]any{"text": text, "error": errString(err)})
