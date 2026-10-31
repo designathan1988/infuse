@@ -1,4 +1,4 @@
-package main
+package api
 
 // Temporary aliases for the extraction of internal packages. They keep the root package compiling
 // while symbols move out, and are removed once the last domain leaves (stage 9).

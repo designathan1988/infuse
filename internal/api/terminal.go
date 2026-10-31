@@ -1,4 +1,4 @@
-package main
+package api
 
 // HTTP/SSE adapter for the terminal pane. The PTY processes and their output fan-out live in
 // internal/terminal.

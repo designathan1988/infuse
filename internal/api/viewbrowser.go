@@ -1,4 +1,4 @@
-package main
+package api
 
 // HTTP/SSE adapter for the browser pane outside the app window. The tabs and their screencast live in
 // internal/browser.

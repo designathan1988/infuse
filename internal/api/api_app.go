@@ -1,4 +1,4 @@
-package main
+package api
 
 // Routes for the desktop-style window: providers, models, sessions (create with worktree, archive,
 // rewind variants, side chat, context), review (changes, PR), files, editors, terminal, dev servers,

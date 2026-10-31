@@ -1,10 +1,10 @@
-package main
+package api
 
 // The application: HTTP on 127.0.0.1 serving the embedded ui/index.html and a JSON API, shown inside the
 // native window (window_*.go). Nothing leaves the machine. `infuse serve` serves without a window.
 
 import (
-	"embed"
+	uiembed "infuse/ui"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -15,8 +15,6 @@ import (
 	"strings"
 )
 
-//go:embed ui
-var uiFS embed.FS
 
 // uiFile serves one embedded file; INFUSE_UI_DIR serves ui/ from disk instead (development).
 func uiFile(w http.ResponseWriter, name string) {
@@ -25,7 +23,7 @@ func uiFile(w http.ResponseWriter, name string) {
 	if dev := os.Getenv("INFUSE_UI_DIR"); dev != "" {
 		b, err = os.ReadFile(filepath.Join(dev, filepath.FromSlash(name)))
 	} else {
-		b, err = uiFS.ReadFile("ui/" + name)
+		b, err = uiembed.FS.ReadFile(name)
 	}
 	if err != nil {
 		http.Error(w, "not found", 404)
@@ -42,6 +40,9 @@ func uiFile(w http.ResponseWriter, name string) {
 	w.Header().Set("cache-control", "no-cache")
 	_, _ = w.Write(b)
 }
+
+// Start runs the application server and, when window is true, its native window.
+func Start(window bool) { StartUI(window) }
 
 func StartUI(window bool) {
 	addr := "127.0.0.1:0"

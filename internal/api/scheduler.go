@@ -1,4 +1,4 @@
-package main
+package api
 
 // Scheduled tasks: the storage and timing live in internal/scheduler; this file is the runner that
 // starts a session for a due task.

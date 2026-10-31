@@ -1,4 +1,4 @@
-package main
+package api
 
 // Integrated terminal and slash commands for the window.
 

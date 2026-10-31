@@ -1,4 +1,4 @@
-package main
+package api
 
 // Safety rails around the agent and the local API: path containment by component, capped output,
 // secret redaction, private-network fetch refusal, external-content provenance, the daily spend limit

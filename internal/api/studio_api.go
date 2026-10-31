@@ -1,4 +1,4 @@
-package main
+package api
 
 // Studio API: sessions, streaming events (SSE), files, diff, settings.
 

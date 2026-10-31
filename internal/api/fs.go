@@ -1,4 +1,4 @@
-package main
+package api
 
 // Folder listing behind the in-app folder browser. Hidden and system folders are skipped.
 
