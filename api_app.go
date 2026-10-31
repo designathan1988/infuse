@@ -494,6 +494,16 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				return true
 			}
 			sendJSON(w, 200, map[string]any{"ok": true, "answer": ans})
+		case "mission":
+			var err error
+			if str("action") == "stop" {
+				s.StopMission()
+			} else {
+				budget, _ := strconv.ParseFloat(fmt.Sprint(body["budget"]), 64)
+				turns, _ := strconv.Atoi(fmt.Sprint(body["maxTurns"]))
+				err = s.StartMission(str("goal"), budget, turns)
+			}
+			sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err), "mission": s.missionSnapshot()})
 		case "review": // independent reviewer on the current changes, asked by the user
 			out, err := s.IndependentReview(r.Context(), str("focus"))
 			sendJSON(w, 200, map[string]any{"ok": err == nil, "review": out, "error": errString(err)})

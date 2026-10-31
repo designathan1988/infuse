@@ -47,9 +47,17 @@ func TestSentinelAsksBeforeEditingTestsToMakeThemPass(t *testing.T) {
 		t.Fatalf("%v %s", isErr, out)
 	}
 
-	// a request that is not about making tests pass: no sentinel
-	s.Messages[0].Content[0].Text = "escreva testes para soma.js"
-	if s.sentinel(write, json.RawMessage(`{"path":"src/soma.test.js"}`)) != "" {
-		t.Fatal("writing new tests on request must not be flagged")
+	// requests that are not about making failing tests pass: no sentinel
+	for _, req := range []string{"escreva testes para soma.js", "[Missão] Ao fim de cada turno o infuse roda os critérios; se falharem, você continua.\n\nObjetivo: adicione uma função e um teste para ela em hello.test.js", "add a test for the parser"} {
+		s.Messages[0].Content[0].Text = req
+		if why := s.sentinel(write, json.RawMessage(`{"path":"src/soma.test.js"}`)); why != "" {
+			t.Fatalf("flagged %q", req)
+		}
+	}
+	for _, req := range []string{"os testes estão falhando, faça passar", "fix the failing tests", "corrija os testes", "make the tests pass", "[Missão — turno 2 de 5] O Pronto? reprovou o trabalho atual", "o CI falhou"} {
+		s.Messages[0].Content[0].Text = req
+		if s.sentinel(write, json.RawMessage(`{"path":"src/soma.test.js"}`)) == "" {
+			t.Fatalf("not flagged %q", req)
+		}
 	}
 }

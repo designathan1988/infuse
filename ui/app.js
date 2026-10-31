@@ -320,6 +320,7 @@ function sessionMenu(v, anchor) {
     ] },
     { label: 'Copiar', items: [
       { label: 'Revisão independente', sub: 'Um revisor com contexto limpo confere as alterações', f: () => runReview(v) },
+      { label: 'Iniciar missão…', sub: 'Trabalhar sozinho até os critérios passarem', f: () => missionDialog(v) },
       { label: 'Copiar conversa', sub: 'Markdown, com ferramentas e raciocínio', f: () => copyText(transcriptMarkdown(L), 'Conversa copiada') },
       { label: 'Copiar última resposta', f: () => { const m = [...L.snap.messages].reverse().find(x => x.role === 'assistant' && msgText(x)); if (m) copyText(msgText(m), 'Resposta copiada'); } },
       { label: 'Exportar conversa…', sub: 'Salvar como arquivo .md', f: () => exportTranscript(L) },
@@ -380,6 +381,7 @@ function onEvent(L, ev) {
     case 'error': L.snap.error = d; L.snap.pendingPermission = null; L.snap.pendingQuestion = null; re(); attention(L, 'infuse: erro', String(d)); break;
     case 'tasks': L.snap.tasks = d; vs.forEach(renderRail); paneRefresh('tasks'); break;
     case 'memory': paneRefresh('memory'); break;
+    case 'mission': L.snap.mission = d; vs.forEach(renderRail); break;
     case 'cwd': L.snap.cwd = d; break;
     case 'checkpoint': (L.snap.checkpoints[d.turn] = L.snap.checkpoints[d.turn] || []).push({ path: d.path }); break;
     case 'map': paneRefresh('map'); paneRefresh('files'); break;
@@ -493,6 +495,41 @@ function turnSummary(s, msgs, from, to) {
 // Independent review: a reviewer with a clean context reads the diff, the plan and the criteria.
 function reviewBlock(text, i) {
   return `<div class="report review"><div class="rh"><b>${t('Revisão independente')}</b><span class="faint">${t('um revisor com contexto limpo leu o diff, o plano e os critérios')}</span><span class="grow"></span><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button></div><div class="md sel">${md(text)}</div><div class="rnext"><span class="grow faint">${t('O agente vê estes achados na próxima mensagem.')}</span><button class="btn sm pri" data-fixreview>${t('Pedir correções')}</button></div></div>`;
+}
+// Missions: the agent keeps working until the Done? criteria pass, within a budget.
+const MSTATE = { running: ['warn', 'em andamento'], aprovada: ['ok', 'aprovada'], orcamento: ['bad', 'orçamento esgotado'], impasse: ['bad', 'impasse'], parada: ['', 'parada'] };
+function missionCard(L) {
+  const m = L.snap.mission;
+  if (!m) return `<div class="card"><div class="ch">${t('Missão')}</div><div class="faint" style="margin-bottom:6px">${t('O agente trabalha sozinho, turno após turno, até os critérios do Pronto? passarem — dentro de um orçamento.')}</div><button class="btn sm line mnew">${t('Iniciar missão')}</button></div>`;
+  const spent = Math.max(0, (L.snap.cost || 0) - (m.startCost || 0)), turns = (m.steps || []).length + (m.state === 'running' ? 1 : 0);
+  const [cls, label] = MSTATE[m.state] || ['', m.state]; const pct = Math.min(100, Math.round(spent / (m.budgetUSD || 1) * 100));
+  const last = (m.steps || []).slice(-1)[0];
+  return `<div class="card mission"><div class="ch">${t('Missão')}<span class="r"><span class="tag ${cls}">${t(label)}</span></span></div>
+    <div class="faint trunc" title="${esc(m.goal)}">${esc(m.goal)}</div>
+    <div class="bar100" style="margin:6px 0 3px"><i style="width:${pct}%"></i></div><div class="faint">${t('turno')} ${Math.min(turns, m.maxTurns)}/${m.maxTurns} · ${money(spent)} ${t('de')} ${money(m.budgetUSD)}</div>
+    ${m.reason ? `<div style="margin-top:6px">${esc(t(m.reason))}</div>` : ''}
+    ${m.impasse ? `<div class="mimp"><b>${t('Impasse')}:</b> ${esc(m.impasse.reason)}${(m.impasse.tried || []).length ? `<div>${t('Tentou')}: ${m.impasse.tried.map(esc).join('; ')}</div>` : ''}${m.impasse.evidence ? `<div class="mono">${esc(m.impasse.evidence)}</div>` : ''}<div><b>${t('Precisa de')}:</b> ${esc(m.impasse.needs)}</div></div>` : ''}
+    ${last?.auditor ? `<div class="maud" title="${esc(t('Auditor de fluxo: conselho do modelo rápido, não um veredito'))}">${esc(last.auditor)}</div>` : ''}
+    ${(m.steps || []).length ? `<details class="odet"><summary>${t('Linha do tempo')} (${m.steps.length})</summary>${m.steps.map(st => `<div class="mstep"><span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[st.verdict] || 'warn'}">${esc(t(st.verdict || '—'))}</span><span class="faint">${t('turno')} ${st.turn} · ${new Date(st.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${money(st.cost)}</span><div class="mono faint">${esc(st.summary || '')}</div>${st.auditor ? `<div class="maud">${esc(st.auditor)}</div>` : ''}</div>`).join('')}</details>` : ''}
+    <div class="row" style="margin-top:6px">${m.state === 'running' ? `<button class="btn sm mstop">${t('Parar missão')}</button>` : `<button class="btn sm line mnew">${t('Nova missão')}</button>`}</div></div>`;
+}
+function missionDialog(v) {
+  const L = v.sid && S.live[v.sid]; const P = $('.prompt', v.el);
+  const d = h(`<div class="dlg" style="width:min(560px,92vw)"><h3 style="margin:0 0 4px">${t('Iniciar missão')}</h3><div class="faint" style="margin-bottom:10px">${t('O agente trabalha sozinho até os critérios do Pronto? passarem. Depois de cada turno o infuse roda os critérios numa cópia do projeto; se falharem, o agente recebe os motivos e continua. Ele pode declarar impasse quando não houver caminho.')}</div>
+    <textarea class="doc mg" style="min-height:110px" placeholder="${esc(t('O objetivo. Ex.: a página de login autentica com e-mail e senha e mostra erro claro quando a senha está errada.'))}">${esc(P?.value || '')}</textarea>
+    <div class="cs" style="padding:8px 0 0">${t('Gastar no máximo')} US$ <input class="slot mono mb" value="2.00"> ${t('e')} <input class="slot mono mt" value="10"> ${t('turnos')}.</div>
+    <div class="mcrit faint" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn cancel">${t('Cancelar')}</button><button class="btn pri go">${t('Iniciar')}</button></div></div>`);
+  const close = overlay(d);
+  api('/api/oracle/spec', { root: L?.root || curRoot() }).then(r => { const n = (r.spec?.checks || []).length; $('.mcrit', d).innerHTML = n ? `✓ ${n} ${t(n === 1 ? 'critério executável definido no Pronto?' : 'critérios executáveis definidos no Pronto?')}` : `<span class="del">${t('Nenhum critério executável no Pronto?: sem eles o infuse não tem como confirmar o fim.')}</span> <a href="#" class="defc">${t('Definir critérios')}</a>`; const dc = $('.defc', d); if (dc) dc.onclick = e => { e.preventDefault(); close(); togglePane('oracle', true); }; });
+  $('.cancel', d).onclick = close;
+  $('.go', d).onclick = async () => {
+    const goal = $('.mg', d).value.trim(); if (!goal) return toast(t('Descreva o objetivo'));
+    let L2 = L; if (!L2) { P.value = goal; await send(v); return close(); } // no session yet: a normal start
+    const r = await api(`/api/session/${L2.id}/mission`, { body: { goal, budget: parseFloat($('.mb', d).value) || 2, maxTurns: parseInt($('.mt', d).value) || 10 }, root: L2.root });
+    if (!r.ok) return toast(r.error); if (P) P.value = ''; close();
+  };
+  setTimeout(() => $('.mg', d).focus(), 30);
 }
 async function runReview(v, focus) {
   const L = v.sid && S.live[v.sid]; if (!L) return toast(t('Abra uma sessão para revisar'));
@@ -800,6 +837,7 @@ async function slash(v, text) {
     case 'resume': palette('sessions'); return true;
     case 'rename': if (L && arg) setSessionOpts(v, { title: arg }); else renameInline(v); return true;
     case 'review': case 'code-review': runReview(v, arg); return true;
+    case 'mission': case 'missao': if (arg) $('.prompt', v.el).value = arg; missionDialog(v); return true;
     case 'init': $('.prompt', v.el).value = t('Analise este projeto e escreva um INFUSE.md na raiz com: como compilar, testar e rodar; a arquitetura e onde cada responsabilidade mora; convenções do código. Seja conciso.'); return false;
     case 'memory': togglePane('memory', true); return true;
     case 'terminal': togglePane('terminal', true); return true;
@@ -893,10 +931,13 @@ function renderRail(v) {
   <div class="card ctxcard" style="cursor:pointer"><div class="ch">${t('Contexto')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(S.settings.contextLimit || 200000)} tokens · ${money(L.snap.cost)}</div></div>
   <div class="card"><div class="ch">${t('Ambiente')}</div><div class="kv"><span>${t('Onde')}</span><span>${t('Este computador')}</span></div><div class="kv"><span>${t('Pasta')}</span><span title="${esc(L.snap.workRoot)}">${esc(baseName(L.snap.workRoot || L.root))}</span></div>${L.snap.branch ? `<div class="kv"><span>${t('Branch')}</span><span class="mono">${esc(L.snap.branch)}</span></div>` : ''}${L.snap.worktree ? `<div class="kv"><span>${t('Worktree')}</span><span>${t('isolado')}</span></div>` : ''}<div class="kv"><span>${t('Modelo')}</span><span class="mono">${esc(L.snap.model || '')}</span></div></div>
   ${tasks.length ? `<div class="card" style="cursor:pointer" data-open="tasks"><div class="ch">${t('Tarefas')}<span class="r">${tasks.filter(x => x.status === 'done').length}/${tasks.length}</span></div>${tasks.slice(0, 5).map(x => `<div style="font-size:12px;color:${x.status === 'done' ? 'var(--text3)' : 'var(--text)'}">${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text)}</div>`).join('')}</div>` : ''}
+  ${missionCard(L)}
   <div class="card"><div class="ch">${t('Pronto')}<span class="r">${L.verdict ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[L.verdict.verdict] || 'warn'}">${esc(t(L.verdict.verdict))}</span>` : `<span class="faint">${t('não verificado')}</span>`}</span></div>
     <div class="faint" style="margin-bottom:6px">${L.verdict ? esc(L.verdict.summary) : t('Só a execução dos critérios decide; a palavra do agente não conta.')}</div>
     <div class="row"><button class="btn sm line oraclego">${t('Pronto?')}</button><button class="btn sm" data-open="oracle">${t('Critérios')}</button><button class="btn sm revgo" title="${esc(t('Um revisor com contexto limpo lê o diff, o plano e os critérios e aponta problemas'))}">${t('Revisar')}</button></div></div>`;
   $('.revgo', el).onclick = () => runReview(v);
+  const ms = $('.mstop', el); if (ms) ms.onclick = () => api(`/api/session/${L.id}/mission`, { body: { action: 'stop' }, root: L.root });
+  const mn = $('.mnew', el); if (mn) mn.onclick = () => missionDialog(v);
   $('.oraclego', el).onclick = () => { togglePane('oracle', true); setTimeout(() => { const out = $('.pane[data-id="oracle"] .verdict'); if (out) runOracleUI({ root: L.root, dir: L.snap.workRoot || L.root }, out); }, 400); };
   $$('[data-f]', el).forEach(x => x.onclick = () => { togglePane('changes', true); setTimeout(() => paneCall('changes', 'select', x.dataset.f), 50); });
   $('.ctxcard', el).onclick = () => contextDialog(v);

@@ -71,6 +71,7 @@ type SessionData struct {
 	LastInput   int                      `json:"lastInput,omitempty"` // context size of the latest request
 	Memory      []MemoryItem             `json:"memory,omitempty"`    // structured memory of this session only
 	Pinned      bool                     `json:"pinned,omitempty"`    // shown at the top of the sidebar
+	Mission     *Mission                 `json:"mission,omitempty"`   // the session's mission, running or ended
 }
 
 type Session struct {
@@ -223,7 +224,7 @@ func (s *Session) snapshot() map[string]any {
 		"turnStarts": s.TurnStarts, "checkpoints": s.Checkpoints, "pendingPermission": s.pendingPerm,
 		"pendingQuestion": s.pendingAsk, "error": s.lastError, "compactions": s.Compactions, "mode": s.mode(),
 		"provider": s.providerID(), "effort": s.effort(), "archived": s.Archived, "worktree": s.Worktree, "branch": s.Branch,
-		"workRoot": s.workRoot(), "plan": s.Plan, "created": s.Created, "updated": s.Updated, "lastInput": s.LastInput,
+		"workRoot": s.workRoot(), "plan": s.Plan, "mission": s.Mission.clone(), "created": s.Created, "updated": s.Updated, "lastInput": s.LastInput,
 	}
 }
 
@@ -869,6 +870,16 @@ func (s *Session) finish(reason string) {
 	s.setState("idle")
 	s.emit("done", map[string]any{"reason": reason, "cost": s.Cost, "usage": s.Usage})
 	s.save()
+	s.mu.Lock()
+	running := s.Mission != nil && s.Mission.State == "running"
+	s.mu.Unlock()
+	if running {
+		if reason == "" {
+			go s.missionStep() // verdict, budget, and the next turn
+		} else {
+			s.endMission("parada", reason)
+		}
+	}
 }
 
 func (s *Session) fail(err error) {
@@ -879,6 +890,7 @@ func (s *Session) fail(err error) {
 	s.emit("error", err.Error())
 	s.setState("error")
 	s.save()
+	s.endMission("parada", "erro: "+err.Error())
 }
 
 // ---------------------------------------------------------------- compaction

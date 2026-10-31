@@ -7,12 +7,18 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 var (
-	reTestFile  = regexp.MustCompile(`(?i)(^|/)(tests?|__tests__|specs?|e2e)/|[._-](test|spec)\.[a-z0-9]+$|_test\.go$|(^|/)test_[^/]+\.py$|(^|/)conftest\.py$`)
-	reMakePass  = regexp.MustCompile(`(?i)\b(pass(ar|e|em|ando)?|verde|green|falh\w*|quebr\w*|fail\w*|fix\w*|corrig\w*|consert\w*)\b`)
-	reMentTests = regexp.MustCompile(`(?i)\btest(e|es|s)?\b|\bspec\b|\bci\b`)
+	reTestFile = regexp.MustCompile(`(?i)(^|/)(tests?|__tests__|specs?|e2e)/|[._-](test|spec)\.[a-z0-9]+$|_test\.go$|(^|/)test_[^/]+\.py$|(^|/)conftest\.py$`)
+	// a request to make failing tests pass (not merely one that mentions tests)
+	reMakePass = regexp.MustCompile(`(?i)(fa[çc]a|fazer|deix\w*|make|get)\s+(os\s+|the\s+)?(test\w*|ci)\s+(passar|pass\w*|verde|green)` +
+		`|(test\w*|ci|specs?)\s+(est[ãa]o\s+|is\s+|are\s+)?(falhando|falhou|falham|quebrad\w*|failing|fails|failed|broken|red|vermelh\w*)` +
+		`|(corrij\w*|corrigir|consert\w*|fix\w*)\s+(os?\s+|the\s+)?(test\w*|ci|build)` +
+		`|(test\w*|ci)\s+(para\s+|to\s+)?pass` +
+		`|\b(failing|broken|red)\s+(unit\s+)?tests?|testes?\s+(que\s+)?(falham|quebrad\w*)` +
+		`|reprovou`)
 )
 
 const sentinelTestEdit = "alteração em arquivo de teste num pedido para os testes passarem"
@@ -44,7 +50,13 @@ func (s *Session) sentinel(tool Tool, input json.RawMessage) string {
 	if p == "" || !reTestFile.MatchString(filepath.ToSlash(p)) {
 		return ""
 	}
-	if req := s.turnRequest(); reMakePass.MatchString(req) && reMentTests.MatchString(req) {
+	req := s.turnRequest()
+	if strings.HasPrefix(req, "[Missão]") { // infuse's own mission instructions are not the user's request
+		if k := strings.Index(req, "Objetivo: "); k >= 0 {
+			req = req[k+len("Objetivo: "):]
+		}
+	}
+	if reMakePass.MatchString(req) {
 		return sentinelTestEdit
 	}
 	return ""
