@@ -65,7 +65,8 @@ type SessionData struct {
 	Archived    bool                     `json:"archived,omitempty"`
 	Worktree    string                   `json:"worktree,omitempty"` // absolute path when the session has its own worktree
 	Branch      string                   `json:"branch,omitempty"`
-	Plan        string                   `json:"plan,omitempty"` // the latest plan proposed in plan mode
+	Plan        string                   `json:"plan,omitempty"`      // the latest plan proposed in plan mode
+	LastInput   int                      `json:"lastInput,omitempty"` // context size of the latest request
 }
 
 type Session struct {
@@ -207,7 +208,7 @@ func (s *Session) snapshot() map[string]any {
 		"turnStarts": s.TurnStarts, "checkpoints": s.Checkpoints, "pendingPermission": s.pendingPerm,
 		"pendingQuestion": s.pendingAsk, "error": s.lastError, "compactions": s.Compactions, "mode": s.mode(),
 		"provider": s.providerID(), "effort": s.effort(), "archived": s.Archived, "worktree": s.Worktree, "branch": s.Branch,
-		"workRoot": s.workRoot(), "plan": s.Plan, "created": s.Created, "updated": s.Updated,
+		"workRoot": s.workRoot(), "plan": s.Plan, "created": s.Created, "updated": s.Updated, "lastInput": s.LastInput,
 	}
 }
 
@@ -588,6 +589,7 @@ func (s *Session) run(ctx context.Context) {
 		s.Usage.CacheWrite += res.Usage.CacheWrite
 		cost := s.settings.costOf(s.Model, res.Usage)
 		s.Cost += cost
+		s.LastInput = res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite
 		if s.mode() == "plan" && res.StopReason != "tool_use" {
 			for _, b := range res.Content {
 				if b.Type == "text" && strings.TrimSpace(b.Text) != "" {

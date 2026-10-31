@@ -31,7 +31,7 @@ function openFileInPane(path) { togglePane('files', true); setTimeout(() => pane
 function paneCtx() { return { root: curRoot(), dir: curDir(), L: curL() }; }
 
 function renderPanes() {
-  const host = $('#panes'); host.classList.toggle('empty', !P2.open.length); host.style.width = P2.width + 'px';
+  const host = $('#panes'); host.classList.toggle('empty', !P2.open.length || !!S.page); // full pages hide the panes host.style.width = P2.width + 'px';
   const ctxKey = curRoot() + '|' + curDir();
   // remove panes no longer open
   $$('.pane', host).forEach(p => { if (!P2.open.includes(p.dataset.id)) p.remove(); });
@@ -144,7 +144,7 @@ function mountTerminal(pb, extra, c) {
   const theme = () => { const cs = getComputedStyle(document.documentElement); return { background: cs.getPropertyValue('--surface').trim(), foreground: cs.getPropertyValue('--text').trim(), cursor: cs.getPropertyValue('--text2').trim(), selectionBackground: dark() ? '#3a4a6a' : '#cfdcf8' }; };
   const drawTabs = () => { bar.innerHTML = ''; tabs.forEach((tb, i) => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}">${esc(tb.name)}<span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) return closeTab(tb); show(tb); }; bar.appendChild(el); }); };
   const show = tb => { tabs.forEach(x => x.el.style.display = x === tb ? '' : 'none'); cur = tb; drawTabs(); setTimeout(() => { tb.fit.fit(); tb.term.focus(); }, 10); };
-  const closeTab = tb => { api(`/api/term/${tb.id}/close`, { body: {}, root: c.root }); tb.es?.close(); tb.term.dispose(); tb.el.remove(); tabs.splice(tabs.indexOf(tb), 1); if (cur === tb) cur = tabs[tabs.length - 1] || null; if (cur) show(cur); else drawTabs(); };
+  const closeTab = tb => { tb.dead = true; api(`/api/term/${tb.id}/close`, { body: {}, root: c.root }); tb.es?.close(); tb.term.dispose(); tb.el.remove(); tabs.splice(tabs.indexOf(tb), 1); if (cur === tb) cur = tabs[tabs.length - 1] || null; if (cur) show(cur); else drawTabs(); };
   const open = async (cwd, run, name) => {
     if (!window.Terminal) { host.innerHTML = `<div class="empty">xterm.js não carregou</div>`; return; }
     const el = h('<div></div>'); host.appendChild(el);
@@ -155,9 +155,10 @@ function mountTerminal(pb, extra, c) {
     const tb = { id: r.id, term, fit, el, name: name || baseName(r.cwd) || 'shell' + (tabs.length + 1) };
     const es = new EventSource(`/api/term/${r.id}/stream?root=${encodeURIComponent(c.root)}`); tb.es = es;
     es.onmessage = e => { const bin = atob(e.data); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); term.write(bytes); };
-    es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('processo encerrado')}]\x1b[0m\r\n`); es.close(); });
+    es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('processo encerrado')}]\x1b[0m\r\n`); es.close(); tb.dead = true; });
+    es.onerror = () => { if (es.readyState === EventSource.CLOSED || tb.dead) return; fetch(`/api/term/${r.id}/resize?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cols: term.cols, rows: term.rows }) }).then(x => { if (x.status === 404) { es.close(); tb.dead = true; term.write(`\r\n\x1b[2m[${t('terminal encerrado')}]\x1b[0m\r\n`); } }); };
     let pending = '', timer = null;
-    term.onData(d => { pending += d; if (!timer) timer = setTimeout(() => { const data = pending; pending = ''; timer = null; fetch(`/api/term/${r.id}/input?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data }) }); }, 8); });
+    term.onData(d => { if (tb.dead) return; pending += d; if (!timer) timer = setTimeout(() => { const data = pending; pending = ''; timer = null; fetch(`/api/term/${r.id}/input?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data }) }); }, 8); });
     term.onResize(({ cols, rows }) => api(`/api/term/${r.id}/resize`, { body: { cols, rows }, root: c.root }));
     tabs.push(tb); show(tb);
   };

@@ -87,6 +87,18 @@ func listCommands(root string) []slashCommand {
 		{Name: "diff", Description: "Mostrar as alterações do projeto", Builtin: true},
 		{Name: "cost", Description: "Tokens e custo desta sessão", Builtin: true},
 		{Name: "vim", Description: "Ligar/desligar o modo vim na caixa de prompt", Builtin: true},
+		{Name: "copy", Description: "Copiar a última resposta (/copy 2 = a penúltima)", Builtin: true},
+		{Name: "export", Description: "Exportar a conversa como Markdown", Builtin: true},
+		{Name: "btw", Description: "Pergunta paralela, fora do histórico", Builtin: true},
+		{Name: "plan", Description: "Entrar no modo Plano", Builtin: true},
+		{Name: "effort", Description: "Escolher o esforço de raciocínio", Builtin: true},
+		{Name: "config", Description: "Abrir as Configurações", Builtin: true},
+		{Name: "resume", Description: "Abrir outra sessão", Builtin: true},
+		{Name: "rename", Description: "Renomear esta sessão", Builtin: true},
+		{Name: "review", Description: "Revisar as alterações não commitadas", Builtin: true},
+		{Name: "init", Description: "Gerar INFUSE.md com as instruções do projeto", Builtin: true},
+		{Name: "memory", Description: "Editar as instruções do projeto", Builtin: true},
+		{Name: "terminal", Description: "Abrir o terminal", Builtin: true},
 		{Name: "help", Description: "Atalhos de teclado", Builtin: true},
 	}
 	seen := map[string]bool{}

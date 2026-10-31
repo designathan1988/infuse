@@ -3,7 +3,7 @@
 
 function showPage(name) {
   S.page = name; let pg = $('#page');
-  if (!name) { if (pg) pg.remove(); $('#views').classList.remove('hidden'); $('#panes').classList.toggle('empty', !P2.open.length); renderSidebar(); return null; }
+  if (!name) { if (pg) pg.remove(); $('#views').classList.remove('hidden'); renderPanes(); renderSidebar(); return null; }
   if (!pg) { pg = h('<div id="page" class="page"></div>'); $('#main').prepend(pg); }
   pg.innerHTML = ''; $('#views').classList.add('hidden'); $('#panes').classList.add('empty'); renderSidebar();
   return pg;

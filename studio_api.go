@@ -365,6 +365,9 @@ func fileTree(root, dir string, depth int) *treeNode {
 			n.Children = append(n.Children, fileTree(root, filepath.Join(dir, e.Name()), depth+1))
 			continue
 		}
+		if e.Name() == ".git" { // a worktree's .git is a file pointing at the main repository
+			continue
+		}
 		childRel := e.Name()
 		if rel != "" {
 			childRel = rel + "/" + e.Name()

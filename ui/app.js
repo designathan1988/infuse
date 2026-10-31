@@ -29,6 +29,7 @@ const I = {
   reload: '<svg class="i" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>',
   folder: '<svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   branch: '<svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8M18 10c0 4-6 3-12 6"/></svg>',
+  copy: '<svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
   pc: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
 };
 
@@ -284,6 +285,8 @@ function sessionMenu(v, anchor) {
     { h: 'Modo de exibição' }, ...modes.map(([k, l, d]) => ({ label: l, sub: d, check: S.viewMode === k, f: () => setViewMode(k) })),
     { label: 'Expandir tudo', f: () => foldAll(v, true) }, { label: 'Recolher tudo', f: () => foldAll(v, false) },
     { label: S.settings.showThinking === false ? 'Mostrar raciocínio' : 'Ocultar raciocínio', f: () => { saveSetting({ showThinking: S.settings.showThinking === false }); for (const k of Object.keys(S.fold)) if (k.includes(':')) delete S.fold[k]; S.views.forEach(renderChat); } },
+    { sep: 1 }, { label: 'Copiar conversa', sub: 'Markdown, com ferramentas e raciocínio', f: () => copyText(transcriptMarkdown(L), 'Conversa copiada') }, { label: 'Exportar conversa…', sub: 'Salvar como arquivo .md', f: () => exportTranscript(L) },
+    { label: 'Copiar última resposta', f: () => { const m = [...L.snap.messages].reverse().find(x => x.role === 'assistant' && msgText(x)); if (m) copyText(msgText(m), 'Resposta copiada'); } },
     { sep: 1 }, { label: 'Renomear', f: () => renameInline(v) },
     { label: 'Voltar no tempo…', d: 'Esc Esc', f: () => rewindDialog(v) },
     { label: 'Pergunta paralela', d: 'Ctrl ;', f: () => openSide(v) },
@@ -318,7 +321,7 @@ function onEvent(L, ev) {
   const d = ev.data; const vs = viewsOf(L);
   const re = () => vs.forEach(v => { renderChat(v); renderComposer(v); });
   switch (ev.type) {
-    case 'session': L.snap = norm(d); if (!busy(L)) { L.text = ''; L.think = ''; L.tools = {}; } vs.forEach(renderView); break;
+    case 'session': L.snap = norm(d); if (d.lastInput) L.lastIn = d.lastInput; if (!busy(L)) { L.text = ''; L.think = ''; L.tools = {}; } vs.forEach(renderView); break;
     case 'state':
       if (L.snap) L.snap.state = d.state;
       if (d.state === 'thinking') { L.text = ''; L.think = ''; if (!L.started) L.started = Date.now(); }
@@ -362,7 +365,7 @@ async function openSession(root, id) {
   if (S.views.some((x, i) => x.sid === id && i !== S.focus)) { S.focus = S.views.findIndex(x => x.sid === id); mountViews(); renderSidebar(); renderPanes(); return; }
   v.sid = id; v.root = root;
   const L = connect(root, id);
-  if (!L.snap) L.snap = norm(await api(`/api/sessions/${id}`, { root }));
+  if (!L.snap) { L.snap = norm(await api(`/api/sessions/${id}`, { root })); L.lastIn = L.snap.lastInput || 0; }
   if (!L.changes) refreshChanges(L);
   S.recent = [id, ...S.recent.filter(x => x !== id)].slice(0, 20);
   lsSet('lastRoot', root); saveLayout();
@@ -401,7 +404,7 @@ function renderChat(v) {
       const main = texts[0]?.text || '';
       if (main.startsWith('[Conversa resumida]') || main.startsWith('[Contexto compactado')) { out += `<div class="marker" title="${esc(main.slice(0, 600))}">${t('Conversa resumida')}</div>`; return; }
       const attached = texts.slice(1).map(b => (b.text.match(/path="([^"]+)"/) || [])[1]).filter(Boolean);
-      out += `<div class="u sel">${esc(main)}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div>`;
+      out += `<div class="umsg"><div class="msgacts"><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button>${turnOf(s, i) ? `<button class="ib" data-rw="${turnOf(s, i)}" title="${esc(t('Voltar aqui'))}">↶</button>` : ''}</div><div class="u sel">${esc(main)}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div></div>`;
     } else {
       if (m.content.length === 2 && m.content[0]?.text === 'Entendido, continuo a partir desse estado.') return;
       let inner = '';
@@ -410,7 +413,7 @@ function renderChat(v) {
         else if (b.type === 'thinking' && b.thinking?.trim()) inner += thinkBlock(`${v.sid}:${i}:${bi}`, b.thinking, false);
         else if (b.type === 'tool_use') inner += toolBlock(b.id, b.name, b.input, results[b.id], false);
       }
-      if (inner) out += `<div class="a">${inner}</div>`; // a message with nothing visible leaves no gap
+      if (inner) out += `<div class="a">${inner}${m.content.some(b => b.type === 'text' && b.text?.trim()) ? `<div class="msgacts low"><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar resposta'))}">${I.copy}</button></div>` : ''}</div>`; // a message with nothing visible leaves no gap
     }
   });
   out += '<div class="live"></div>';
@@ -422,7 +425,33 @@ function renderChat(v) {
   chat.innerHTML = out; bindChat(v, chat); renderLive(v);
   if (atBottom || v._jump !== v.sid) { sc.scrollTop = sc.scrollHeight; v._jump = v.sid; }
 }
+function turnOf(s, msgIndex) { const k = s.turnStarts.indexOf(msgIndex); return k >= 0 ? k + 1 : 0; }
+function msgText(m) { return (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim(); }
+function copyText(txt, what) { navigator.clipboard.writeText(txt).then(() => toast(t(what || 'Copiado')), () => toast('Não foi possível copiar')); }
+// The whole conversation as Markdown: prompts, answers, and each tool call with its input and result.
+function transcriptMarkdown(L) {
+  const s = L.snap; const res = {}; for (const m of s.messages) for (const b of m.content || []) if (b.type === 'tool_result') res[b.tool_use_id] = b;
+  let out = `# ${s.title || 'Sessão'}\n\n_${projectLabel(L.root)} · ${s.model || ''} · ${new Date().toLocaleString()}_\n\n`;
+  for (const m of s.messages) {
+    if (m.role === 'user') { const tx = msgText(m); if (tx) out += `## ${t('Você')}\n\n${tx}\n\n`; continue; }
+    out += `## ${t('Agente')}\n\n`;
+    for (const b of m.content) {
+      if (b.type === 'thinking' && b.thinking) out += `<details><summary>${t('Raciocínio')}</summary>\n\n${b.thinking}\n\n</details>\n\n`;
+      if (b.type === 'text' && b.text?.trim()) out += b.text.trim() + '\n\n';
+      if (b.type === 'tool_use') { out += `**${b.name}**\n\n\`\`\`json\n${JSON.stringify(b.input, null, 2)}\n\`\`\`\n\n`; const r = res[b.id]; if (r) out += `\`\`\`\n${String(r.content || '').slice(0, 8000)}\n\`\`\`\n\n`; }
+    }
+  }
+  return out;
+}
+function exportTranscript(L) {
+  const blob = new Blob([transcriptMarkdown(L)], { type: 'text/markdown' }); const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = (L.snap.title || 'sessao').replace(/[^\w\- ]+/g, '').trim().slice(0, 60) + '.md'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
 function bindChat(v, root) {
+  const L = v.sid && S.live[v.sid];
+  $$('[data-copy-msg]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const m = L.snap.messages[+b.dataset.copyMsg]; copyText(msgText(m), 'Mensagem copiada'); });
+  $$('.codecopy', root).forEach(b => b.onclick = () => copyText(b.nextElementSibling.innerText, 'Código copiado'));
+  $$('[data-copy-tool]', root).forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.closest('.tool').querySelector(b.dataset.copyTool === 'out' ? '.res' : '.inp')?.innerText || '', 'Copiado'); });
   $$('[data-rw]', root).forEach(b => b.onclick = () => rewindDialog(v, +b.dataset.rw));
   $$('[data-fold]', root).forEach(x => x.onclick = e => { if (e.target.closest('[data-path]')) return; const box = x.parentNode; const open = !box.classList.contains('open'); box.classList.toggle('open', open); S.fold[x.dataset.fold] = open; });
   $$('[data-path]', root).forEach(x => { x.onclick = () => openFileInPane(x.dataset.path); x.oncontextmenu = e => { e.preventDefault(); pathMenu(x.dataset.path, e); }; });
@@ -469,12 +498,12 @@ function toolBlock(id, name, input, result, running) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
   const isPath = ['Read', 'Write', 'Edit'].includes(name) && (inp?.path || inp?.file_path);
   let body = '';
-  if (name === 'Bash' && inp?.command) body += `<div class="lab">${t('comando')}</div><pre>${esc(inp.command)}</pre>`;
+  if (name === 'Bash' && inp?.command) body += `<div class="lab">${t('comando')}<button class="ib mini" data-copy-tool="in" title="${esc(t('Copiar comando'))}">${I.copy}</button></div><pre class="inp">${esc(inp.command)}</pre>`;
   else if (name === 'Write' && inp?.content != null) body += diffHTML(inp.content.split('\n').map(l => '+' + l).join('\n'));
   else if (name === 'Edit' && inp?.old_string != null) body += diffHTML(inp.old_string.split('\n').map(l => '-' + l).join('\n') + '\n' + (inp.new_string || '').split('\n').map(l => '+' + l).join('\n'));
   else if (inp && Object.keys(inp).length && name !== 'TodoWrite') body += `<div class="lab">${t('entrada')}</div><pre>${esc(JSON.stringify(inp, null, 2))}</pre>`;
   if (name === 'TodoWrite' && Array.isArray(inp?.todos || inp?.tasks)) body += (inp.todos || inp.tasks).map(x => `<div>${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text || x.content || '')}</div>`).join('');
-  if (result) { const o = String(result.content || ''); const k = o.indexOf('\n[infuse'); const main = k >= 0 ? o.slice(0, k) : o, inf = k >= 0 ? o.slice(k + 1) : ''; body += `<div class="lab">${t('resultado')}</div><pre>${esc(main.length > 20000 ? main.slice(0, 20000) + '\n…' : main)}</pre>` + (inf ? `<div class="lab">${t('infundido')}</div><pre class="inf">${esc(inf)}</pre>` : ''); }
+  if (result) { const o = String(result.content || ''); const k = o.indexOf('\n[infuse'); const main = k >= 0 ? o.slice(0, k) : o, inf = k >= 0 ? o.slice(k + 1) : ''; body += `<div class="lab">${t('resultado')}<button class="ib mini" data-copy-tool="out" title="${esc(t('Copiar resultado'))}">${I.copy}</button></div><pre class="res">${esc(main.length > 20000 ? main.slice(0, 20000) + '\n…' : main)}</pre>` + (inf ? `<div class="lab">${t('infundido')}</div><pre class="inf">${esc(inf)}</pre>` : ''); }
   const dot = running ? 'run' : result ? (result.is_error ? 'err' : '') : 'pend';
   const open = S.fold[id] ?? (S.viewMode === 'verbose' || !!result?.is_error);
   const fullPath = isPath ? (inp.path || inp.file_path) : '';
@@ -502,7 +531,7 @@ async function answer(v, id, a) { const L = S.live[v.sid]; await api(`/api/sessi
 // markdown (small, safe): code blocks, inline code (paths become links), headings, lists, quotes, tables, links
 function md(src) {
   const blocks = [];
-  src = src.replace(/```[\w+-]*\n([\s\S]*?)```/g, (_, c) => { blocks.push(`<pre><code>${esc(c.replace(/\n$/, ''))}</code></pre>`); return `\u0000${blocks.length - 1}\u0000`; });
+  src = src.replace(/```[\w+-]*\n([\s\S]*?)```/g, (_, c) => { blocks.push(`<div class="codewrap"><button class="ib codecopy" title="Copiar">${I.copy}</button><pre><code>${esc(c.replace(/\n$/, ''))}</code></pre></div>`); return `\u0000${blocks.length - 1}\u0000`; });
   let x = esc(src);
   x = x.replace(/^\|(.+)\|\n\|[-:| ]+\|\n((?:\|.*\|\n?)*)/gm, (_, head, body) => `<table><tr>${head.split('|').map(c => `<th>${c.trim()}</th>`).join('')}</tr>${body.trim().split('\n').map(r => `<tr>${r.replace(/^\||\|$/g, '').split('|').map(c => `<td>${c.trim()}</td>`).join('')}</tr>`).join('')}</table>`);
   x = x.replace(/^### (.*)$/gm, '<h3>$1</h3>').replace(/^## (.*)$/gm, '<h2>$1</h2>').replace(/^# (.*)$/gm, '<h1>$1</h1>').replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>');
@@ -675,6 +704,8 @@ async function slash(v, text) {
     case 'terminal': togglePane('terminal', true); return true;
     case 'vim': await saveSetting({ vim: !S.settings.vim }); toast(S.settings.vim ? 'Modo vim ligado' : 'Modo vim desligado'); S.views.forEach(renderComposer); return true;
     case 'help': shortcutsDialog(); return true;
+    case 'copy': if (L) { const n = parseInt(arg) || 1; const ms = L.snap.messages.filter(x => x.role === 'assistant' && msgText(x)); const m = ms[ms.length - n]; if (m) copyText(msgText(m), 'Resposta copiada'); } return true;
+    case 'export': if (L) exportTranscript(L); return true;
   }
   return false;
 }
