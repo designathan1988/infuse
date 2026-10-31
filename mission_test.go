@@ -41,15 +41,25 @@ func TestMissionRunsUntilCriteriaPassOrBudget(t *testing.T) {
 	if len(m.Steps) != 2 || m.Steps[0].Verdict != "reprovado" || m.Steps[0].Run == "" {
 		t.Fatalf("%+v", m)
 	}
-	// the agent was sent back with the failing criterion
-	found := false
+	// the agent was sent back with the failing criterion; the messages say they are the mission's by data
+	found, brief := false, false
 	for _, msg := range s.Messages {
-		if t := msgText(msg); len(t) > 0 && strings.Contains(t, "[Missão — turn 2 of 2") && strings.Contains(t, "arquivo:") {
+		n, ok := missionNoteOf(msg)
+		if !ok {
+			continue
+		}
+		if n.Goal == "crie a.txt com ok" && n.Turn == 0 && strings.HasSuffix(msgText(msg), "crie a.txt com ok") {
+			brief = true
+		}
+		if n.Turn == 2 && n.MaxTurns == 2 && n.Verdict == "reprovado" && strings.Contains(msgText(msg), "arquivo:") && strings.HasPrefix(msgText(msg), "[Mission — turn 2 of 2") {
 			found = true
 		}
 	}
-	if !found {
-		t.Fatal("the next turn did not carry the failing criteria")
+	if !brief || !found {
+		t.Fatalf("brief %v, next turn with the failing criteria %v: %+v", brief, found, s.Messages)
+	}
+	if s.Title != "crie a.txt com ok" {
+		t.Fatalf("title %q", s.Title)
 	}
 
 	// once the criterion holds, the mission ends approved after one turn

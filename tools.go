@@ -57,11 +57,12 @@ func schema(s string) json.RawMessage { return json.RawMessage(s) }
 
 const maxToolOutput = 40000
 
-func clip(s string) string {
+// clip keeps the head and the tail of a long output; the cut is said where it happened.
+func (tc *ToolContext) clip(s string) string {
 	if len(s) <= maxToolOutput {
 		return s
 	}
-	return s[:maxToolOutput/2] + fmt.Sprintf("\n\n[... %d characters omitted ...]\n\n", len(s)-maxToolOutput) + s[len(s)-maxToolOutput/2:]
+	return s[:maxToolOutput/2] + "\n\n" + tc.Say(M("tool.omitted", "count", len(s)-maxToolOutput)) + "\n\n" + s[len(s)-maxToolOutput/2:]
 }
 
 // resolvePath turns a tool path into an absolute path inside the project; refuses escapes and protected paths.
@@ -75,16 +76,16 @@ func (tc *ToolContext) resolvePath(p string, forWrite bool) (string, error) {
 	rel, err := filepath.Rel(tc.Root, abs)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		if forWrite {
-			return "", fmt.Errorf("path outside the project: %s", p)
+			return "", errMsg(M("path.outside", "path", p))
 		}
 	}
 	if !forWrite && err == nil && !strings.HasPrefix(rel, "..") && hiddenInternal(rel) {
-		return "", fmt.Errorf("%s is an internal infuse file (sessions, journal, history), not part of the project. From .infuse/ the agent reads only the pinned documentation (.infuse/docs), the conventions, the map (.infuse/map/MAP.md) and its own captures", toPosix(rel))
+		return "", errMsg(M("path.internal", "path", toPosix(rel)))
 	}
 	if forWrite && tc.S.isProtected(abs) {
 		Journal(tc.Root, JournalEntry{Kind: "blocked", Path: toPosix(rel), Detail: "tentativa de escrita em caminho protegido"})
 		Lesson(tc.Root, "protected-path-write", "tentativa de escrever em "+toPosix(rel))
-		return "", fmt.Errorf("protected path, read-only for the agent: %s. The oracle and the protected paths are set by the user and cannot be changed by the agent", toPosix(rel))
+		return "", errMsg(M("path.protected", "path", toPosix(rel)))
 	}
 	return abs, nil
 }
@@ -107,7 +108,7 @@ func (tc *ToolContext) afterWrite(abs string) []string {
 	lines = append(lines, ApplyWriteRules(tc.Root, tc.Rules, []string{abs})...)
 	if tc.S.settings.Diagnostics == nil || *tc.S.settings.Diagnostics {
 		if d := fileDiagnostics(tc.Root, abs); d != "" {
-			lines = append(lines, fmt.Sprintf("[diagnostics] problems found by the project's checker in this file:\n%s", d))
+			lines = append(lines, tc.Say(M("write.diagnostics", "problems", d)))
 		}
 	}
 	return lines
@@ -132,7 +133,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	_ = json.Unmarshal(input, &in)
 	if strings.TrimSpace(in.Command) == "" {
-		return "empty command", true
+		return tc.Say(M("bash.empty")), true
 	}
 	if in.Timeout <= 0 {
 		in.Timeout = 120
@@ -144,7 +145,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	// The guard runs first: protected targets are refused or neutralized before the transform can write.
 	guarded, guardNotes, gerr := newGuard(tc.Root, tc.S.settings.ProtectedPaths).GuardCommand(in.Command, tc.Cwd)
 	if gerr != nil {
-		return gerr.Error(), true
+		return tc.SayErr(gerr), true
 	}
 	in.Command = guarded
 	// Heredoc file writes happen inside TransformCommand: checkpoint their targets first.
@@ -170,7 +171,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if in.Background {
 		p, err := tc.S.startBackground(command, in.Description, tc.Cwd)
 		if err != nil {
-			return fmt.Sprintf("did not start: %s", err.Error()), true
+			return tc.Say(M("bash.not_started", "error", errArg(err))), true
 		}
 		// the first moments of output: a command that fails at once says so now
 		deadline := time.Now().Add(2 * time.Second)
@@ -185,12 +186,13 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		p.read = off
 		state := p.State
 		tc.S.mu.Unlock()
-		msg := fmt.Sprintf("process %s running in the background (pid %d). Read the new output with BashOutput(id=%q); stop it with KillShell. The user follows it in the Processes pane.", p.ID, p.PID, p.ID)
+		m := M("bash.bg_running", "id", p.ID, "pid", p.PID)
 		if state != "running" {
-			msg = fmt.Sprintf("process %s in the background (pid %d) has already finished. Read the new output with BashOutput(id=%q); stop it with KillShell. The user follows it in the Processes pane.", p.ID, p.PID, p.ID)
+			m = M("bash.bg_finished", "id", p.ID, "pid", p.PID)
 		}
+		msg := tc.Say(m)
 		if strings.TrimSpace(first) != "" {
-			msg += fmt.Sprintf("\nFirst 2 s of output:\n%s", clip(first))
+			msg += "\n" + tc.Say(M("bash.bg_first")) + "\n" + tc.clip(first)
 		}
 		return msg, state != "running" && p.Exit != nil && *p.Exit != 0
 	}
@@ -216,7 +218,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	isErr := false
 	if cctx.Err() == context.DeadlineExceeded {
-		out += fmt.Sprintf("\n[timed out after %ds]", in.Timeout)
+		out += "\n" + tc.Say(M("bash.timeout", "seconds", in.Timeout))
 		isErr = true
 	} else if err != nil {
 		out += fmt.Sprintf("\n[exit %d]", exitCode(err))
@@ -226,7 +228,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if trailer != "" {
 		out = strings.TrimRight(out, "\n") + "\n\n" + trailer
 	}
-	return clip(out), isErr
+	return tc.clip(out), isErr
 }
 
 // ---------------------------------------------------------------- Read
@@ -247,7 +249,7 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	_ = json.Unmarshal(input, &in)
 	abs, err := tc.resolvePath(in.Path, false)
 	if err != nil {
-		return err.Error(), true
+		return tc.SayErr(err), true
 	}
 	b, err := os.ReadFile(abs)
 	if err != nil {
@@ -255,16 +257,16 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	if mt := imageType(abs); mt != "" { // the model sees the image itself
 		if len(b) > 5<<20 {
-			return fmt.Sprintf("image too large to send to the model (%d bytes; maximum 5 MB)", len(b)), true
+			return tc.Say(M("read.image_too_large", "bytes", len(b))), true
 		}
 		tc.S.mu.Lock()
 		tc.S.pendingImages = append(tc.S.pendingImages, Block{Type: "image", MediaType: mt, Data: base64.StdEncoding.EncodeToString(b)})
 		tc.S.mu.Unlock()
 		tc.S.markRead(abs)
-		return fmt.Sprintf("image %s (%d bytes) attached to this reply for you to see", relTo(tc.Root, abs), len(b)), false
+		return tc.Say(M("read.image_attached", "file", relTo(tc.Root, abs), "bytes", len(b))), false
 	}
 	if bytes.IndexByte(b, 0) >= 0 {
-		return fmt.Sprintf("binary file (%d bytes)", len(b)), true
+		return tc.Say(M("read.binary", "bytes", len(b))), true
 	}
 	lines := strings.Split(string(b), "\n")
 	start := in.Offset
@@ -288,7 +290,7 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		shown = i + 1
 	}
 	if shown < end {
-		fmt.Fprintf(&sb, "\n[continues: the file has %d lines; read on from here with Read offset=%d]\n", len(lines), shown+1)
+		sb.WriteString("\n" + tc.Say(M("read.continues", "lines", len(lines), "offset", shown+1)) + "\n")
 	}
 	tc.S.noteCoverage(abs, len(lines), start, shown)
 	tc.S.markRead(abs)
@@ -298,7 +300,7 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 			out += "\n" + d
 		}
 	}
-	return clip(out), false
+	return tc.clip(out), false
 }
 
 // ---------------------------------------------------------------- Write
@@ -316,14 +318,14 @@ func (writeTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 	_ = json.Unmarshal(input, &in)
 	abs, err := tc.resolvePath(in.Path, true)
 	if err != nil {
-		return err.Error(), true
+		return tc.SayErr(err), true
 	}
 	tc.S.checkpointBeforeWrite(abs)
 	_ = os.MkdirAll(filepath.Dir(abs), 0o755)
 	if err := os.WriteFile(abs, []byte(in.Content), 0o644); err != nil {
 		return err.Error(), true
 	}
-	lines := append([]string{fmt.Sprintf("File written: %s (%d bytes)", relTo(tc.Root, abs), len(in.Content))}, tc.afterWrite(abs)...)
+	lines := append([]string{tc.Say(M("write.done", "file", relTo(tc.Root, abs), "bytes", len(in.Content)))}, tc.afterWrite(abs)...)
 	return strings.Join(lines, "\n"), false
 }
 
@@ -347,29 +349,29 @@ func (editTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	_ = json.Unmarshal(input, &in)
 	abs, err := tc.resolvePath(in.Path, true)
 	if err != nil {
-		return err.Error(), true
+		return tc.SayErr(err), true
 	}
 	b, err := os.ReadFile(abs)
 	if err != nil {
 		return err.Error(), true
 	}
 	if !tc.S.wasRead(abs) {
-		return "read the file with Read before editing it", true
+		return tc.Say(M("edit.unread")), true
 	}
 	content := string(b)
 	n := strings.Count(content, in.OldString)
 	if in.OldString == "" || n == 0 {
-		return "old_string not found in the file", true
+		return tc.Say(M("edit.not_found")), true
 	}
 	if n > 1 && !in.ReplaceAll {
-		return fmt.Sprintf("old_string occurs %d times; make it unique or use replace_all", n), true
+		return tc.Say(M("edit.ambiguous", "count", n)), true
 	}
 	tc.S.checkpointBeforeWrite(abs)
 	next := strings.Replace(content, in.OldString, in.NewString, map[bool]int{true: -1, false: 1}[in.ReplaceAll])
 	if err := os.WriteFile(abs, []byte(next), 0o644); err != nil {
 		return err.Error(), true
 	}
-	lines := append([]string{fmt.Sprintf("Edited: %s (%d replacement(s))", relTo(tc.Root, abs), map[bool]int{true: n, false: 1}[in.ReplaceAll])}, tc.afterWrite(abs)...)
+	lines := append([]string{tc.Say(M("edit.done", "file", relTo(tc.Root, abs), "count", map[bool]int{true: n, false: 1}[in.ReplaceAll]))}, tc.afterWrite(abs)...)
 	return strings.Join(lines, "\n"), false
 }
 
@@ -395,27 +397,27 @@ func (multiEditTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	_ = json.Unmarshal(input, &in)
 	abs, err := tc.resolvePath(in.Path, true)
 	if err != nil {
-		return err.Error(), true
+		return tc.SayErr(err), true
 	}
 	b, err := os.ReadFile(abs)
 	if err != nil {
 		return err.Error(), true
 	}
 	if !tc.S.wasRead(abs) {
-		return "read the file with Read before editing it", true
+		return tc.Say(M("edit.unread")), true
 	}
 	if len(in.Edits) == 0 {
-		return "no edits", true
+		return tc.Say(M("multiedit.none")), true
 	}
 	content := string(b)
 	total := 0
 	for i, e := range in.Edits {
 		n := strings.Count(content, e.OldString)
 		if e.OldString == "" || n == 0 {
-			return fmt.Sprintf("edit %d: old_string not found (nothing was written)", i+1), true
+			return tc.Say(M("multiedit.not_found", "n", i+1)), true
 		}
 		if n > 1 && !e.ReplaceAll {
-			return fmt.Sprintf("edit %d: old_string occurs %d times; make it unique or use replace_all (nothing was written)", i+1, n), true
+			return tc.Say(M("multiedit.ambiguous", "n", i+1, "count", n)), true
 		}
 		if e.ReplaceAll {
 			content = strings.ReplaceAll(content, e.OldString, e.NewString)
@@ -429,7 +431,7 @@ func (multiEditTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
 		return err.Error(), true
 	}
-	lines := append([]string{fmt.Sprintf("Edited %s: %d edits, %d replacement(s)", relTo(tc.Root, abs), len(in.Edits), total)}, tc.afterWrite(abs)...)
+	lines := append([]string{tc.Say(M("multiedit.done", "file", relTo(tc.Root, abs), "edits", len(in.Edits), "count", total))}, tc.afterWrite(abs)...)
 	return strings.Join(lines, "\n"), false
 }
 
@@ -544,9 +546,9 @@ func (globTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		sb.WriteString(h.p + "\n")
 	}
 	if len(hits) == 0 {
-		return "no files found", false
+		return tc.Say(M("glob.none")), false
 	}
-	return clip(sb.String()), false
+	return tc.clip(sb.String()), false
 }
 
 // ---------------------------------------------------------------- Grep
@@ -575,7 +577,7 @@ func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	re, err := regexp.Compile(pat)
 	if err != nil {
-		return fmt.Sprintf("invalid regex: %s", err.Error()), true
+		return tc.Say(M("grep.bad_regex", "error", err.Error())), true
 	}
 	base := tc.Root
 	if in.Path != "" {
@@ -643,9 +645,9 @@ func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		return nil
 	})
 	if matches == 0 {
-		return "no matches", false
+		return tc.Say(M("grep.none")), false
 	}
-	return clip(sb.String()), false
+	return tc.clip(sb.String()), false
 }
 
 // ---------------------------------------------------------------- LS
@@ -666,7 +668,7 @@ func (lsTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (
 	}
 	abs, err := tc.resolvePath(in.Path, false)
 	if err != nil {
-		return err.Error(), true
+		return tc.SayErr(err), true
 	}
 	entries, err := os.ReadDir(abs)
 	if err != nil {
@@ -695,7 +697,7 @@ func (lsTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (
 	for _, l := range ApplyListRules(tc.Root, tc.Rules, rel) {
 		sb.WriteString(l + "\n")
 	}
-	return clip(sb.String()), false
+	return tc.clip(sb.String()), false
 }
 
 // ---------------------------------------------------------------- WebFetch
@@ -719,7 +721,7 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	_ = json.Unmarshal(input, &in)
 	if bad, why := privateTarget(in.URL); bad { // no requests into this machine or the private network
 		Journal(tc.Root, JournalEntry{Kind: "blocked", Command: in.URL, Detail: "WebFetch recusado: " + why})
-		return fmt.Sprintf("WebFetch refused: %s. The agent only fetches public addresses.", why), true
+		return tc.Say(M("fetch.refused", "why", why)), true
 	}
 	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.URL, Detail: "pesquisa"})
 	req, err := http.NewRequestWithContext(ctx, "GET", in.URL, nil)
@@ -745,9 +747,9 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	body := text[part*docPageSize : min(len(text), (part+1)*docPageSize)]
 	head := fmt.Sprintf("HTTP %d", resp.StatusCode)
 	if total > 1 {
-		head = fmt.Sprintf("HTTP %d · part %d of %d", resp.StatusCode, part+1, total)
+		head += " · " + tc.Say(M("fetch.part", "part", part+1, "total", total))
 		if part+1 < total {
-			body += fmt.Sprintf("\n\n[continues: WebFetch with offset=%d — read to the end before acting]", (part+1)*docPageSize)
+			body += "\n\n" + tc.Say(M("fetch.continues", "offset", (part+1)*docPageSize))
 		}
 	}
 	if tc.S != nil && resp.StatusCode < 400 {
@@ -782,7 +784,7 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		return err.Error(), true
 	}
 	if len(in.Tasks) == 0 {
-		return "the plan needs at least one task", true
+		return tc.Say(M("plan.empty")), true
 	}
 	var noProof []string
 	for _, t := range in.Tasks {
@@ -791,7 +793,7 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		}
 	}
 	if len(noProof) > 0 { // the protocol: every open task says how it will be proven
-		return fmt.Sprintf("plan refused: every open task needs a proof (the command, the page or the file that will prove it works). Without proof: %s", strings.Join(noProof, "; ")), true
+		return tc.Say(M("plan.no_proof", "tasks", strings.Join(noProof, "; "))), true
 	}
 	for i := range in.Tasks {
 		in.Tasks[i].Note = ""
@@ -800,7 +802,7 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	tc.S.mu.Lock()
 	tc.S.gate.planned = true
 	tc.S.mu.Unlock()
-	return fmt.Sprintf("plan recorded (%d tasks); the user sees each one checked off as you update it", len(in.Tasks)), false
+	return tc.Say(M("plan.recorded", "count", len(in.Tasks))), false
 }
 
 // ---------------------------------------------------------------- AskUserQuestion
@@ -821,9 +823,9 @@ func (askTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) 
 	_ = json.Unmarshal(input, &in)
 	answer, ok := tc.S.askUser(ctx, in.Question, in.Options)
 	if !ok {
-		return "the user did not answer", true
+		return tc.Say(M("ask.no_answer")), true
 	}
-	return fmt.Sprintf("User's answer: %s", answer), false
+	return tc.Say(M("ask.answer", "answer", answer)), false
 }
 
 func init() {

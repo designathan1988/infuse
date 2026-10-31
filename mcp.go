@@ -14,7 +14,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -135,7 +134,7 @@ type mcpClient struct {
 
 	mu      sync.Mutex
 	state   string // starting | running | error | stopped
-	err     string
+	err     Msg    // why it is in error (written in the reader's language when shown)
 	tools   []mcpTool
 	stderr  bytes.Buffer
 	pending map[int64]chan rpcMessage
@@ -147,25 +146,25 @@ type mcpClient struct {
 	sessionID string
 }
 
-func (c *mcpClient) setErr(err error) {
+func (c *mcpClient) setErr(m Msg) {
 	c.mu.Lock()
-	c.state, c.err = "error", err.Error()
+	c.state, c.err = "error", m
 	c.mu.Unlock()
 }
 
 func (c *mcpClient) start(ctx context.Context, root string) error {
 	c.mu.Lock()
-	c.state, c.err, c.pending = "starting", "", map[int64]chan rpcMessage{}
+	c.state, c.err, c.pending = "starting", Msg{}, map[int64]chan rpcMessage{}
 	c.mu.Unlock()
 	if c.cfg.isHTTP() {
 		c.httpc = &http.Client{Timeout: 120 * time.Second}
 	} else if err := c.spawn(root); err != nil {
-		c.setErr(err)
+		c.setErr(M("mcp.start_failed", "error", errArg(err)))
 		return err
 	}
 	init := map[string]any{"protocolVersion": mcpProtocol, "capabilities": map[string]any{}, "clientInfo": map[string]any{"name": "infuse", "version": version}}
 	if _, err := c.call(ctx, "initialize", init); err != nil {
-		c.setErr(fmt.Errorf("initialize: %w", err))
+		c.setErr(M("mcp.step_failed", "step", "initialize", "error", errArg(err)))
 		c.close()
 		return err
 	}
@@ -179,7 +178,7 @@ func (c *mcpClient) start(ctx context.Context, root string) error {
 		}
 		raw, err := c.call(ctx, "tools/list", params)
 		if err != nil {
-			c.setErr(fmt.Errorf("tools/list: %w", err))
+			c.setErr(M("mcp.step_failed", "step", "tools/list", "error", errArg(err)))
 			c.close()
 			return err
 		}
@@ -201,11 +200,11 @@ func (c *mcpClient) start(ctx context.Context, root string) error {
 
 func (c *mcpClient) spawn(root string) error {
 	if c.cfg.Command == "" {
-		return errors.New("server has neither a command nor a url")
+		return errMsg(M("mcp.no_command"))
 	}
 	exe, err := exec.LookPath(c.cfg.Command)
 	if err != nil {
-		return fmt.Errorf("%s not found on this computer", c.cfg.Command)
+		return errMsg(M("mcp.not_found", "command", c.cfg.Command))
 	}
 	args := make([]string, len(c.cfg.Args))
 	for i, a := range c.cfg.Args {
@@ -237,9 +236,9 @@ func (c *mcpClient) spawn(root string) error {
 		c.mu.Lock()
 		if c.state != "stopped" {
 			c.state = "error"
-			c.err = "the server exited"
+			c.err = M("mcp.exited")
 			if err != nil {
-				c.err += ": " + err.Error()
+				c.err = M("mcp.exited_err", "error", err.Error())
 			}
 		}
 		for id, ch := range c.pending {
@@ -337,7 +336,7 @@ func (c *mcpClient) call(ctx context.Context, method string, params any) (json.R
 		c.mu.Lock()
 		if c.pending == nil {
 			c.mu.Unlock()
-			return nil, errors.New("server stopped")
+			return nil, errMsg(M("mcp.stopped"))
 		}
 		c.pending[id] = ch
 		c.mu.Unlock()
@@ -347,13 +346,13 @@ func (c *mcpClient) call(ctx context.Context, method string, params any) (json.R
 		select {
 		case r, ok := <-ch:
 			if !ok {
-				return nil, fmt.Errorf("the server exited: %s", c.stderrTail())
+				return nil, errMsg(M("mcp.exited_err", "error", c.stderrTail()))
 			}
 			m = r
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-timeout.C:
-			return nil, errors.New("the server did not answer within 120 s")
+			return nil, errMsg(M("mcp.timeout"))
 		}
 	}
 	if m.Error != nil {
@@ -432,7 +431,7 @@ func (c *mcpClient) post(ctx context.Context, body []byte, id int64) (rpcMessage
 				data.Reset()
 			}
 		}
-		return rpcMessage{}, errors.New("the server's stream ended without an answer")
+		return rpcMessage{}, errMsg(M("mcp.stream_ended"))
 	}
 	var m rpcMessage
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
@@ -636,7 +635,7 @@ func (t mcpAgentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 	Journal(tc.Root, JournalEntry{Kind: "mcp", Command: t.client.name + "/" + t.tool.Name, Detail: truncate(string(input), 300)})
 	raw, err := t.client.call(ctx, "tools/call", map[string]any{"name": t.tool.Name, "arguments": input})
 	if err != nil {
-		return fmt.Sprintf("connector %s: %s", t.client.name, err.Error()), true
+		return tc.Say(M("mcp.call_failed", "name", t.client.name, "error", errArg(err))), true
 	}
 	var res struct {
 		Content []struct {
@@ -660,7 +659,7 @@ func (t mcpAgentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 				tc.S.mu.Lock()
 				tc.S.pendingImages = append(tc.S.pendingImages, Block{Type: "image", MediaType: c.MimeType, Data: c.Data})
 				tc.S.mu.Unlock()
-				b.WriteString("[image attached to this reply]\n")
+				b.WriteString(tc.Say(M("mcp.image_attached")) + "\n")
 			}
 		case "resource":
 			b.WriteString(string(c.Resource) + "\n")
@@ -669,7 +668,7 @@ func (t mcpAgentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 	if b.Len() == 0 && len(res.Structured) > 0 {
 		b.Write(res.Structured)
 	}
-	return clip(externalContent(fmt.Sprintf("connector %s/%s", t.client.name, t.tool.Name), strings.TrimSpace(b.String()))), res.IsError
+	return tc.clip(externalContent(fmt.Sprintf("connector %s/%s", t.client.name, t.tool.Name), strings.TrimSpace(b.String()))), res.IsError
 }
 
 // sessionTools is the session's tool set: the built-in tools and the running connectors' tools.
@@ -730,6 +729,7 @@ type mcpToolStatus struct {
 
 func (m *mcpManager) status() []mcpStatus {
 	out := []mcpStatus{}
+	lang := rootLang(m.root)
 	for _, e := range m.entries() {
 		st := mcpStatus{Scope: e.Scope, Name: e.Name, Target: e.Cfg.describe(), HTTP: e.Cfg.isHTTP(), Approved: mcpApproved(m.root, e.Scope, e.Name, e.Cfg), Disabled: e.Cfg.Disabled, State: "stopped", Tools: []mcpToolStatus{}, Config: e.Cfg}
 		m.mu.Lock()
@@ -737,7 +737,7 @@ func (m *mcpManager) status() []mcpStatus {
 		m.mu.Unlock()
 		if c != nil {
 			c.mu.Lock()
-			st.State, st.Error = c.state, c.err
+			st.State, st.Error = c.state, c.err.Render(lang)
 			for _, t := range c.tools {
 				d := t.Description
 				if len(d) > 300 {

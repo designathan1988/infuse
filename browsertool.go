@@ -93,7 +93,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	s := tc.S
 	p, err := agentPageFor(s)
 	if err != nil {
-		return err.Error(), true
+		return tc.SayErr(err), true
 	}
 	g := s.settings.gestures()
 	wait := time.Duration(in.Timeout) * time.Millisecond
@@ -106,13 +106,18 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		_ = json.Unmarshal(v, &w)
 		return w
 	}
-	locate := func(sel string) (*located, string) {
+	// locateErr finds an element; the error says why not (no selector, not found, not visible)
+	locateErr := func(sel string) (*located, error) {
 		if sel == "" {
-			return nil, "give a selector"
+			return nil, errMsg(M("browser.give_selector"))
 		}
-		l, err := p.locate(ctx, sel, wait)
+		return p.locate(ctx, sel, wait)
+	}
+	// locate is locateErr for the tool's output: the reason, recorded with the call
+	locate := func(sel string) (*located, string) {
+		l, err := locateErr(sel)
 		if err != nil {
-			return nil, err.Error()
+			return nil, tc.SayErr(err)
 		}
 		return l, ""
 	}
@@ -121,13 +126,13 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		if in.Action == "scroll" && in.Selector == "" {
 			what = fmt.Sprintf("%+.0f px", firstNonZero(in.Dy, 600))
 		}
-		p.note(strings.TrimSpace("action: " + in.Action + " " + what))
+		p.note(M("browser.ev_action", "action", strings.TrimSpace(in.Action+" "+what)))
 	}
 	switch in.Action {
 	case "navigate":
 		u := strings.TrimSpace(in.URL)
 		if u == "" {
-			return "give a url", true
+			return tc.Say(M("browser.give_url")), true
 		}
 		if !strings.Contains(u, "://") && !strings.HasPrefix(u, "about:") {
 			if strings.HasPrefix(u, "localhost") || strings.HasPrefix(u, "127.") {
@@ -139,17 +144,17 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		Journal(tc.Root, JournalEntry{Kind: "fetch", Command: u, Detail: "navegador do agente"})
 		raw, err := p.b.call(ctx, "Page.navigate", map[string]any{"url": u})
 		if err != nil {
-			return "did not open: " + err.Error(), true
+			return tc.Say(M("browser.open_failed", "error", errArg(err))), true
 		}
 		var nav struct {
 			ErrorText string `json:"errorText"`
 		}
 		_ = json.Unmarshal(raw, &nav)
 		if nav.ErrorText != "" {
-			return fmt.Sprintf("did not open %s: %s", u, nav.ErrorText), true
+			return tc.Say(M("browser.open_failed_url", "url", u, "error", nav.ErrorText)), true
 		}
 		p.b.waitLoad(ctx)
-		return "opened: " + where(), false
+		return tc.Say(M("browser.opened", "where", where())), false
 	case "back", "reload":
 		if in.Action == "back" {
 			_, _ = p.b.eval(ctx, "history.back()")
@@ -158,7 +163,10 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		sleepCtx(ctx, 400*time.Millisecond)
 		p.b.waitLoad(ctx)
-		return in.Action + ": " + where(), false
+		if in.Action == "back" {
+			return tc.Say(M("browser.went_back", "where", where())), false
+		}
+		return tc.Say(M("browser.reloaded", "where", where())), false
 	case "click", "hover":
 		l, why := locate(in.Selector)
 		if l == nil {
@@ -167,16 +175,16 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		if in.Action == "hover" {
 			p.moveTo(ctx, g, l.X, l.Y, 0)
 			sleepCtx(ctx, 250*time.Millisecond)
-			return fmt.Sprintf("cursor over <%s> %q", l.Tag, l.Text), false
+			return tc.Say(M("browser.hover", "tag", l.Tag, "text", l.Text)), false
 		}
 		if l.Disabled {
-			return fmt.Sprintf("<%s> %q is disabled", l.Tag, l.Text), true
+			return tc.Say(M("browser.disabled", "tag", l.Tag, "text", l.Text)), true
 		}
 		count := max(1, in.Count)
 		p.click(ctx, g, l.X, l.Y, firstNonEmpty(in.Button, "left"), count)
 		sleepCtx(ctx, 300*time.Millisecond)
 		p.b.waitLoad(ctx)
-		return fmt.Sprintf("clicked <%s> %q · now at %s", l.Tag, l.Text, where()), false
+		return tc.Say(M("browser.clicked", "tag", l.Tag, "text", l.Text, "where", where())), false
 	case "type":
 		l, why := locate(in.Selector)
 		if l == nil {
@@ -190,13 +198,13 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 			sleepCtx(ctx, 300*time.Millisecond)
 			p.b.waitLoad(ctx)
 		}
-		return fmt.Sprintf("typed into %s · %s", in.Selector, where()), false
+		return tc.Say(M("browser.typed", "selector", in.Selector, "where", where())), false
 	case "press":
 		if err := p.press(ctx, in.Key); err != nil {
-			return err.Error(), true
+			return tc.SayErr(err), true
 		}
 		sleepCtx(ctx, 200*time.Millisecond)
-		return fmt.Sprintf("key %s · %s", in.Key, where()), false
+		return tc.Say(M("browser.key", "key", in.Key, "where", where())), false
 	case "scroll":
 		if in.Selector != "" {
 			l, why := locate(in.Selector)
@@ -204,15 +212,17 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 				return why, true
 			}
 			p.moveTo(ctx, g, l.X, l.Y, 0)
-			return fmt.Sprintf("scrolled to <%s> %q", l.Tag, l.Text), false
+			return tc.Say(M("browser.scrolled_to", "tag", l.Tag, "text", l.Text)), false
 		}
 		dy := in.Dy
 		if dy == 0 {
 			dy = 600
 		}
 		p.scroll(ctx, g, dy)
-		v, _ := p.b.eval(ctx, `Math.round(scrollY) + ' of ' + Math.round(document.documentElement.scrollHeight - innerHeight)`)
-		return "scroll position: " + strings.Trim(string(v), `"`), false
+		v, _ := p.b.eval(ctx, `[Math.round(scrollY), Math.round(document.documentElement.scrollHeight - innerHeight)]`)
+		var pos [2]int
+		_ = json.Unmarshal(v, &pos)
+		return tc.Say(M("browser.scroll_pos", "pos", pos[0], "max", pos[1])), false
 	case "drag":
 		from, why := locate(in.Selector)
 		if from == nil {
@@ -227,7 +237,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		sleepCtx(ctx, g.press)
 		p.moveTo(ctx, g, to.X, to.Y, 1)
 		_, _ = p.b.call(ctx, "Input.dispatchMouseEvent", map[string]any{"type": "mouseReleased", "x": to.X, "y": to.Y, "button": "left", "buttons": 0, "clickCount": 1})
-		return fmt.Sprintf("dragged %q to %q", from.Text, to.Text), false
+		return tc.Say(M("browser.dragged", "from", from.Text, "to", to.Text)), false
 	case "select":
 		l, why := locate(in.Selector)
 		if l == nil {
@@ -235,17 +245,25 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		p.click(ctx, g, l.X, l.Y, "left", 1)
 		val, _ := json.Marshal(in.Value)
-		v, err := p.b.eval(ctx, fmt.Sprintf(`(() => { const el = window.__infuseEl; const s = el && el.tagName === 'SELECT' ? el : el && el.querySelector && el.querySelector('select'); if (!s) return 'not a select'; const want = %s; const o = [...s.options].find(o => o.value === want || o.text.trim() === want); if (!o) return 'option not found: ' + [...s.options].map(o => o.text.trim()).join(' | '); s.value = o.value; s.dispatchEvent(new Event('input', {bubbles: true})); s.dispatchEvent(new Event('change', {bubbles: true})); return 'selected: ' + o.text.trim(); })()`, val))
+		// the page answers with data (what happened, the option or the options there are), never a sentence
+		v, err := p.b.eval(ctx, fmt.Sprintf(`(() => { const el = window.__infuseEl; const s = el && el.tagName === 'SELECT' ? el : el && el.querySelector && el.querySelector('select'); if (!s) return {st: 'not_select'}; const want = %s; const o = [...s.options].find(o => o.value === want || o.text.trim() === want); if (!o) return {st: 'no_option', text: [...s.options].map(o => o.text.trim()).join(' | ')}; s.value = o.value; s.dispatchEvent(new Event('input', {bubbles: true})); s.dispatchEvent(new Event('change', {bubbles: true})); return {st: 'ok', text: o.text.trim()}; })()`, val))
 		if err != nil {
 			return err.Error(), true
 		}
 		_ = p.press(ctx, "Escape")
-		res := strings.Trim(string(v), `"`)
-		return res, !strings.HasPrefix(res, "selected: ")
+		var sel struct{ St, Text string }
+		_ = json.Unmarshal(v, &sel)
+		switch sel.St {
+		case "ok":
+			return tc.Say(M("browser.selected", "option", sel.Text)), false
+		case "no_option":
+			return tc.Say(M("browser.no_option", "options", sel.Text)), true
+		}
+		return tc.Say(M("browser.not_select")), true
 	case "upload":
 		abs := filepath.Join(tc.Root, filepath.FromSlash(in.Path))
 		if !within(tc.Root, abs) || !exists(abs) {
-			return "the file must exist inside the project: " + in.Path, true
+			return tc.Say(M("browser.upload_outside", "path", in.Path)), true
 		}
 		if l, why := locate(in.Selector); l == nil {
 			return why, true
@@ -261,20 +279,20 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		_ = json.Unmarshal(r, &obj)
 		if obj.Result.ObjectID == "" {
-			return "file input not found: " + in.Selector, true
+			return tc.Say(M("browser.no_file_input", "selector", in.Selector)), true
 		}
 		if _, err := p.b.call(ctx, "DOM.setFileInputFiles", map[string]any{"files": []string{abs}, "objectId": obj.Result.ObjectID}); err != nil {
 			return err.Error(), true
 		}
-		return "file attached to the input: " + in.Path, false
+		return tc.Say(M("browser.uploaded", "path", in.Path)), false
 	case "wait_for":
 		target := firstNonEmpty(in.Selector, "text="+in.Text)
 		start := time.Now()
-		l, why := locate(target)
+		l, err := locateErr(target)
 		if l == nil {
-			return fmt.Sprintf("waited %d ms: %s", time.Since(start).Milliseconds(), why), true
+			return tc.Say(M("browser.waited", "ms", time.Since(start).Milliseconds(), "why", errArg(err))), true
 		}
-		return fmt.Sprintf("appeared after %d ms: <%s> %q", time.Since(start).Milliseconds(), l.Tag, l.Text), false
+		return tc.Say(M("browser.appeared", "ms", time.Since(start).Milliseconds(), "tag", l.Tag, "text", l.Text)), false
 	case "text", "dom":
 		js := "document.body ? document.body.innerText : ''"
 		if in.Action == "dom" {
@@ -299,13 +317,13 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		var str string
 		_ = json.Unmarshal(v, &str)
-		return clip(externalContent(where(), str)), false
+		return tc.clip(externalContent(where(), str)), false
 	case "eval":
 		v, err := p.b.eval(ctx, in.Script)
 		if err != nil {
-			return "script error: " + err.Error(), true
+			return tc.Say(M("browser.script_error", "error", err.Error())), true
 		}
-		return clip(externalContent(where(), string(v))), false
+		return tc.clip(externalContent(where(), string(v))), false
 	case "screenshot":
 		params := map[string]any{"format": "jpeg", "quality": 92, "captureBeyondViewport": in.FullPage}
 		what := ""
@@ -327,7 +345,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		_ = json.Unmarshal(raw, &shot)
 		jpg, err := base64.StdEncoding.DecodeString(shot.Data)
 		if err != nil || len(jpg) == 0 {
-			return "empty capture", true
+			return tc.Say(M("browser.empty_capture")), true
 		}
 		name := time.Now().Format("20060102-150405.000") + ".jpg"
 		dir := filepath.Join(s.Root, infuseDirName, "shots")
@@ -336,51 +354,55 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		cfg, _ := jpeg.DecodeConfig(bytes.NewReader(jpg))
 		attachImage(s, jpg)
 		if what == "" {
-			return fmt.Sprintf("capture of the screen (%dx%d px) attached for you to see · %s · .infuse/shots/%s", cfg.Width, cfg.Height, where(), name), false
+			return tc.Say(M("browser.shot_screen", "w", cfg.Width, "h", cfg.Height, "where", where(), "file", name)), false
 		}
-		return fmt.Sprintf("capture of the element %s (%dx%d px) attached for you to see · %s · .infuse/shots/%s", what, cfg.Width, cfg.Height, where(), name), false
+		return tc.Say(M("browser.shot_element", "what", what, "w", cfg.Width, "h", cfg.Height, "where", where(), "file", name)), false
 	case "record_start":
 		p.startRecording()
-		return "recording: perform the actions, then call record_stop. You will receive the frames where the screen changed, with the timeline.", false
+		return tc.Say(M("browser.recording")), false
 	case "record_stop":
 		dir := filepath.Join(s.Root, infuseDirName, "recordings", time.Now().Format("20060102-150405"))
 		kfs, events, dur, total, err := p.stopRecording(dir, in.MaxFrames)
 		if err != nil {
-			return err.Error(), true
+			return tc.SayErr(err), true
 		}
+		secs := func(d time.Duration) string { return fmt.Sprintf("%.2f", d.Seconds()) }
 		var b strings.Builder
-		fmt.Fprintf(&b, "Recording of %.1f s: %d frames captured, %d keyframes (where the screen changed), attached in order. Changes caused only by the agent's cursor do not count. Coordinates in page px (%dx%d). Files: %s\n\n", dur.Seconds(), total, len(kfs), p.width, p.height, relTo(s.Root, dir))
+		b.WriteString(tc.Say(M("browser.rec_head", "seconds", fmt.Sprintf("%.1f", dur.Seconds()), "frames", total, "keyframes", len(kfs), "w", p.width, "h", p.height, "dir", relTo(s.Root, dir))) + "\n\n")
+		event := func(e recEvent) {
+			b.WriteString("    " + tc.Say(M("browser.rec_event", "t", secs(e.at), "event", e.m)) + "\n")
+		}
 		ev := 0
 		img := 0
 		for i, k := range kfs {
 			for ev < len(events) && events[ev].at <= k.at {
-				fmt.Fprintf(&b, "    t=%.2fs · %s\n", events[ev].at.Seconds(), events[ev].text)
+				event(events[ev])
 				ev++
 			}
 			img++
 			attachImage(s, k.jpeg)
-			line := fmt.Sprintf("Image %d · frame %d · t=%.2fs", img, i+1, k.at.Seconds())
+			var line Msg
 			switch {
 			case i == 0:
-				line += " · start"
+				line = M("browser.rec_frame_start", "img", img, "frame", i+1, "t", secs(k.at))
 			case len(k.regions) == 0:
-				line += " · final state (no change since the previous frame)"
+				line = M("browser.rec_frame_final", "img", img, "frame", i+1, "t", secs(k.at))
 			default:
 				var where []string
 				for _, r := range k.regions {
 					where = append(where, fmt.Sprintf("x=%d y=%d %dx%d", r.Min.X, r.Min.Y, r.Dx(), r.Dy()))
 				}
-				line += fmt.Sprintf(" · %.1f%% of the screen changed, in %d area(s): %s", k.changed*100, len(k.regions), strings.Join(where, "; "))
+				line = M("browser.rec_frame_changed", "img", img, "frame", i+1, "t", secs(k.at), "pct", fmt.Sprintf("%.1f", k.changed*100), "areas", len(k.regions), "where", strings.Join(where, "; "))
 			}
-			b.WriteString(line + "\n")
+			b.WriteString(tc.Say(line) + "\n")
 			for ci, crop := range k.crops {
 				img++
 				attachImage(s, crop)
-				fmt.Fprintf(&b, "Image %d · enlarged crop of area %d of frame %d\n", img, ci+1, i+1)
+				b.WriteString(tc.Say(M("browser.rec_crop", "img", img, "area", ci+1, "frame", i+1)) + "\n")
 			}
 		}
 		for ; ev < len(events); ev++ {
-			fmt.Fprintf(&b, "    t=%.2fs · %s\n", events[ev].at.Seconds(), events[ev].text)
+			event(events[ev])
 		}
 		return b.String(), false
 	case "console":
@@ -389,11 +411,15 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		p.b.console = nil
 		p.b.mu.Unlock()
 		if len(lines) == 0 {
-			return "no console messages since the last check", false
+			return tc.Say(M("browser.no_console")), false
 		}
-		return clip(externalContent(where(), strings.Join(lines, "\n"))), false
+		return tc.clip(externalContent(where(), strings.Join(lines, "\n"))), false
 	case "network":
-		return clip(p.networkReport(in.OnlyIssues)), false
+		lines, n := p.networkReport(in.OnlyIssues)
+		if n == 0 {
+			return tc.Say(M("browser.no_requests")), false
+		}
+		return tc.Say(M("browser.requests", "count", n)) + "\n" + tc.clip(lines), false
 	case "performance":
 		raw, _ := p.b.call(ctx, "Performance.getMetrics", nil)
 		var m struct {
@@ -413,26 +439,26 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		v, _ := p.b.eval(ctx, `JSON.stringify((() => { const n = performance.getEntriesByType('navigation')[0] || {}; const paint = Object.fromEntries(performance.getEntriesByType('paint').map(p => [p.name, Math.round(p.startTime)])); const lcp = performance.getEntriesByType('largest-contentful-paint').pop(); return { ttfb: Math.round(n.responseStart || 0), domContentLoaded: Math.round(n.domContentLoadedEventEnd || 0), load: Math.round(n.loadEventEnd || 0), ...paint, lcp: lcp ? Math.round(lcp.startTime) : null, resources: performance.getEntriesByType('resource').length }; })())`)
 		var nav string
 		_ = json.Unmarshal(v, &nav)
-		b.WriteString("timings (ms): " + nav)
+		b.WriteString(tc.Say(M("browser.timings", "values", nav)))
 		return b.String(), false
 	case "a11y":
-		return clip(p.axTree(ctx)), false
+		return tc.clip(p.axTree(ctx)), false
 	case "storage":
 		v, _ := p.b.eval(ctx, `JSON.stringify({ cookies: document.cookie, localStorage: Object.fromEntries(Object.entries(localStorage)), sessionStorage: Object.fromEntries(Object.entries(sessionStorage)) }, null, 1)`)
 		var str string
 		_ = json.Unmarshal(v, &str)
-		return clip(externalContent(where(), redactSecrets(str))), false
+		return tc.clip(externalContent(where(), redactSecrets(str))), false
 	case "throttle":
 		presets := map[string][4]float64{"offline": {1, 0, 0, 0}, "3g": {0, 300, 750 * 1024 / 8, 250 * 1024 / 8}, "4g": {0, 60, 4 * 1024 * 1024 / 8, 3 * 1024 * 1024 / 8}, "none": {0, 0, -1, -1}}
 		pr, ok := presets[in.Network]
 		if !ok {
-			return "network: offline | 3g | 4g | none", true
+			return tc.Say(M("browser.network_options")), true
 		}
 		_, err := p.b.call(ctx, "Network.emulateNetworkConditions", map[string]any{"offline": pr[0] == 1, "latency": pr[1], "downloadThroughput": pr[2], "uploadThroughput": pr[3]})
 		if err != nil {
 			return err.Error(), true
 		}
-		return "network: " + in.Network, false
+		return tc.Say(M("browser.network_set", "network", in.Network)), false
 	case "emulate":
 		if in.Device == "desktop" {
 			w, h, sc := s.settings.browserViewport()
@@ -442,11 +468,11 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 			p.setMetrics(w, h, sc, false)
 			_, _ = p.b.call(ctx, "Emulation.setTouchEmulationEnabled", map[string]any{"enabled": false})
 			p.b.prepare()
-			return fmt.Sprintf("desktop %dx%d (%.0fx)", w, h, sc), false
+			return tc.Say(M("browser.desktop", "w", w, "h", h, "scale", fmt.Sprintf("%.0f", sc))), false
 		}
 		d, ok := devicePresets[in.Device]
 		if !ok {
-			return "device: " + strings.Join(sortedKeys(devicePresets), " | ") + " | desktop", true
+			return tc.Say(M("browser.device_options", "devices", strings.Join(sortedKeys(devicePresets), " | ")+" | desktop")), true
 		}
 		p.mu.Lock()
 		p.device = in.Device
@@ -458,18 +484,22 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		_, _ = p.b.call(ctx, "Page.reload", nil)
 		p.b.waitLoad(ctx)
-		res := fmt.Sprintf(map[bool]string{true: "emulating %s: %dx%d at density %.2f (touch)", false: "emulating %s: %dx%d at density %.2f (no touch)"}[d.mobile], in.Device, d.w, d.h, d.scale)
+		emu := M("browser.emulating", "device", in.Device, "w", d.w, "h", d.h, "density", fmt.Sprintf("%.2f", d.scale))
+		if d.mobile {
+			emu = M("browser.emulating_touch", "device", in.Device, "w", d.w, "h", d.h, "density", fmt.Sprintf("%.2f", d.scale))
+		}
+		res := tc.Say(emu)
 		if v, err := p.b.eval(ctx, `innerWidth`); err == nil && d.mobile && strings.TrimSpace(string(v)) != fmt.Sprint(d.w) {
-			res += fmt.Sprintf(". Warning: the page is laid out %s px wide and scaled down to fit in %d px — <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> is missing, or something is wider than the screen", strings.TrimSpace(string(v)), d.w)
+			res += ". " + tc.Say(M("browser.viewport_warning", "width", strings.TrimSpace(string(v)), "screen", d.w))
 		}
 		return res, false
 	case "viewport":
 		if in.Width <= 0 || in.Height <= 0 {
-			return "give width and height", true
+			return tc.Say(M("browser.give_size")), true
 		}
 		_, _, sc := s.settings.browserViewport()
 		p.setMetrics(in.Width, in.Height, sc, in.Width < 768)
-		return fmt.Sprintf("screen of %dx%d", in.Width, in.Height), false
+		return tc.Say(M("browser.viewport", "w", in.Width, "h", in.Height)), false
 	case "pdf":
 		raw, err := p.b.call(ctx, "Page.printToPDF", map[string]any{"printBackground": true})
 		if err != nil {
@@ -484,9 +514,9 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		dir := filepath.Join(s.Root, infuseDirName, "shots")
 		_ = os.MkdirAll(dir, 0o755)
 		_ = os.WriteFile(filepath.Join(dir, name), b, 0o644)
-		return fmt.Sprintf("PDF saved: .infuse/shots/%s (%d KB)", name, len(b)/1024), false
+		return tc.Say(M("browser.pdf", "file", name, "kb", len(b)/1024)), false
 	}
-	return "unknown action: " + in.Action, true
+	return tc.Say(M("tool.unknown_action", "action", in.Action)), true
 }
 
 func firstNonZero(a, b float64) float64 {

@@ -10,7 +10,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -122,26 +121,30 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 			})
 			t0 := time.Now()
 			if !allowed(b.Name) {
-				out, isErr = fmt.Sprintf("tool unavailable for this subagent: %s", b.Name), true
+				out, isErr = s.say(b.ID, M("agent.tool_unavailable", "tool", b.Name)), true
 			} else {
 				out, isErr = s.runTool(ctx, rules, b)
 				out = redactSecrets(out)
 			}
+			display := displayFor(s.uiLang(), out, s.takeCallMsgs(b.ID)) // the trail shows infuse's messages in the user's language
 			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr})
 			s.emit("subagent", map[string]any{"id": id, "state": "tool", "tool": b.Name, "summary": firstLine(string(b.Input))})
 			ms := time.Since(t0).Milliseconds()
 			s.agentUpdate(run, func(a *AgentRun) {
 				if step >= 0 && step < len(a.Trail) {
 					a.Trail[step].State, a.Trail[step].Ms, a.Trail[step].Output = map[bool]string{true: "error", false: "ok"}[isErr], ms, truncate(out, 1500)
+					if display != "" {
+						a.Trail[step].Display = truncate(display, 1500)
+					}
 				}
 			})
 			if err := breaker.record(b.Name, b.Input, isErr); err != nil {
-				return "", fmt.Errorf("subagent stopped: %w", err)
+				return "", errMsg(M("agent.stopped", "error", errArg(err)))
 			}
 		}
 		msgs = append(msgs, Message{Role: "user", Content: results})
 	}
-	return "", errors.New("subagent reached the step limit")
+	return "", errMsg(M("agent.step_limit"))
 }
 
 // reviewMaterial is what the reviewer sees: the request, the plan, the criteria and the diff.
@@ -240,32 +243,36 @@ func (agentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 	}
 	out, err := tc.S.RunSubagent(ctx, in.Kind, in.Description, task)
 	if err != nil {
-		return fmt.Sprintf("subagent failed: %s", err.Error()), true
+		return tc.Say(M("agent.failed", "error", errArg(err))), true
 	}
 	return out, false
 }
 
 func init() { registerTool(agentTool{}) }
 
-const reviewMarker = "[Revisão independente]"
-const reviewAck = "Revisão recebida."
-
 // IndependentReview runs the reviewer on the current changes (asked by the user) and records its
-// findings in the conversation, where the agent sees them on the next turn.
+// findings in the conversation, where the agent sees them on the next turn. The two messages say what
+// they are by their Kind (review, review_ack): the screen never reads their text to find out.
 func (s *Session) IndependentReview(ctx context.Context, focus string) (string, error) {
 	s.mu.Lock()
 	busy := s.State != "idle" && s.State != "error"
 	s.mu.Unlock()
 	if busy {
-		return "", errors.New("espere o agente terminar para revisar")
+		return "", userError(s.uiLang(), M("review.busy"))
 	}
-	out, err := s.RunSubagent(ctx, "review", "Revisão independente", s.reviewMaterial(focus)+"\nReview the changes above.")
+	out, err := s.RunSubagent(ctx, "review", M("review.title").Render(s.uiLang()), s.reviewMaterial(focus)+"\nReview the changes above.")
 	if err != nil {
+		if m, ok := msgOf(err); ok {
+			return "", userError(s.uiLang(), m)
+		}
 		return "", err
 	}
 	now := time.Now().UnixMilli()
 	s.mu.Lock()
-	s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: reviewMarker + "\n\n" + out}}, TS: now}, Message{Role: "assistant", Content: []Block{{Type: "text", Text: reviewAck}}, TS: now})
+	// the heading and the findings are separate blocks: the model reads both, the screen shows the findings
+	review := Message{Role: "user", Kind: "review", Content: []Block{s.textBlockLocked(M("review.header")), {Type: "text", Text: out}}, TS: now}
+	ack := Message{Role: "assistant", Kind: "review_ack", Content: []Block{s.textBlockLocked(M("review.ack"))}, TS: now}
+	s.Messages = append(s.Messages, review, ack)
 	s.mu.Unlock()
 	s.save()
 	s.emit("session", s.snapshot())
@@ -281,6 +288,7 @@ type AgentStep struct {
 	State   string `json:"state,omitempty"` // running | ok | error
 	Ms      int64  `json:"ms,omitempty"`
 	Output  string `json:"output,omitempty"`
+	Display string `json:"display,omitempty"` // the output with infuse's messages in the user's language
 	Started int64  `json:"started,omitempty"`
 }
 

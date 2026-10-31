@@ -19,20 +19,40 @@ type ReportClaim struct {
 	Text     string `json:"text"`
 	Kind     string `json:"kind"` // command | file | other
 	Ref      string `json:"ref,omitempty"`
-	Status   string `json:"status"` // confirmado | parcial | nao-confirmado | sem-evidencia
-	Evidence string `json:"evidence"`
+	Status   string `json:"status"`                // confirmado | parcial | nao-confirmado | sem-evidencia (a code, never shown as it is)
+	Evidence Msg    `json:"evidenceMsg,omitempty"` // what infuse found, as a message of the catalog
+	Display  string `json:"display,omitempty"`     // Evidence in the user's language, for the screen
+}
+
+// ReportSource is something the agent consulted in the turn: a web search, a page, a pinned document.
+type ReportSource struct {
+	Kind string `json:"kind"` // search | page | doc
+	Ref  string `json:"ref"`  // the query, the address, the document's name
 }
 
 type TurnReport struct {
-	Turn    int           `json:"turn"`
-	Summary string        `json:"summary"`
-	Claims  []ReportClaim `json:"claims"`
-	Next    string        `json:"next,omitempty"`
-	Sources []string      `json:"sources,omitempty"` // searches and pages read in the turn (provenance)
+	Turn        int            `json:"turn"`
+	CallID      string         `json:"callId,omitempty"` // the Report call this check belongs to
+	Summary     string         `json:"summary"`
+	Claims      []ReportClaim  `json:"claims"`
+	Next        string         `json:"next,omitempty"`
+	Sources     []ReportSource `json:"sources,omitempty"` // searches and pages read in the turn (provenance)
+	Unconfirmed int            `json:"unconfirmed"`       // claims execution did not confirm
+}
+
+// msg is how a source is listed for the model.
+func (r ReportSource) msg() Msg {
+	switch r.Kind {
+	case "search":
+		return M("report.src_search", "query", r.Ref)
+	case "doc":
+		return M("report.src_doc", "name", r.Ref)
+	}
+	return M("report.src_page", "url", r.Ref)
 }
 
 // turnSources lists the web searches, pages and pinned docs the agent consulted in the current turn.
-func (s *Session) turnSources() []string {
+func (s *Session) turnSources() []ReportSource {
 	s.mu.Lock()
 	start := 0
 	if s.Turn-1 < len(s.TurnStarts) && s.Turn > 0 {
@@ -40,8 +60,8 @@ func (s *Session) turnSources() []string {
 	}
 	msgs := append([]Message{}, s.Messages[min(start, len(s.Messages)):]...)
 	s.mu.Unlock()
-	var out []string
-	seen := map[string]bool{}
+	var out []ReportSource
+	seen := map[ReportSource]bool{}
 	for _, m := range msgs {
 		for _, b := range m.Content {
 			if b.Type != "tool_use" {
@@ -49,18 +69,18 @@ func (s *Session) turnSources() []string {
 			}
 			var in struct{ URL, Query, Path, Action string }
 			_ = json.Unmarshal(b.Input, &in)
-			src := ""
+			var src ReportSource
 			switch {
 			case b.Name == "WebSearch":
-				src = fmt.Sprintf("search: %s", in.Query)
+				src = ReportSource{"search", in.Query}
 			case b.Name == "WebFetch":
-				src = in.URL
+				src = ReportSource{"page", in.URL}
 			case b.Name == "Browser" && in.Action == "navigate":
-				src = in.URL
+				src = ReportSource{"page", in.URL}
 			case b.Name == "Read" && strings.Contains(filepath.ToSlash(in.Path), ".infuse/docs/"):
-				src = fmt.Sprintf("pinned documentation: %s", filepath.Base(in.Path))
+				src = ReportSource{"doc", filepath.Base(in.Path)}
 			}
-			if src != "" && !seen[src] {
+			if src.Ref != "" && !seen[src] {
 				seen[src] = true
 				out = append(out, src)
 			}
@@ -91,7 +111,7 @@ func (s *Session) verifyClaim(c *ReportClaim) {
 	case "command":
 		ref := squash(c.Ref)
 		if ref == "" {
-			c.Status, c.Evidence = "sem-evidencia", "no command given"
+			c.Status, c.Evidence = "sem-evidencia", M("report.ev_no_command")
 			return
 		}
 		results := map[string]Block{}
@@ -123,11 +143,11 @@ func (s *Session) verifyClaim(c *ReportClaim) {
 		}
 		switch {
 		case found:
-			c.Status, c.Evidence = "confirmado", "run in this turn without error"
+			c.Status, c.Evidence = "confirmado", M("report.ev_ran")
 		case failed != "":
-			c.Status, c.Evidence = "nao-confirmado", fmt.Sprintf("run in this turn, but it failed: %s", failed)
+			c.Status, c.Evidence = "nao-confirmado", M("report.ev_failed", "output", failed)
 		default:
-			c.Status, c.Evidence = "nao-confirmado", "this command was not run in this turn"
+			c.Status, c.Evidence = "nao-confirmado", M("report.ev_not_run")
 		}
 	case "file":
 		rel := filepath.ToSlash(strings.TrimPrefix(filepath.Clean(c.Ref), filepath.Clean(root)+string(filepath.Separator)))
@@ -135,16 +155,82 @@ func (s *Session) verifyClaim(c *ReportClaim) {
 		_, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
 		switch {
 		case written[rel] && err == nil:
-			c.Status, c.Evidence = "confirmado", "changed in this turn"
+			c.Status, c.Evidence = "confirmado", M("report.ev_changed")
 		case written[rel]:
-			c.Status, c.Evidence = "confirmado", "removed in this turn"
+			c.Status, c.Evidence = "confirmado", M("report.ev_removed")
 		case err == nil:
-			c.Status, c.Evidence = "parcial", "the file exists, but it was not changed in this turn"
+			c.Status, c.Evidence = "parcial", M("report.ev_unchanged")
 		default:
-			c.Status, c.Evidence = "nao-confirmado", "the file does not exist"
+			c.Status, c.Evidence = "nao-confirmado", M("report.ev_missing")
 		}
 	default:
-		c.Kind, c.Status, c.Evidence = "other", "sem-evidencia", "a claim with no verifiable evidence"
+		c.Kind, c.Status, c.Evidence = "other", "sem-evidencia", M("report.ev_none")
+	}
+}
+
+// claimStatus is a claim's status code as a message.
+func claimStatus(code string) Msg {
+	switch code {
+	case "confirmado":
+		return M("report.st_confirmed")
+	case "parcial":
+		return M("report.st_partial")
+	case "nao-confirmado":
+		return M("report.st_unconfirmed")
+	}
+	return M("report.st_no_evidence")
+}
+
+// checkReport verifies every claim of a report against the turn and returns what the model reads: one
+// message per claim, the sources, and the count of claims execution did not confirm.
+func (s *Session) checkReport(r *TurnReport) []Msg {
+	lang := s.uiLang()
+	out := []Msg{M("report.head")}
+	r.Unconfirmed = 0
+	for i := range r.Claims {
+		s.verifyClaim(&r.Claims[i])
+		c := &r.Claims[i]
+		c.Display = c.Evidence.Render(lang)
+		out = append(out, M("report.claim", "status", claimStatus(c.Status), "text", c.Text, "evidence", c.Evidence))
+		if c.Status == "nao-confirmado" {
+			r.Unconfirmed++
+		}
+	}
+	r.Sources = s.turnSources()
+	if len(r.Sources) > 0 {
+		out = append(out, M("report.sources_head"))
+		for _, src := range r.Sources {
+			out = append(out, M("report.source", "source", src.msg()))
+		}
+	}
+	if r.Unconfirmed > 0 {
+		out = append(out, M("report.unconfirmed", "count", r.Unconfirmed))
+	}
+	return out
+}
+
+// attachToCall records structured data on the tool call it belongs to (the tool_use block of the
+// current reply), where the screen reads it. The message is copied, not changed in place: the loop that
+// runs the tools still holds the reply.
+func (s *Session) attachToCall(callID string, data any) {
+	if callID == "" {
+		return
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := len(s.Messages) - 1; i >= 0; i-- {
+		for j, b := range s.Messages[i].Content {
+			if b.Type == "tool_use" && b.ID == callID {
+				c := append([]Block{}, s.Messages[i].Content...)
+				c[j].Meta = raw
+				s.Messages[i].Content = c
+				return
+			}
+		}
 	}
 }
 
@@ -175,29 +261,15 @@ func (reportTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 		return err.Error(), true
 	}
 	s := tc.S
-	r.Turn = s.Turn
-	var b strings.Builder
-	bad := 0
-	for i := range r.Claims {
-		s.verifyClaim(&r.Claims[i])
-		c := r.Claims[i]
-		fmt.Fprintf(&b, "- [%s] %s — %s\n", c.Status, c.Text, c.Evidence)
-		if c.Status == "nao-confirmado" {
-			bad++
-		}
+	r.Turn, r.CallID = s.Turn, tc.CallID
+	var lines []string
+	for _, m := range s.checkReport(&r) {
+		lines = append(lines, tc.Say(m))
 	}
-	r.Sources = s.turnSources()
+	// the screen draws the check from these data (status codes, evidence, sources), never from the text
+	s.attachToCall(tc.CallID, r)
 	s.emit("report", r)
-	// The claim status codes ([confirmado], [nao-confirmado], …) and the "Fontes consultadas neste turno:"
-	// header are read back by the interface (ui/app.js reportCard); they stay as they are until it changes.
-	out := "Report checked by infuse (status codes: confirmado = confirmed, parcial = partial, nao-confirmado = not confirmed, sem-evidencia = no evidence):\n" + b.String()
-	if len(r.Sources) > 0 {
-		out += "Fontes consultadas neste turno:\n- " + strings.Join(r.Sources, "\n- ") + "\n"
-	}
-	if bad > 0 {
-		out += fmt.Sprintf("%d claim(s) not confirmed by execution: fix the work or the claim; the user sees this check.", bad)
-	}
-	return out, false
+	return strings.Join(lines, "\n"), false
 }
 
 type contractTool struct{}
@@ -215,20 +287,21 @@ func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	}
 	_ = json.Unmarshal(input, &in)
 	if len(in.Criteria) == 0 {
-		return "give at least one criterion", true
+		return tc.Say(M("contract.no_criteria")), true
 	}
-	var q strings.Builder
-	fmt.Fprintf(&q, "Objetivo: %s\n\nVou considerar pronto quando:\n", in.Goal)
+	var list strings.Builder
 	for i, c := range in.Criteria {
-		fmt.Fprintf(&q, "%d. %s\n", i+1, c)
+		fmt.Fprintf(&list, "%d. %s\n", i+1, c)
 	}
-	q.WriteString("\nConfirma? (ou escreva o que ajustar)")
-	ans, ok := tc.S.askUser(ctx, q.String(), []string{"Confirmar"})
+	// the question is the user's alone: written in their language; the answer is the option they chose
+	lang := tc.S.uiLang()
+	confirm := M("contract.confirm").Render(lang)
+	ans, ok := tc.S.askUser(ctx, M("contract.question", "goal", in.Goal, "criteria", strings.TrimRight(list.String(), "\n")).Render(lang), []string{confirm})
 	if !ok {
-		return "the user did not answer", true
+		return tc.Say(M("ask.no_answer")), true
 	}
-	if strings.TrimSpace(ans) != "Confirmar" {
-		return fmt.Sprintf("The user asked for changes to the criteria: %s\nRewrite them and call Contract again.", ans), false
+	if strings.TrimSpace(ans) != confirm {
+		return tc.Say(M("contract.changes", "answer", ans)), false
 	}
 	for _, c := range in.Criteria {
 		it := MemoryItem{Type: "criterio", Text: c, Priority: 3, Origin: "usuario", Session: tc.S.ID}
@@ -237,7 +310,7 @@ func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 		}
 	}
 	tc.S.emit("memory", map[string]any{"action": "contract"})
-	return "Criteria confirmed by the user and stored in the session memory. Work until they are met and report with Report, with evidence for each one.", false
+	return tc.Say(M("contract.confirmed")), false
 }
 
 func init() {

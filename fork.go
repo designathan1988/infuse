@@ -1,9 +1,6 @@
 package main
 
-import (
-	"errors"
-	"strings"
-)
+import "strings"
 
 // Fork starts a new session with this one's conversation up to message upTo (inclusive): the same
 // project, model, provider, mode and session memory, to try another path from that point.
@@ -11,7 +8,7 @@ func (s *Session) Fork(upTo int) (*Session, error) {
 	s.mu.Lock()
 	if upTo < 0 || upTo >= len(s.Messages) {
 		s.mu.Unlock()
-		return nil, errors.New("mensagem inexistente")
+		return nil, userError(s.uiLang(), M("fork.no_message"))
 	}
 	msgs := append([]Message{}, s.Messages[:upTo+1]...)
 	// a reply that asked for tools without their results would be rejected by the provider: cut it
