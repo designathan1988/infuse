@@ -90,17 +90,17 @@ function mountChanges(pb, extra, c) {
   const comments = []; // {path, line, code, text}
   const updC = () => { $('.ncom', pb).textContent = comments.length ? `${comments.length} ${t('comentário(s)')}` : ''; $('.sendc', pb).classList.toggle('hidden', !comments.length); };
   const load = async () => {
-    const r = await api('/api/changes', { root: c.root, dir: c.dir });
-    if (r.isGit === false) { fl.innerHTML = ''; dv.innerHTML = `<div class="empty">${t('Esta pasta não é um repositório git.')}</div>`; return; }
+    const sid = curL()?.id || '';
+    const r = await api('/api/changes?session=' + encodeURIComponent(sid), { root: c.root, dir: c.dir });
     files = r.files || [];
     fl.innerHTML = files.length ? '' : `<div class="empty">${t('Nenhuma alteração')}</div>`;
     files.forEach(f => { const it = h(`<div class="fli${f.path === sel ? ' on' : ''}" title="${esc(f.path)}"><span class="n">${esc(f.path)}</span><span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`); it.onclick = () => select(f.path); it.oncontextmenu = e => { e.preventDefault(); menu(null, [{ label: 'Abrir no painel Arquivos', f: () => openFileInPane(f.path) }, ...openInItems(c.dir.replace(/[\\/]+$/, '') + '/' + f.path), { sep: 1 }, { label: 'Descartar alterações', danger: 1, f: () => discard(f.path) }], e); }; fl.appendChild(it); });
     if (sel && files.find(f => f.path === sel)) select(sel); else if (files[0]) select(files[0].path); else dv.innerHTML = `<div class="empty">${t('Nada para revisar.')}</div>`;
   };
-  const discard = async p => { if (!confirm(t('Descartar as alterações em ') + p + '?')) return; await api('/api/git', { body: { action: 'discard', path: p }, root: c.root, dir: c.dir }); load(); const L = curL(); if (L) refreshChanges(L); };
+  const discard = async p => { if (!confirm(t('Descartar as alterações em ') + p + '?')) return; await fetch(`/api/git?root=${encodeURIComponent(c.dir)}&session=${encodeURIComponent(curL()?.id || '')}&project=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ action: 'discard', path: p }) }); load(); const L = curL(); if (L) refreshChanges(L); };
   const select = async p => {
     sel = p; $$('.fli', fl).forEach(x => x.classList.toggle('on', x.title === p));
-    const r = await api('/api/diff?path=' + encodeURIComponent(p), { root: c.dir });
+    const r = await api('/api/diff?path=' + encodeURIComponent(p) + '&session=' + encodeURIComponent(curL()?.id || '') + '&project=' + encodeURIComponent(c.root), { root: c.dir });
     const lines = (r.diff || '').split('\n'); let nNew = 0; const out = h('<div class="rdiff"></div>');
     out.appendChild(h(`<div class="row" style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:var(--sans)"><span class="mono trunc grow">${esc(p)}</span><button class="btn sm danger">${t('Descartar')}</button></div>`));
     $('.btn', out).onclick = () => discard(p);
@@ -253,14 +253,14 @@ function mountBrowser(pb, extra, c) {
   if (native) infuse.on('browser', ev => { if (document.body.contains(pb)) onEv(ev); });
 
   // ---- streamed tabs (any other place): the real browser's screen, our mouse and keyboard
-  const size = () => ({ width: Math.max(200, Math.round(frames.clientWidth)), height: Math.max(150, Math.round(frames.clientHeight)) });
+  const size = () => ({ width: Math.max(200, Math.round(frames.clientWidth)), height: Math.max(150, Math.round(frames.clientHeight)), dpr: window.devicePixelRatio || 1 });
   const input = (tb, body) => fetch(`/api/view/input?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ id: tb.id, ...body }) }).then(r => r.json()).catch(() => ({}));
   const stream = tb => {
     const img = tb.img = h('<img class="rview" draggable="false" alt="">'); frames.appendChild(img);
     const kb = tb.kb = h('<textarea class="rkb" aria-label="teclado da página" autocomplete="off" spellcheck="false"></textarea>'); frames.appendChild(kb); // receives the keyboard for the page
     tb.es = new EventSource(`/api/view/stream?root=${encodeURIComponent(c.root)}&id=${encodeURIComponent(tb.id)}`);
-    tb.es.onmessage = e => { const d = JSON.parse(e.data); if (d.type === 'frame') { img.src = 'data:image/jpeg;base64,' + d.data; tb.vw = d.w; tb.vh = d.h; } else if (d.type === 'nav') onEv({ id: tb.id, url: d.url, title: d.title, loading: d.loading }); };
-    const at = e => { const r = img.getBoundingClientRect(); const sx = (tb.vw || r.width) / r.width, sy = (tb.vh || r.height) / r.height; return { x: Math.round((e.clientX - r.left) * sx), y: Math.round((e.clientY - r.top) * sy) }; };
+    tb.es.onmessage = e => { const d = JSON.parse(e.data); if (d.type === 'frame') { img.src = 'data:image/jpeg;base64,' + d.data; tb.vw = d.w; tb.vh = d.h; if (d.w) { img.style.width = d.w + 'px'; img.style.height = d.h + 'px'; } } else if (d.type === 'nav') onEv({ id: tb.id, url: d.url, title: d.title, loading: d.loading }); };
+    const at = e => { const r = img.getBoundingClientRect(); return { x: Math.round(e.clientX - r.left), y: Math.round(e.clientY - r.top) }; }; // the page's CSS pixels
     const btn = e => ['left', 'middle', 'right'][e.button] || 'left';
     img.onmousedown = async e => {
       e.preventDefault(); setTimeout(() => kb.focus(), 0);
@@ -283,7 +283,7 @@ function mountBrowser(pb, extra, c) {
     kb.oninput = () => { if (kb.value) { input(tb, { kind: 'text', text: kb.value }); kb.value = ''; } }; // composed characters (accents, IME)
   };
   let resizeT = null;
-  const resizeStreams = () => { if (native) return; clearTimeout(resizeT); resizeT = setTimeout(() => tabs.forEach(tb => tb.img && input(tb, { kind: 'resize', ...size() })), 150); };
+  const resizeStreams = () => { if (native) return; clearTimeout(resizeT); resizeT = setTimeout(() => tabs.forEach(tb => tb.img && input(tb, { kind: 'resize', ...size() })), 60); };
   const ro = new ResizeObserver(() => { place(); resizeStreams(); }); ro.observe(frames);
   const timer = setInterval(() => place(), 200);
 

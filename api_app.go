@@ -571,7 +571,13 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 
 	// ---------------------------------------------------------------- review
 	case path == "/api/changes":
-		sendJSON(w, 200, Changes(dir))
+		ch := Changes(dir)
+		if ch["isGit"] == false && q["session"] != "" { // a local folder: counted against the session's checkpoints
+			if s, err := loadSession(root, q["session"]); err == nil {
+				ch = s.LocalChanges()
+			}
+		}
+		sendJSON(w, 200, ch)
 		return true
 	case path == "/api/pr" && r.Method == http.MethodGet:
 		sendJSON(w, 200, PRStatus(dir))

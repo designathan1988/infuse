@@ -22,6 +22,7 @@ type viewTab struct {
 	subs   map[chan []byte]struct{}
 	width  int
 	height int
+	dpr    float64
 	url    string
 	title  string
 	frame  []byte // the last frame event, for a new subscriber
@@ -142,7 +143,11 @@ func (t *viewTab) event(method string, params json.RawMessage) {
 	}
 }
 
-func (t *viewTab) resize(w, h int) {
+func (t *viewTab) resize(w, h int, dprs ...float64) {
+	dpr := 1.0
+	if len(dprs) > 0 && dprs[0] >= 1 && dprs[0] <= 4 {
+		dpr = dprs[0]
+	}
 	if w < 200 {
 		w = 200
 	}
@@ -150,16 +155,17 @@ func (t *viewTab) resize(w, h int) {
 		h = 150
 	}
 	t.mu.Lock()
-	same := t.width == w && t.height == h
-	t.width, t.height = w, h
+	same := t.width == w && t.height == h && t.dpr == dpr
+	t.width, t.height, t.dpr = w, h, dpr
 	t.mu.Unlock()
 	if same {
 		return
 	}
 	ctx := context.Background()
-	_, _ = t.page.call(ctx, "Emulation.setDeviceMetricsOverride", map[string]any{"width": w, "height": h, "deviceScaleFactor": 1, "mobile": false})
+	// drawn at the screen's real density, shown at its CSS size: sharp and never stretched
+	_, _ = t.page.call(ctx, "Emulation.setDeviceMetricsOverride", map[string]any{"width": w, "height": h, "deviceScaleFactor": dpr, "mobile": false})
 	_, _ = t.page.call(ctx, "Page.stopScreencast", nil)
-	_, _ = t.page.call(ctx, "Page.startScreencast", map[string]any{"format": "jpeg", "quality": 75, "maxWidth": w, "maxHeight": h, "everyNthFrame": 1})
+	_, _ = t.page.call(ctx, "Page.startScreencast", map[string]any{"format": "jpeg", "quality": 80, "maxWidth": int(float64(w) * dpr), "maxHeight": int(float64(h) * dpr), "everyNthFrame": 1})
 }
 
 // ---------------------------------------------------------------- HTTP
@@ -216,7 +222,7 @@ func viewAPI(w http.ResponseWriter, r *http.Request, root, path string, body map
 			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
 			return true
 		}
-		t.resize(int(num("width")), int(num("height")))
+		t.resize(int(num("width")), int(num("height")), num("dpr"))
 		if u := str("url"); u != "" {
 			raw, err := t.page.call(r.Context(), "Page.navigate", map[string]any{"url": u})
 			var nav struct {
@@ -238,7 +244,7 @@ func viewAPI(w http.ResponseWriter, r *http.Request, root, path string, body map
 		ctx := r.Context()
 		switch str("kind") {
 		case "resize":
-			t.resize(int(num("width")), int(num("height")))
+			t.resize(int(num("width")), int(num("height")), num("dpr"))
 		case "mouse": // mousePressed | mouseReleased | mouseMoved
 			p := map[string]any{"type": str("type"), "x": num("x"), "y": num("y"), "button": firstNonEmpty(str("button"), "left"), "clickCount": int(num("clickCount")), "modifiers": int(num("modifiers"))}
 			if str("type") == "mouseMoved" {

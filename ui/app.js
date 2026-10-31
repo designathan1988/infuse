@@ -401,7 +401,7 @@ function attention(L, title, body) {
 }
 async function refreshChanges(L) {
   if (!L?.snap) return;
-  L.changes = await api('/api/changes', { root: L.root, dir: L.snap.workRoot || L.root });
+  L.changes = await api('/api/changes?session=' + encodeURIComponent(L.id), { root: L.root, dir: L.snap.workRoot || L.root });
   viewsOf(L).forEach(v => { renderRail(v); renderChangesBadge(v); });
   paneRefresh('changes');
 }
@@ -933,7 +933,7 @@ function renderRail(v) {
   const pct = Math.min(100, Math.round(((L.lastIn || 0) / (S.settings.contextLimit || 200000)) * 100));
   const tasks = L.snap.tasks || [];
   el.innerHTML = `
-  <div class="card"><div class="ch">${t('Alterações')}<span class="r mono">${c.isGit === false ? t('sem git') : `<span class="add">+${c.added || 0}</span> <span class="del">−${c.removed || 0}</span>`}</span></div>
+  <div class="card"><div class="ch">${t('Alterações')}<span class="r mono">${c.isGit === false && !c.local ? t('sem git') : `<span class="add">+${c.added || 0}</span> <span class="del">−${c.removed || 0}</span>`}</span></div>
     ${files.length ? files.slice(0, 8).map(f => `<div class="li" data-f="${esc(f.path)}"><span class="n" title="${esc(f.path)}">${esc(f.path)}</span><span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`).join('') + (files.length > 8 ? `<div class="faint" style="padding:3px 4px">+${files.length - 8} ${t('arquivos')}</div>` : '') : `<div class="faint">${t('Nenhuma alteração')}</div>`}
     <div class="prline"></div></div>
   <div class="card ctxcard" style="cursor:pointer"><div class="ch">${t('Contexto')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(S.settings.contextLimit || 200000)} tokens · ${money(L.snap.cost)}</div></div>
@@ -991,7 +991,7 @@ async function renderPR(v, el) {
 }
 function renderChangesBadge(v) {
   const L = v.sid && S.live[v.sid]; const b = $('.chg', v.el); if (!b) return;
-  const c = L?.changes; b.innerHTML = c?.isGit ? `<span class="add">+${c.added || 0}</span><span class="del">−${c.removed || 0}</span>` : I.diff;
+  const c = L?.changes; b.innerHTML = (c?.isGit || c?.local) && (c.added || c.removed) ? `<span class="add">+${c.added || 0}</span><span class="del">−${c.removed || 0}</span>` : I.diff;
 }
 
 // ---------------------------------------------------------------- dialogs: rewind, context, palette, shortcuts, side chat
