@@ -1,4 +1,4 @@
-package main
+package llm
 
 // The model as a compile step. infuse asks the model to turn text (instructions, the user's messages, a
 // document) into structured data, then checks every item mechanically. The answer must arrive whole: a
@@ -14,17 +14,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/core"
 	"strings"
 )
 
-const askJSONAttempts = 3
+const AskJSONAttempts = 3
 
-// askJSON asks model for the arguments of the tool spec and decodes them into out.
-func askJSON(ctx context.Context, p Provider, model, system, user string, spec ToolSpec, maxTokens int, out any) (Usage, error) {
+// AskJSON asks model for the arguments of the tool spec and decodes them into out.
+func AskJSON(ctx context.Context, p Provider, model, system, user string, spec ToolSpec, maxTokens int, out any) (Usage, error) {
 	msgs := []Message{{Role: "user", Content: []Block{{Type: "text", Text: user}}}}
 	var total Usage
 	var last error
-	for attempt := 0; attempt < askJSONAttempts; attempt++ {
+	for attempt := 0; attempt < AskJSONAttempts; attempt++ {
 		res, err := p.Stream(ctx, ModelRequest{Model: model, System: system, Messages: msgs, Tools: []ToolSpec{spec}, ForceTool: spec.Name, MaxTokens: maxTokens}, func(StreamEvent) {})
 		if err != nil {
 			return total, err
@@ -45,7 +46,7 @@ func askJSON(ctx context.Context, p Provider, model, system, user string, spec T
 			msgs = append(msgs, Message{Role: "user", Content: []Block{{Type: "text", Text: fix}}})
 		}
 	}
-	return total, fmt.Errorf("no valid answer after %d attempts: %w", askJSONAttempts, last)
+	return total, fmt.Errorf("no valid answer after %d attempts: %w", AskJSONAttempts, last)
 }
 
 // answerJSON is the JSON the model gave: the forced call's arguments, or a JSON object in its text
@@ -56,7 +57,7 @@ func answerJSON(content []Block, tool string) (raw, callID string) {
 			return string(b.Input), b.ID
 		}
 	}
-	text := msgText(Message{Content: content})
+	text := core.TextOf(Message{Content: content})
 	if i, j := strings.Index(text, "{"), strings.LastIndex(text, "}"); i >= 0 && j > i {
 		return text[i : j+1], ""
 	}

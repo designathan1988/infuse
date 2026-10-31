@@ -82,19 +82,6 @@ func (s *Session) streamResilient(ctx context.Context, p Provider, req ModelRequ
 	}
 }
 
-// outputLimit is how many tokens a reply may use: the model's official maximum, up to 64K (a reply
-// cut short is recovered anyway, but should be rare).
-func outputLimit(model string, configured int) int {
-	if configured > 0 && configured != 16000 { // 16000 was a fixed default, never a choice
-		return configured
-	}
-	l, ok := modelLimits[strings.ToLower(model)]
-	if !ok {
-		return 16000
-	}
-	return min(l.output, 64000)
-}
-
 // truncatedReply handles an answer cut at the output limit: calls whose input may be incomplete are
 // dropped (never executed half-written) and the agent is told to continue from where it stopped.
 func truncatedReply(res *ModelResult) (note Msg, cut bool) {

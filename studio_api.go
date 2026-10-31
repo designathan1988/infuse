@@ -297,15 +297,6 @@ func studioAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body
 	return false
 }
 
-func providerNames() []string {
-	var out []string
-	for k := range providers {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
 func streamEvents(w http.ResponseWriter, r *http.Request, s *Session) {
 	fl, ok := w.(http.Flusher)
 	if !ok {

@@ -1,4 +1,4 @@
-package main
+package llm
 
 // Model providers. The agent loop talks to this interface only; providers are registered by name.
 
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"infuse/internal/core"
 	"io"
 	"net/http"
 	"strings"
@@ -46,14 +47,14 @@ type Provider interface {
 
 var providers = map[string]func(cfg ProviderConfig) Provider{}
 
-func registerProvider(name string, mk func(cfg ProviderConfig) Provider) { providers[name] = mk }
+func RegisterProvider(name string, mk func(cfg ProviderConfig) Provider) { providers[name] = mk }
 
 type ProviderConfig struct {
 	APIKey  string `json:"apiKey"`
 	BaseURL string `json:"baseUrl,omitempty"`
 }
 
-func newProvider(name string, cfg ProviderConfig) (Provider, error) {
+func NewProvider(name string, cfg ProviderConfig) (Provider, error) {
 	mk, ok := providers[name]
 	if !ok {
 		return nil, fmt.Errorf("provedor desconhecido: %s", name)
@@ -69,14 +70,14 @@ type anthropicProvider struct {
 }
 
 func init() {
-	registerProvider("anthropic", func(cfg ProviderConfig) Provider {
+	RegisterProvider("anthropic", func(cfg ProviderConfig) Provider {
 		base := cfg.BaseURL
 		if base == "" {
 			base = "https://api.anthropic.com"
 		}
 		return &anthropicProvider{key: cfg.APIKey, base: strings.TrimRight(base, "/"), client: &http.Client{Timeout: 10 * time.Minute}}
 	})
-	registerProvider("mock", func(cfg ProviderConfig) Provider { return &mockProvider{} })
+	RegisterProvider("mock", func(cfg ProviderConfig) Provider { return &mockProvider{} })
 }
 
 func (p *anthropicProvider) Name() string { return "anthropic" }
@@ -305,7 +306,7 @@ func (m *mockProvider) Stream(ctx context.Context, req ModelRequest, emit func(S
 		if strings.Contains(r.Content, "ls-step") {
 			return call("tu_2", "Write", map[string]any{"path": "src/demo.ts", "content": "export const demo = () => `ok ${1}`;\n"})
 		}
-		return say("Concluído. O resultado da ferramenta foi: " + truncate(strings.TrimSpace(r.Content), 160))
+		return say("Concluído. O resultado da ferramenta foi: " + core.Truncate(strings.TrimSpace(r.Content), 160))
 	}
 	text := ""
 	for _, b := range last.Content {

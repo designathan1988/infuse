@@ -95,3 +95,17 @@ func FirstNonZero(a, b float64) float64 {
 	}
 	return b
 }
+
+// TextOf joins the text blocks of a message.
+func TextOf(m Message) string {
+	var b strings.Builder
+	for _, c := range m.Content {
+		if c.Type == "text" {
+			if b.Len() > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(c.Text)
+		}
+	}
+	return b.String()
+}

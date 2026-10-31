@@ -54,7 +54,11 @@ func ConnectProvider(ctx context.Context, id, key, base string) (Connection, err
 	if p.NeedKey && key == "" {
 		return c, errors.New("informe a chave de API")
 	}
-	cfg := ProviderConfig{APIKey: key, BaseURL: orDefault(c.BaseURL, p.BaseURL)}
+	base = c.BaseURL
+	if base == "" {
+		base = p.BaseURL
+	}
+	cfg := ProviderConfig{APIKey: key, BaseURL: strings.TrimRight(base, "/")}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	models, err := ListModels(ctx, p.Kind, cfg)

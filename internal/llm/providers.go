@@ -1,4 +1,4 @@
-package main
+package llm
 
 // OpenAI (Chat Completions, SSE, function calling; any compatible endpoint via BaseURL: LM Studio, vLLM,
 // OpenRouter, Groq…), Google Gemini (streamGenerateContent?alt=sse, functionDeclarations) and Ollama
@@ -26,13 +26,13 @@ const (
 )
 
 func init() {
-	registerProvider("openai", func(cfg ProviderConfig) Provider {
+	RegisterProvider("openai", func(cfg ProviderConfig) Provider {
 		return &openAIProvider{key: cfg.APIKey, base: orDefault(cfg.BaseURL, openAIDefaultBase), client: httpClient()}
 	})
-	registerProvider("google", func(cfg ProviderConfig) Provider {
+	RegisterProvider("google", func(cfg ProviderConfig) Provider {
 		return &googleProvider{key: cfg.APIKey, base: orDefault(cfg.BaseURL, googleDefaultBase), client: httpClient()}
 	})
-	registerProvider("ollama", func(cfg ProviderConfig) Provider {
+	RegisterProvider("ollama", func(cfg ProviderConfig) Provider {
 		return &ollamaProvider{base: orDefault(cfg.BaseURL, ollamaDefaultBase), client: httpClient()}
 	})
 }

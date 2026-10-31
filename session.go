@@ -1535,18 +1535,6 @@ func (s *Session) SuggestNext(ctx context.Context) (string, error) {
 }
 
 // msgText joins the text blocks of a message.
-func msgText(m Message) string {
-	var b strings.Builder
-	for _, c := range m.Content {
-		if c.Type == "text" {
-			if b.Len() > 0 {
-				b.WriteString("\n")
-			}
-			b.WriteString(c.Text)
-		}
-	}
-	return b.String()
-}
 
 type sessionHit struct {
 	ID      string `json:"id"`

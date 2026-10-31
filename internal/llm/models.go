@@ -1,4 +1,4 @@
-package main
+package llm
 
 // What each model accepts, from the providers' official model tables (read 2026-10-31):
 //   Claude: https://platform.claude.com/docs/en/models/overview — every Claude 5 model: 1M context, 128K output.
@@ -6,7 +6,11 @@ package main
 //   context, 384K output; the legacy names are served by the same models.
 // The context window decides when a conversation is compacted; it is never a fixed number.
 
-import "strings"
+import (
+	"infuse/internal/core"
+	"sort"
+	"strings"
+)
 
 type modelLimit struct{ context, output int }
 
@@ -22,11 +26,11 @@ var modelLimits = map[string]modelLimit{
 	"deepseek-reasoner": {1_000_000, 384_000},
 }
 
-// fallbackContext is used for a model infuse has no official figure for (a local or unknown model).
-const fallbackContext = 128_000
+// FallbackContext is used for a model infuse has no official figure for (a local or unknown model).
+const FallbackContext = 128_000
 
-// contextWindow is the model's context in tokens: its official figure, or its family's.
-func contextWindow(model string) int {
+// ContextWindow is the model's context in tokens: its official figure, or its family's.
+func ContextWindow(model string) int {
 	m := strings.ToLower(strings.TrimSpace(model))
 	if l, ok := modelLimits[m]; ok {
 		return l.context
@@ -40,33 +44,37 @@ func contextWindow(model string) int {
 			}
 		}
 	}
-	return fallbackContext
+	return FallbackContext
 }
 
-// contextLimit is the session's working context: the model's window, or less when the user set less.
-func (s *Session) contextLimit() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.contextLimitLocked()
-}
-
-func (s *Session) contextLimitLocked() int {
-	model := s.Model
-	if model == "" {
-		model = s.settings.Model
+// OutputLimit is how many tokens a reply may use: the model's official maximum, up to 64K (a reply
+// cut short is recovered anyway, but should be rare).
+func OutputLimit(model string, configured int) int {
+	if configured > 0 && configured != 16000 { // 16000 was a fixed default, never a choice
+		return configured
 	}
-	window := contextWindow(model)
-	if lim := s.settings.ContextLimit; lim > 0 && lim < window {
-		return lim
+	l, ok := modelLimits[strings.ToLower(model)]
+	if !ok {
+		return 16000
 	}
-	return window
+	return min(l.output, 64000)
 }
 
-// repairTranscript makes the conversation valid for any provider: a tool result must answer a call in
+// ProviderNames lists the registered provider kinds.
+func ProviderNames() []string {
+	out := make([]string, 0, len(providers))
+	for k := range providers {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// RepairTranscript makes the conversation valid for any provider: a tool result must answer a call in
 // the assistant message right before it, and every call must have its result. Whatever breaks that (an
 // interrupted turn, an old compaction) is turned into plain text instead of reaching the provider and
 // failing the session.
-func repairTranscript(msgs []Message) []Message {
+func RepairTranscript(msgs []Message) []Message {
 	out := make([]Message, 0, len(msgs))
 	for i, m := range msgs {
 		m.Content = append([]Block{}, m.Content...)
@@ -81,7 +89,7 @@ func repairTranscript(msgs []Message) []Message {
 			}
 			for j, b := range m.Content {
 				if b.Type == "tool_result" && !calls[b.ToolUseID] {
-					m.Content[j] = Block{Type: "text", Text: "[resultado de ferramenta sem a chamada correspondente]\n" + truncate(b.Content, 4000)}
+					m.Content[j] = Block{Type: "text", Text: "[resultado de ferramenta sem a chamada correspondente]\n" + core.Truncate(b.Content, 4000)}
 				}
 			}
 		}

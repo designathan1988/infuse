@@ -4,9 +4,37 @@ package main
 // while symbols move out, and are removed once the last domain leaves (stage 9).
 
 import (
+	"context"
 	"infuse/internal/config"
 	"infuse/internal/core"
+	"infuse/internal/llm"
 )
+
+type Provider = llm.Provider
+type ProviderConfig = llm.ProviderConfig
+type ModelRequest = llm.ModelRequest
+type ModelResult = llm.ModelResult
+type StreamEvent = llm.StreamEvent
+
+const askJSONAttempts = llm.AskJSONAttempts
+const fallbackContext = llm.FallbackContext
+
+func newProvider(name string, cfg ProviderConfig) (Provider, error) { return llm.NewProvider(name, cfg) }
+func registerProvider(name string, mk func(cfg ProviderConfig) Provider) {
+	llm.RegisterProvider(name, mk)
+}
+func ListModels(ctx context.Context, name string, cfg ProviderConfig) ([]string, error) {
+	return llm.ListModels(ctx, name, cfg)
+}
+func askJSON(ctx context.Context, p Provider, model, system, user string, spec ToolSpec, maxTokens int, out any) (Usage, error) {
+	return llm.AskJSON(ctx, p, model, system, user, spec, maxTokens, out)
+}
+func repairTranscript(msgs []Message) []Message { return llm.RepairTranscript(msgs) }
+func contextWindow(model string) int            { return llm.ContextWindow(model) }
+func outputLimit(model string, configured int) int {
+	return llm.OutputLimit(model, configured)
+}
+func providerNames() []string { return llm.ProviderNames() }
 
 const infuseDirName = core.InfuseDirName
 
@@ -34,6 +62,7 @@ func recordUsage(e usageEntry)                  { config.RecordUsage(e) }
 func UsageTotals() usageTotals                  { return config.UsageTotals() }
 func usageFile() string                         { return config.UsageFile() }
 func settingsFile() string                      { return config.SettingsFile() }
+func msgText(m Message) string                  { return core.TextOf(m) }
 
 func homeDir() string                  { return core.HomeDir() }
 func InfuseHome() string               { return core.InfuseHome() }
