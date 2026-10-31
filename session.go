@@ -29,6 +29,7 @@ type permRequest struct {
 	Tool     string          `json:"tool"`
 	Input    json.RawMessage `json:"input"`
 	Category string          `json:"category"`
+	Reason   string          `json:"reason,omitempty"` // why infuse asks although the mode would allow it (a sentinel)
 	reply    chan string
 }
 
@@ -431,7 +432,11 @@ func bashPrefix(tool string, input json.RawMessage) string {
 }
 
 func (s *Session) askPermission(ctx context.Context, tool Tool, input json.RawMessage) bool {
-	req := &permRequest{ID: fmt.Sprintf("p%d", time.Now().UnixNano()), Tool: tool.Spec().Name, Input: input, Category: tool.Category(), reply: make(chan string, 1)}
+	return s.askPermissionWhy(ctx, tool, input, "")
+}
+
+func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.RawMessage, reason string) bool {
+	req := &permRequest{ID: fmt.Sprintf("p%d", time.Now().UnixNano()), Tool: tool.Spec().Name, Input: input, Category: tool.Category(), Reason: reason, reply: make(chan string, 1)}
 	s.mu.Lock()
 	s.pendingPerm = req
 	s.mu.Unlock()
@@ -440,7 +445,11 @@ func (s *Session) askPermission(ctx context.Context, tool Tool, input json.RawMe
 	defer func() { s.mu.Lock(); s.pendingPerm = nil; s.mu.Unlock() }()
 	select {
 	case d := <-req.reply:
-		if d == "always" {
+		if d == "always" && reason != "" { // "don't ask again" silences this sentinel for the session, not the tool
+			s.mu.Lock()
+			s.allowAlways["sentinel:"+reason] = true
+			s.mu.Unlock()
+		} else if d == "always" {
 			s.mu.Lock()
 			s.allowAlways[req.Tool] = true
 			if p := bashPrefix(req.Tool, input); p != "" {
@@ -756,6 +765,22 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	// unless the user chose to accept everything
 	if decision == "allow" && tool.Category() == "read" && s.mode() != "bypass" && s.readsOutside(b.Input) {
 		decision = "ask"
+	}
+	// sentinels: deterministic checks that ask the user even when the mode would allow the action
+	if decision != "deny" {
+		if why := s.sentinel(tool, b.Input); why != "" {
+			s.mu.Lock()
+			silenced := s.allowAlways["sentinel:"+why]
+			s.mu.Unlock()
+			if !silenced {
+				Journal(s.Root, JournalEntry{Kind: "sentinel", Detail: why})
+				if !s.askPermissionWhy(ctx, tool, b.Input, why) {
+					Lesson(s.Root, "teste-alterado", why)
+					return "o usuário recusou: " + why, true
+				}
+				decision = "allow"
+			}
+		}
 	}
 	switch decision {
 	case "deny":

@@ -75,6 +75,10 @@ const EN = {
   'tempo de resposta do modelo': 'model response time', 'Trabalhou por': 'Worked for', 'ferramenta': 'tool', 'ferramentas': 'tools', 'Copiar todas as respostas deste turno': "Copy all of this turn's answers", 'Respostas copiadas': 'Answers copied', 'Pensou por': 'Thought for', 'Copiar raciocínio': 'Copy reasoning', 'Raciocínio copiado': 'Reasoning copied', 'tempo de execução': 'run time',
   'Fixadas': 'Pinned', 'Fixar no topo': 'Pin to top', 'Desafixar': 'Unpin', 'Marcar como lida': 'Mark as read', 'Marcar como não lida': 'Mark as unread',
   'Sugestão da próxima mensagem': 'Next-message suggestion', 'Depois de cada resposta, uma sugestão em cinza na caixa de mensagem; Tab ou → aceita. Usa o modelo rápido (custo mínimo).': 'After each answer, a gray suggestion in the message box; Tab or → accepts. Uses the fast model (minimal cost).',
+  // report, contract, sentinel, tasks
+  'Relatório': 'Report', 'conferido pelo infuse com o que de fato rodou': 'checked by infuse against what actually ran', 'conferindo…': 'checking…', 'não confirmada(s)': 'not confirmed', 'Próximo passo': 'Next step', 'Usar': 'Use',
+  'confirmado pela execução': 'confirmed by running', 'parcial': 'partial', 'não confirmado': 'not confirmed', 'sem evidência': 'no evidence', 'conferindo': 'checking', 'comprovação:': 'proof:',
+  'Sentinela:': 'Sentinel:', 'alteração em arquivo de teste num pedido para os testes passarem': 'a test file change in a request to make the tests pass', 'O infuse pergunta mesmo no modo "aceitar tudo": mudar o teste em vez do código faz o teste passar sem resolver o problema.': 'infuse asks even in "accept everything" mode: changing the test instead of the code makes it pass without solving the problem.',
 };
 let LANG = 'pt';
 function t(s) { if (LANG !== 'en' || typeof s !== 'string') return s; const k = s.trim(); return EN[k] !== undefined ? s.replace(k, EN[k]) : s; }
