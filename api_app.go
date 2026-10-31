@@ -5,6 +5,7 @@ package main
 // scheduled tasks, usage totals.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -90,8 +91,8 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		return true
 	case path == "/api/oracle/spec" && r.Method == http.MethodPut:
 		var spec OracleSpec
-		b, _ := jsonMarshal(body["spec"])
-		if err := jsonUnmarshal(b, &spec); err != nil {
+		b, _ := json.Marshal(body["spec"])
+		if err := json.Unmarshal(b, &spec); err != nil {
 			sendJSON(w, 400, map[string]any{"error": err.Error()})
 			return true
 		}
@@ -234,8 +235,8 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		switch strings.TrimPrefix(path, "/api/mcp/") {
 		case "add": // a server from a preset or written by the user
 			var cfg mcpServerConfig
-			b, _ := jsonMarshal(body["config"])
-			if err = jsonUnmarshal(b, &cfg); err == nil {
+			b, _ := json.Marshal(body["config"])
+			if err = json.Unmarshal(b, &cfg); err == nil {
 				if strings.TrimSpace(name) == "" || (cfg.Command == "" && cfg.URL == "") {
 					err = errors.New("informe o nome e o comando (ou o endereço) do servidor")
 				} else {
@@ -287,8 +288,8 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		return true
 	case path == "/api/memory/items/save":
 		var items []MemoryItem
-		b, _ := jsonMarshal(body["items"])
-		if err := jsonUnmarshal(b, &items); err != nil {
+		b, _ := json.Marshal(body["items"])
+		if err := json.Unmarshal(b, &items); err != nil {
 			sendJSON(w, 400, map[string]any{"error": err.Error()})
 			return true
 		}
@@ -580,8 +581,8 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				Code string `json:"code"`
 				Text string `json:"text"`
 			}
-			b, _ := jsonMarshal(body["comments"])
-			_ = jsonUnmarshal(b, &items)
+			b, _ := json.Marshal(body["comments"])
+			_ = json.Unmarshal(b, &items)
 			if len(items) == 0 {
 				sendJSON(w, 400, map[string]any{"error": "nenhum comentário"})
 				return true
@@ -790,8 +791,8 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		return true
 	case path == "/api/tasks" && r.Method == http.MethodPut:
 		var t ScheduledTask
-		b, _ := jsonMarshal(body)
-		_ = jsonUnmarshal(b, &t)
+		b, _ := json.Marshal(body)
+		_ = json.Unmarshal(b, &t)
 		if old := str("previousName"); old != "" && taskSlug(old) != taskSlug(t.Name) {
 			_ = DeleteTask(old)
 		}
@@ -860,7 +861,6 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 	return false
 }
 
-func jsonMarshal(v any) ([]byte, error) { return jsonMarshalImpl(v) }
 
 // rememberProjectMode: the mode chosen in the selector is remembered per folder for new sessions.
 func rememberProjectMode(root, mode string) {

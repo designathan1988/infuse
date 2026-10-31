@@ -1,4 +1,4 @@
-package main
+package workspace
 
 // Session worktrees: a session can run in its own git worktree (a separate checkout on its own branch)
 // so parallel sessions never touch each other's files. Worktrees live under the project, in
@@ -6,6 +6,8 @@ package main
 
 import (
 	"errors"
+	"infuse/internal/config"
+	"infuse/internal/core"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,13 +20,13 @@ var reBranchUnsafe = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
 // CreateWorktree makes a new worktree for a session and returns its path and branch.
 func CreateWorktree(root, name string) (string, string, error) {
-	if !exists(filepath.Join(root, ".git")) {
+	if !core.Exists(filepath.Join(root, ".git")) {
 		return "", "", errors.New("a pasta não é um repositório git; worktree exige git")
 	}
-	if strings.TrimSpace(gitOutput(root, "rev-parse", "--verify", "HEAD")) == "" {
+	if strings.TrimSpace(GitOutput(root, "rev-parse", "--verify", "HEAD")) == "" {
 		return "", "", errors.New("o repositório ainda não tem nenhum commit")
 	}
-	s := LoadSettings()
+	s := config.EffectiveSettings(root)
 	slug := strings.Trim(reBranchUnsafe.ReplaceAllString(strings.ToLower(name), "-"), "-")
 	if slug == "" {
 		slug = "sessao"
@@ -36,7 +38,7 @@ func CreateWorktree(root, name string) (string, string, error) {
 	dir := filepath.Join(root, filepath.FromSlash(s.WorktreeDir), slug)
 	branch := s.BranchPrefix + slug
 	excludeFromGit(root, s.WorktreeDir)
-	if out, err := gitRun(root, "worktree", "add", "-b", branch, dir, "HEAD"); err != nil {
+	if out, err := GitRun(root, "worktree", "add", "-b", branch, dir, "HEAD"); err != nil {
 		return "", "", fmt.Errorf("git worktree add: %s", strings.TrimSpace(out))
 	}
 	return dir, branch, nil
@@ -48,7 +50,7 @@ func RemoveWorktree(root, dir string, force bool) error {
 	if force {
 		args = []string{"worktree", "remove", "--force", dir}
 	}
-	if out, err := gitRun(root, args...); err != nil {
+	if out, err := GitRun(root, args...); err != nil {
 		return fmt.Errorf("%s", strings.TrimSpace(out))
 	}
 	return nil

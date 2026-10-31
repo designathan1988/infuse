@@ -6,16 +6,13 @@ package main
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 )
 
 // loopBreaker stops a turn that keeps failing: the same failing call three times, or eight failures in a row.
@@ -44,50 +41,6 @@ func (b *loopBreaker) record(name string, input json.RawMessage, isErr bool) err
 		return errMsg(M("breaker.many"))
 	}
 	return nil
-}
-
-// ---------------------------------------------------------------- launch.json approval
-
-// A dev-server command lives in the project, where the agent can write. It runs only after the user
-// approves that exact command (executable, arguments, folder, environment) — approvals live in
-// ~/.infuse, out of the agent's reach.
-var launchMu sync.Mutex
-
-func launchFingerprint(root string, c launchConfig) string {
-	b, _ := json.Marshal([]any{filepath.Clean(root), c.Name, c.RuntimeExecutable, c.RuntimeArgs, c.Cwd, c.Env})
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
-}
-
-func approvalsFile() string { return filepath.Join(InfuseHome(), "approved-launch.json") }
-
-func launchApproved(root string, c launchConfig) bool {
-	launchMu.Lock()
-	defer launchMu.Unlock()
-	var m map[string]bool
-	_ = readJSON(approvalsFile(), &m)
-	return m[launchFingerprint(root, c)]
-}
-
-func approveLaunch(root string, c launchConfig) error {
-	launchMu.Lock()
-	defer launchMu.Unlock()
-	m := map[string]bool{}
-	_ = readJSON(approvalsFile(), &m)
-	m[launchFingerprint(root, c)] = true
-	return writeJSON(approvalsFile(), m)
-}
-
-func launchCommandLine(c launchConfig) string {
-	parts := append([]string{c.RuntimeExecutable}, c.RuntimeArgs...)
-	s := strings.Join(parts, " ")
-	if c.Cwd != "" {
-		s += "   (folder: " + c.Cwd + ")"
-	}
-	for k, v := range c.Env {
-		s += "   " + k + "=" + v
-	}
-	return s
 }
 
 // ---------------------------------------------------------------- local API: same-origin only

@@ -1,4 +1,4 @@
-package main
+package workspace
 
 // Changes without git: the baseline of each file is the copy infuse kept before the session's first
 // change to it (the checkpoints), or nothing for a file the session created. Line counts and the diff
@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"infuse/internal/core"
 	"os"
 	"path/filepath"
 	"sort"
@@ -168,14 +169,30 @@ type baseline struct {
 	hash    string // a turn snapshot's entry: the content is in the blob store
 }
 
+// LiveSession is the checkpoint state of a session still running in this process.
+type LiveSession struct {
+	ID          string
+	Created     int64
+	Checkpoints map[int][]core.CheckpointFile
+}
+
+// SnapshotSource supplies the sessions running right now (their checkpoints are not on disk yet).
+type SnapshotSource interface {
+	LiveSessions(root string) []LiveSession
+}
+
+func sessionsDir(root string) string {
+	return filepath.Join(root, core.InfuseDirName, "sessions")
+}
+
 // projectBaselines maps each file any session of the project changed to its content before the first
 // change (earliest session, earliest turn); "" and isNew for files a session created.
-func projectBaselines(root string, keep func(session string, created int64, turn int) bool) map[string]baseline {
+func projectBaselines(root string, src SnapshotSource, keep func(session string, created int64, turn int) bool) map[string]baseline {
 	entries, _ := os.ReadDir(sessionsDir(root))
 	type sess struct {
 		id      string
 		created int64
-		cps     map[int][]CheckpointFile
+		cps     map[int][]core.CheckpointFile
 	}
 	var list []sess
 	for _, e := range entries {
@@ -185,36 +202,26 @@ func projectBaselines(root string, keep func(session string, created int64, turn
 		var d struct {
 			ID          string                   `json:"id"`
 			Created     int64                    `json:"created"`
-			Checkpoints map[int][]CheckpointFile `json:"checkpoints"`
+			Checkpoints map[int][]core.CheckpointFile `json:"checkpoints"`
 		}
-		if readJSON(filepath.Join(sessionsDir(root), e.Name()), &d) == nil && len(d.Checkpoints) > 0 {
+		if core.ReadJSON(filepath.Join(sessionsDir(root), e.Name()), &d) == nil && len(d.Checkpoints) > 0 {
 			list = append(list, sess{d.ID, d.Created, d.Checkpoints})
 		}
 	}
 	// a session running now has checkpoints not saved yet
-	sessionsMu.Lock()
-	for _, live := range sessions {
-		if live.Root != root {
-			continue
-		}
-		live.mu.Lock()
-		cps := map[int][]CheckpointFile{}
-		for t, c := range live.Checkpoints {
-			cps[t] = append([]CheckpointFile{}, c...)
-		}
-		id, created := live.ID, live.Created
-		live.mu.Unlock()
-		replaced := false
-		for i := range list {
-			if list[i].id == id {
-				list[i].cps, replaced = cps, true
+	if src != nil {
+		for _, live := range src.LiveSessions(root) {
+			replaced := false
+			for i := range list {
+				if list[i].id == live.ID {
+					list[i].cps, replaced = live.Checkpoints, true
+				}
+			}
+			if !replaced && len(live.Checkpoints) > 0 {
+				list = append(list, sess{live.ID, live.Created, live.Checkpoints})
 			}
 		}
-		if !replaced && len(cps) > 0 {
-			list = append(list, sess{id, created, cps})
-		}
 	}
-	sessionsMu.Unlock()
 	sort.Slice(list, func(i, j int) bool { return list[i].created < list[j].created })
 	out := map[string]baseline{}
 	for _, se := range list {
@@ -235,7 +242,7 @@ func projectBaselines(root string, keep func(session string, created int64, turn
 					out[c.Path] = baseline{isNew: true}
 					continue
 				}
-				b, err := os.ReadFile(filepath.Join(root, infuseDirName, "checkpoints", se.id, fmt.Sprint(t), filepath.FromSlash(c.Path)))
+				b, err := os.ReadFile(filepath.Join(root, core.InfuseDirName, "checkpoints", se.id, fmt.Sprint(t), filepath.FromSlash(c.Path)))
 				if err != nil {
 					continue // the copy is gone (rewound): this change is not measurable
 				}
@@ -249,10 +256,10 @@ func projectBaselines(root string, keep func(session string, created int64, turn
 // localBase is what each file was at the start of the scope: "all" (since infuse first saw the folder)
 // or "turn" (since the start of the session's latest turn). complete reports that the base covers the
 // whole tree (a turn snapshot exists), so any file outside it is new.
-func localBase(root, work, session, scope string) (base map[string]baseline, complete bool, since int64) {
+func localBase(root, work, session, scope string, src SnapshotSource) (base map[string]baseline, complete bool, since int64) {
 	base = map[string]baseline{}
 	if scope == "turn" && session != "" {
-		if ms := manifests(root, work, session); len(ms) > 0 {
+		if ms := Manifests(root, work, session); len(ms) > 0 {
 			m := ms[len(ms)-1]
 			for p, h := range m.Files {
 				base[p] = baseline{hash: h}
@@ -261,18 +268,18 @@ func localBase(root, work, session, scope string) (base map[string]baseline, com
 		}
 		// a session from before turn snapshots: the copies kept in its latest turn
 		var last int
-		_ = readJSON(filepath.Join(sessionsDir(root), session+".json"), &struct {
+		_ = core.ReadJSON(filepath.Join(sessionsDir(root), session+".json"), &struct {
 			Turn *int `json:"turn"`
 		}{&last})
-		return projectBaselines(root, func(id string, _ int64, t int) bool { return id == session && t == last }), false, 0
+		return projectBaselines(root, src, func(id string, _ int64, t int) bool { return id == session && t == last }), false, 0
 	}
-	ms := manifests(root, work, "")
+	ms := Manifests(root, work, "")
 	var first *treeManifest
 	if len(ms) > 0 {
 		first = &ms[0]
 	}
 	// copies kept by sessions older than the first snapshot come first: they are earlier
-	base = projectBaselines(root, func(_ string, created int64, _ int) bool { return first == nil || created < first.At })
+	base = projectBaselines(root, src, func(_ string, created int64, _ int) bool { return first == nil || created < first.At })
 	if first == nil {
 		return base, false, earliestSession(root)
 	}
@@ -292,7 +299,7 @@ func earliestSession(root string) int64 {
 		var d struct {
 			Created int64 `json:"created"`
 		}
-		if strings.HasSuffix(e.Name(), ".json") && readJSON(filepath.Join(sessionsDir(root), e.Name()), &d) == nil && d.Created > 0 && (first == 0 || d.Created < first) {
+		if strings.HasSuffix(e.Name(), ".json") && core.ReadJSON(filepath.Join(sessionsDir(root), e.Name()), &d) == nil && d.Created > 0 && (first == 0 || d.Created < first) {
 			first = d.Created
 		}
 	}
@@ -302,14 +309,14 @@ func earliestSession(root string) int64 {
 // text is the baseline's content (from the blob store for snapshot entries).
 func (b baseline) text(root string) (string, bool) {
 	if b.hash != "" {
-		return readBlob(root, b.hash)
+		return ReadBlob(root, b.hash)
 	}
 	return b.content, true
 }
 
 // localFileChanges compares the scope's base with the folder now.
-func localFileChanges(root, work, session, scope string) ([]fileChange, map[string]baseline) {
-	base, complete, since := localBase(root, work, session, scope)
+func localFileChanges(root, work, session, scope string, src SnapshotSource) ([]FileChange, map[string]baseline) {
+	base, complete, since := localBase(root, work, session, scope, src)
 	now := walkTree(root, work, false)
 	paths := map[string]bool{}
 	for p := range base {
@@ -332,7 +339,7 @@ func localFileChanges(root, work, session, scope string) ([]fileChange, map[stri
 			}
 		}
 	}
-	var files []fileChange
+	var files []FileChange
 	for p := range paths {
 		b := base[p]
 		cur, err := os.ReadFile(filepath.Join(work, filepath.FromSlash(p)))
@@ -354,52 +361,52 @@ func localFileChanges(root, work, session, scope string) ([]fileChange, map[stri
 		case b.isNew:
 			st = "A"
 		}
-		_, a, r := unifiedDiff(p, splitLines(before), splitLines(string(cur)))
+		_, a, r := unifiedDiff(p, core.SplitLines(before), core.SplitLines(string(cur)))
 		if a+r == 0 && st == "M" {
 			continue
 		}
-		files = append(files, fileChange{Path: p, Status: st, Added: a, Removed: r})
+		files = append(files, FileChange{Path: p, Status: st, Added: a, Removed: r})
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return files, base
 }
 
 // LocalChanges lists the changes of a folder without git, with line counts, for the scope.
-func LocalChanges(root, work, session, scope string) map[string]any {
-	files, _ := localFileChanges(root, work, session, scope)
+func LocalChanges(root, work, session, scope string, src SnapshotSource) map[string]any {
+	files, _ := localFileChanges(root, work, session, scope, src)
 	if files == nil {
-		files = []fileChange{}
+		files = []FileChange{}
 	}
 	add, rem := 0, 0
 	for _, f := range files {
 		add += f.Added
 		rem += f.Removed
 	}
-	return map[string]any{"isGit": false, "local": true, "scope": firstNonEmpty(scope, "all"), "files": files, "added": add, "removed": rem}
+	return map[string]any{"isGit": false, "local": true, "scope": core.FirstNonEmpty(scope, "all"), "files": files, "added": add, "removed": rem}
 }
 
 // LocalDiff is the unified diff of one file against the scope's base.
-func LocalDiff(root, work, session, scope, p string) string {
-	_, base := localFileChanges(root, work, session, scope)
+func LocalDiff(root, work, session, scope, p string, src SnapshotSource) string {
+	_, base := localFileChanges(root, work, session, scope, src)
 	b, ok := base[p]
 	if !ok {
 		return ""
 	}
 	before, _ := b.text(root)
 	now, _ := os.ReadFile(filepath.Join(work, filepath.FromSlash(p)))
-	d, _, _ := unifiedDiff(p, splitLines(before), splitLines(string(now)))
+	d, _, _ := unifiedDiff(p, core.SplitLines(before), core.SplitLines(string(now)))
 	return d
 }
 
 // LocalDiscard puts a file back as it was at the start of the scope: rewritten, recreated or removed.
-func LocalDiscard(root, work, session, scope, p string) error {
-	_, base := localFileChanges(root, work, session, scope)
+func LocalDiscard(root, work, session, scope, p string, src SnapshotSource) error {
+	_, base := localFileChanges(root, work, session, scope, src)
 	b, ok := base[p]
 	if !ok {
 		return fmt.Errorf("arquivo sem alteração registrada")
 	}
 	abs := filepath.Join(work, filepath.FromSlash(p))
-	if !within(work, abs) {
+	if !core.Within(work, abs) {
 		return fmt.Errorf("fora do projeto")
 	}
 	if b.isNew {

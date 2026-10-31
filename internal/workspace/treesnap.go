@@ -1,4 +1,4 @@
-package main
+package workspace
 
 // Turn snapshots for folders without git: at the start of every turn infuse records the whole tree
 // (path → content hash, contents kept once in a content-addressed store, like git objects). Changes are
@@ -8,6 +8,7 @@ package main
 
 import (
 	"crypto/sha1"
+	"infuse/internal/core"
 	"encoding/hex"
 	"io/fs"
 	"os"
@@ -34,7 +35,7 @@ type treeManifest struct {
 	Files map[string]string `json:"files"` // slash path → sha1 of the content
 }
 
-func treeDir(root string) string { return filepath.Join(root, infuseDirName, "tree") }
+func treeDir(root string) string { return filepath.Join(root, core.InfuseDirName, "tree") }
 
 func blobPath(root, hash string) string {
 	return filepath.Join(treeDir(root), "blobs", hash[:2], hash)
@@ -83,7 +84,7 @@ func walkTree(root, work string, store bool) map[string]string {
 		e, ok := hashCache[p]
 		hashCacheMu.Unlock()
 		settled := time.Since(info.ModTime()) > 2*time.Second // a just-written file may change again within the same mtime
-		if ok && settled && e.mod == info.ModTime().UnixNano() && e.size == info.Size() && (!store || exists(blobPath(root, e.hash))) {
+		if ok && settled && e.mod == info.ModTime().UnixNano() && e.size == info.Size() && (!store || core.Exists(blobPath(root, e.hash))) {
 			out[rel] = e.hash
 			return nil
 		}
@@ -94,7 +95,7 @@ func walkTree(root, work string, store bool) map[string]string {
 		h := hashBytes(b)
 		if store {
 			bp := blobPath(root, h)
-			if !exists(bp) {
+			if !core.Exists(bp) {
 				_ = os.MkdirAll(filepath.Dir(bp), 0o755)
 				_ = os.WriteFile(bp, b, 0o644)
 			}
@@ -109,13 +110,13 @@ func walkTree(root, work string, store bool) map[string]string {
 }
 
 // snapshotTurn records the tree at the start of a session's turn.
-func snapshotTurn(root, work, session string, turn int) {
+func SnapshotTurn(root, work, session string, turn int) {
 	m := treeManifest{Work: filepath.Clean(work), At: time.Now().UnixMilli(), Turn: turn, Files: walkTree(root, work, true)}
-	_ = writeJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), m)
+	_ = core.WriteJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), m)
 }
 
 // manifests lists the recorded snapshots of a work folder, oldest first (only one session's with session).
-func manifests(root, work, session string) []treeManifest {
+func Manifests(root, work, session string) []treeManifest {
 	var out []treeManifest
 	dirs, _ := os.ReadDir(treeDir(root))
 	for _, d := range dirs {
@@ -125,7 +126,7 @@ func manifests(root, work, session string) []treeManifest {
 		files, _ := os.ReadDir(filepath.Join(treeDir(root), d.Name()))
 		for _, f := range files {
 			var m treeManifest
-			if strings.HasSuffix(f.Name(), ".json") && readJSON(filepath.Join(treeDir(root), d.Name(), f.Name()), &m) == nil && strings.EqualFold(m.Work, filepath.Clean(work)) {
+			if strings.HasSuffix(f.Name(), ".json") && core.ReadJSON(filepath.Join(treeDir(root), d.Name(), f.Name()), &m) == nil && strings.EqualFold(m.Work, filepath.Clean(work)) {
 				out = append(out, m)
 			}
 		}
@@ -134,7 +135,10 @@ func manifests(root, work, session string) []treeManifest {
 	return out
 }
 
-func readBlob(root, hash string) (string, bool) {
+func ReadBlob(root, hash string) (string, bool) {
 	b, err := os.ReadFile(blobPath(root, hash))
 	return string(b), err == nil
 }
+
+// SnapSkipDirs are the folders a tree snapshot never walks.
+var SnapSkipDirs = snapSkipDirs

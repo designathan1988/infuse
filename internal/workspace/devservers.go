@@ -1,10 +1,15 @@
-package main
+package workspace
 
 // Dev servers for the Browser pane, declared in <project>/.infuse/launch.json or .claude/launch.json:
 // {"configurations":[{"name","runtimeExecutable","runtimeArgs","port","cwd","env","url"}]}.
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"infuse/internal/core"
+	"infuse/internal/platform/process"
 	"errors"
 	"fmt"
 	"net"
@@ -13,11 +18,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
-type launchConfig struct {
+type LaunchConfig struct {
 	Name              string            `json:"name"`
 	RuntimeExecutable string            `json:"runtimeExecutable"`
 	RuntimeArgs       []string          `json:"runtimeArgs"`
@@ -39,12 +45,12 @@ var (
 	devServersMu sync.Mutex
 )
 
-func launchConfigs(root string) []launchConfig {
+func LaunchConfigs(root string) []LaunchConfig {
 	var f struct {
-		Configurations []launchConfig `json:"configurations"`
+		Configurations []LaunchConfig `json:"configurations"`
 	}
-	for _, p := range []string{filepath.Join(root, infuseDirName, "launch.json"), filepath.Join(root, ".claude", "launch.json")} {
-		if readJSON(p, &f) == nil && len(f.Configurations) > 0 {
+	for _, p := range []string{filepath.Join(root, core.InfuseDirName, "launch.json"), filepath.Join(root, ".claude", "launch.json")} {
+		if core.ReadJSON(p, &f) == nil && len(f.Configurations) > 0 {
 			break
 		}
 	}
@@ -72,7 +78,7 @@ func DevServers(root string) []map[string]any {
 	out := []map[string]any{}
 	devServersMu.Lock()
 	defer devServersMu.Unlock()
-	for _, c := range launchConfigs(root) {
+	for _, c := range LaunchConfigs(root) {
 		d := devServers[root+"|"+c.Name]
 		running := d != nil && !d.exited
 		log := ""
@@ -89,20 +95,20 @@ func DevServers(root string) []map[string]any {
 	return out
 }
 
-// errLaunchNeedsApproval: the command was never approved by the user (or changed since).
-type errLaunchNeedsApproval struct{ Command string }
+// ErrLaunchNeedsApproval: the command was never approved by the user (or changed since).
+type ErrLaunchNeedsApproval struct{ Command string }
 
-func (e errLaunchNeedsApproval) Error() string {
+func (e ErrLaunchNeedsApproval) Error() string {
 	return "este comando de .infuse/launch.json precisa da sua aprovação antes de rodar: " + e.Command
 }
 
 func StartDevServer(root, name string) error {
-	for _, c := range launchConfigs(root) {
+	for _, c := range LaunchConfigs(root) {
 		if c.Name != name {
 			continue
 		}
 		if !launchApproved(root, c) {
-			return errLaunchNeedsApproval{launchCommandLine(c)}
+			return ErrLaunchNeedsApproval{launchCommandLine(c)}
 		}
 		devServersMu.Lock()
 		defer devServersMu.Unlock()
@@ -121,7 +127,7 @@ func StartDevServer(root, name string) error {
 		cmd.Env = append(cmd.Env, "PORT="+strconv.Itoa(c.Port))
 		buf := &bytes.Buffer{}
 		cmd.Stdout, cmd.Stderr = buf, buf
-		noConsoleWindow(cmd)
+		process.NoConsoleWindow(cmd)
 		if err := cmd.Start(); err != nil {
 			return err
 		}
@@ -142,9 +148,62 @@ func StopDevServer(root, name string) {
 	}
 	if runtime.GOOS == "windows" {
 		kill := exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(d.cmd.Process.Pid))
-		noConsoleWindow(kill)
+		process.NoConsoleWindow(kill)
 		_ = kill.Run()
 	} else {
 		_ = d.cmd.Process.Kill()
 	}
 }
+
+// ---------------------------------------------------------------- launch approval
+
+// A dev-server command lives in the project, where the agent can write. It runs only after the user
+// approves that exact command (executable, arguments, folder, environment) — approvals live in
+// ~/.infuse, out of the agent's reach.
+var launchMu sync.Mutex
+
+func launchFingerprint(root string, c LaunchConfig) string {
+	b, _ := json.Marshal([]any{filepath.Clean(root), c.Name, c.RuntimeExecutable, c.RuntimeArgs, c.Cwd, c.Env})
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func approvalsFile() string { return filepath.Join(core.InfuseHome(), "approved-launch.json") }
+
+func launchApproved(root string, c LaunchConfig) bool {
+	launchMu.Lock()
+	defer launchMu.Unlock()
+	var m map[string]bool
+	_ = core.ReadJSON(approvalsFile(), &m)
+	return m[launchFingerprint(root, c)]
+}
+
+func approveLaunch(root string, c LaunchConfig) error {
+	launchMu.Lock()
+	defer launchMu.Unlock()
+	m := map[string]bool{}
+	_ = core.ReadJSON(approvalsFile(), &m)
+	m[launchFingerprint(root, c)] = true
+	return core.WriteJSON(approvalsFile(), m)
+}
+
+// ApproveLaunch records the user's approval of a launch command.
+func ApproveLaunch(root string, c LaunchConfig) error { return approveLaunch(root, c) }
+
+func launchCommandLine(c LaunchConfig) string {
+	parts := append([]string{c.RuntimeExecutable}, c.RuntimeArgs...)
+	s := strings.Join(parts, " ")
+	if c.Cwd != "" {
+		s += "   (folder: " + c.Cwd + ")"
+	}
+	for k, v := range c.Env {
+		s += "   " + k + "=" + v
+	}
+	return s
+}
+
+// LaunchApproved reports whether the user approved this exact command.
+func LaunchApproved(root string, c LaunchConfig) bool { return launchApproved(root, c) }
+
+// LaunchCommandLine is the command as shown to the user when asking for approval.
+func LaunchCommandLine(c LaunchConfig) string { return launchCommandLine(c) }

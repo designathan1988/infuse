@@ -188,6 +188,67 @@ func ListVerdicts(root string, n int) []Verdict { return oracle.ListVerdicts(roo
 func oracleSpecFile(root string) string         { return oracle.SpecFile(root) }
 func evidenceDir(root string) string            { return oracle.EvidenceDir(root) }
 func SuggestChecks(root string) []CheckSuggestion { return oracle.SuggestChecks(root) }
+
+type launchConfig = workspace.LaunchConfig
+type errLaunchNeedsApproval = workspace.ErrLaunchNeedsApproval
+type fileChange = workspace.FileChange
+type editorApp = workspace.Editor
+
+func CreateWorktree(root, name string) (string, string, error) { return workspace.CreateWorktree(root, name) }
+func RemoveWorktree(root, dir string, force bool) error       { return workspace.RemoveWorktree(root, dir, force) }
+func DevServers(root string) []map[string]any                 { return workspace.DevServers(root) }
+func StartDevServer(root, name string) error                  { return workspace.StartDevServer(root, name) }
+func StopDevServer(root, name string)                         { workspace.StopDevServer(root, name) }
+func launchConfigs(root string) []launchConfig                { return workspace.LaunchConfigs(root) }
+func approveLaunch(root string, c launchConfig) error         { return workspace.ApproveLaunch(root, c) }
+func launchApproved(root string, c launchConfig) bool         { return workspace.LaunchApproved(root, c) }
+func launchCommandLine(c launchConfig) string                 { return workspace.LaunchCommandLine(c) }
+func ghRun(dir string, args ...string) (string, error)        { return workspace.GhRun(dir, args...) }
+
+var errConflict = workspace.ErrConflict
+var snapSkipDirs = workspace.SnapSkipDirs
+func Changes(dir string) map[string]any                       { return workspace.Changes(dir) }
+func PRStatus(dir string) map[string]any                      { return workspace.PRStatus(dir) }
+func CreatePR(dir string) (string, error)                     { return workspace.CreatePR(dir) }
+func Editors() []editorApp                                    { return workspace.Editors() }
+func OpenInEditor(id, path string) error                      { return workspace.OpenInEditor(id, path) }
+func WriteUserFile(root, rel, content string, mtime int64, force bool) (int64, error) {
+	return workspace.WriteUserFile(root, rel, content, mtime, force)
+}
+func FailedCILogs(dir string) (string, error) { return workspace.FailedCILogs(dir) }
+func snapshotTurn(root, work, session string, turn int) {
+	workspace.SnapshotTurn(root, work, session, turn)
+}
+
+type rootSnapshots struct{}
+
+func (rootSnapshots) LiveSessions(root string) []workspace.LiveSession {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+	var out []workspace.LiveSession
+	for _, s := range sessions {
+		s.mu.Lock()
+		if s.Root == root {
+			cp := map[int][]CheckpointFile{}
+			for t, c := range s.Checkpoints {
+				cp[t] = append([]CheckpointFile{}, c...)
+			}
+			out = append(out, workspace.LiveSession{ID: s.ID, Created: s.Created, Checkpoints: cp})
+		}
+		s.mu.Unlock()
+	}
+	return out
+}
+
+func LocalChanges(root, work, session, scope string) map[string]any {
+	return workspace.LocalChanges(root, work, session, scope, rootSnapshots{})
+}
+func LocalDiff(root, work, session, scope, p string) string {
+	return workspace.LocalDiff(root, work, session, scope, p, rootSnapshots{})
+}
+func LocalDiscard(root, work, session, scope, p string) error {
+	return workspace.LocalDiscard(root, work, session, scope, p, rootSnapshots{})
+}
 func shellQuote(s string) string                     { return filter.ShellQuote(s) }
 func detach(cmd *exec.Cmd)                           { process.Detach(cmd) }
 func noConsoleWindow(cmd *exec.Cmd)                  { process.NoConsoleWindow(cmd) }
