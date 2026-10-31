@@ -70,10 +70,12 @@ func StartUI(window bool) {
 		w.Header().Set("content-type", "image/png")
 		_, _ = w.Write(iconPNG(64))
 	})
+	// The token is the app's own key to its API. Other sites cannot send it (CSRF), rebound hostnames are
+	// refused (DNS rebinding), and local processes — the agent's own Bash included — do not know it, so
+	// they cannot approve permissions, edit the oracle or run the executor through the API.
+	token := apiToken()
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		// only the app itself may call the API: other sites open in a browser (CSRF) and rebound
-		// hostnames (DNS rebinding) are refused before anything runs
-		if err := sameOrigin(r.Host, r.Header.Get("Origin"), r.Method, r.Header.Get("X-Infuse")); err != nil {
+		if err := sameOrigin(r.Host, r.Header.Get("Origin"), r.Method, r.Header.Get("X-Infuse"), token); err != nil {
 			sendJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
 			return
 		}
@@ -81,12 +83,13 @@ func StartUI(window bool) {
 	})
 	go func() { _ = http.Serve(ln, mux) }()
 	StartScheduler()
+	// the token travels in the URL fragment, which never leaves the window (not sent in requests)
 	if window {
-		RunWindow(url)
+		RunWindow(url + "/#token=" + token)
 		os.Exit(0)
 	}
 	attachParentConsole()
-	fmt.Println("[infuse] " + url)
+	fmt.Println("[infuse] " + url + "/#token=" + token)
 	select {}
 }
 

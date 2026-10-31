@@ -43,12 +43,14 @@ const S = {
 function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } }
 const native = !!window.infuse;
+// The API token arrives in the URL fragment (never sent over the network); it is kept for this tab only.
+const API_TOKEN = (() => { const m = location.hash.match(/token=([\w-]+)/); try { if (m) { sessionStorage.setItem('infuseToken', m[1]); history.replaceState(null, '', location.pathname); } return m ? m[1] : (sessionStorage.getItem('infuseToken') || ''); } catch { return m ? m[1] : ''; } })();
 
 async function api(url, opts = {}) {
   const root = opts.root ?? curRoot();
   if (root && !/[?&]root=/.test(url)) url += (url.includes('?') ? '&' : '?') + 'root=' + encodeURIComponent(root);
   if (opts.dir && !/[?&]dir=/.test(url)) url += '&dir=' + encodeURIComponent(opts.dir);
-  const r = await fetch(url, { method: opts.method || (opts.body ? 'POST' : 'GET'), headers: { 'content-type': 'application/json', 'X-Infuse': '1' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const r = await fetch(url, { method: opts.method || (opts.body ? 'POST' : 'GET'), headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN }, body: opts.body ? JSON.stringify(opts.body) : undefined });
   return r.json().catch(() => ({}));
 }
 const nat = async (method, ...p) => {
@@ -197,9 +199,8 @@ function sessionRowMenu(s, anchor, ev) {
     { label: 'Excluir', danger: 1, f: () => deleteSession(s) },
   ] : [
     { label: 'Abrir', f: () => openSession(s.root, s.id) },
-    { label: 'Abrir em tela dividida', d: 'Alt+clique', f: () => openInSplit(s.root, s.id) },
+    { label: 'Abrir em', items: [{ label: 'Tela dividida', d: 'Alt+clique', f: () => openInSplit(s.root, s.id) }, { sep: 1 }, ...openInItems(s.root)] },
     { label: 'Renomear', f: () => { openSession(s.root, s.id).then(() => renameInline(V())); } },
-    { sep: 1 }, ...openInItems(s.root),
     { sep: 1 }, { label: 'Arquivar', f: () => archiveSession(s) }, { label: 'Excluir', danger: 1, f: () => deleteSession(s) },
   ];
   menu(anchor, items, ev);
@@ -212,7 +213,7 @@ function projectMenu(root, anchor, ev) {
   menu(anchor, [
     { label: 'Nova sessão nesta pasta', f: () => newSessionScreen(root) },
     { label: 'Renomear projeto', f: () => { const g = $$('.grp').find(x => x.title === root); const span = g && $('.gh .trunc', g); inlineEdit(span, projectLabel(root), v => api('/api/projects', { method: 'PUT', body: { projects: S.projects.map(p => p.root === root ? { ...p, label: v } : p) }, root: '' }).then(loadSessions)); } },
-    { sep: 1 }, ...openInItems(root), { sep: 1 },
+    { label: 'Abrir em', items: openInItems(root) }, { sep: 1 },
     { label: 'Remover da lista', danger: 1, f: () => api('/api/projects/remove', { body: { root }, root: '' }).then(loadSessions) },
   ], ev);
 }
@@ -242,10 +243,12 @@ function renameInline(v) {
 }
 
 // ---------------------------------------------------------------- menus
-let openMenu = null;
-function closeMenu() { if (openMenu) { openMenu.remove(); openMenu = null; } }
+// Menus nest: an item with `items` opens a submenu beside it (hover or click); openMenu is the deepest.
+let openMenu = null; const menuStack = [];
+function closeMenu(level = 0) { while (menuStack.length > level) menuStack.pop().remove(); openMenu = menuStack[menuStack.length - 1] || null; }
 function menu(anchor, items, ev, opts = {}) {
-  closeMenu();
+  const level = opts.level || 0;
+  closeMenu(level);
   // A menu is head (optional fixed title) + scrolling body + foot (items marked foot:true, always visible).
   const m = h('<div class="menu"><div class="mhead"></div><div class="mbody"></div><div class="mfoot"></div></div>'); let n = 0;
   const head = $('.mhead', m), body = $('.mbody', m), foot = $('.mfoot', m);
@@ -256,14 +259,26 @@ function menu(anchor, items, ev, opts = {}) {
     if (it.h) { (it.head ? head : dest).appendChild(h(`<div class="mh${it.plain ? ' plain' : ''}" title="${esc(it.h)}">${esc(t(it.h))}</div>`)); continue; }
     if (it.html) { dest.appendChild(it.html); continue; }
     n++;
-    const row = h(`<div class="mi${it.danger ? ' danger' : ''}${it.sub ? ' col' : ''}">${it.check !== undefined ? `<span class="ck">${it.check ? '✓' : ''}</span>` : ''}${it.icon || ''}<span class="two"><span>${esc(t(it.label))}</span>${it.sub ? `<small>${esc(t(it.sub))}</small>` : ''}</span>${it.d ? `<span class="d">${esc(t(it.d))}</span>` : n <= 9 && opts.numbers ? `<span class="d">${n}</span>` : ''}</div>`);
-    row.onclick = e => { e.stopPropagation(); if (!it.keep) closeMenu(); it.f && it.f(); };
+    const row = h(`<div class="mi${it.danger ? ' danger' : ''}${it.sub ? ' col' : ''}${it.items ? ' hassub' : ''}">${it.check !== undefined ? `<span class="ck">${it.check ? '✓' : ''}</span>` : ''}${it.icon || ''}<span class="two"><span>${esc(t(it.label))}</span>${it.sub ? `<small>${esc(t(it.sub))}</small>` : ''}</span>${it.items ? '<span class="d">›</span>' : it.d ? `<span class="d">${esc(t(it.d))}</span>` : n <= 9 && opts.numbers ? `<span class="d">${n}</span>` : ''}</div>`);
+    if (it.items) {
+      const open = () => { if (row.classList.contains('k') && menuStack[level + 1]) return; $$('.mi', m).forEach(x => x.classList.toggle('k', x === row)); menu(row, it.items, null, { level: level + 1, side: true }); };
+      row.onmouseenter = () => { clearTimeout(m._t); m._t = setTimeout(open, 120); };
+      row.onclick = e => { e.stopPropagation(); open(); };
+    } else {
+      row.onmouseenter = () => { clearTimeout(m._t); m._t = setTimeout(() => { $$('.mi', m).forEach(x => x.classList.remove('k')); closeMenu(level + 1); }, 120); };
+      row.onclick = e => { e.stopPropagation(); if (!it.keep) closeMenu(); it.f && it.f(); };
+    }
     row.dataset.n = n;
     dest.appendChild(row);
   }
-  document.body.appendChild(m); openMenu = m;
+  document.body.appendChild(m); menuStack.push(m); openMenu = m;
   let x, y, above = !!opts.above;
   if (ev) { x = ev.clientX; y = ev.clientY; m.style.maxHeight = (innerHeight - 12) + 'px'; }
+  else if (opts.side) {
+    // submenu: to the right of its row (to the left when there is no room), top aligned
+    const r = anchor.getBoundingClientRect(); m.style.maxHeight = (innerHeight - 12) + 'px';
+    x = r.right + 2 + m.offsetWidth > innerWidth ? r.left - m.offsetWidth - 2 : r.right + 2; y = r.top - 5;
+  }
   else {
     // fit the menu in the space actually available beside the anchor; open the other way if that side is roomier
     const r = anchor.getBoundingClientRect(); const spaceAbove = r.top - 12, spaceBelow = innerHeight - r.bottom - 12;
@@ -276,29 +291,37 @@ function menu(anchor, items, ev, opts = {}) {
   m.style.left = x + 'px'; m.style.top = y + 'px';
   return m;
 }
-addEventListener('mousedown', e => { if (openMenu && !openMenu.contains(e.target)) closeMenu(); });
+addEventListener('mousedown', e => { if (menuStack.length && !menuStack.some(m => m.contains(e.target))) closeMenu(); });
 
 function sessionMenu(v, anchor) {
   const L = S.live[v.sid]; if (!L) return;
   const modes = [['normal', 'Normal', 'Ferramentas resumidas, texto completo'], ['thinking', 'Pensamento', 'Também mostra o raciocínio'], ['verbose', 'Detalhado', 'Cada chamada de ferramenta aberta']];
+  // grouped like the desktop app: a few direct actions, the rest one level down
   menu(anchor, [
-    { h: 'Modo de exibição' }, ...modes.map(([k, l, d]) => ({ label: l, sub: d, check: S.viewMode === k, f: () => setViewMode(k) })),
-    { label: 'Expandir tudo', f: () => foldAll(v, true) }, { label: 'Recolher tudo', f: () => foldAll(v, false) },
-    { label: S.settings.showThinking === false ? 'Mostrar raciocínio' : 'Ocultar raciocínio', f: () => { saveSetting({ showThinking: S.settings.showThinking === false }); for (const k of Object.keys(S.fold)) if (k.includes(':')) delete S.fold[k]; S.views.forEach(renderChat); } },
-    { sep: 1 }, { label: 'Copiar conversa', sub: 'Markdown, com ferramentas e raciocínio', f: () => copyText(transcriptMarkdown(L), 'Conversa copiada') }, { label: 'Exportar conversa…', sub: 'Salvar como arquivo .md', f: () => exportTranscript(L) },
-    { label: 'Copiar última resposta', f: () => { const m = [...L.snap.messages].reverse().find(x => x.role === 'assistant' && msgText(x)); if (m) copyText(msgText(m), 'Resposta copiada'); } },
+    { label: 'Exibição', items: [
+      ...modes.map(([k, l, d]) => ({ label: l, sub: d, check: S.viewMode === k, f: () => setViewMode(k) })),
+      { sep: 1 }, { label: 'Expandir tudo', f: () => foldAll(v, true) }, { label: 'Recolher tudo', f: () => foldAll(v, false) },
+      { label: S.settings.showThinking === false ? 'Mostrar raciocínio' : 'Ocultar raciocínio', f: () => { saveSetting({ showThinking: S.settings.showThinking === false }); for (const k of Object.keys(S.fold)) if (k.includes(':')) delete S.fold[k]; S.views.forEach(renderChat); } },
+    ] },
+    { label: 'Copiar', items: [
+      { label: 'Copiar conversa', sub: 'Markdown, com ferramentas e raciocínio', f: () => copyText(transcriptMarkdown(L), 'Conversa copiada') },
+      { label: 'Copiar última resposta', f: () => { const m = [...L.snap.messages].reverse().find(x => x.role === 'assistant' && msgText(x)); if (m) copyText(msgText(m), 'Resposta copiada'); } },
+      { label: 'Exportar conversa…', sub: 'Salvar como arquivo .md', f: () => exportTranscript(L) },
+    ] },
+    { label: 'Abrir em', items: [
+      { label: S.views.length > 1 ? 'Sair da tela dividida' : 'Tela dividida', f: () => S.views.length > 1 ? exitSplit() : openInSplit(L.root, L.id, true) },
+      { sep: 1 }, ...openInItems(L.snap.workRoot || L.root),
+    ] },
     { sep: 1 }, { label: 'Renomear', f: () => renameInline(v) },
     { label: 'Voltar no tempo…', d: 'Esc Esc', f: () => rewindDialog(v) },
     { label: 'Pergunta paralela', d: 'Ctrl ;', f: () => openSide(v) },
-    { label: S.views.length > 1 ? 'Sair da tela dividida' : 'Abrir em tela dividida', f: () => S.views.length > 1 ? exitSplit() : openInSplit(L.root, L.id, true) },
-    { sep: 1 }, ...openInItems(L.snap.workRoot || L.root),
     { sep: 1 }, { label: 'Arquivar', f: () => archiveSession({ id: L.id, root: L.root }) }, { label: 'Excluir', danger: 1, f: () => deleteSession({ id: L.id, root: L.root }) },
   ]);
 }
 function moreMenu(v, anchor) {
   menu(anchor, [
     { label: 'Tarefas', f: () => togglePane('tasks') }, { label: 'Plano', f: () => togglePane('plan') },
-    { sep: 1 }, { h: 'Filtro' }, { label: 'Pronto (critérios)', f: () => togglePane('oracle') }, { label: 'Regras', f: () => togglePane('rules') }, { label: 'Jornal', f: () => togglePane('journal') }, { label: 'Vícios', f: () => togglePane('vices') }, { label: 'Mapa do projeto', f: () => togglePane('map') },
+    { label: 'Filtro', items: [{ label: 'Pronto (critérios)', f: () => togglePane('oracle') }, { label: 'Regras', f: () => togglePane('rules') }, { label: 'Jornal', f: () => togglePane('journal') }, { label: 'Vícios', f: () => togglePane('vices') }, { label: 'Mapa do projeto', f: () => togglePane('map') }] },
     { sep: 1 }, { label: S.rail ? 'Ocultar detalhes da sessão' : 'Mostrar detalhes da sessão', f: () => { S.rail = !S.rail; lsSet('rail', S.rail); S.views.forEach(renderView); } },
   ], null, { alignRight: true });
 }

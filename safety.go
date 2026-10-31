@@ -5,13 +5,16 @@ package main
 // read from the ledger, the loop breaker, and user approval of launch.json commands.
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -208,10 +211,21 @@ func launchCommandLine(c launchConfig) string {
 
 // ---------------------------------------------------------------- local API: same-origin only
 
+// apiToken is this run's key to the API: random, or INFUSE_TOKEN when set (development with `infuse serve`).
+func apiToken() string {
+	if t := os.Getenv("INFUSE_TOKEN"); t != "" {
+		return t
+	}
+	b := make([]byte, 24)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 // sameOrigin accepts a request only from the app itself: the Host must be this server's loopback
 // address (defeats DNS rebinding), a browser Origin must be that same origin, and state-changing
-// requests must carry the X-Infuse header, which a cross-site form or no-cors fetch cannot set.
-func sameOrigin(host, origin, method, marker string) error {
+// requests must carry X-Infuse with this run's token — which a cross-site form cannot set and a local
+// process (the agent's Bash) does not know.
+func sameOrigin(host, origin, method, marker, token string) error {
 	h := strings.ToLower(host)
 	hn := h
 	if i := strings.LastIndex(h, ":"); i > 0 {
@@ -226,8 +240,8 @@ func sameOrigin(host, origin, method, marker string) error {
 			return errors.New("origem não permitida")
 		}
 	}
-	if method != "GET" && method != "HEAD" && method != "OPTIONS" && marker != "1" {
-		return errors.New("requisição sem o cabeçalho X-Infuse")
+	if method != "GET" && method != "HEAD" && method != "OPTIONS" && (token == "" || subtle.ConstantTimeCompare([]byte(marker), []byte(token)) != 1) {
+		return errors.New("requisição sem o token do aplicativo")
 	}
 	return nil
 }
