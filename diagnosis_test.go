@@ -209,3 +209,32 @@ func TestKnowledgeDigestCoversTheWholeDocumentAndChecksQuotes(t *testing.T) {
 		t.Fatalf("inventory %v", inv)
 	}
 }
+
+// The agent's own edit to a required document, and a line-ending conversion of it, do not send it back
+// to read what it already knows; a line someone else adds does.
+func TestOwnChangesKeepTheReadingOfADocument(t *testing.T) {
+	s, root := diagProject(t)
+	abs := filepath.Join(root, "docs", "AUDITORIA.md")
+	readAll(t, s, "docs/AUDITORIA.md")
+	full := func(want bool) {
+		t.Helper()
+		seen, total, next := s.readProgress(abs)
+		if (seen >= total) != want {
+			t.Fatalf("seen %d of %d (next %d), want full=%v", seen, total, next, want)
+		}
+	}
+	full(true)
+	s.gate.diagnosed, s.gate.planned = true, true
+	edit := json.RawMessage(`{"path":"docs/AUDITORIA.md","old_string":"Passo P11:","new_string":"Aplicado em 31/10.\nPasso P11:"}`)
+	if out, isErr := s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "e", Name: "Edit", Input: edit}); isErr {
+		t.Fatal(out)
+	}
+	full(true)
+	b, _ := os.ReadFile(abs)
+	_ = os.WriteFile(abs, []byte(strings.ReplaceAll(string(b), "\n", "\r\n")), 0o644) // what a shell command did
+	full(true)
+	_ = os.WriteFile(abs, append(b, []byte("Achado novo: o limite mudou.\n")...), 0o644) // someone else wrote this
+	full(false)
+	readAll(t, s, "docs/AUDITORIA.md")
+	full(true)
+}

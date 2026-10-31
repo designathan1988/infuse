@@ -1080,6 +1080,7 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 				abs = filepath.Join(s.Cwd, abs)
 			}
 			s.noteUIChange(relTo(s.workRoot(), abs))
+			s.noteAuthored(abs, writtenTexts(b.Input)...)
 		}
 	}
 	if !isErr {

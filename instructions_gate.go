@@ -3,6 +3,7 @@ package main
 // The locks drawn from the project's instructions, and the loop that treats effects instead of causes.
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -10,44 +11,115 @@ import (
 	"time"
 )
 
-// readCover is which lines of a file the agent has actually been shown.
+// readCover is which lines of a file the agent has actually been shown. known holds the text of every
+// line it was shown or wrote itself, so a change to the file (its own edit, a line-ending conversion)
+// keeps what it already knows and asks only for the lines that are new to it.
 type readCover struct {
-	mod  int64
-	seen []bool
+	sum   string // hash of the content described (a time stamp misses two writes in one clock tick)
+	seen  []bool
+	known map[string]bool
 }
 
-// noteCoverage records that lines from..to (1-based) of abs were shown to the agent.
-func (s *Session) noteCoverage(abs string, total, from, to int) {
-	fi, err := os.Stat(abs)
-	if err != nil {
+// coverLine is a line as the agent knows it: line endings and indentation do not change what it says.
+func coverLine(l string) string { return strings.TrimSpace(strings.TrimPrefix(l, "\uFEFF")) }
+
+// refresh brings the coverage to the file content b; the caller holds s.mu.
+func (c *readCover) refresh(b []byte) {
+	sum := fileHash(b)
+	if c.sum == sum {
 		return
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	lines := strings.Split(string(b), "\n")
+	c.sum, c.seen = sum, make([]bool, len(lines))
+	for i, l := range lines {
+		k := coverLine(l)
+		c.seen[i] = k == "" || c.known[k]
+	}
+}
+
+// coverOf returns the coverage of abs, current with the file; the caller holds s.mu.
+func (s *Session) coverOf(abs string, create bool) *readCover {
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		return nil
+	}
 	if s.cover == nil {
 		s.cover = map[string]*readCover{}
 	}
 	c := s.cover[abs]
-	if c == nil || c.mod != fi.ModTime().UnixNano() || len(c.seen) != total {
-		c = &readCover{mod: fi.ModTime().UnixNano(), seen: make([]bool, total)}
+	if c == nil {
+		if !create {
+			return nil
+		}
+		c = &readCover{known: map[string]bool{}}
 		s.cover[abs] = c
+	}
+	c.refresh(b)
+	return c
+}
+
+// noteCoverage records that lines from..to (1-based) of abs were shown to the agent.
+func (s *Session) noteCoverage(abs string, total, from, to int) {
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(b), "\n")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.coverOf(abs, true)
+	if c == nil || len(c.seen) != total || len(lines) != total {
+		return
 	}
 	for i := max(1, from); i <= min(to, total); i++ {
 		c.seen[i-1] = true
+		c.known[coverLine(lines[i-1])] = true
 	}
+}
+
+// noteAuthored records the lines the agent itself wrote into abs: it knows them without reading them back.
+func (s *Session) noteAuthored(abs string, texts ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.coverOf(abs, true)
+	if c == nil {
+		return
+	}
+	for _, t := range texts {
+		for _, l := range strings.Split(t, "\n") {
+			c.known[coverLine(l)] = true
+		}
+	}
+	c.sum = "" // seen is recomputed against the file with the new lines known
+}
+
+// writtenTexts is the text a Write, Edit or MultiEdit call put into its file.
+func writtenTexts(input json.RawMessage) []string {
+	var in struct {
+		Content   string `json:"content"`
+		NewString string `json:"new_string"`
+		Edits     []struct {
+			NewString string `json:"new_string"`
+		} `json:"edits"`
+	}
+	_ = json.Unmarshal(input, &in)
+	out := []string{in.Content, in.NewString}
+	for _, e := range in.Edits {
+		out = append(out, e.NewString)
+	}
+	return out
 }
 
 // readProgress is how many lines of abs the agent has seen, of how many, and where to continue.
 func (s *Session) readProgress(abs string) (seen, total, next int) {
-	fi, err := os.Stat(abs)
-	if err != nil {
-		return 0, 0, 0
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	c := s.cover[abs]
-	if c == nil || c.mod != fi.ModTime().UnixNano() {
-		b, _ := os.ReadFile(abs)
+	c := s.coverOf(abs, false)
+	if c == nil {
+		b, err := os.ReadFile(abs)
+		if err != nil {
+			return 0, 0, 0
+		}
 		return 0, strings.Count(string(b), "\n") + 1, 1
 	}
 	next = 0
