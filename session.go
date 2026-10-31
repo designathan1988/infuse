@@ -94,6 +94,7 @@ type Session struct {
 	pendingImages []Block      // images the agent opened with Read, sent with the next tool results
 	askMu         sync.Mutex   // one question to the user at a time (parallel subagents may each need one)
 	gate          researchGate // research gate and report requirement of the current turn
+	docs          docLedger    // what the agent read as documentation in this session (docgate.go)
 }
 
 var (
@@ -629,6 +630,9 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.mu.Unlock()
+	if work := s.workRoot(); !exists(filepath.Join(work, ".git")) && !exists(filepath.Join(s.Root, ".git")) {
+		snapshotTurn(s.Root, work, s.ID, s.Turn) // the base of "Alterações", whatever changes the files
+	}
 	s.emit("turn", map[string]any{"turn": s.Turn, "text": text, "title": s.Title})
 	s.save()
 	go s.run(ctx)
@@ -883,6 +887,21 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 			return why, true
 		}
 	}
+	if b.Name == "Bash" { // docs before commands: options the agent has not read about are refused
+		var in struct{ Command string }
+		_ = json.Unmarshal(b.Input, &in)
+		if why := s.commandDocCheck(in.Command); why != "" {
+			Journal(s.Root, JournalEntry{Kind: "gate", Command: in.Command, Detail: firstLine(why)})
+			s.emit("gate", map[string]any{"message": why})
+			return why, true
+		}
+	} else if tool.Category() == "write" {
+		if open := s.docs.unfinished(); len(open) > 0 {
+			why := "[infuse] Alteração recusada: há documentação lida só em parte. Leia até o fim antes de agir (WebFetch com offset):\n- " + strings.Join(open, "\n- ")
+			s.emit("gate", map[string]any{"message": why})
+			return why, true
+		}
+	}
 	if why := s.gateCheck(b.Name, tool.Category(), b.Input); why != "" { // research before another attempt
 		Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})
 		s.emit("gate", map[string]any{"message": why})
@@ -910,6 +929,14 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	}
 	out, isErr := s.runToolChecked(ctx, rules, tool, b)
 	s.gateRecord(b.Name, tool.Category(), out, isErr)
+	s.noteRead(b.Name, b.Input, out, isErr)
+	if b.Name == "Bash" && !isErr {
+		var in struct{ Command string }
+		_ = json.Unmarshal(b.Input, &in)
+		for _, seg := range commandSegments(in.Command) {
+			s.docs.succeeded(seg.flags)
+		}
+	}
 	if len(shortcutWarn) > 0 && !isErr {
 		Lesson(s.Root, "atalho", strings.Join(shortcutWarn, ", "))
 		out += "\n[atalho] Esta edição introduziu: " + strings.Join(shortcutWarn, ", ") + ". Isso esconde problemas em vez de resolvê-los; trate o erro de verdade ou explique por que é necessário."

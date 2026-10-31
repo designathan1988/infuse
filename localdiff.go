@@ -172,11 +172,12 @@ func unifiedDiff(path string, a, b []string) (string, int, int) {
 type baseline struct {
 	content string
 	isNew   bool
+	hash    string // a turn snapshot's entry: the content is in the blob store
 }
 
 // projectBaselines maps each file any session of the project changed to its content before the first
 // change (earliest session, earliest turn); "" and isNew for files a session created.
-func projectBaselines(root string) map[string]baseline {
+func projectBaselines(root string, keep func(session string, created int64, turn int) bool) map[string]baseline {
 	entries, _ := os.ReadDir(sessionsDir(root))
 	type sess struct {
 		id      string
@@ -230,66 +231,177 @@ func projectBaselines(root string) map[string]baseline {
 		}
 		sort.Ints(turns)
 		for _, t := range turns {
+			if keep != nil && !keep(se.id, se.created, t) {
+				continue
+			}
 			for _, c := range se.cps[t] {
 				if _, seen := out[c.Path]; seen {
 					continue
 				}
 				if c.New {
-					out[c.Path] = baseline{"", true}
+					out[c.Path] = baseline{isNew: true}
 					continue
 				}
 				b, err := os.ReadFile(filepath.Join(root, infuseDirName, "checkpoints", se.id, fmt.Sprint(t), filepath.FromSlash(c.Path)))
 				if err != nil {
 					continue // the copy is gone (rewound): this change is not measurable
 				}
-				out[c.Path] = baseline{string(b), false}
+				out[c.Path] = baseline{content: string(b)}
 			}
 		}
 	}
 	return out
 }
 
-// LocalChanges lists what infuse's sessions changed in a folder without git, with line counts.
-func LocalChanges(root, work string) map[string]any {
-	files := []fileChange{}
-	add, rem := 0, 0
-	for p, base := range projectBaselines(root) {
-		now, err := os.ReadFile(filepath.Join(work, filepath.FromSlash(p)))
+// localBase is what each file was at the start of the scope: "all" (since infuse first saw the folder)
+// or "turn" (since the start of the session's latest turn). complete reports that the base covers the
+// whole tree (a turn snapshot exists), so any file outside it is new.
+func localBase(root, work, session, scope string) (base map[string]baseline, complete bool, since int64) {
+	base = map[string]baseline{}
+	if scope == "turn" && session != "" {
+		if ms := manifests(root, work, session); len(ms) > 0 {
+			m := ms[len(ms)-1]
+			for p, h := range m.Files {
+				base[p] = baseline{hash: h}
+			}
+			return base, true, m.At
+		}
+		// a session from before turn snapshots: the copies kept in its latest turn
+		var last int
+		_ = readJSON(filepath.Join(sessionsDir(root), session+".json"), &struct {
+			Turn *int `json:"turn"`
+		}{&last})
+		return projectBaselines(root, func(id string, _ int64, t int) bool { return id == session && t == last }), false, 0
+	}
+	ms := manifests(root, work, "")
+	var first *treeManifest
+	if len(ms) > 0 {
+		first = &ms[0]
+	}
+	// copies kept by sessions older than the first snapshot come first: they are earlier
+	base = projectBaselines(root, func(_ string, created int64, _ int) bool { return first == nil || created < first.At })
+	if first == nil {
+		return base, false, earliestSession(root)
+	}
+	for p, h := range first.Files {
+		if _, ok := base[p]; !ok {
+			base[p] = baseline{hash: h}
+		}
+	}
+	return base, true, first.At
+}
+
+// earliestSession is the creation time of the project's first session (0 when none).
+func earliestSession(root string) int64 {
+	entries, _ := os.ReadDir(sessionsDir(root))
+	var first int64
+	for _, e := range entries {
+		var d struct {
+			Created int64 `json:"created"`
+		}
+		if strings.HasSuffix(e.Name(), ".json") && readJSON(filepath.Join(sessionsDir(root), e.Name()), &d) == nil && d.Created > 0 && (first == 0 || d.Created < first) {
+			first = d.Created
+		}
+	}
+	return first
+}
+
+// text is the baseline's content (from the blob store for snapshot entries).
+func (b baseline) text(root string) (string, bool) {
+	if b.hash != "" {
+		return readBlob(root, b.hash)
+	}
+	return b.content, true
+}
+
+// localFileChanges compares the scope's base with the folder now.
+func localFileChanges(root, work, session, scope string) ([]fileChange, map[string]baseline) {
+	base, complete, since := localBase(root, work, session, scope)
+	now := walkTree(root, work, false)
+	paths := map[string]bool{}
+	for p := range base {
+		paths[p] = true
+	}
+	for p := range now {
+		if _, known := base[p]; known {
+			continue
+		}
+		if complete {
+			paths[p] = true
+			base[p] = baseline{isNew: true}
+			continue
+		}
+		// no snapshot yet: a file written after the project's first session is a change of that time
+		if since > 0 {
+			if fi, err := os.Stat(filepath.Join(work, filepath.FromSlash(p))); err == nil && fi.ModTime().UnixMilli() > since-2000 { // ids taken in the same millisecond move Created slightly ahead
+				paths[p] = true
+				base[p] = baseline{isNew: true}
+			}
+		}
+	}
+	var files []fileChange
+	for p := range paths {
+		b := base[p]
+		cur, err := os.ReadFile(filepath.Join(work, filepath.FromSlash(p)))
+		gone := err != nil
+		if gone && b.isNew {
+			continue // created and removed again
+		}
+		if !gone && b.hash != "" && b.hash == hashBytes(cur) {
+			continue
+		}
+		before, ok := b.text(root)
+		if !ok {
+			continue // the stored copy is gone: not measurable
+		}
 		st := "M"
 		switch {
-		case err != nil && base.isNew:
-			continue // created and removed again
-		case err != nil:
+		case gone:
 			st = "D"
-		case base.isNew:
+		case b.isNew:
 			st = "A"
 		}
-		_, a, r := unifiedDiff(p, splitLines(base.content), splitLines(string(now)))
+		_, a, r := unifiedDiff(p, splitLines(before), splitLines(string(cur)))
 		if a+r == 0 && st == "M" {
 			continue
 		}
 		files = append(files, fileChange{Path: p, Status: st, Added: a, Removed: r})
-		add += a
-		rem += r
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
-	return map[string]any{"isGit": false, "local": true, "files": files, "added": add, "removed": rem}
+	return files, base
 }
 
-// LocalDiff is the unified diff of one file against its baseline.
-func LocalDiff(root, work, p string) string {
-	base, ok := projectBaselines(root)[p]
+// LocalChanges lists the changes of a folder without git, with line counts, for the scope.
+func LocalChanges(root, work, session, scope string) map[string]any {
+	files, _ := localFileChanges(root, work, session, scope)
+	if files == nil {
+		files = []fileChange{}
+	}
+	add, rem := 0, 0
+	for _, f := range files {
+		add += f.Added
+		rem += f.Removed
+	}
+	return map[string]any{"isGit": false, "local": true, "scope": firstNonEmpty(scope, "all"), "files": files, "added": add, "removed": rem}
+}
+
+// LocalDiff is the unified diff of one file against the scope's base.
+func LocalDiff(root, work, session, scope, p string) string {
+	_, base := localFileChanges(root, work, session, scope)
+	b, ok := base[p]
 	if !ok {
 		return ""
 	}
+	before, _ := b.text(root)
 	now, _ := os.ReadFile(filepath.Join(work, filepath.FromSlash(p)))
-	d, _, _ := unifiedDiff(p, splitLines(base.content), splitLines(string(now)))
+	d, _, _ := unifiedDiff(p, splitLines(before), splitLines(string(now)))
 	return d
 }
 
-// LocalDiscard puts a file back as it was before infuse's sessions changed it.
-func LocalDiscard(root, work, p string) error {
-	base, ok := projectBaselines(root)[p]
+// LocalDiscard puts a file back as it was at the start of the scope: rewritten, recreated or removed.
+func LocalDiscard(root, work, session, scope, p string) error {
+	_, base := localFileChanges(root, work, session, scope)
+	b, ok := base[p]
 	if !ok {
 		return fmt.Errorf("arquivo sem alteração registrada")
 	}
@@ -297,8 +409,13 @@ func LocalDiscard(root, work, p string) error {
 	if !within(work, abs) {
 		return fmt.Errorf("fora do projeto")
 	}
-	if base.isNew {
+	if b.isNew {
 		return os.Remove(abs)
 	}
-	return os.WriteFile(abs, []byte(base.content), 0o644)
+	before, ok := b.text(root)
+	if !ok {
+		return fmt.Errorf("a cópia anterior não existe mais")
+	}
+	_ = os.MkdirAll(filepath.Dir(abs), 0o755)
+	return os.WriteFile(abs, []byte(before), 0o644)
 }

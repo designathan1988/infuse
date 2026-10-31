@@ -582,7 +582,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 	case path == "/api/changes":
 		ch := Changes(dir)
 		if ch["isGit"] == false { // a local folder: counted against the copies infuse kept before each first change
-			ch = LocalChanges(root, dir)
+			ch = LocalChanges(root, dir, r.URL.Query().Get("session"), r.URL.Query().Get("scope"))
 		}
 		sendJSON(w, 200, ch)
 		return true

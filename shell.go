@@ -165,6 +165,10 @@ func buildTrailer(root, cwd, original string, actions []TransformAction, started
 	}
 
 	if listed, ok := listedDirectory(original); ok && m != nil {
+		if mayChangeTree(original) { // rm, mv, a generator before the ls: describe the folder as it is now
+			m = BuildMap(root)
+			WriteMap(root, m)
+		}
 		target := resolveIn(cwd, FromMsysPath(listed))
 		if st, err := os.Stat(target); err == nil && st.IsDir() {
 			rel := relTo(root, target)
@@ -185,6 +189,18 @@ var (
 	reCd       = regexp.MustCompile(`^cd\s+(\S+)`)
 	reLs       = regexp.MustCompile(`^(?:ls|tree|dir)\b(.*)$`)
 )
+
+// mayChangeTree reports whether a command line has a step beyond reading (it may add, move or remove files).
+func mayChangeTree(cmd string) bool {
+	readOnly := map[string]bool{"ls": true, "tree": true, "dir": true, "cd": true, "pwd": true, "echo": true, "cat": true, "head": true, "tail": true, "grep": true, "rg": true, "wc": true, "find": true, "stat": true, "file": true, "du": true, "git": false}
+	for _, seg := range reSplitSeg.Split(cmd, -1) {
+		f := strings.Fields(seg)
+		if len(f) > 0 && !readOnly[f[0]] {
+			return true
+		}
+	}
+	return false
+}
 
 // listedDirectory returns the directory an ls/tree command is listing.
 func listedDirectory(cmd string) (string, bool) {

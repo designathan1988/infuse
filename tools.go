@@ -658,15 +658,18 @@ type webFetchTool struct{}
 
 func (webFetchTool) Category() string { return "net" }
 func (webFetchTool) Spec() ToolSpec {
-	return ToolSpec{Name: "WebFetch", Description: "Baixa uma página ou documento da web e devolve o texto (HTML convertido para texto).",
-		InputSchema: schema(`{"type":"object","properties":{"url":{"type":"string"}},"required":["url"]}`)}
+	return ToolSpec{Name: "WebFetch", Description: "Baixa uma página ou documento da web e devolve o texto (HTML convertido para texto), em partes de 30000 caracteres. Uma página em partes precisa ser lida até o fim (offset) antes de você executar comandos ou alterar arquivos.",
+		InputSchema: schema(`{"type":"object","properties":{"url":{"type":"string"},"offset":{"type":"integer","description":"onde continuar a leitura (indicado no fim de cada parte)"}},"required":["url"]}`)}
 }
 
 var reTag = regexp.MustCompile(`(?s)<(script|style)[^>]*>.*?</(script|style)>|<[^>]+>`)
 var reWs = regexp.MustCompile(`\n\s*\n+`)
 
 func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
-	var in struct{ URL string }
+	var in struct {
+		URL    string
+		Offset int
+	}
 	_ = json.Unmarshal(input, &in)
 	if bad, why := privateTarget(in.URL); bad { // no requests into this machine or the private network
 		Journal(tc.Root, JournalEntry{Kind: "blocked", Command: in.URL, Detail: "WebFetch recusado: " + why})
@@ -690,7 +693,21 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 		text = strings.NewReplacer("&nbsp;", " ", "&amp;", "&", "&lt;", "<", "&gt;", ">", "&quot;", `"`, "&#39;", "'").Replace(text)
 		text = reWs.ReplaceAllString(text, "\n\n")
 	}
-	return clip(externalContent(in.URL, fmt.Sprintf("HTTP %d\n\n%s", resp.StatusCode, strings.TrimSpace(text)))), resp.StatusCode >= 400
+	text = strings.TrimSpace(text)
+	total := max(1, (len(text)+docPageSize-1)/docPageSize)
+	part := min(max(in.Offset, 0)/docPageSize, total-1)
+	body := text[part*docPageSize : min(len(text), (part+1)*docPageSize)]
+	head := fmt.Sprintf("HTTP %d", resp.StatusCode)
+	if total > 1 {
+		head += fmt.Sprintf(" · parte %d de %d", part+1, total)
+		if part+1 < total {
+			body += fmt.Sprintf("\n\n[continua: WebFetch com offset=%d — leia até o fim antes de agir]", (part+1)*docPageSize)
+		}
+	}
+	if tc.S != nil && resp.StatusCode < 400 {
+		tc.S.docs.markPart(in.URL, part, total)
+	}
+	return externalContent(in.URL, head+"\n\n"+body), resp.StatusCode >= 400
 }
 
 // ---------------------------------------------------------------- TodoWrite
@@ -700,6 +717,7 @@ type TaskItem struct {
 	Text   string `json:"text"`
 	Status string `json:"status"`          // pending | in_progress | done | blocked
 	Proof  string `json:"proof,omitempty"` // how the task will be shown to work (a command, a page, a file)
+	Note   string `json:"note,omitempty"`  // set by infuse, never by the model (why a task was closed as blocked)
 }
 
 type todoTool struct{}
@@ -728,6 +746,9 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	if len(noProof) > 0 { // the protocol: every open task says how it will be proven
 		return "plano recusado: cada tarefa aberta precisa de proof (o comando, a página ou o arquivo que comprovará que funciona). Sem proof: " + strings.Join(noProof, "; "), true
+	}
+	for i := range in.Tasks {
+		in.Tasks[i].Note = ""
 	}
 	tc.S.setTasks(in.Tasks)
 	tc.S.mu.Lock()

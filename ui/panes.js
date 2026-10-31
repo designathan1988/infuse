@@ -93,23 +93,26 @@ addEventListener('resize', () => { for (const id of P2.open) P2.inst[id]?.fit?.(
 // ---------------------------------------------------------------- Changes: file list, diff with line comments, commit, discard
 function mountChanges(pb, extra, c) {
   pb.innerHTML = `<div class="chg2"><div class="fl"></div><div class="dv"><div class="empty">${t('Selecione um arquivo')}</div></div></div><div class="pfoot"><span class="faint ncom"></span><button class="btn sm line sendc hidden">${t('Enviar comentários')} <span class="kbd">Ctrl Enter</span></button><span class="grow"></span><input class="cmsg" placeholder="${esc(t('Mensagem do commit'))}"><button class="btn sm pri commit">${t('Commit')}</button></div>`;
-  extra.innerHTML = `<button class="ib" title="${esc(t('Atualizar'))}">${I.reload}</button>`;
+  extra.innerHTML = `<span class="scopeslot"></span><button class="ib" title="${esc(t('Atualizar'))}">${I.reload}</button>`;
   const fl = $('.fl', pb), dv = $('.dv', pb); let sel = null, files = [];
+  const q = () => '&session=' + encodeURIComponent(curL()?.id || '') + '&scope=' + chgScope();
   const comments = []; // {path, line, code, text}
   const updC = () => { $('.ncom', pb).textContent = comments.length ? `${comments.length} ${t('comentário(s)')}` : ''; $('.sendc', pb).classList.toggle('hidden', !comments.length); };
   const load = async () => {
     const sid = curL()?.id || '';
-    const r = await api('/api/changes?session=' + encodeURIComponent(sid), { root: c.root, dir: c.dir });
+    const r = await api('/api/changes?session=' + encodeURIComponent(sid) + '&scope=' + chgScope(), { root: c.root, dir: c.dir });
     files = r.files || [];
+    $('.scopeslot', extra).innerHTML = r.local ? scopeSwitch() : ''; bindScope(extra);
+    $$('.cmsg, .commit', pb).forEach(x => x.classList.toggle('hidden', !!r.local)); // no git: nothing to commit
     fl.innerHTML = files.length ? '' : `<div class="empty">${t('Nenhuma alteração')}</div>`;
-    files.forEach(f => { const it = h(`<div class="fli${f.path === sel ? ' on' : ''}" title="${esc(f.path)}"><span class="n">${esc(f.path)}</span><span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`); it.onclick = () => select(f.path); it.oncontextmenu = e => { e.preventDefault(); menu(null, [{ label: 'Abrir no painel Arquivos', f: () => openFileInPane(f.path) }, ...openInItems(c.dir.replace(/[\\/]+$/, '') + '/' + f.path), { sep: 1 }, { label: 'Descartar alterações', danger: 1, f: () => discard(f.path) }], e); }; fl.appendChild(it); });
+    files.forEach(f => { const it = h(`<div class="fli${f.path === sel ? ' on' : ''}${f.status === 'D' ? ' gone' : ''}" title="${esc(f.path)}"><span class="n">${esc(f.path)}</span>${chgTag(f)}<span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`); it.onclick = () => select(f.path); it.oncontextmenu = e => { e.preventDefault(); menu(null, [{ label: 'Abrir no painel Arquivos', f: () => openFileInPane(f.path) }, ...openInItems(c.dir.replace(/[\\/]+$/, '') + '/' + f.path), { sep: 1 }, { label: 'Descartar alterações', danger: 1, f: () => discard(f.path) }], e); }; fl.appendChild(it); });
     if (sel && files.find(f => f.path === sel)) select(sel); else if (files[0]) select(files[0].path); else dv.innerHTML = `<div class="empty">${t('Nada para revisar.')}</div>`;
   };
-  const discard = async p => { if (!confirm(t('Descartar as alterações em ') + p + '?')) return; await fetch(`/api/git?root=${encodeURIComponent(c.dir)}&session=${encodeURIComponent(curL()?.id || '')}&project=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ action: 'discard', path: p }) }); load(); const L = curL(); if (L) refreshChanges(L); };
+  const discard = async p => { if (!confirm(t('Descartar as alterações em ') + p + '?')) return; await fetch(`/api/git?root=${encodeURIComponent(c.dir)}${q()}&project=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ action: 'discard', path: p }) }); load(); const L = curL(); if (L) refreshChanges(L); };
   const select = async p => {
     sel = p; $$('.fli', fl).forEach(x => x.classList.toggle('on', x.title === p));
-    const r = await api('/api/diff?path=' + encodeURIComponent(p) + '&session=' + encodeURIComponent(curL()?.id || '') + '&project=' + encodeURIComponent(c.root), { root: c.dir });
-    const lines = (r.diff || '').split('\n'); let nNew = 0; const out = h('<div class="rdiff"></div>');
+    const r = await api('/api/diff?path=' + encodeURIComponent(p) + q() + '&project=' + encodeURIComponent(c.root), { root: c.dir });
+    const lines = (r.diff || '').replace(/\n$/, '').split('\n'); let nNew = 0; const out = h('<div class="rdiff"></div>');
     out.appendChild(h(`<div class="row" style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:var(--sans)"><span class="mono trunc grow">${esc(p)}</span><button class="btn sm danger">${t('Descartar')}</button></div>`));
     $('.btn', out).onclick = () => discard(p);
     for (const l of lines) {
@@ -138,7 +141,7 @@ function mountChanges(pb, extra, c) {
   pb.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && comments.length) { e.preventDefault(); sendComments(); } });
   const commit = async () => { const msg = $('.cmsg', pb).value.trim(); if (!msg) return toast('Escreva a mensagem do commit'); const r = await api('/api/git', { body: { action: 'commit', message: msg }, root: c.dir }); toast(r.ok ? 'Commit feito' : t('Falhou: ') + (r.output || r.error)); if (r.ok) { $('.cmsg', pb).value = ''; load(); const L = curL(); if (L) refreshChanges(L); } };
   $('.commit', pb).onclick = commit; $('.cmsg', pb).onkeydown = e => { if (e.key === 'Enter') commit(); };
-  $('button', extra).onclick = load;
+  $('.ib', extra).onclick = load;
   load();
   return { refresh: debounce(load, 300), select };
 }

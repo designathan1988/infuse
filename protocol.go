@@ -386,17 +386,16 @@ func addedLines(before, after string) []string {
 func (s *Session) turnObligation(ctx context.Context) string {
 	s.mu.Lock()
 	changed := append([]CheckpointFile{}, s.Checkpoints[s.Turn]...)
-	planned, asks := s.gate.planned, s.gate.obligationAsks
+	asks := s.gate.obligationAsks
 	var open []string
-	if planned {
-		for _, t := range s.Tasks {
-			if t.Status != "done" && t.Status != "blocked" {
-				open = append(open, t.Text)
-			}
+	for _, t := range s.Tasks { // the session's plan, whichever turn registered it
+		if t.Status != "done" && t.Status != "blocked" {
+			open = append(open, t.Text)
 		}
 	}
 	s.mu.Unlock()
-	if asks >= 6 { // the agent keeps refusing: the turn ends and the UI shows what was left
+	if asks >= 6 { // the agent keeps refusing: the turn ends, and infuse closes what was left as blocked
+		s.closeOpenTasks("o turno terminou sem a conclusão e a comprovação desta tarefa")
 		return ""
 	}
 	if len(open) > 0 {
@@ -436,6 +435,24 @@ func (s *Session) turnObligation(ctx context.Context) string {
 		}
 	}
 	return ""
+}
+
+// closeOpenTasks marks every open task blocked with infuse's note: the plan never shows work as
+// ongoing once the agent has stopped.
+func (s *Session) closeOpenTasks(note string) {
+	s.mu.Lock()
+	tasks := append([]TaskItem{}, s.Tasks...)
+	s.mu.Unlock()
+	changed := false
+	for i := range tasks {
+		if tasks[i].Status != "done" && tasks[i].Status != "blocked" {
+			tasks[i].Status, tasks[i].Note, changed = "blocked", note, true
+		}
+	}
+	if changed {
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "plano encerrado com tarefas abertas"})
+		s.setTasks(tasks)
+	}
 }
 
 // hostOf returns a URL's host (for messages).
