@@ -128,7 +128,11 @@ type openAIProvider struct {
 func (p *openAIProvider) Name() string { return "openai" }
 
 func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
-	body := map[string]any{"model": req.Model, "stream": true, "stream_options": map[string]any{"include_usage": true}, "messages": openAIMessages(req.System, req.Messages)}
+	ds := strings.Contains(p.base, "deepseek.com")
+	body := map[string]any{"model": req.Model, "stream": true, "stream_options": map[string]any{"include_usage": true}, "messages": openAIMessages(req.System, req.Messages, ds)}
+	if ds {
+		deepseekThinking(body, req)
+	}
 	if req.MaxTokens > 0 {
 		body["max_completion_tokens"] = req.MaxTokens
 	}
@@ -240,7 +244,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 	if err := sc.Err(); err != nil {
 		return res, err
 	}
-	if reasoning.Len() > 0 { // kept for the transcript; never sent back (openAIMessages skips thinking)
+	if reasoning.Len() > 0 { // kept with the message: DeepSeek needs it back in later requests (openAIMessages)
 		res.Content = append(res.Content, Block{Type: "thinking", Thinking: reasoning.String()})
 	}
 	if text.Len() > 0 {
@@ -268,7 +272,32 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 	return res, nil
 }
 
-func openAIMessages(system string, msgs []Message) []map[string]any {
+// DeepSeek thinking mode (https://api-docs.deepseek.com/guides/thinking_mode, read 2026-10-31):
+// thinking is switched with {"thinking":{"type":"enabled|disabled"}} and its depth with reasoning_effort
+// (low | high | max); with tools in the request, the reasoning_content of every earlier assistant
+// message must be sent back, or the API answers 400. The legacy names (deepseek-chat, deepseek-reasoner,
+// deepseek-v4-flash) are served by deepseek-flash (https://api-docs.deepseek.com/quick_start/pricing).
+func deepseekThinking(body map[string]any, req ModelRequest) {
+	switch req.Model {
+	case "deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash":
+		body["model"] = "deepseek-flash"
+	}
+	if req.Thinking <= 0 {
+		body["thinking"] = map[string]any{"type": "disabled"}
+		return
+	}
+	body["thinking"] = map[string]any{"type": "enabled"}
+	switch {
+	case req.Thinking <= 4000:
+		body["reasoning_effort"] = "low"
+	case req.Thinking <= 12000:
+		body["reasoning_effort"] = "high"
+	default:
+		body["reasoning_effort"] = "max"
+	}
+}
+
+func openAIMessages(system string, msgs []Message, withReasoning bool) []map[string]any {
 	out := []map[string]any{}
 	if system != "" {
 		out = append(out, map[string]any{"role": "system", "content": system})
@@ -276,10 +305,12 @@ func openAIMessages(system string, msgs []Message) []map[string]any {
 	for _, m := range msgs {
 		if m.Role == "assistant" {
 			am := map[string]any{"role": "assistant"}
-			var texts []string
+			var texts, thoughts []string
 			var tcs []map[string]any
 			for _, b := range m.Content {
 				switch b.Type {
+				case "thinking":
+					thoughts = append(thoughts, b.Thinking)
 				case "text":
 					texts = append(texts, b.Text)
 				case "tool_use":
@@ -291,6 +322,9 @@ func openAIMessages(system string, msgs []Message) []map[string]any {
 				}
 			}
 			am["content"] = strings.Join(texts, "\n")
+			if withReasoning { // DeepSeek: the reasoning goes back with its message (empty when there was none)
+				am["reasoning_content"] = strings.Join(thoughts, "\n")
+			}
 			if len(tcs) > 0 {
 				am["tool_calls"] = tcs
 			}

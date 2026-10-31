@@ -316,13 +316,12 @@ addEventListener('mousedown', e => { if (menuStack.length && !menuStack.some(m =
 
 function sessionMenu(v, anchor) {
   const L = S.live[v.sid]; if (!L) return;
-  const modes = [['normal', 'Normal', 'Ferramentas resumidas, texto completo'], ['thinking', 'Pensamento', 'Também mostra o raciocínio'], ['verbose', 'Detalhado', 'Cada chamada de ferramenta aberta']];
+  const modes = VIEW_MODES;
   // grouped like the desktop app: a few direct actions, the rest one level down
   menu(anchor, [
     { label: 'Exibição', items: [
       ...modes.map(([k, l, d]) => ({ label: l, sub: d, check: S.viewMode === k, f: () => setViewMode(k) })),
       { sep: 1 }, { label: 'Expandir tudo', f: () => foldAll(v, true) }, { label: 'Recolher tudo', f: () => foldAll(v, false) },
-      { label: S.settings.showThinking === false ? 'Mostrar raciocínio' : 'Ocultar raciocínio', f: () => { saveSetting({ showThinking: S.settings.showThinking === false }); for (const k of Object.keys(S.fold)) if (k.includes(':')) delete S.fold[k]; S.views.forEach(renderChat); } },
     ] },
     { label: 'Copiar', items: [
       { label: 'Revisão independente', sub: 'Um revisor com contexto limpo confere as alterações', f: () => runReview(v) },
@@ -349,7 +348,12 @@ function moreMenu(v, anchor) {
   ], null, { alignRight: true });
 }
 function foldAll(v, open) { $$('[data-fold]', v.el).forEach(x => { S.fold[x.dataset.fold] = open; x.parentNode.classList.toggle('open', open); }); }
-function setViewMode(k) { S.fold = {}; S.viewMode = k; lsSet('viewMode', k); S.views.forEach(renderChat); toast(t('Exibição: ') + t({ normal: 'Normal', thinking: 'Pensamento', verbose: 'Detalhado' }[k])); }
+const VIEW_MODES = [['normal', 'Normal', 'Texto completo; raciocínio e ferramentas em uma linha cada'], ['thinking', 'Pensamento', 'Também abre o raciocínio do modelo'], ['verbose', 'Detalhado', 'Abre tudo: raciocínio, cada ferramenta com entrada e saída, cada passo dos subagentes']];
+function setViewMode(k) {
+  S.fold = {}; S.viewMode = k; lsSet('viewMode', k); S.views.forEach(renderChat);
+  const L = curL(); const thinks = (L?.snap?.messages || []).some(m => (m.content || []).some(b => b.type === 'thinking'));
+  toast(t('Exibição: ') + t({ normal: 'Normal', thinking: 'Pensamento', verbose: 'Detalhado' }[k]) + (k !== 'normal' && L && !thinks ? ' · ' + t('esta sessão ainda não tem raciocínio: o esforço Baixo desliga o modo de pensamento') : ''));
+}
 
 // ---------------------------------------------------------------- live sessions (SSE)
 function connect(root, id) {
@@ -798,7 +802,7 @@ function relPath(p) {
 }
 // Reasoning is part of the transcript: shown open by default (Configurações or Ctrl+O hide it), with a caret.
 function thinkBlock(key, text, live, ms) {
-  const open = S.fold[key] ?? (S.viewMode !== 'normal' || S.settings.showThinking !== false);
+  const open = S.fold[key] ?? (S.viewMode !== 'normal'); // Pensamento and Detalhado open the reasoning; Normal keeps it on one line
   const words = text.trim().split(/\s+/).length;
   return `<div class="tool think2${open ? ' open' : ''}"><div class="h" data-fold="${esc(key)}"><span class="chev">›</span><b>${live ? t('Pensando…') : ms ? `${t('Pensou por')} ${fmtDur(ms)}` : t('Raciocínio')}</b><span class="s faint">${words} ${t('palavras')}</span><button class="ib mini" data-copy-think title="${esc(t('Copiar raciocínio'))}">${I.copy}</button></div><div class="b"><pre class="thinktext">${esc(text)}</pre></div></div>`;
 }
@@ -829,7 +833,7 @@ function agentTrailHTML(a, bid) {
   const steps = (a.trail || []).map((st, i) => {
     if (st.kind === 'text') return `<div class="astep txt md sel">${md(st.text || '')}</div>`;
     let inp = {}; try { inp = JSON.parse(st.input || '{}'); } catch { }
-    const k = `${bid}:s${i}`, open = !!S.fold[k];
+    const k = `${bid}:s${i}`, open = S.fold[k] ?? (S.viewMode === 'verbose');
     return `<div class="tool astep${open ? ' open' : ''}"><div class="h" data-fold="${esc(k)}"><span class="chev">›</span><span class="dot ${st.state === 'running' ? 'run' : st.state === 'error' ? 'err' : ''}"></span><b>${esc(t(toolLabel[st.tool] || st.tool))}</b><span class="s">${esc(toolSummary(st.tool, inp))}</span>${st.state !== 'running' && st.ms != null ? `<span class="tdur faint">${fmtDur(st.ms)}</span>` : ''}</div><div class="b">${st.output ? `<pre class="res">${esc(st.output)}</pre>` : `<div class="faint">${t('sem saída')}</div>`}</div></div>`;
   }).join('');
   const tail = a.state === 'running' ? `<div class="astep faint"><span class="spin sm"></span>${t('trabalhando…')}</div>`
@@ -845,7 +849,7 @@ function agentBlock(id, inp, result) {
   const open = S.fold[id] ?? true; // the steps stay in view, while it works and after; the caret folds them
   const dot = running ? 'run' : result?.is_error || a?.state === 'failed' ? 'err' : '';
   return `<div class="tool agentblk${open ? ' open' : ''}" data-agentblk="${esc(id)}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${esc(t('Subagente'))}</b><span class="tag">${esc(t(inp.kind || 'general'))}</span><span class="s">${esc(inp.description || String(inp.prompt || '').slice(0, 80))}</span><span class="tdur faint asteps">${agentHead(a)}</span></div>
-    <div class="b"><details class="atask"><summary>${t('Tarefa dada ao subagente')}</summary><div class="md sel">${md(String(inp.prompt || ''))}</div></details><div class="atrail">${agentTrailHTML(a, id)}</div></div></div>`;
+    <div class="b"><details class="atask"${S.viewMode === 'verbose' ? ' open' : ''}><summary>${t('Tarefa dada ao subagente')}</summary><div class="md sel">${md(String(inp.prompt || ''))}</div></details><div class="atrail">${agentTrailHTML(a, id)}</div></div></div>`;
 }
 // a step of a subagent changed: only its blocks are redrawn, the conversation stays as it is
 function refreshAgentBlocks(v) {
