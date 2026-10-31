@@ -85,7 +85,7 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 		if err != nil {
 			return "", err
 		}
-		cost := s.settings.costOf(s.Model, res.Usage)
+		cost := s.settings.CostOf(s.Model, res.Usage)
 		s.mu.Lock()
 		s.Cost += cost
 		s.Usage.Input += res.Usage.Input

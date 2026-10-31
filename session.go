@@ -755,7 +755,7 @@ func (s *Session) run(ctx context.Context) {
 		s.Usage.Output += res.Usage.Output
 		s.Usage.CacheRead += res.Usage.CacheRead
 		s.Usage.CacheWrite += res.Usage.CacheWrite
-		cost := s.settings.costOf(s.Model, res.Usage)
+		cost := s.settings.CostOf(s.Model, res.Usage)
 		s.Cost += cost
 		s.LastInput = res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite
 		if s.mode() == "plan" && res.StopReason != "tool_use" {
@@ -1218,7 +1218,7 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 	s.Messages = append(compactionHead("[Context compacted — summary of the work so far]\n\n"+summary, verbatimRequests(older[:len(older)-1])), keep...)
 	s.TurnStarts = []int{0}
 	s.Compactions++
-	s.Cost += s.settings.costOf(s.fastModel(), res.Usage)
+	s.Cost += s.settings.CostOf(s.fastModel(), res.Usage)
 	s.mu.Unlock()
 	s.emit("compacted", map[string]any{"summary": summary})
 	return nil
@@ -1402,7 +1402,7 @@ func (s *Session) SummarizeUpTo(ctx context.Context, upTo int, hint string) erro
 	s.TurnStarts = starts
 	s.Turn = len(starts)
 	s.Compactions++
-	s.Cost += s.settings.costOf(model, res.Usage)
+	s.Cost += s.settings.CostOf(model, res.Usage)
 	s.mu.Unlock()
 	s.save()
 	s.emit("session", s.snapshot())
@@ -1443,7 +1443,7 @@ func (s *Session) SideQuestion(ctx context.Context, question string) (string, er
 			out += b.Text
 		}
 	}
-	cost := s.settings.costOf(s.Model, res.Usage)
+	cost := s.settings.CostOf(s.Model, res.Usage)
 	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cost: cost})
 	return out, nil
 }
@@ -1521,7 +1521,7 @@ func (s *Session) SuggestNext(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.fastModel(), Input: res.Usage.Input, Output: res.Usage.Output, Cost: s.settings.costOf(s.fastModel(), res.Usage)})
+	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.fastModel(), Input: res.Usage.Input, Output: res.Usage.Output, Cost: s.settings.CostOf(s.fastModel(), res.Usage)})
 	out := strings.Trim(strings.TrimSpace(msgText(Message{Content: res.Content})), "\"'“”")
 	if out == "-" || out == "" || strings.Contains(out, "\n") || len([]rune(out)) > 120 {
 		return "", nil

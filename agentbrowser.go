@@ -112,7 +112,7 @@ func agentPageFor(s *Session) (*agentPage, error) {
 		_, _ = b.call(ctx, "Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": cursorJS})
 		_, _ = b.eval(ctx, cursorJS)
 	}
-	w, h, scale := s.settings.browserViewport()
+	w, h, scale := browserViewport(s.settings)
 	p.mu.Lock()
 	change := p.device == "" && (p.width != w || p.height != h || p.scale != scale)
 	p.mu.Unlock()
@@ -123,7 +123,7 @@ func agentPageFor(s *Session) (*agentPage, error) {
 }
 
 // browserViewport is the agent browser's window from settings (default 1440×900 at 2×: sharp captures).
-func (st Settings) browserViewport() (int, int, float64) {
+func browserViewport(st Settings) (int, int, float64) {
 	w, h := 1440, 900
 	if st.BrowserViewport != "" {
 		_, _ = fmt.Sscanf(strings.ReplaceAll(st.BrowserViewport, "×", "x"), "%dx%d", &w, &h)
@@ -268,7 +268,7 @@ type gestureStyle struct {
 	keyMax    time.Duration
 }
 
-func (st Settings) gestures() gestureStyle {
+func gesturesFor(st Settings) gestureStyle {
 	switch st.BrowserGestures {
 	case "instant":
 		return gestureStyle{stepPx: 1e9}

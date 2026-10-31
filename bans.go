@@ -75,7 +75,7 @@ func (s *Session) compileBans(ctx context.Context, p Provider) {
 	}
 	usage, err := askJSON(ctx, p, s.fastModel(), bansPrompt, text, bansSpec, 4000, &out)
 	s.mu.Lock()
-	s.Cost += s.settings.costOf(s.fastModel(), usage)
+	s.Cost += s.settings.CostOf(s.fastModel(), usage)
 	turn := s.Turn
 	s.mu.Unlock()
 	if err != nil { // the prohibitions already in force stay; the user is told the new words were not read

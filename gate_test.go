@@ -145,10 +145,10 @@ func TestDeepSeekHasAPriceSoBudgetsWork(t *testing.T) {
 	s.Pricing = map[string][2]float64{"gpt-5": {1.25, 10}} // an older settings file
 	_ = SaveSettings(s)
 	s = LoadSettings()
-	if !s.hasPrice("deepseek-chat") || s.costOf("deepseek-chat", Usage{Input: 1_000_000, Output: 1_000_000}) < 1.4 {
+	if !s.HasPrice("deepseek-chat") || s.CostOf("deepseek-chat", Usage{Input: 1_000_000, Output: 1_000_000}) < 1.4 {
 		t.Fatalf("deepseek-chat is free: %v", s.Pricing["deepseek-chat"])
 	}
-	if s.hasPrice("modelo-desconhecido") {
+	if s.HasPrice("modelo-desconhecido") {
 		t.Fatal("unknown model priced")
 	}
 }

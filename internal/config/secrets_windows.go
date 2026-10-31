@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package config
 
 // Windows Credential Manager (generic credentials, persisted per user on this machine).
 

@@ -1,0 +1,101 @@
+[
+  {
+    "id": "anthropic",
+    "kind": "anthropic",
+    "label": "Anthropic",
+    "baseUrl": "https://api.anthropic.com",
+    "needKey": true,
+    "keyUrl": "https://console.anthropic.com/settings/keys"
+  },
+  {
+    "id": "openai",
+    "kind": "openai",
+    "label": "OpenAI",
+    "baseUrl": "https://api.openai.com",
+    "needKey": true,
+    "keyUrl": "https://platform.openai.com/api-keys"
+  },
+  {
+    "id": "google",
+    "kind": "google",
+    "label": "Google Gemini",
+    "baseUrl": "https://generativelanguage.googleapis.com",
+    "needKey": true,
+    "keyUrl": "https://aistudio.google.com/apikey"
+  },
+  {
+    "id": "deepseek",
+    "kind": "openai",
+    "label": "DeepSeek",
+    "baseUrl": "https://api.deepseek.com",
+    "needKey": true,
+    "keyUrl": "https://platform.deepseek.com/api_keys"
+  },
+  {
+    "id": "openrouter",
+    "kind": "openai",
+    "label": "OpenRouter",
+    "baseUrl": "https://openrouter.ai/api",
+    "needKey": true,
+    "keyUrl": "https://openrouter.ai/keys"
+  },
+  {
+    "id": "groq",
+    "kind": "openai",
+    "label": "Groq",
+    "baseUrl": "https://api.groq.com/openai",
+    "needKey": true,
+    "keyUrl": "https://console.groq.com/keys"
+  },
+  {
+    "id": "together",
+    "kind": "openai",
+    "label": "Together",
+    "baseUrl": "https://api.together.xyz",
+    "needKey": true,
+    "keyUrl": "https://api.together.ai/settings/api-keys"
+  },
+  {
+    "id": "mistral",
+    "kind": "openai",
+    "label": "Mistral",
+    "baseUrl": "https://api.mistral.ai",
+    "needKey": true,
+    "keyUrl": "https://console.mistral.ai/api-keys"
+  },
+  {
+    "id": "xai",
+    "kind": "openai",
+    "label": "xAI",
+    "baseUrl": "https://api.x.ai",
+    "needKey": true,
+    "keyUrl": "https://console.x.ai"
+  },
+  {
+    "id": "ollama",
+    "kind": "ollama",
+    "label": "Ollama",
+    "baseUrl": "http://127.0.0.1:11434",
+    "local": true
+  },
+  {
+    "id": "lmstudio",
+    "kind": "openai",
+    "label": "LM Studio",
+    "baseUrl": "http://127.0.0.1:1234",
+    "local": true
+  },
+  {
+    "id": "custom",
+    "kind": "openai",
+    "label": "Compatível com OpenAI",
+    "baseUrl": "",
+    "needKey": false
+  },
+  {
+    "id": "mock",
+    "kind": "mock",
+    "label": "Demonstração (sem chave)",
+    "local": true
+  }
+]

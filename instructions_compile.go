@@ -69,7 +69,7 @@ func (s *Session) compileInstructions(ctx context.Context, p Provider, text stri
 	}
 	usage, err := askJSON(ctx, p, s.fastModel(), compilePrompt, text, projectRulesSpec, 8000, &out)
 	s.mu.Lock()
-	s.Cost += s.settings.costOf(s.fastModel(), usage)
+	s.Cost += s.settings.CostOf(s.fastModel(), usage)
 	s.mu.Unlock()
 	if err != nil {
 		return nil, err

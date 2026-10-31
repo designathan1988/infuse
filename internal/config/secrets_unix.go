@@ -1,6 +1,6 @@
 //go:build !windows
 
-package main
+package config
 
 // macOS: the login Keychain through `security`. Linux: libsecret through `secret-tool`.
 

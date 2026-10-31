@@ -1,6 +1,7 @@
-package main
+package config
 
 import (
+	"infuse/internal/core"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -9,7 +10,7 @@ import (
 // Settings is the canonical configuration. Global file: ~/.infuse/settings.json.
 // A project may override a subset in <project>/.infuse/settings.json.
 type Settings struct {
-	Provider             string                `json:"provider"` // default connection id (connections.go)
+	Provider             string                `json:"provider"` // default connection id
 	Connections          map[string]Connection `json:"connections"`
 	Effort               string                `json:"effort"`            // default effort: low | medium | high | max
 	WorktreeDir          string                `json:"worktreeDir"`       // where session worktrees go, relative to the project
@@ -47,7 +48,7 @@ type Settings struct {
 	BrowserGestures      string                `json:"browserGestures,omitempty"`      // human (default) | slow | instant
 }
 
-func defaultSettings() Settings {
+func DefaultSettings() Settings {
 	return Settings{
 		Provider:       "",
 		Connections:    map[string]Connection{},
@@ -57,11 +58,10 @@ func defaultSettings() Settings {
 		Model:          "claude-sonnet-5-5",
 		FastModel:      "claude-haiku-5-5",
 		MaxTokens:      16000,
-		ContextLimit:   0, // the model's own window (models.go)
+		ContextLimit:   0, // the model's own window
 		Mode:           "default",
 		Permissions:    map[string]string{"Bash": "ask", "Write": "ask", "Edit": "ask", "WebFetch": "ask"},
 		ProtectedPaths: []string{".infuse/oracle/**"},
-		// Estimates, shown as such in the window; the user edits them inline.
 		Pricing: map[string][2]float64{
 			"claude-opus":      {15, 75},
 			"claude-sonnet":    {3, 15},
@@ -73,8 +73,6 @@ func defaultSettings() Settings {
 			"o3":               {2, 8},
 			"gemini-2.5-pro":   {1.25, 10},
 			"gemini-2.5-flash": {0.3, 2.5},
-			// DeepSeek, peak rates (api-docs.deepseek.com/quick_start/pricing, 2026-10): budgets count the
-			// higher price; legacy names are served and billed as deepseek-flash
 			"deepseek-flash":    {0.3, 1.2},
 			"deepseek-v4-flash": {0.3, 1.2},
 			"deepseek-chat":     {0.3, 1.2},
@@ -88,37 +86,35 @@ func defaultSettings() Settings {
 	}
 }
 
-var (
-	settingsMu sync.Mutex
-)
+var settingsMu sync.Mutex
 
-func settingsFile() string { return filepath.Join(InfuseHome(), "settings.json") }
+func SettingsFile() string { return filepath.Join(core.InfuseHome(), "settings.json") }
 
 func LoadSettings() Settings {
 	settingsMu.Lock()
 	defer settingsMu.Unlock()
-	s := defaultSettings()
-	_ = readJSON(settingsFile(), &s)
+	s := DefaultSettings()
+	_ = core.ReadJSON(SettingsFile(), &s)
 	if s.Permissions == nil {
-		s.Permissions = defaultSettings().Permissions
+		s.Permissions = DefaultSettings().Permissions
 	}
 	if s.Pricing == nil {
-		s.Pricing = defaultSettings().Pricing
+		s.Pricing = DefaultSettings().Pricing
 	}
-	for k, v := range defaultSettings().Pricing { // prices added in later versions reach older settings files
+	for k, v := range DefaultSettings().Pricing { // prices added in later versions reach older settings files
 		if _, ok := s.Pricing[k]; !ok {
 			s.Pricing[k] = v
 		}
 	}
-	delete(s.Pricing, "claude-mythos") // never a real model; remove from older settings files
+	delete(s.Pricing, "claude-mythos")
 	if s.MaxTokens <= 0 {
 		s.MaxTokens = 16000
 	}
-	if s.ContextLimit < 0 || s.ContextLimit == 200000 { // 200000 was a fixed default, never a choice: the model decides
+	if s.ContextLimit < 0 || s.ContextLimit == 200000 {
 		s.ContextLimit = 0
 	}
 	if s.Model == "" {
-		s.Model = defaultSettings().Model
+		s.Model = DefaultSettings().Model
 	}
 	if s.Connections == nil {
 		s.Connections = map[string]Connection{}
@@ -129,11 +125,11 @@ func LoadSettings() Settings {
 	if s.BranchPrefix == "" {
 		s.BranchPrefix = "infuse/"
 	}
-	if s.Provider == "mock" && s.Connections["mock"].Kind == "" { // 0.5 demo setting
+	if s.Provider == "mock" && s.Connections["mock"].Kind == "" {
 		s.Connections["mock"] = Connection{Kind: "mock", Connected: true, Models: []string{"mock"}}
 	}
-	if migrateLegacyKey(&s) {
-		_ = writeJSON(settingsFile(), s)
+	if MigrateLegacyKey(&s) {
+		_ = core.WriteJSON(SettingsFile(), s)
 	}
 	return s
 }
@@ -141,7 +137,7 @@ func LoadSettings() Settings {
 func SaveSettings(s Settings) error {
 	settingsMu.Lock()
 	defer settingsMu.Unlock()
-	return writeJSON(settingsFile(), s)
+	return core.WriteJSON(SettingsFile(), s)
 }
 
 // ProjectSettings: the subset a project may override.
@@ -155,7 +151,7 @@ type ProjectSettings struct {
 func EffectiveSettings(root string) Settings {
 	s := LoadSettings()
 	var p ProjectSettings
-	if readJSON(filepath.Join(root, infuseDirName, "settings.json"), &p) == nil {
+	if core.ReadJSON(filepath.Join(root, core.InfuseDirName, "settings.json"), &p) == nil {
 		if p.Model != "" {
 			s.Model = p.Model
 		}
@@ -183,10 +179,10 @@ func (s Settings) priceFor(model string) (float64, float64) {
 	return s.Pricing[best][0], s.Pricing[best][1]
 }
 
-// hasPrice reports whether the model's price is known (an unknown price counts as zero cost).
-func (s Settings) hasPrice(model string) bool { in, out := s.priceFor(model); return in > 0 || out > 0 }
+// HasPrice reports whether the model's price is known (an unknown price counts as zero cost).
+func (s Settings) HasPrice(model string) bool { in, out := s.priceFor(model); return in > 0 || out > 0 }
 
-func (s Settings) costOf(model string, u Usage) float64 {
+func (s Settings) CostOf(model string, u core.Usage) float64 {
 	in, out := s.priceFor(model)
 	return (float64(u.Input)+float64(u.CacheWrite)*1.25+float64(u.CacheRead)*0.1)*in/1e6 + float64(u.Output)*out/1e6
 }

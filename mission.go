@@ -118,7 +118,7 @@ func (s *Session) StartMission(goal string, budget float64, maxTurns int) error 
 		s.mu.Unlock()
 		return userError(s.uiLang(), M("mission.busy"))
 	}
-	s.Mission = &Mission{Goal: goal, BudgetUSD: budget, MaxTurns: maxTurns, StartCost: s.Cost, StartTurn: s.Turn, State: "running", Started: time.Now().UnixMilli(), Steps: []MissionStep{}, lastCostAt: s.Cost, NoPrice: !s.settings.hasPrice(s.Model)}
+	s.Mission = &Mission{Goal: goal, BudgetUSD: budget, MaxTurns: maxTurns, StartCost: s.Cost, StartTurn: s.Turn, State: "running", Started: time.Now().UnixMilli(), Steps: []MissionStep{}, lastCostAt: s.Cost, NoPrice: !s.settings.HasPrice(s.Model)}
 	s.mu.Unlock()
 	s.emit("mission", s.missionSnapshot())
 	return s.sendMission(M("mission.brief", "goal", goal), missionNote{Goal: goal})
@@ -285,7 +285,7 @@ func (s *Session) auditTurn(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
-	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.fastModel(), Input: res.Usage.Input, Output: res.Usage.Output, Cost: s.settings.costOf(s.fastModel(), res.Usage)})
+	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.fastModel(), Input: res.Usage.Input, Output: res.Usage.Output, Cost: s.settings.CostOf(s.fastModel(), res.Usage)})
 	out := strings.TrimSpace(msgText(Message{Content: res.Content}))
 	if out == "-" || strings.HasPrefix(out, "-") && len(out) < 3 {
 		return ""

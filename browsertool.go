@@ -95,7 +95,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	if err != nil {
 		return tc.SayErr(err), true
 	}
-	g := s.settings.gestures()
+	g := gesturesFor(s.settings)
 	wait := time.Duration(in.Timeout) * time.Millisecond
 	if wait <= 0 {
 		wait = 8 * time.Second
@@ -461,7 +461,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		return tc.Say(M("browser.network_set", "network", in.Network)), false
 	case "emulate":
 		if in.Device == "desktop" {
-			w, h, sc := s.settings.browserViewport()
+			w, h, sc := browserViewport(s.settings)
 			p.mu.Lock()
 			p.device = ""
 			p.mu.Unlock()
@@ -497,7 +497,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		if in.Width <= 0 || in.Height <= 0 {
 			return tc.Say(M("browser.give_size")), true
 		}
-		_, _, sc := s.settings.browserViewport()
+		_, _, sc := browserViewport(s.settings)
 		p.setMetrics(in.Width, in.Height, sc, in.Width < 768)
 		return tc.Say(M("browser.viewport", "w", in.Width, "h", in.Height)), false
 	case "pdf":

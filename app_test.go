@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"infuse/internal/config"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,9 +17,9 @@ import (
 func testHome(t *testing.T) {
 	t.Helper()
 	t.Setenv("INFUSE_HOME", t.TempDir())
-	prev := secretBackend
-	secretBackend = memSecrets{}
-	t.Cleanup(func() { secretBackend = prev })
+	prev := config.SecretBackend
+	config.SecretBackend = config.MemSecrets{}
+	t.Cleanup(func() { config.SecretBackend = prev })
 }
 
 func TestConnectProviderStoresKeyInVaultNotSettings(t *testing.T) {

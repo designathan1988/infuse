@@ -7,57 +7,10 @@ package main
 import (
 	"context"
 	"errors"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
 )
-
-type Connection struct {
-	Kind      string   `json:"kind"`
-	BaseURL   string   `json:"baseUrl,omitempty"`
-	Models    []string `json:"models,omitempty"`
-	Connected bool     `json:"connected"`
-	KeyHint   string   `json:"keyHint,omitempty"` // last four characters, to recognise the key
-}
-
-// providerPreset describes a provider the window offers to connect.
-type providerPreset struct {
-	ID      string `json:"id"`
-	Kind    string `json:"kind"`
-	Label   string `json:"label"`
-	BaseURL string `json:"baseUrl"`
-	NeedKey bool   `json:"needKey"`
-	KeyURL  string `json:"keyUrl,omitempty"`
-	Local   bool   `json:"local,omitempty"`
-}
-
-var providerPresets = []providerPreset{
-	{ID: "anthropic", Kind: "anthropic", Label: "Anthropic", BaseURL: "https://api.anthropic.com", NeedKey: true, KeyURL: "https://console.anthropic.com/settings/keys"},
-	{ID: "openai", Kind: "openai", Label: "OpenAI", BaseURL: openAIDefaultBase, NeedKey: true, KeyURL: "https://platform.openai.com/api-keys"},
-	{ID: "google", Kind: "google", Label: "Google Gemini", BaseURL: googleDefaultBase, NeedKey: true, KeyURL: "https://aistudio.google.com/apikey"},
-	{ID: "deepseek", Kind: "openai", Label: "DeepSeek", BaseURL: "https://api.deepseek.com", NeedKey: true, KeyURL: "https://platform.deepseek.com/api_keys"},
-	{ID: "openrouter", Kind: "openai", Label: "OpenRouter", BaseURL: "https://openrouter.ai/api", NeedKey: true, KeyURL: "https://openrouter.ai/keys"},
-	{ID: "groq", Kind: "openai", Label: "Groq", BaseURL: "https://api.groq.com/openai", NeedKey: true, KeyURL: "https://console.groq.com/keys"},
-	{ID: "together", Kind: "openai", Label: "Together", BaseURL: "https://api.together.xyz", NeedKey: true, KeyURL: "https://api.together.ai/settings/api-keys"},
-	{ID: "mistral", Kind: "openai", Label: "Mistral", BaseURL: "https://api.mistral.ai", NeedKey: true, KeyURL: "https://console.mistral.ai/api-keys"},
-	{ID: "xai", Kind: "openai", Label: "xAI", BaseURL: "https://api.x.ai", NeedKey: true, KeyURL: "https://console.x.ai"},
-	{ID: "ollama", Kind: "ollama", Label: "Ollama", BaseURL: ollamaDefaultBase, Local: true},
-	{ID: "lmstudio", Kind: "openai", Label: "LM Studio", BaseURL: "http://127.0.0.1:1234", Local: true},
-	{ID: "custom", Kind: "openai", Label: "Compatível com OpenAI", BaseURL: "", NeedKey: false},
-	{ID: "mock", Kind: "mock", Label: "Demonstração (sem chave)", Local: true},
-}
-
-func presetFor(id string) providerPreset {
-	for _, p := range providerPresets {
-		if p.ID == id {
-			return p
-		}
-	}
-	return providerPreset{ID: id, Kind: id}
-}
-
-func secretName(id string) string { return "infuse:" + id }
 
 // connectionConfig resolves a connection id to the provider kind and its config (key from the secret store).
 func connectionConfig(s Settings, id string) (string, ProviderConfig) {
@@ -78,51 +31,6 @@ func connectionConfig(s Settings, id string) (string, ProviderConfig) {
 func providerFor(s Settings, id string) (Provider, error) {
 	kind, cfg := connectionConfig(s, id)
 	return newProvider(kind, cfg)
-}
-
-// migrateLegacyKey moves a key stored in settings.json (0.5 and earlier) into the secret store and turns
-// the old single-provider fields into a connection.
-func migrateLegacyKey(s *Settings) bool {
-	if s.APIKey == "" {
-		return false
-	}
-	id := s.Provider
-	if s.BaseURL != "" {
-		if u, err := url.Parse(s.BaseURL); err == nil {
-			for _, p := range providerPresets {
-				if pu, err := url.Parse(p.BaseURL); err == nil && pu.Host != "" && pu.Host == u.Host {
-					id = p.ID
-				}
-			}
-		}
-	}
-	if secretSet(secretName(id), s.APIKey) != nil {
-		return false // keep it where it is rather than lose it
-	}
-	if s.Connections == nil {
-		s.Connections = map[string]Connection{}
-	}
-	c := s.Connections[id]
-	c.Kind = presetFor(id).Kind
-	if c.Kind == "" || c.Kind == id && id != "anthropic" && id != "openai" && id != "google" && id != "ollama" && id != "mock" {
-		c.Kind = s.Provider
-	}
-	if s.BaseURL != "" && s.BaseURL != presetFor(id).BaseURL {
-		c.BaseURL = s.BaseURL
-	}
-	c.Connected = true
-	c.KeyHint = keyHint(s.APIKey)
-	s.Connections[id] = c
-	s.Provider = id
-	s.APIKey, s.BaseURL = "", ""
-	return true
-}
-
-func keyHint(k string) string {
-	if len(k) < 8 {
-		return ""
-	}
-	return "…" + k[len(k)-4:]
 }
 
 // ConnectProvider stores the key (when given), checks the connection by listing models (or, when the

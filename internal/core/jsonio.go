@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -53,4 +54,40 @@ func WriteJSON(file string, v any) error {
 		return err
 	}
 	return nil
+}
+
+// AppendLine appends one JSON document per line (the journal and usage ledgers).
+func AppendLine(file string, v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.Write(append(b, '\n'))
+}
+
+// ReadJSONL reads a JSON-lines file, skipping malformed lines.
+func ReadJSONL(file string) []map[string]any {
+	f, err := os.Open(file)
+	if err != nil {
+		return []map[string]any{}
+	}
+	defer f.Close()
+	out := []map[string]any{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1<<20), 1<<24)
+	for sc.Scan() {
+		var m map[string]any
+		if json.Unmarshal(sc.Bytes(), &m) == nil {
+			out = append(out, m)
+		}
+	}
+	return out
 }

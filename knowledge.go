@@ -131,7 +131,7 @@ func (s *Session) digestDocument(ctx context.Context, p Provider, rel string, b 
 		}
 		usage, err := askJSON(ctx, p, s.fastModel(), digestPrompt, fmt.Sprintf("Document %s, lines %d–%d of %d:\n\n%s", rel, start+1, end, len(lines), part.String()), factsSpec, 16000, &out)
 		s.mu.Lock()
-		s.Cost += s.settings.costOf(s.fastModel(), usage)
+		s.Cost += s.settings.CostOf(s.fastModel(), usage)
 		s.mu.Unlock()
 		if err != nil { // a part not read is a document not known: no digest is kept, the next run tries again
 			return nil, fmt.Errorf("lines %d–%d: %w", start+1, end, err)

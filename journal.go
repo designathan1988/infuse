@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"infuse/internal/core"
 	"os"
 	"path/filepath"
 	"time"
@@ -36,15 +37,7 @@ func infuseDir(root string) string {
 	return d
 }
 
-func appendLine(file string, v any) {
-	b, _ := json.Marshal(v)
-	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	_, _ = f.Write(append(b, '\n'))
-}
+func appendLine(file string, v any) { core.AppendLine(file, v) }
 
 func Journal(root string, e JournalEntry) {
 	e.Ts = time.Now().UnixMilli()
@@ -78,20 +71,4 @@ func readJournal(file string, since int64) []JournalEntry {
 	return out
 }
 
-func readJSONL(file string) []map[string]any {
-	f, err := os.Open(file)
-	if err != nil {
-		return []map[string]any{}
-	}
-	defer f.Close()
-	out := []map[string]any{}
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 1<<24)
-	for sc.Scan() {
-		var m map[string]any
-		if json.Unmarshal(sc.Bytes(), &m) == nil {
-			out = append(out, m)
-		}
-	}
-	return out
-}
+func readJSONL(file string) []map[string]any { return core.ReadJSONL(file) }

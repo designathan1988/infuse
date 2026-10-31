@@ -3,9 +3,37 @@ package main
 // Temporary aliases for the extraction of internal packages. They keep the root package compiling
 // while symbols move out, and are removed once the last domain leaves (stage 9).
 
-import "infuse/internal/core"
+import (
+	"infuse/internal/config"
+	"infuse/internal/core"
+)
 
 const infuseDirName = core.InfuseDirName
+
+type Settings = config.Settings
+type ProjectSettings = config.ProjectSettings
+type Connection = config.Connection
+type providerPreset = config.ProviderPreset
+type secretStore = config.SecretStore
+type usageEntry = config.UsageEntry
+type usageTotals = config.Totals
+type dayTotal = config.DayTotal
+
+var providerPresets = config.ProviderPresets
+
+func LoadSettings() Settings                    { return config.LoadSettings() }
+func SaveSettings(s Settings) error             { return config.SaveSettings(s) }
+func EffectiveSettings(root string) Settings    { return config.EffectiveSettings(root) }
+func presetFor(id string) providerPreset        { return config.PresetFor(id) }
+func secretName(id string) string               { return config.SecretName(id) }
+func keyHint(k string) string                   { return config.KeyHint(k) }
+func secretGet(name string) (string, error)     { return config.SecretGet(name) }
+func secretSet(name, v string) error            { return config.SecretSet(name, v) }
+func secretDelete(name string) error            { return config.SecretDelete(name) }
+func recordUsage(e usageEntry)                  { config.RecordUsage(e) }
+func UsageTotals() usageTotals                  { return config.UsageTotals() }
+func usageFile() string                         { return config.UsageFile() }
+func settingsFile() string                      { return config.SettingsFile() }
 
 func homeDir() string                  { return core.HomeDir() }
 func InfuseHome() string               { return core.InfuseHome() }
