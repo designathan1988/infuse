@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,5 +79,29 @@ func TestLocalChangesWithoutGit(t *testing.T) {
 	}
 	if err := s.LocalDiscard("novo.js"); err != nil || exists(filepath.Join(root, "novo.js")) {
 		t.Fatal("new file not removed")
+	}
+}
+
+func TestForkAndPinMessages(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	s := newSession(root)
+	s.Title = "original"
+	s.Turn, s.TurnStarts = 2, []int{0, 2}
+	s.Messages = []Message{
+		{Role: "user", Content: []Block{{Type: "text", Text: "um"}}},
+		{Role: "assistant", Content: []Block{{Type: "text", Text: "resposta um"}}},
+		{Role: "user", Content: []Block{{Type: "text", Text: "dois"}}},
+		{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "x", Name: "LS", Input: json.RawMessage(`{}`)}}},
+	}
+	n, err := s.Fork(3) // the dangling tool call is cut
+	if err != nil || len(n.Messages) != 3 || n.Turn != 2 || n.Title != "↳ original" || n.ID == s.ID {
+		t.Fatalf("%v %+v", err, n.SessionData)
+	}
+	if p := s.TogglePin(1); len(p) != 1 || p[0] != 1 {
+		t.Fatal(p)
+	}
+	if p := s.TogglePin(1); len(p) != 0 {
+		t.Fatal(p)
 	}
 }

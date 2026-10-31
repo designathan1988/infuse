@@ -523,6 +523,15 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				return true
 			}
 			sendJSON(w, 200, map[string]any{"ok": true, "answer": ans})
+		case "fork": // a new session from this point of the conversation
+			n, err := s.Fork(num("upTo"))
+			if err != nil {
+				sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+				return true
+			}
+			sendJSON(w, 200, map[string]any{"ok": true, "id": n.ID, "root": n.Root})
+		case "pinmsg":
+			sendJSON(w, 200, map[string]any{"ok": true, "pinned": s.TogglePin(num("index"))})
 		case "mission":
 			var err error
 			if str("action") == "stop" {

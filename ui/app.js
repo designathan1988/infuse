@@ -13,6 +13,9 @@ const ktok = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : Str
 const baseName = p => (p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
 const ago = ts => { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return t('agora'); if (s < 3600) return Math.floor(s / 60) + ' min'; if (s < 86400) return Math.floor(s / 3600) + ' h'; if (s < 7 * 86400) return Math.floor(s / 86400) + ' d'; return new Date(ts).toLocaleDateString(); };
 const I = {
+  branch: '<svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-11.5 7"/></svg>',
+  pin: '<svg class="i" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 4 3v2H6v-2l4-3zM12 14v7"/></svg>',
+  speak: '<svg class="i" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>',
   plus: '<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   more: '<svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>',
   vmore: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/></svg>',
@@ -446,13 +449,15 @@ function renderChat(v) {
   msgs.forEach((m, i) => {
     if (starts.has(i)) { turn++; out += `<div class="turnsep" data-turn="${turn}"><span class="l"></span><button class="btn sm" data-rw="${turn}" title="${esc(t('Restaurar código e/ou conversa a antes deste turno'))}">↶ ${t('voltar aqui')}</button></div>`; }
     if (m.role === 'user') {
+      if (m.content.some(b => b.type === 'tool_result')) return; // tool results (and images tools attached) are shown in their tool blocks
       const texts = m.content.filter(b => b.type === 'text'), imgs = m.content.filter(b => b.type === 'image');
       if (!texts.length && !imgs.length) return;
       const main = texts[0]?.text || '';
       if (main.startsWith('[Revisão independente]')) { out += reviewBlock(main.slice(22).trim(), i); return; }
       if (main.startsWith('[Conversa resumida]') || main.startsWith('[Contexto compactado')) { out += `<div class="marker" title="${esc(main.slice(0, 600))}">${t('Conversa resumida')}</div>`; return; }
       const attached = texts.slice(1).map(b => (b.text.match(/path="([^"]+)"/) || [])[1]).filter(Boolean);
-      out += `<div class="umsg"><div class="msgacts">${m.ts ? `<span class="mtime" title="${esc(new Date(m.ts).toLocaleString())}">${fmtClock(m.ts)}</span>` : ''}<button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button>${turnOf(s, i) ? `<button class="ib" data-rw="${turnOf(s, i)}" title="${esc(t('Voltar aqui'))}">↶</button>` : ''}</div><div class="u sel">${esc(main)}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div></div>`;
+      const mission = main.startsWith('[Missão]') ? main.slice(main.indexOf('Objetivo: ') + 10) : null;
+      out += `<div class="umsg${(s.pinnedMsgs || []).includes(i) ? ' pinned' : ''}" data-mi="${i}"><div class="u sel">${mission != null ? `<span class="tag warn" style="margin-right:6px">${t('Missão')}</span>${esc(mission)}` : esc(main)}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div>${msgBar(s, m, i, true)}</div>`;
     } else {
       if (m.content.length === 2 && m.content[0]?.text === 'Entendido, continuo a partir desse estado.') return;
       if (msgText(m) === 'Revisão recebida.') return;
@@ -462,7 +467,7 @@ function renderChat(v) {
         else if (b.type === 'thinking' && b.thinking?.trim()) inner += thinkBlock(`${v.sid}:${i}:${bi}`, b.thinking, false, b.ms);
         else if (b.type === 'tool_use') inner += toolBlock(b.id, b.name, b.input, results[b.id], false);
       }
-      if (inner) out += `<div class="a">${inner}${m.content.some(b => b.type === 'text' && b.text?.trim()) ? msgFoot(m, i) : ''}</div>`; // a message with nothing visible leaves no gap
+      if (inner) out += `<div class="a${(s.pinnedMsgs || []).includes(i) ? ' pinned' : ''}" data-mi="${i}">${inner}${m.content.some(b => b.type === 'text' && b.text?.trim()) ? msgFoot(m, i) : ''}</div>`; // a message with nothing visible leaves no gap
     }
     const next = i + 1;
     if (turn && (starts.has(next) || (next === msgs.length && !['thinking', 'tool', 'waiting_permission', 'waiting_user', 'compacting'].includes(s.state)))) out += turnSummary(s, msgs, s.turnStarts[turn - 1], i);
@@ -480,9 +485,26 @@ const fmtClock = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', mi
 function fmtDur(ms) { if (ms == null) return ''; if (ms < 1000) return ms + ' ms'; const s = ms / 1000; if (s < 60) return (s < 10 ? s.toFixed(1) : Math.round(s)) + ' s'; const m = Math.floor(s / 60); return `${m}m ${Math.round(s % 60)}s`; }
 const fmtTok = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n || 0);
 // Under each answer: when it arrived, how long the model took, which model, how many tokens; copy on hover.
+// Date and time of a message: "hoje, 14:32", "ontem, 09:10", "31 out, 18:02"; the full date and how long ago on hover.
+function fmtWhen(ts) {
+  const d = new Date(ts), now = new Date(), day = 86400000;
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (ts >= midnight) return t('hoje') + ', ' + hm;
+  if (ts >= midnight - day) return t('ontem') + ', ' + hm;
+  return d.toLocaleDateString([], { day: '2-digit', month: 'short', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) }) + ', ' + hm;
+}
+function agoText(ts) { const s = Math.round((Date.now() - ts) / 1000); if (s < 60) return t('agora há pouco'); const m = Math.round(s / 60); if (m < 60) return `${t('há')} ${m} min`; const h = Math.round(m / 60); if (h < 24) return `${t('há')} ${h} h`; return `${t('há')} ${Math.round(h / 24)} ${t('dias')}`; }
+// The actions under a message, as in Claude Code: copy, (edit,) branch from here, pin, read aloud — and when.
+function msgBar(s, m, i, user) {
+  const pinned = (s.pinnedMsgs || []).includes(i);
+  const when = m.ts ? `<span class="when" title="${esc(new Date(m.ts).toLocaleString() + ' · ' + agoText(m.ts))}">${fmtWhen(m.ts)}</span>` : '';
+  return `<div class="mbar${user ? ' u' : ''}"><span class="acts"><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button>${user && turnOf(s, i) ? `<button class="ib" data-rw="${turnOf(s, i)}" title="${esc(t('Editar e refazer a partir daqui'))}">↶</button>` : ''}<button class="ib" data-fork="${i}" title="${esc(t('Nova sessão a partir daqui'))}">${I.branch}</button><button class="ib${pinned ? ' on' : ''}" data-pinmsg="${i}" title="${esc(t(pinned ? 'Desafixar' : 'Fixar mensagem'))}">${I.pin}</button><button class="ib" data-speak="${i}" title="${esc(t('Ler em voz alta'))}">${I.speak}</button></span>${when}</div>`;
+}
 function msgFoot(m, i) {
-  const meta = [m.ts && `<span title="${esc(new Date(m.ts).toLocaleString())}">${fmtClock(m.ts)}</span>`, m.ms && `<span title="${esc(t('tempo de resposta do modelo'))}">${fmtDur(m.ms)}</span>`, m.model && `<span>${esc(m.model)}</span>`, m.tokens && `<span>${fmtTok(m.tokens)} tokens</span>`].filter(Boolean).join('<span class="dotsep">·</span>');
-  return `<div class="afoot"><span class="meta">${meta}</span><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar resposta'))}">${I.copy}</button></div>`;
+  const meta = [m.ts && `<span title="${esc(new Date(m.ts).toLocaleString() + ' · ' + agoText(m.ts))}">${fmtWhen(m.ts)}</span>`, m.ms && `<span title="${esc(t('tempo de resposta do modelo'))}">${fmtDur(m.ms)}</span>`, m.model && `<span>${esc(m.model)}</span>`, m.tokens && `<span>${fmtTok(m.tokens)} tokens</span>`].filter(Boolean).join('<span class="dotsep">·</span>');
+  const s = curL()?.snap || {}; const pinned = (s.pinnedMsgs || []).includes(i);
+  return `<div class="afoot"><span class="meta">${meta}</span><span class="acts"><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar resposta'))}">${I.copy}</button><button class="ib" data-fork="${i}" title="${esc(t('Nova sessão a partir daqui'))}">${I.branch}</button><button class="ib${pinned ? ' on' : ''}" data-pinmsg="${i}" title="${esc(t(pinned ? 'Desafixar' : 'Fixar mensagem'))}">${I.pin}</button><button class="ib" data-speak="${i}" title="${esc(t('Ler em voz alta'))}">${I.speak}</button></span></div>`;
 }
 // End of a turn: how long the agent worked, tools used, tokens; copy the turn's answers.
 function turnSummary(s, msgs, from, to) {
@@ -592,6 +614,14 @@ function markToc(v) {
   for (const sep of $$('.turnsep', sc)) { if (sep.getBoundingClientRect().top <= top) cur = +sep.dataset.turn; else break; }
   $$('[data-t]', toc).forEach(el => el.classList.toggle('on', +el.dataset.t === cur));
 }
+// Read aloud with the system's voices; a second click stops.
+function speakMsg(btn, text) {
+  if (!('speechSynthesis' in window)) return toast(t('Este navegador não tem leitura em voz alta'));
+  if (speechSynthesis.speaking) { speechSynthesis.cancel(); $$('[data-speak].on').forEach(x => x.classList.remove('on')); return; }
+  const clean = text.replace(/```[\s\S]*?```/g, ' ').replace(/[*_`#>]/g, '').slice(0, 20000);
+  const u = new SpeechSynthesisUtterance(clean); u.lang = S.lang === 'en' ? 'en-US' : 'pt-BR'; u.rate = 1.05;
+  u.onend = u.onerror = () => btn.classList.remove('on'); btn.classList.add('on'); speechSynthesis.speak(u);
+}
 function turnOf(s, msgIndex) { const k = s.turnStarts.indexOf(msgIndex); return k >= 0 ? k + 1 : 0; }
 function msgText(m) { return (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim(); }
 function copyText(txt, what) { navigator.clipboard.writeText(txt).then(() => toast(t(what || 'Copiado')), () => toast('Não foi possível copiar')); }
@@ -620,6 +650,9 @@ function bindChat(v, root) {
   $$('[data-copy-turn]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const [a, z] = b.dataset.copyTurn.split(':').map(Number); copyText(L.snap.messages.slice(a + 1, z + 1).filter(m => m.role === 'assistant').map(msgText).filter(Boolean).join('\n\n'), 'Respostas copiadas'); });
   $$('.codecopy', root).forEach(b => b.onclick = () => copyText(b.nextElementSibling.innerText, 'Código copiado'));
   $$('[data-url]', root).forEach(a => a.onclick = e => { e.preventDefault(); togglePane('browser', true); setTimeout(() => paneCall('browser', 'go', a.dataset.url), 300); });
+  $$('[data-fork]', root).forEach(b => b.onclick = async e => { e.stopPropagation(); const r = await api(`/api/session/${L.id}/fork`, { body: { upTo: +b.dataset.fork }, root: L.root }); if (!r.ok) return toast(r.error); await loadSessions(); await openSession(r.root, r.id); toast(t('Nova sessão a partir desta mensagem')); });
+  $$('[data-pinmsg]', root).forEach(b => b.onclick = async e => { e.stopPropagation(); const r = await api(`/api/session/${L.id}/pinmsg`, { body: { index: +b.dataset.pinmsg }, root: L.root }); L.snap.pinnedMsgs = r.pinned || []; renderChat(v); renderRail(v); });
+  $$('[data-speak]', root).forEach(b => b.onclick = e => { e.stopPropagation(); speakMsg(b, msgText(L.snap.messages[+b.dataset.speak])); });
   $$('[data-fixreview]', root).forEach(b => b.onclick = () => { const P = $('.prompt', v.el); P.value = t('Corrija os achados da revisão independente acima. Para cada um, diga o que mudou ou por que não procede.'); send(v); });
   $$('[data-next]', root).forEach(b => b.onclick = () => { const P = $('.prompt', v.el); P.value = b.dataset.next; grow(P); P.focus(); });
   $$('[data-copy-think]', root).forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.closest('.tool').querySelector('.thinktext')?.innerText || '', 'Raciocínio copiado'); });
@@ -982,11 +1015,13 @@ function renderRail(v) {
   <div class="card ctxcard" style="cursor:pointer"><div class="ch">${t('Contexto')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(S.settings.contextLimit || 200000)} tokens · ${money(L.snap.cost)}</div></div>
   <div class="card"><div class="ch">${t('Ambiente')}</div><div class="kv"><span>${t('Onde')}</span><span>${t('Este computador')}</span></div><div class="kv"><span>${t('Pasta')}</span><span title="${esc(L.snap.workRoot)}">${esc(baseName(L.snap.workRoot || L.root))}</span></div>${L.snap.branch ? `<div class="kv"><span>${t('Branch')}</span><span class="mono">${esc(L.snap.branch)}</span></div>` : ''}${L.snap.worktree ? `<div class="kv"><span>${t('Worktree')}</span><span>${t('isolado')}</span></div>` : ''}<div class="kv"><span>${t('Modelo')}</span><span class="mono">${esc(L.snap.model || '')}</span></div></div>
   ${tasks.length ? `<div class="card" style="cursor:pointer" data-open="tasks"><div class="ch">${t('Tarefas')}<span class="r">${tasks.filter(x => x.status === 'done').length}/${tasks.length}</span></div>${tasks.slice(0, 5).map(x => `<div style="font-size:12px;color:${x.status === 'done' ? 'var(--text3)' : 'var(--text)'}">${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text)}</div>`).join('')}</div>` : ''}
+  ${(L.snap.pinnedMsgs || []).length ? `<div class="card pins"><div class="ch">${t('Mensagens fixadas')}<span class="r">${L.snap.pinnedMsgs.length}</span></div>${L.snap.pinnedMsgs.map(i => `<div class="li pinli" data-goto="${i}"><span class="n">${esc(msgText(L.snap.messages[i] || { content: [] }).split('\n')[0].slice(0, 80) || '…')}</span></div>`).join('')}</div>` : ''}
   ${missionCard(L)}
   <div class="card"><div class="ch">${t('Pronto')}<span class="r">${L.verdict ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[L.verdict.verdict] || 'warn'}">${esc(t(L.verdict.verdict))}</span>` : `<span class="faint">${t('não verificado')}</span>`}</span></div>
     <div class="faint" style="margin-bottom:6px">${L.verdict ? esc(L.verdict.summary) : t('Só a execução dos critérios decide; a palavra do agente não conta.')}</div>
     <div class="row"><button class="btn sm line oraclego">${t('Pronto?')}</button><button class="btn sm" data-open="oracle">${t('Critérios')}</button><button class="btn sm revgo" title="${esc(t('Um revisor com contexto limpo lê o diff, o plano e os critérios e aponta problemas'))}">${t('Revisar')}</button></div></div>`;
   $('.revgo', el).onclick = () => runReview(v);
+  $$('[data-goto]', el).forEach(x => x.onclick = () => { const m = $(`[data-mi="${x.dataset.goto}"]`, v.el); if (m) { v.stick = false; m.scrollIntoView({ behavior: 'smooth', block: 'center' }); m.classList.add('flash'); setTimeout(() => m.classList.remove('flash'), 1400); } });
   const ms = $('.mstop', el); if (ms) ms.onclick = () => api(`/api/session/${L.id}/mission`, { body: { action: 'stop' }, root: L.root });
   const mn = $('.mnew', el); if (mn) mn.onclick = () => missionDialog(v);
   $('.oraclego', el).onclick = () => { togglePane('oracle', true); setTimeout(() => { const out = $('.pane[data-id="oracle"] .verdict'); if (out) runOracleUI({ root: L.root, dir: L.snap.workRoot || L.root }, out); }, 400); };

@@ -115,6 +115,13 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .mission .mimp{margin-top:6px;padding:6px 8px;border-radius:7px;background:var(--bad-soft);font-size:12px;line-height:1.45} .maud{margin-top:5px;font-size:11.5px;color:var(--text2);border-left:2px solid var(--border2);padding-left:7px} .mstep{padding:6px 0;border-bottom:1px solid var(--border);font-size:12px} .mstep .mono{white-space:pre-wrap;font-size:11px;margin-top:2px}
 .rkb{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;resize:none;border:0;padding:0}
 .rview{position:absolute;left:0;top:0;max-width:none;max-height:none;outline:none;cursor:default;background:#fff;user-select:none;image-rendering:auto} .rview.picking{cursor:crosshair;box-shadow:inset 0 0 0 2px var(--accent)}
+.mbar{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11.5px;color:var(--text3);min-height:24px} .mbar.u{justify-content:flex-end}
+.mbar .acts,.afoot .acts{display:flex;gap:1px;opacity:0;transition:opacity .12s} .umsg:hover .mbar .acts,.a:hover .afoot .acts{opacity:1}
+.mbar .ib,.afoot .acts .ib{width:26px;height:26px;color:var(--text3)} .mbar .ib:hover,.afoot .acts .ib:hover{color:var(--text);background:var(--s2)} .mbar .ib.on,.afoot .acts .ib.on{color:var(--accent);opacity:1}
+.mbar .when{white-space:nowrap}
+.umsg.pinned>.u,.a.pinned{box-shadow:inset 3px 0 0 var(--accent)} .a.pinned{padding-left:10px;border-radius:4px}
+.flash{animation:flash 1.4s ease} @keyframes flash{0%,40%{background:var(--accent-soft)}100%{background:transparent}}
+.pins .pinli{cursor:pointer} .pins .pinli:hover .n{color:var(--text)}
 .report{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:6px 0;display:flex;flex-direction:column;gap:6px;font-size:13px}
 .report .rh{display:flex;gap:8px;align-items:baseline} .report .rh .faint{font-size:11.5px}
 .rrow{display:flex;gap:8px;align-items:flex-start;line-height:1.45} .rrow code{font-size:11.5px} .rrow .rev{display:block;font-size:11.5px}
