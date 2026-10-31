@@ -147,16 +147,20 @@ func (w *wsConn) readMessage() ([]byte, error) {
 // ---------------------------------------------------------------- CDP session
 
 type cdpBrowser struct {
-	profile string
-	cmd     *exec.Cmd
-	ws      *wsConn
-	mu      sync.Mutex
-	nextID  int64
-	pending map[int64]chan json.RawMessage
-	errs    map[int64]string
-	console []string
-	lastUse time.Time
-	closed  bool
+	port     string
+	parent   *cdpBrowser // set on extra pages (tabs) of a browser
+	targetID string
+	onEvent  func(method string, params json.RawMessage) // events other than console (screencast, navigation)
+	profile  string
+	cmd      *exec.Cmd
+	ws       *wsConn
+	mu       sync.Mutex
+	nextID   int64
+	pending  map[int64]chan json.RawMessage
+	errs     map[int64]string
+	console  []string
+	lastUse  time.Time
+	closed   bool
 }
 
 func findChromium() string {
@@ -192,7 +196,7 @@ func startCDP(profile string) (*cdpBrowser, error) {
 	}
 	_ = os.MkdirAll(profile, 0o755)
 	_ = os.Remove(filepath.Join(profile, "DevToolsActivePort"))
-	cmd := exec.Command(exe, "--headless=new", "--remote-debugging-port=0", "--user-data-dir="+profile, "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,800", "about:blank")
+	cmd := exec.Command(exe, "--headless=new", "--remote-debugging-port=0", "--user-data-dir="+profile, "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-blink-features=AutomationControlled", "--window-size=1280,800", "about:blank")
 	noConsoleWindow(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -236,12 +240,47 @@ func startCDP(profile string) (*cdpBrowser, error) {
 		_ = cmd.Process.Kill()
 		return nil, err
 	}
-	b := &cdpBrowser{profile: profile, cmd: cmd, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
+	b := &cdpBrowser{port: port, profile: profile, cmd: cmd, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
 	go b.readLoop()
+	b.prepare()
+	return b, nil
+}
+
+// prepare enables the domains infuse listens to and presents the browser as a regular one (sites block
+// or degrade "HeadlessChrome").
+func (b *cdpBrowser) prepare() {
 	for _, m := range []string{"Page.enable", "Runtime.enable", "Log.enable"} {
 		_, _ = b.call(context.Background(), m, nil)
 	}
-	return b, nil
+	if raw, err := b.call(context.Background(), "Browser.getVersion", nil); err == nil {
+		var v struct {
+			UserAgent string `json:"userAgent"`
+		}
+		_ = json.Unmarshal(raw, &v)
+		if ua := strings.Replace(v.UserAgent, "HeadlessChrome", "Chrome", 1); ua != "" {
+			_, _ = b.call(context.Background(), "Network.setUserAgentOverride", map[string]any{"userAgent": ua, "acceptLanguage": "pt-BR,pt;q=0.9,en;q=0.8"})
+		}
+	}
+}
+
+// newPage opens another page (a tab) in the same browser, with its own connection.
+func (b *cdpBrowser) newPage(url string) (*cdpBrowser, error) {
+	raw, err := b.call(context.Background(), "Target.createTarget", map[string]any{"url": url})
+	if err != nil {
+		return nil, err
+	}
+	var t struct {
+		TargetID string `json:"targetId"`
+	}
+	_ = json.Unmarshal(raw, &t)
+	ws, err := wsDial("ws://127.0.0.1:" + b.port + "/devtools/page/" + t.TargetID)
+	if err != nil {
+		return nil, err
+	}
+	p := &cdpBrowser{port: b.port, parent: b, targetID: t.TargetID, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
+	go p.readLoop()
+	p.prepare()
+	return p, nil
 }
 
 func (b *cdpBrowser) readLoop() {
@@ -281,6 +320,12 @@ func (b *cdpBrowser) readLoop() {
 				ch <- m.Result
 			}
 			continue
+		}
+		b.mu.Lock()
+		hook := b.onEvent
+		b.mu.Unlock()
+		if hook != nil {
+			hook(m.Method, m.Params)
 		}
 		switch m.Method {
 		case "Runtime.consoleAPICalled":
@@ -406,6 +451,14 @@ func (b *cdpBrowser) waitLoad(ctx context.Context) {
 }
 
 func (b *cdpBrowser) close() {
+	if b.parent != nil { // a tab: close its target, the browser stays
+		_, _ = b.parent.call(context.Background(), "Target.closeTarget", map[string]any{"targetId": b.targetID})
+		b.mu.Lock()
+		b.closed = true
+		b.mu.Unlock()
+		b.ws.c.Close()
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	_, _ = b.call(ctx, "Browser.close", nil) // lets it end its child processes and release its files
 	cancel()

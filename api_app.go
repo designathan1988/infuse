@@ -21,6 +21,9 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 	str := func(k string) string { s, _ := body[k].(string); return s }
 	num := func(k string) int { f, _ := body[k].(float64); return int(f) }
 	boolean := func(k string) bool { b, _ := body[k].(bool); return b }
+	if strings.HasPrefix(path, "/api/view/") && viewAPI(w, r, root, path, body) { // the streamed browser pane
+		return true
+	}
 	// dir: where git and file operations run (a session's worktree), always inside the project.
 	dir := root
 	if d := q["dir"]; d != "" {

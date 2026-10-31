@@ -542,12 +542,13 @@ async function runReview(v, focus) {
   if (!r.ok) { toast(r.error || t('Revisão falhou')); renderChat(v); }
 }
 // The element the user picked in the browser pane goes into the message being written.
-if (window.infuse?.on) infuse.on('browserPick', p => {
+if (window.infuse?.on) infuse.on('browserPick', p => insertPick(p));
+function insertPick(p) {
   if (!p) return; const v = V(); if (!v?.el) return; const P = $('.prompt', v.el);
   const st = p.style ? `\n${t('Estilo')}: ${p.style.font} · ${t('cor')} ${p.style.color} · ${t('fundo')} ${p.style.background} · margin ${p.style.margin} · padding ${p.style.padding}` : '';
   P.value = (P.value.trim() ? P.value.trimEnd() + '\n\n' : '') + `[${t('Elemento selecionado em')} ${p.url}]\n${t('Seletor')}: ${p.selector}\n${t('Posição')}: ${p.rect.x},${p.rect.y} · ${p.rect.w}×${p.rect.h}${st}${p.text ? `\n${t('Texto')}: ${p.text}` : ''}\n\`\`\`html\n${p.html}\n\`\`\`\n`;
   grow(P); P.focus(); P.setSelectionRange(P.value.length, P.value.length); toast(t('Elemento adicionado à mensagem'));
-});
+}
 function turnOf(s, msgIndex) { const k = s.turnStarts.indexOf(msgIndex); return k >= 0 ? k + 1 : 0; }
 function msgText(m) { return (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim(); }
 function copyText(txt, what) { navigator.clipboard.writeText(txt).then(() => toast(t(what || 'Copiado')), () => toast('Não foi possível copiar')); }

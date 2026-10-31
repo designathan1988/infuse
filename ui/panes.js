@@ -151,6 +151,8 @@ function mountTerminal(pb, extra, c) {
     const el = h('<div></div>'); host.appendChild(el);
     const term = new Terminal({ fontFamily: getComputedStyle(document.body).getPropertyValue('--mono'), fontSize: 13, cursorBlink: true, theme: theme(), allowProposedApi: true, scrollback: 5000 });
     const fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(el); fit.fit();
+    // Ctrl+letter that arrives without a key code (remote desktop, some layouts, automation) is still a control character
+    term.attachCustomKeyEventHandler(e => { if (e.type === 'keydown' && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.keyCode && /^[a-z]$/i.test(e.key)) { term.input(String.fromCharCode(e.key.toUpperCase().charCodeAt(0) - 64), true); e.preventDefault(); return false; } return true; });
     const r = await api('/api/term/open', { body: { cwd: cwd || c.dir, cols: term.cols, rows: term.rows, run: run || '' }, root: c.root });
     if (r.error) { term.write('\r\n' + r.error + '\r\n'); return; }
     const tb = { id: r.id, term, fit, el, name: name || baseName(r.cwd) || 'shell' + (tabs.length + 1) };
@@ -214,9 +216,10 @@ function mountFiles(pb, extra, c) {
 }
 
 // ---------------------------------------------------------------- Browser: tabs, URL bar, dev servers
-// The address bar takes an address or words to search. In the window every tab is a native WebView2
-// view placed over the pane (any site opens); in a plain browser tab it falls back to an iframe, and a
-// search lists results from /api/websearch (no search API key: the engines' HTML pages are read).
+// The address bar takes an address or words to search. In the app window every tab is a native WebView2
+// view placed over the pane. Anywhere else (the UI in a regular browser) every tab is a real browser
+// without a window whose screen is streamed here and which receives the mouse, wheel and keyboard —
+// so any site opens, with no exceptions, in both cases.
 function addressOf(v) {
   v = v.trim(); if (!v) return '';
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v) || /^(about|data|file):/i.test(v)) return v;
@@ -226,14 +229,18 @@ function addressOf(v) {
 }
 const searchURL = q => 'https://www.google.com/search?q=' + encodeURIComponent(q);
 let browserSeq = 0;
+// DevTools modifier bits: Alt 1, Ctrl 2, Meta 4, Shift 8
+const keyMods = e => (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
 function mountBrowser(pb, extra, c) {
-  const tabs = []; let cur = null; let native = !!(window.infuse && window.infuse.native);
-  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('Voltar'))}">‹</button><button class="ib fwd" title="${esc(t('Avançar'))}">›</button><button class="ib rl" title="${esc(t('Recarregar'))}">${I.reload}</button><input class="url" placeholder="${esc(t('Endereço ou pesquisa — ex.: localhost:3000, github.com, como usar fetch'))}"><span class="spin bload" style="display:none"></span><button class="ib pick" title="${esc(t('Selecionar um elemento da página para a mensagem (Ctrl+Shift+S)'))}">⌖</button><button class="ib ext" title="${esc(t('Abrir no navegador padrão'))}">${I.pop}</button></div><div class="frames" style="flex:1;display:flex;min-height:0;position:relative"></div>`;
+  const tabs = []; let cur = null; let native = !!(window.infuse && window.infuse.native); let picking = false;
+  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('Voltar'))}">‹</button><button class="ib fwd" title="${esc(t('Avançar'))}">›</button><button class="ib rl" title="${esc(t('Recarregar'))}">${I.reload}</button><input class="url" placeholder="${esc(t('Endereço ou pesquisa — ex.: localhost:3000, github.com, como usar fetch'))}"><span class="spin bload" style="display:none"></span><button class="ib pick" title="${esc(t('Selecionar um elemento da página para a mensagem (Ctrl+Shift+S)'))}">⌖</button><button class="ib ext" title="${esc(t('Abrir no navegador padrão'))}">${I.pop}</button></div><div class="frames" style="flex:1;display:flex;min-height:0;position:relative;overflow:hidden"></div>`;
   extra.innerHTML = `<span class="row tabs" style="gap:2px;min-width:0"></span><button class="ib nt" title="${esc(t('Nova aba'))}">${I.plus}</button><button class="btn sm srv">${t('Servidores')} ${I.caret}</button>`;
   const frames = $('.frames', pb), url = $('.url', pb), bar = $('.tabs', extra), spin = $('.bload', pb);
   const label = tb => tb.title || (tb.url ? tb.url.replace(/^https?:\/\/(www\.)?/, '').split(/[/?#]/)[0] : t('Nova aba'));
   const draw = () => { bar.innerHTML = ''; tabs.forEach(tb => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}" title="${esc(tb.url || '')}"><span class="trunc" style="max-width:120px">${esc(label(tb))}</span><span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) return closeTab(tb); show(tb); }; bar.appendChild(el); }); spin.style.display = cur?.loading ? '' : 'none'; };
-  // native views: kept exactly over the pane; hidden while a menu or dialog would be under them
+  const onEv = ev => { const tb = tabs.find(x => x.id === ev.id); if (!tb) return; if (ev.url !== undefined) tb.url = ev.url; if (ev.title !== undefined) tb.title = ev.title; tb.loading = !!ev.loading; if (tb === cur && document.activeElement !== url) url.value = tb.url === 'about:blank' ? '' : (tb.url || ''); if (tb.url && tb.url !== 'about:blank') lsSet('browserUrl:' + c.root, tb.url); draw(); };
+
+  // ---- native views (app window): kept exactly over the pane; hidden while a menu or dialog is open
   let lastPlace = '';
   const rectNow = () => { const r = frames.getBoundingClientRect(), d = window.devicePixelRatio || 1; return { x: Math.round(r.left * d), y: Math.round(r.top * d), w: Math.round(r.width * d), h: Math.round(r.height * d) }; };
   const place = force => {
@@ -243,54 +250,70 @@ function mountBrowser(pb, extra, c) {
     const key = JSON.stringify([rect, visible, cur?.id]); if (!force && key === lastPlace) return; lastPlace = key;
     tabs.forEach(tb => tb.opened && infuse.call('browser', 'place', { id: tb.id, ...rect, visible: visible && tb === cur }).catch(() => { }));
   };
-  const ro = new ResizeObserver(() => place()); ro.observe(frames);
-  const timer = setInterval(() => place(), 200);
-  const onEv = ev => { const tb = tabs.find(x => x.id === ev.id); if (!tb) return; tb.url = ev.url; tb.title = ev.title; tb.loading = ev.loading; if (tb === cur && document.activeElement !== url) url.value = ev.url === 'about:blank' ? '' : ev.url; if (ev.url && ev.url !== 'about:blank') lsSet('browserUrl:' + c.root, ev.url); draw(); };
   if (native) infuse.on('browser', ev => { if (document.body.contains(pb)) onEv(ev); });
-  const fallback = tb => { // iframe: sites that refuse framing stay blank here (in the window every site opens)
-    tb.fr = h('<iframe class="bframe" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"></iframe>'); frames.appendChild(tb.fr);
-    tb.fr.onload = () => { try { tb.title = tb.fr.contentDocument?.title; } catch { tb.title = ''; } tb.loading = false; draw(); };
+
+  // ---- streamed tabs (any other place): the real browser's screen, our mouse and keyboard
+  const size = () => ({ width: Math.max(200, Math.round(frames.clientWidth)), height: Math.max(150, Math.round(frames.clientHeight)) });
+  const input = (tb, body) => fetch(`/api/view/input?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ id: tb.id, ...body }) }).then(r => r.json()).catch(() => ({}));
+  const stream = tb => {
+    const img = tb.img = h('<img class="rview" draggable="false" alt="">'); frames.appendChild(img);
+    const kb = tb.kb = h('<textarea class="rkb" aria-label="teclado da página" autocomplete="off" spellcheck="false"></textarea>'); frames.appendChild(kb); // receives the keyboard for the page
+    tb.es = new EventSource(`/api/view/stream?root=${encodeURIComponent(c.root)}&id=${encodeURIComponent(tb.id)}`);
+    tb.es.onmessage = e => { const d = JSON.parse(e.data); if (d.type === 'frame') { img.src = 'data:image/jpeg;base64,' + d.data; tb.vw = d.w; tb.vh = d.h; } else if (d.type === 'nav') onEv({ id: tb.id, url: d.url, title: d.title, loading: d.loading }); };
+    const at = e => { const r = img.getBoundingClientRect(); const sx = (tb.vw || r.width) / r.width, sy = (tb.vh || r.height) / r.height; return { x: Math.round((e.clientX - r.left) * sx), y: Math.round((e.clientY - r.top) * sy) }; };
+    const btn = e => ['left', 'middle', 'right'][e.button] || 'left';
+    img.onmousedown = async e => {
+      e.preventDefault(); setTimeout(() => kb.focus(), 0);
+      if (picking) { picking = false; img.classList.remove('picking'); const r = await input(tb, { kind: 'pick', ...at(e) }); if (r.pick) insertPick(r.pick); else toast(r.error || t('Nada nesse ponto')); return; }
+      input(tb, { kind: 'mouse', type: 'mousePressed', ...at(e), button: btn(e), clickCount: e.detail || 1, modifiers: keyMods(e) });
+    };
+    img.onmouseup = e => { if (!picking) input(tb, { kind: 'mouse', type: 'mouseReleased', ...at(e), button: btn(e), clickCount: e.detail || 1, modifiers: keyMods(e) }); };
+    let moveAt = 0; img.onmousemove = e => { const now = Date.now(); if (now - moveAt < 40) return; moveAt = now; input(tb, { kind: 'mouse', type: 'mouseMoved', ...at(e), modifiers: keyMods(e) }); };
+    img.addEventListener('wheel', e => { e.preventDefault(); input(tb, { kind: 'wheel', ...at(e), dx: e.deltaX, dy: e.deltaY }); }, { passive: false });
+    img.oncontextmenu = e => e.preventDefault();
+    kb.onkeydown = e => {
+      if (e.isComposing || e.key === 'Dead' || e.key === 'Process') return; // accents and IME arrive as input
+      if ((e.ctrlKey || e.metaKey) && ['l', 't', 'w'].includes(e.key.toLowerCase())) return; // the app's own shortcuts
+      e.preventDefault(); e.stopPropagation();
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) return input(tb, { kind: 'text', text: e.key });
+      const text = e.key === 'Enter' ? '\r' : '';
+      input(tb, { kind: 'key', type: 'keyDown', key: e.key, code: e.code, keyCode: e.keyCode, text, modifiers: keyMods(e) }).then(() => input(tb, { kind: 'key', type: 'keyUp', key: e.key, code: e.code, keyCode: e.keyCode, modifiers: keyMods(e) }));
+    };
+    kb.addEventListener('paste', e => { const txt = e.clipboardData?.getData('text'); if (txt) { e.preventDefault(); input(tb, { kind: 'text', text: txt }); } });
+    kb.oninput = () => { if (kb.value) { input(tb, { kind: 'text', text: kb.value }); kb.value = ''; } }; // composed characters (accents, IME)
   };
-  const results = async (tb, q) => { // search results listed by the app itself (iframe mode)
-    tb.fr.style.display = 'none'; let box = tb.res; if (!box) { box = tb.res = h('<div class="sres sel"></div>'); frames.appendChild(box); }
-    box.style.display = ''; box.innerHTML = `<div class="status"><span class="spin"></span>${t('pesquisando…')}</div>`; tb.url = searchURL(q); tb.title = q; tb.loading = false; draw();
-    const r = await api('/api/websearch?q=' + encodeURIComponent(q));
-    box.innerHTML = (r.results || []).length ? r.results.map(x => `<div class="sr"><a href="#" data-u="${esc(x.url)}">${esc(x.title)}</a><div class="faint mono trunc">${esc(x.url)}</div><div class="sn">${esc(x.snippet || '')}</div></div>`).join('') : `<div class="empty">${esc(r.error || t('Nenhum resultado.'))}</div>`;
-    $$('[data-u]', box).forEach(a => a.onclick = e => { e.preventDefault(); go(a.dataset.u); });
-  };
+  let resizeT = null;
+  const resizeStreams = () => { if (native) return; clearTimeout(resizeT); resizeT = setTimeout(() => tabs.forEach(tb => tb.img && input(tb, { kind: 'resize', ...size() })), 150); };
+  const ro = new ResizeObserver(() => { place(); resizeStreams(); }); ro.observe(frames);
+  const timer = setInterval(() => place(), 200);
+
   const show = tb => {
-    cur = tb; tabs.forEach(x => { if (x.fr) x.fr.style.display = x === tb && !x.searching ? '' : 'none'; if (x.res) x.res.style.display = x === tb && x.searching ? '' : 'none'; });
+    cur = tb; tabs.forEach(x => { if (x.img) x.img.style.display = x === tb ? '' : 'none'; });
     url.value = tb.url && tb.url !== 'about:blank' ? tb.url : ''; draw(); place(true); if (native && tb.opened) infuse.call('browser', 'focus', { id: tb.id }).catch(() => { });
   };
-  const add = u => { const tb = { id: 'b' + (++browserSeq) + '-' + Date.now(), url: u }; tabs.push(tb); if (!native) fallback(tb); show(tb); if (u) go(u); else setTimeout(() => url.focus(), 30); return tb; };
-  const closeTab = tb => { const i = tabs.indexOf(tb); tabs.splice(i, 1); if (tb.opened) infuse.call('browser', 'close', { id: tb.id }).catch(() => { }); tb.fr?.remove(); tb.res?.remove(); if (!tabs.length) add(''); else show(tabs[Math.min(i, tabs.length - 1)]); };
+  const add = u => { const tb = { id: 'b' + (++browserSeq) + '-' + Date.now(), url: u }; tabs.push(tb); if (!native) stream(tb); show(tb); if (u) go(u); else setTimeout(() => url.focus(), 30); return tb; };
+  const closeTab = tb => { const i = tabs.indexOf(tb); tabs.splice(i, 1); if (tb.opened) infuse.call('browser', 'close', { id: tb.id }).catch(() => { }); if (tb.es) { tb.es.close(); input(tb, { kind: 'close' }); } tb.img?.remove(); tb.kb?.remove(); if (!tabs.length) add(''); else show(tabs[Math.min(i, tabs.length - 1)]); };
   const go = async v => {
     if (!cur) return; const typed = v.trim(); const addr = addressOf(typed) || (typed ? searchURL(typed) : ''); if (!addr) return;
     cur.url = addr; cur.loading = true; url.value = addr; draw();
     if (native) {
       try { await infuse.call('browser', cur.opened ? 'navigate' : 'open', { id: cur.id, url: addr, ...rectNow(), visible: true }); cur.opened = true; place(true); return; }
-      catch (e) { native = false; tabs.forEach(x => { if (!x.fr) fallback(x); }); show(cur); }
+      catch (e) { native = false; tabs.forEach(x => { if (!x.img) stream(x); }); show(cur); }
     }
-    if (!addressOf(typed)) { cur.searching = true; return results(cur, typed); }
-    const tb = cur, f = await api('/api/frameable?url=' + encodeURIComponent(addr));
-    if (f.frameable === false) { // the site refuses to be shown inside another page
-      tb.fr.style.display = 'none'; tb.loading = false; tb.title = label({ url: addr });
-      if (!tb.res) { tb.res = h('<div class="sres sel"></div>'); frames.appendChild(tb.res); }
-      tb.res.style.display = ''; tb.searching = true;
-      tb.res.innerHTML = `<div class="bblock"><b>${esc(label({ url: addr }))} ${t('não permite ser exibido dentro de outra página')}</b><span>${t('Na janela do infuse todo site abre aqui no painel. Nesta visualização no navegador, abra no navegador padrão.')}</span><button class="btn pri">${t('Abrir no navegador padrão')}</button></div>`;
-      $('.btn', tb.res).onclick = () => api('/api/open', { body: { url: addr } }); draw(); return;
-    }
-    tb.searching = false; if (tb.res) tb.res.style.display = 'none'; tb.fr.style.display = ''; tb.fr.src = addr;
+    const r = await api('/api/view/open', { body: { id: cur.id, url: addr, ...size() }, root: c.root });
+    if (!r.ok) { cur.loading = false; draw(); toast(r.error || t('Não abriu')); }
+    cur.kb?.focus();
   };
-  const nav = op => { if (!cur) return; if (native && cur.opened) return infuse.call('browser', op, { id: cur.id }).catch(() => { }); try { if (op === 'back') cur.fr.contentWindow.history.back(); else if (op === 'forward') cur.fr.contentWindow.history.forward(); else if (cur.url) cur.fr.src = cur.url; } catch { } };
+  const nav = op => { if (!cur) return; if (native && cur.opened) return infuse.call('browser', op, { id: cur.id }).catch(() => { }); if (cur.img) input(cur, { kind: op }); };
   url.onkeydown = e => { if (e.key === 'Enter') { go(url.value); url.blur(); } if (e.key === 'Escape') { url.value = cur?.url || ''; url.blur(); } };
   url.onfocus = () => url.select();
   $('.back', pb).onclick = () => nav('back'); $('.fwd', pb).onclick = () => nav('forward'); $('.rl', pb).onclick = () => nav('reload');
   $('.ext', pb).onclick = () => cur?.url && api('/api/open', { body: { url: cur.url } });
   $('.nt', extra).onclick = () => add('');
   const pick = async () => {
-    if (!native || !cur?.opened) return toast(t('Abra uma página no navegador primeiro (na janela do app)'));
-    toast(t('Clique num elemento da página · Esc cancela')); await infuse.call('browser', 'pick', { id: cur.id }).catch(e => toast(e.message));
+    if (!cur?.url) return toast(t('Abra uma página primeiro'));
+    if (native && cur.opened) { toast(t('Clique num elemento da página · Esc cancela')); return infuse.call('browser', 'pick', { id: cur.id }).catch(e => toast(e.message)); }
+    picking = true; cur.img?.classList.add('picking'); toast(t('Clique num elemento da página'));
   };
   $('.pick', pb).onclick = pick;
   $('.srv', extra).onclick = async e => {
@@ -300,7 +323,7 @@ function mountBrowser(pb, extra, c) {
     menu(anchor, items, null, { alignRight: true });
   };
   add(lsGet('browserUrl:' + c.root, ''));
-  return { go: v => { if (!cur) add(''); go(v); }, pick, destroy: () => { clearInterval(timer); ro.disconnect(); tabs.forEach(tb => tb.opened && infuse.call('browser', 'close', { id: tb.id }).catch(() => { })); } };
+  return { go: v => { if (!cur) add(''); go(v); }, pick, destroy: () => { clearInterval(timer); ro.disconnect(); tabs.forEach(tb => { if (tb.opened) infuse.call('browser', 'close', { id: tb.id }).catch(() => { }); if (tb.es) { tb.es.close(); input(tb, { kind: 'close' }); } }); } };
 }
 
 // ---------------------------------------------------------------- Tasks, Plan

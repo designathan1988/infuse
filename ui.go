@@ -87,6 +87,7 @@ func StartUI(window bool) {
 	if window {
 		RunWindow(url + "/#token=" + token)
 		closeAgentBrowsers()
+		closeViewBrowsers()
 		closeAllMCP()
 		os.Exit(0)
 	}

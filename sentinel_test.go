@@ -12,7 +12,7 @@ func TestSentinelAsksBeforeEditingTestsToMakeThemPass(t *testing.T) {
 	testHome(t)
 	root := t.TempDir()
 	s := newSession(root)
-	s.Mode = "bypass" // even "accept everything" stops here
+	s.Mode = "bypass"     // even "accept everything" stops here
 	s.gate.planned = true // the protocol's plan rule is tested apart
 	s.Turn, s.TurnStarts = 1, []int{0}
 	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "os testes estão falhando, faça passar"}}}}
