@@ -46,6 +46,20 @@ type DayTotal struct {
 	Cost float64 `json:"cost"`
 }
 
+// TodaySpend sums today's cost in the usage ledger (all sessions, all projects).
+func TodaySpend() float64 {
+	today := time.Now().Format("2006-01-02")
+	total := 0.0
+	for _, e := range core.ReadJSONL(UsageFile()) {
+		ts, _ := e["ts"].(float64)
+		if time.UnixMilli(int64(ts)).Format("2006-01-02") == today {
+			c, _ := e["cost"].(float64)
+			total += c
+		}
+	}
+	return total
+}
+
 func UsageTotals() Totals {
 	t := Totals{ByProject: map[string]float64{}, ByModel: map[string]float64{}, ByDay: []DayTotal{}}
 	now := time.Now()

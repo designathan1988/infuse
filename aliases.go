@@ -8,7 +8,19 @@ import (
 	"infuse/internal/config"
 	"infuse/internal/core"
 	"infuse/internal/llm"
+	"infuse/internal/security"
 )
+
+type capWriter = core.CapWriter
+
+func newCapWriter(limit int) *capWriter       { return core.NewCapWriter(limit) }
+func redactSecrets(s string) string           { return security.RedactSecrets(s) }
+func privateTarget(raw string) (bool, string) { return security.PrivateTarget(raw) }
+func privateTargetMsg(raw string) (bool, Msg) { return security.PrivateTargetMsg(raw) }
+func externalContent(source, text string) string {
+	return security.ExternalContent(source, text)
+}
+func todaySpend() float64 { return config.TodaySpend() }
 
 type Provider = llm.Provider
 type ProviderConfig = llm.ProviderConfig
