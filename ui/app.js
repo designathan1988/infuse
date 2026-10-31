@@ -591,22 +591,15 @@ function renderComposer(v) {
 }
 function folderMenu(v, anchor) {
   const items = [{ h: 'Projetos' }, ...S.projects.map(p => ({ label: p.label || baseName(p.root), d: p.root, check: p.root === v.draft.root, f: () => { v.draft.root = p.root; lsSet('lastRoot', p.root); api('/api/projectmode', { root: p.root }).then(r => { v.draft.mode = r.mode || ''; renderView(v); }); renderView(v); renderPanes(); } })), { sep: 1 },
-    { label: 'Abrir pasta…', d: native ? 'Explorador' : '', f: () => pickFolder(v) }];
+    { label: 'Abrir pasta…', d: 'Explorador', f: () => pickFolder(v) }];
   menu(anchor, items, null, { above: true });
 }
+// Always the Windows folder dialog: inside the native window through the bridge, in a browser through
+// the local server (same machine), which opens it in front of the window in use.
 async function pickFolder(v) {
-  if (native) { const p = await nat('pickFolder'); if (p) { await loadSessions(); v.draft.root = p; lsSet('lastRoot', p); renderView(v); renderPanes(); } return; }
-  browseFolders(v, lsGet('browsePath', ''));
-}
-async function browseFolders(v, path) {
-  const r = await api('/api/fs?path=' + encodeURIComponent(path), { root: '' }); lsSet('browsePath', r.path || '');
-  const anchor = $('.under .chip:nth-child(2)', v.el);
-  const items = [{ h: r.path || t('Abrir pasta'), head: true, plain: !!r.path }];
-  if (r.path) items.push({ label: '↑ ' + (r.parent ? baseName(r.parent) || r.parent : t('unidades')), keep: 1, f: () => browseFolders(v, r.parent || '') });
-  else r.roots.forEach(x => items.push({ label: x.name, d: x.path, keep: 1, f: () => browseFolders(v, x.path) }));
-  (r.dirs || []).forEach(x => items.push({ label: x.name, keep: 1, f: () => browseFolders(v, x.path) }));
-  if (r.path) items.push({ foot: true, label: 'Usar esta pasta', d: baseName(r.path), f: async () => { const res = await api('/api/projects/add', { body: { root: r.path }, root: '' }); if (res.error) return toast(res.error); await loadSessions(); v.draft.root = res.root; lsSet('lastRoot', res.root); renderView(v); renderPanes(); } });
-  menu(anchor, items, null, { above: true });
+  const p = native ? await nat('pickFolder') : (await api('/api/dialog/folder', { body: {}, root: '' })).path;
+  if (p) { await loadSessions(); v.draft.root = p; lsSet('lastRoot', p); renderView(v); renderPanes(); }
+  return;
 }
 async function setSessionOpts(v, patch) {
   const L = v.sid && S.live[v.sid];
@@ -640,8 +633,8 @@ function plusMenu(v, anchor) {
 }
 function insertAtCursor(v, s) { const P = $('.prompt', v.el); const p = P.selectionStart; P.value = P.value.slice(0, p) + s + P.value.slice(p); P.selectionStart = P.selectionEnd = p + s.length; P.focus(); autocomplete(v); }
 async function attachFiles(v) {
-  if (!native) { const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.onchange = () => { for (const f of inp.files) readBrowserFile(v, f); }; inp.click(); return; }
-  const list = await nat('pickFiles'); if (Array.isArray(list)) { for (const a of list) if (!v.atts.find(x => x.path === a.path)) v.atts.push(a); renderAtts(v); }
+  // the Windows file dialog in both cases; files are attached by their real path
+  const list = native ? await nat('pickFiles') : await api('/api/dialog/files', { body: {}, root: '' }); if (Array.isArray(list)) { for (const a of list) if (!v.atts.find(x => x.path === a.path)) v.atts.push(a); renderAtts(v); }
 }
 function readImage(v, f) { const r = new FileReader(); r.onload = () => { v.images.push({ mediaType: f.type, data: r.result.split(',')[1] }); renderAtts(v); }; r.readAsDataURL(f); }
 function readBrowserFile(v, f) { if (f.type.startsWith('image/')) return readImage(v, f); const r = new FileReader(); r.onload = () => { const P = $('.prompt', v.el); P.value += `\n<arquivo nome="${f.name}">\n${r.result.slice(0, 200000)}\n</arquivo>`; grow(P); }; r.readAsText(f); }

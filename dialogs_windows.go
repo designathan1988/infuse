@@ -120,6 +120,11 @@ func (d winDialogs) showSTA(title string, folders bool) ([]string, error) {
 	if d.owner != nil {
 		owner = d.owner()
 	}
+	if owner == 0 {
+		// opened from the local server (the UI in a browser): own the dialog by the window in use,
+		// so it appears in front of it instead of behind
+		owner, _, _ = procGetForegroundWindow.Call()
+	}
 	if hr := comCall(dialog, vtShow, owner); hr != 0 {
 		if hr == hrCancelled {
 			return nil, nil
