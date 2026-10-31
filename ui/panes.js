@@ -8,6 +8,8 @@ const PANES = {
   files: { title: 'Arquivos', mount: mountFiles },
   browser: { title: 'Navegador', mount: mountBrowser, keep: true },
   tasks: { title: 'Tarefas', mount: mountTasks },
+  procs: { title: 'Processos', mount: mountProcs },
+  agents: { title: 'Agentes', mount: mountAgents },
   plan: { title: 'Plano', mount: mountPlan },
   oracle: { title: 'Pronto', mount: mountOracle },
   memory: { title: 'Memória', mount: mountMemory },
@@ -18,6 +20,8 @@ const PANES = {
 };
 const P2 = { open: [], inst: {}, focus: null, width: lsGet('paneWidth', 520), sizes: lsGet('paneSizes', {}) };
 
+// the toolbar shows which panes are open
+function markPaneButtons() { $$('.vbar [data-a]').forEach(b => b.classList.toggle('on', P2.open.includes(b.dataset.a))); }
 function togglePane(id, forceOpen) {
   if (P2.open.includes(id) && !forceOpen) { closePane(id); return; }
   if (!P2.open.includes(id)) P2.open.push(id);
@@ -32,8 +36,9 @@ function openFileInPane(path) { togglePane('files', true); setTimeout(() => pane
 function paneCtx() { return { root: curRoot(), dir: curDir(), L: curL() }; }
 
 function renderPanes() {
+  setTimeout(markPaneButtons, 0);
   const host = $('#panes'); host.classList.toggle('empty', !P2.open.length || !!S.page); // full pages hide the panes
-  host.style.width = P2.width + 'px'; // the width the user set (dragging starts from what is on screen)
+  fitPaneWidth(); // the width the user set, within the room there is
   const ctxKey = curRoot() + '|' + curDir();
   // remove panes no longer open
   $$('.pane', host).forEach(p => { if (!P2.open.includes(p.dataset.id)) p.remove(); });
@@ -81,10 +86,16 @@ function dragShield(cursor) {
   const d = h(`<div class="dragshield" style="cursor:${cursor}"></div>`); document.body.appendChild(d); document.body.classList.add('dragging');
   return () => { d.remove(); document.body.classList.remove('dragging'); };
 }
+// The panes never take the conversation's room: whatever width the user set, the chat keeps at least
+// CHAT_MIN px beside them (a window made narrower, a sidebar shown, a width saved on a bigger screen).
+const CHAT_MIN = 380, PANE_MIN = 300;
+function paneRoom() { const main = $('#main'); return Math.max(PANE_MIN, (main ? main.clientWidth : innerWidth) - CHAT_MIN); }
+function fitPaneWidth() { const host = $('#panes'); if (host) host.style.width = Math.min(P2.width, paneRoom()) + 'px'; }
+new ResizeObserver(() => { fitPaneWidth(); for (const id of P2.open) P2.inst[id]?.fit?.(); }).observe($('#main'));
 $('#paneGrip').onmousedown = e => {
   e.preventDefault(); const x0 = e.clientX; const w0 = $('#panes').getBoundingClientRect().width; // from what is on screen
   const done = dragShield('col-resize'); let raf = 0;
-  const move = ev => { P2.width = Math.round(Math.max(320, Math.min(innerWidth - 480, w0 - (ev.clientX - x0)))); cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { $('#panes').style.width = P2.width + 'px'; for (const id of P2.open) P2.inst[id]?.fit?.(); }); };
+  const move = ev => { P2.width = Math.round(Math.max(PANE_MIN, Math.min(paneRoom(), w0 - (ev.clientX - x0)))); cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { $('#panes').style.width = P2.width + 'px'; for (const id of P2.open) P2.inst[id]?.fit?.(); }); };
   const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); done(); lsSet('paneWidth', P2.width); for (const id of P2.open) P2.inst[id]?.fit?.(); };
   addEventListener('mousemove', move); addEventListener('mouseup', up);
 };
@@ -349,6 +360,47 @@ function mountTasks(pb) {
   const draw = () => { const L = curL(); const ts = L?.snap?.tasks || []; pb.innerHTML = `<div class="plist">${ts.length ? `<div class="card plan" style="border:0;padding:0">${planCard(L).replace(/^<div class="card plan" data-card="plan">/, '').replace(/<\/div>$/, '')}</div>` : `<div class="empty">${t('O agente ainda não registrou o plano nesta sessão. O protocolo exige o plano antes de qualquer alteração.')}</div>`}${L?.running ? `<div class="status" style="margin-top:10px"><span class="spin"></span>${t('executando ')} ${esc(L.running.name)}</div>` : ''}</div>`; };
   draw(); return { refresh: draw };
 }
+// Background processes of the session: state, how long, the output as it comes, stop.
+function mountProcs(pb) {
+  const open = new Set(), full = {}; let timer = null;
+  const load = async (L, p) => { if (full[p.id]?.bytes === p.bytes) return; const r = await api(`/api/session/${L.id}/procs`, { body: { action: 'output', id: p.id }, root: L.root }); full[p.id] = { bytes: p.bytes, text: r.output ?? '' }; draw(); };
+  const draw = () => {
+    const L = curL(); const ps = (L?.snap?.procs || []).slice().reverse();
+    ps.filter(p => open.has(p.id) && full[p.id]?.bytes !== p.bytes).forEach(p => load(L, p));
+    pb.innerHTML = ps.length ? `<div class="plist">${ps.map(p => `<div class="proc ${p.state}" data-id="${p.id}">
+      <div class="row ph2"><span class="dot ${p.state === 'running' ? 'run' : p.state === 'stopped' ? '' : p.exit ? 'bad' : 'ok'}"></span><span class="grow">${p.description ? `<span class="d">${esc(p.description)}</span>` : ''}<span class="mono cmd">${esc(p.command)}</span>
+      <span class="faint meta">${p.id} · ${p.state === 'running' ? t('rodando há') + ' ' + elapsed(p.started) : (p.state === 'stopped' ? t('encerrado') : t('terminou') + (p.exit != null ? ' · ' + t('código') + ' ' + p.exit : '')) + ' · ' + t('durou') + ' ' + elapsed(p.started, p.ended)}</span></span>
+      ${p.state === 'running' ? `<button class="btn sm danger stop">${t('Encerrar')}</button>` : ''}</div>
+      ${open.has(p.id) ? `<pre class="pout">${esc(full[p.id]?.text ?? '')}</pre>` : ''}</div>`).join('')}</div>`
+      : `<div class="empty">${t('Nenhum processo em segundo plano nesta sessão. O agente inicia um com Bash run_in_background (servidor, jogo, watcher).')}</div>`;
+    $$('.proc', pb).forEach(el => {
+      const id = el.dataset.id;
+      $('.ph2', el).onclick = e => { if (e.target.closest('.stop')) return; open.has(id) ? open.delete(id) : open.add(id); draw(); };
+      const st = $('.stop', el); if (st) st.onclick = async () => { await api(`/api/session/${L.id}/procs`, { body: { action: 'stop', id }, root: L.root }); };
+      const pre = $('.pout', el); if (pre) pre.scrollTop = pre.scrollHeight;
+    });
+  };
+  draw(); timer = setInterval(() => { if ((curL()?.snap?.procs || []).some(p => p.state === 'running')) draw(); }, 1000); // elapsed time ticks
+  return { refresh: draw, destroy: () => clearInterval(timer) };
+}
+
+// Subagents of the session: who is doing what, live, and what each one concluded.
+function mountAgents(pb) {
+  const open = new Set();
+  const draw = () => {
+    const L = curL(); const as = (L?.snap?.agents || []).slice().reverse();
+    pb.innerHTML = as.length ? `<div class="plist">${as.map(a => `<div class="agent ${a.state}" data-id="${a.id}">
+      <div class="row ah">${a.state === 'running' ? '<span class="spin sm"></span>' : `<span class="dot ${a.state === 'done' ? 'ok' : 'bad'}"></span>`}<span class="tag">${esc(t(a.kind))}</span><span class="grow tt">${esc(a.title)}</span>
+      <span class="faint">${a.steps} ${t('passos')} · ${elapsed(a.started, a.ended)}</span></div>
+      ${a.state === 'running' && a.tool ? `<div class="faint now mono">${esc(a.tool)} ${esc(a.summary || '')}</div>` : ''}
+      ${open.has(a.id) ? `<div class="abody"><details class="atask"><summary>${t('Tarefa dada ao subagente')}</summary><div class="md sel">${md(a.task || '')}</div></details><div class="atrail">${agentTrailHTML(a, 'pane:' + a.id)}</div></div>` : ''}</div>`).join('')}</div>`
+      : `<div class="empty">${t('Nenhum subagente nesta sessão. O agente delega pesquisas e revisões com a ferramenta Agent; vários trabalham ao mesmo tempo.')}</div>`;
+    $$('.agent .ah', pb).forEach(h => h.onclick = () => { const id = h.parentElement.dataset.id; open.has(id) ? open.delete(id) : open.add(id); draw(); });
+    bindFolds(pb);
+  };
+  draw(); return { refresh: draw };
+}
+
 function mountPlan(pb) {
   const draw = () => { const L = curL(); const p = L?.snap?.plan; pb.innerHTML = p ? `<div class="plist md sel">${md(p)}</div><div class="pfoot"><span class="grow faint">${t('Plano proposto no modo Plano')}</span><button class="btn sm pri">${t('Aprovar e executar')}</button></div>` : `<div class="empty">${t('Nenhum plano ainda. Use o modo Plano (Shift+Tab ou /plan) para o agente propor antes de editar.')}</div>`; const b = $('.btn', pb); if (b) b.onclick = async () => { const v = V(); await setSessionOpts(v, { mode: 'acceptEdits' }); const P = $('.prompt', v.el); P.value = t('Plano aprovado. Execute-o.'); send(v); }; };
   draw(); return { refresh: draw };

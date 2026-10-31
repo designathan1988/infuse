@@ -532,6 +532,22 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 			sendJSON(w, 200, map[string]any{"ok": true, "id": n.ID, "root": n.Root})
 		case "pinmsg":
 			sendJSON(w, 200, map[string]any{"ok": true, "pinned": s.TogglePin(num("index"))})
+		case "procs": // background processes: list, full output of one, stop one
+			switch str("action") {
+			case "stop":
+				err := s.stopProc(str("id"))
+				sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err)})
+			case "output":
+				p := s.proc(str("id"))
+				if p == nil {
+					sendJSON(w, 404, map[string]any{"error": "processo não encontrado"})
+					return true
+				}
+				text, _ := p.out.since(0)
+				sendJSON(w, 200, map[string]any{"output": text})
+			default:
+				sendJSON(w, 200, map[string]any{"procs": s.procList()})
+			}
 		case "mission":
 			var err error
 			if str("action") == "stop" {

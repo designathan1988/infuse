@@ -115,14 +115,16 @@ type bashTool struct{}
 
 func (bashTool) Category() string { return "exec" }
 func (bashTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Bash", Description: "Executa um comando no shell do projeto (bash). Use para rodar builds, testes, git e utilitários. A saída volta com informações do projeto quando relevante.",
-		InputSchema: schema(`{"type":"object","properties":{"command":{"type":"string","description":"Comando a executar"},"timeout":{"type":"integer","description":"Timeout em segundos (padrão 120, máximo 600)"},"description":{"type":"string","description":"Descrição curta do que o comando faz"}},"required":["command"]}`)}
+	return ToolSpec{Name: "Bash", Description: "Executa um comando no shell do projeto (bash). Use para rodar builds, testes, git e utilitários. A saída volta com informações do projeto quando relevante. run_in_background=true para o que continua rodando (servidor, jogo, watcher): volta na hora com o id; leia a saída com BashOutput e encerre com KillShell. Você é avisado quando o processo termina.",
+		InputSchema: schema(`{"type":"object","properties":{"command":{"type":"string","description":"Comando a executar"},"timeout":{"type":"integer","description":"Timeout em segundos (padrão 120, máximo 600)"},"description":{"type":"string","description":"Descrição curta do que o comando faz"},"run_in_background":{"type":"boolean","description":"roda sem esperar terminar"}},"required":["command"]}`)}
 }
 
 func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
 	var in struct {
-		Command string `json:"command"`
-		Timeout int    `json:"timeout"`
+		Command     string `json:"command"`
+		Timeout     int    `json:"timeout"`
+		Description string `json:"description"`
+		Background  bool   `json:"run_in_background"`
 	}
 	_ = json.Unmarshal(input, &in)
 	if strings.TrimSpace(in.Command) == "" {
@@ -160,6 +162,30 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		} else {
 			Journal(tc.Root, JournalEntry{Kind: "transform", Path: a.Path, Bytes: a.Bytes, Detail: a.Detail})
 		}
+	}
+	if in.Background {
+		p, err := tc.S.startBackground(command, in.Description, tc.Cwd)
+		if err != nil {
+			return "não iniciou: " + err.Error(), true
+		}
+		// the first moments of output: a command that fails at once says so now
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) && ctx.Err() == nil {
+			if tc.S.proc(p.ID).State != "running" {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		first, off := p.out.since(0)
+		tc.S.mu.Lock()
+		p.read = off
+		state := p.State
+		tc.S.mu.Unlock()
+		msg := fmt.Sprintf("processo %s em segundo plano (pid %d), %s. Leia a saída nova com BashOutput(id=%q); encerre com KillShell. O usuário acompanha no painel Processos.", p.ID, p.PID, map[bool]string{true: "rodando", false: "já terminou"}[state == "running"], p.ID)
+		if strings.TrimSpace(first) != "" {
+			msg += "\nPrimeiros 2 s de saída:\n" + clip(first)
+		}
+		return msg, state != "running" && p.Exit != nil && *p.Exit != 0
 	}
 	// Track the working directory across commands, as a human shell would.
 	wrapped := command + "\nprintf '\\n__INFUSE_CWD__%s' \"$PWD\""

@@ -5,7 +5,10 @@ package main
 import (
 	"os"
 	"os/exec"
+	"strconv"
+	"sync"
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -78,4 +81,74 @@ func processAlive(pid int) bool {
 		return false
 	}
 	return code == 259 // STILL_ACTIVE
+}
+
+// Background commands run inside a Job Object: every process they start belongs to it, MSYS ones
+// included (their Windows parent links do not form a tree taskkill can follow), and ending the job ends
+// all of them. The job is also closed — and its processes ended — if infuse itself goes away.
+var (
+	procJobsMu sync.Mutex
+	procJobs   = map[*exec.Cmd]windows.Handle{}
+)
+
+// procGroup is applied before Start; the job is attached right after (attachJob).
+func procGroup(cmd *exec.Cmd) {}
+
+// attachJob puts a started process in a new kill-on-close job.
+func attachJob(cmd *exec.Cmd) {
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return
+	}
+	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
+	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
+		windows.CloseHandle(job)
+		return
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE, false, uint32(cmd.Process.Pid))
+	if err != nil {
+		windows.CloseHandle(job)
+		return
+	}
+	defer windows.CloseHandle(h)
+	if windows.AssignProcessToJobObject(job, h) != nil {
+		windows.CloseHandle(job)
+		return
+	}
+	procJobsMu.Lock()
+	procJobs[cmd] = job
+	procJobsMu.Unlock()
+}
+
+// killTree ends a process and every process it started: its job, or taskkill /T without one.
+func killTree(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	procJobsMu.Lock()
+	job, ok := procJobs[cmd]
+	delete(procJobs, cmd)
+	procJobsMu.Unlock()
+	if ok {
+		_ = windows.TerminateJobObject(job, 1)
+		windows.CloseHandle(job)
+		return
+	}
+	k := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
+	noConsoleWindow(k)
+	if k.Run() != nil {
+		_ = cmd.Process.Kill()
+	}
+}
+
+// releaseJob frees the job of a process that ended by itself (its children may live on, as in a shell).
+func releaseJob(cmd *exec.Cmd) {
+	procJobsMu.Lock()
+	job, ok := procJobs[cmd]
+	delete(procJobs, cmd)
+	procJobsMu.Unlock()
+	if ok {
+		windows.CloseHandle(job)
+	}
 }

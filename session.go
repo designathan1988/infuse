@@ -53,6 +53,7 @@ type SessionData struct {
 	Updated     int64                    `json:"updated"`
 	Model       string                   `json:"model"`
 	Messages    []Message                `json:"messages"`
+	Agents      []AgentRun               `json:"agents,omitempty"` // every subagent of the session, with its result
 	Turn        int                      `json:"turn"`
 	TurnStarts  []int                    `json:"turnStarts"` // message index where each turn begins
 	Tasks       []TaskItem               `json:"tasks"`
@@ -95,6 +96,8 @@ type Session struct {
 	askMu         sync.Mutex   // one question to the user at a time (parallel subagents may each need one)
 	gate          researchGate // research gate and report requirement of the current turn
 	docs          docLedger    // what the agent read as documentation in this session (docgate.go)
+	procs         []*bgProc    // background processes (procs.go)
+	procSeq       int
 }
 
 var (
@@ -278,6 +281,7 @@ func (s *Session) snapshot() map[string]any {
 		"pendingQuestion": s.pendingAsk, "error": s.lastError, "compactions": s.Compactions, "mode": s.mode(),
 		"provider": s.providerID(), "effort": s.effort(), "archived": s.Archived, "worktree": s.Worktree, "branch": s.Branch,
 		"workRoot": s.workRoot(), "plan": s.Plan, "mission": s.Mission.clone(), "pinnedMsgs": s.PinnedMsgs, "created": s.Created, "updated": s.Updated, "lastInput": s.LastInput,
+		"procs": s.procListLocked(), "agents": s.Agents,
 	}
 }
 
@@ -940,6 +944,9 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	if len(shortcutWarn) > 0 && !isErr {
 		Lesson(s.Root, "atalho", strings.Join(shortcutWarn, ", "))
 		out += "\n[atalho] Esta edição introduziu: " + strings.Join(shortcutWarn, ", ") + ". Isso esconde problemas em vez de resolvê-los; trate o erro de verdade ou explique por que é necessário."
+	}
+	if n := s.procNotes(); n != "" {
+		out += "\n" + n
 	}
 	if o := s.runHooks(ctx, "PostToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput, "tool_response": out}); o.Message != "" {
 		out += "\n[hook] " + o.Message

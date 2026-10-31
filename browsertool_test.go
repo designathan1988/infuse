@@ -36,6 +36,7 @@ func TestAgentBrowserForReal(t *testing.T) {
 	if os.Getenv("INFUSE_BROWSER_TEST") == "" {
 		t.Skip("INFUSE_BROWSER_TEST=1 para rodar com o navegador real")
 	}
+	testHome(t) // the user's project list and browser profiles stay untouched
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)

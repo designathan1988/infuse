@@ -19,6 +19,8 @@ const I = {
   plus: '<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   more: '<svg class="i" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg>',
   vmore: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/></svg>',
+  agents: '<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="2.5"/><circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/><path d="M12 8v3.5M12 11.5 7 15.5M12 11.5l5 4"/></svg>',
+  procs: '<svg class="i" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></svg>',
   term: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="m7 9.5 3 2.5-3 2.5M12.5 15h4"/></svg>',
   diff: '<svg class="i" viewBox="0 0 24 24"><path d="M8 4v10M3 9h10M11 20h10"/></svg>',
   files: '<svg class="i" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>',
@@ -94,6 +96,7 @@ function buildView(v) {
     <div class="vbar"><span class="title" tabindex="0" title="Clique para renomear"></span><button class="ib caret" title="Menu da sessão">${I.caret}</button><span class="branch"></span><span class="sp"></span>
       <span class="r row" style="gap:2px"><button class="chg" data-a="changes" title="Alterações (Ctrl+Shift+D)"></button>
       <button class="ib" data-a="terminal" title="Terminal (Ctrl+\`)">${I.term}</button><button class="ib" data-a="files" title="Arquivos">${I.files}</button><button class="ib" data-a="browser" title="Navegador (Ctrl+Shift+B)">${I.globe}</button>
+      <button class="ib cnt" data-a="agents" title="Agentes: os subagentes da sessão, ao vivo (Ctrl+Shift+A)">${I.agents}<i></i></button><button class="ib cnt" data-a="procs" title="Processos em segundo plano (Ctrl+Shift+P)">${I.procs}<i></i></button>
       <button class="ib" data-a="rail" title="Mostrar/ocultar detalhes da sessão">${I.rail}</button><button class="ib" data-a="more" title="Mais">${I.vmore}</button></span></div>
     <div class="vbody"><div class="vchat"><div class="toc"><div class="ticks"></div><div class="toclist"></div></div><div class="scroller"><div class="chat"></div></div><button class="jumpdown" title="Ir para o fim da conversa">${I.down || '↓'}</button>
       <div class="composer"><div class="hometitle"><b>O que vamos construir?</b><span class="hsub"></span></div><div class="queue"></div>
@@ -340,7 +343,7 @@ function sessionMenu(v, anchor) {
 }
 function moreMenu(v, anchor) {
   menu(anchor, [
-    { label: 'Tarefas', f: () => togglePane('tasks') }, { label: 'Plano', f: () => togglePane('plan') },
+    { label: 'Tarefas', f: () => togglePane('tasks') }, { label: 'Plano', f: () => togglePane('plan') }, { label: 'Processos', f: () => togglePane('procs') }, { label: 'Agentes', f: () => togglePane('agents') },
     { label: 'Filtro', items: [{ label: 'Pronto (critérios)', f: () => togglePane('oracle') }, { label: 'Memória', f: () => togglePane('memory') }, { label: 'Regras', f: () => togglePane('rules') }, { label: 'Jornal', f: () => togglePane('journal') }, { label: 'Vícios', f: () => togglePane('vices') }, { label: 'Mapa do projeto', f: () => togglePane('map') }] },
     { sep: 1 }, { label: S.rail ? 'Ocultar detalhes da sessão' : 'Mostrar detalhes da sessão', f: () => { S.rail = !S.rail; lsSet('rail', S.rail); S.views.forEach(renderView); } },
   ], null, { alignRight: true });
@@ -383,6 +386,8 @@ function onEvent(L, ev) {
     case 'done': L.snap.pendingPermission = null; L.snap.pendingQuestion = null; L.snap.cost = d.cost; L.snap.usage = d.usage; re(); vs.forEach(renderRail); attention(L, 'infuse terminou', L.snap.title || ''); if (!S.views.some(x => x.sid === L.id) || !document.hasFocus()) setUnread(L.id, true); refreshChanges(L); loadUsage(); if (!d.reason) suggestNext(L); break;
     case 'error': L.snap.error = d; L.snap.pendingPermission = null; L.snap.pendingQuestion = null; re(); attention(L, 'infuse: erro', String(d)); break;
     case 'tasks': L.snap.tasks = d; vs.forEach(renderRail); paneRefresh('tasks'); break;
+    case 'procs': L.snap.procs = d; vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('procs'); break;
+    case 'agents': L.snap.agents = d; vs.forEach(renderLive); vs.forEach(refreshAgentBlocks); vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('agents'); break;
     case 'memory': paneRefresh('memory'); break;
     case 'gate': toast(t('infuse interveio: ') + String(d.message || '').replace(/^\[infuse\] /, '').split('\n')[0].slice(0, 140)); break;
     case 'subagent': L.sub = d.state === 'done' ? null : { ...(L.sub || {}), ...d, steps: (L.sub?.steps || 0) + (d.state === 'tool' ? 1 : 0) }; vs.forEach(renderLive); break;
@@ -526,6 +531,18 @@ function turnSummary(s, msgs, from, to) {
 function reviewBlock(text, i) {
   return `<div class="report review"><div class="rh"><b>${t('Revisão independente')}</b><span class="faint">${t('um revisor com contexto limpo leu o diff, o plano e os critérios')}</span><span class="grow"></span><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button></div><div class="md sel">${md(text)}</div><div class="rnext"><span class="grow faint">${t('O agente vê estes achados na próxima mensagem.')}</span><button class="btn sm pri" data-fixreview>${t('Pedir correções')}</button></div></div>`;
 }
+// What runs now: background processes and subagents of the session, each opening its pane.
+const elapsed = (a, b) => { const s = Math.max(0, Math.round(((b || Date.now()) - a) / 1000)); return s < 60 ? s + 's' : s < 3600 ? Math.floor(s / 60) + 'min ' + (s % 60) + 's' : Math.floor(s / 3600) + 'h ' + Math.floor(s % 3600 / 60) + 'min'; };
+function runningCard(L) {
+  const ps = L.snap.procs || [], ag = L.snap.agents || [];
+  const live = ps.filter(p => p.state === 'running'), working = ag.filter(a => a.state === 'running');
+  if (!ps.length && !working.length) return '';
+  return `<div class="card running" data-card="running"><div class="ch">${t('Em execução')}<span class="r">${live.length + working.length}</span></div>
+    ${live.map(p => `<div class="li" data-pane="procs"><span class="dot run"></span><span class="n mono" title="${esc(p.command)}">${esc(p.description || p.command)}</span><span class="faint">${elapsed(p.started)}</span></div>`).join('')}
+    ${working.map(a => `<div class="li" data-pane="agents"><span class="spin sm"></span><span class="n" title="${esc(a.task)}">${esc(a.title)}</span><span class="faint">${a.steps} ${t('passos')}</span></div>`).join('')}
+    ${ps.length > live.length ? `<div class="li faint" data-pane="procs">${ps.length - live.length} ${t('processo(s) encerrado(s)')}</div>` : ''}</div>`;
+}
+
 // The plan, live: each task with its state (done, now, next, blocked) and how it will be proven.
 const PLAN_ICON = { done: ['✓', 'ok'], in_progress: ['', 'now'], blocked: ['✗', 'bad'], pending: ['', ''], stopped: ['‖', 'stop'] };
 function planCard(L) {
@@ -718,13 +735,15 @@ function liveCodeHTML(text, cls) {
   const lines = String(text || '').split('\n');
   return `<div class="livecode ${cls || ''}">${lines.map((l, k) => `<div class="lc"><span class="no">${k + 1}</span><span class="tx">${esc(l) || ' '}</span></div>`).join('')}<span class="cursor"></span></div>`;
 }
+document.addEventListener('click', e => { if (e.target.closest('.agentsgo')) togglePane('agents', true); });
 function renderLive(v) {
   if (!v.el) return; const el = $('.live', v.el); const L = v.sid && S.live[v.sid]; if (!el || !L) return;
   let out = '';
   if (L.think) out += thinkBlock(`${L.id}:live`, L.think, true);
   if (L.text) out += `<div class="a"><div class="md sel">${md(L.text)}<span class="cursor"></span></div></div>`;
   for (const [id, tl] of Object.entries(L.tools)) { const inp = partialJSON(tl.input); out += toolBlock(id, tl.name, inp, null, L.running?.id === id); }
-  if (L.sub && busy(L)) out += `<div class="status sub"><span class="spin"></span><span>${t('subagente')} ${esc(t(L.sub.kind || ''))}${L.sub.title ? ' · ' + esc(L.sub.title) : ''} · ${L.sub.steps || 0} ${t('passos')}${L.sub.tool ? ' · ' + esc(L.sub.tool) + ' ' + esc((L.sub.summary || '').slice(0, 60)) : ''}</span></div>`;
+  const working = (L.snap?.agents || []).filter(a => a.state === 'running');
+  if (working.length && busy(L)) out += `<div class="status sub agentsgo" title="${esc(t('Abrir o painel Agentes'))}"><span class="spin"></span><span>${working.length === 1 ? t('1 subagente trabalhando') : working.length + ' ' + t('subagentes trabalhando')}: ${working.map(a => `<b>${esc(a.title)}</b> · ${a.steps} ${t('passos')}${a.tool ? ' · ' + esc(a.tool) : ''}`).join(' &nbsp;|&nbsp; ')}</span></div>`;
   const st = L.snap?.state;
   if (st === 'thinking' || st === 'tool' || st === 'compacting') out += `<div class="status"><span class="spin"></span><span>${st === 'tool' ? t('executando ') + esc(L.running?.name || '') : st === 'compacting' ? t('compactando contexto') : t('pensando')}</span><span class="faint el" data-el="${L.id}"></span></div>`;
   el.innerHTML = out; bindChat(v, el);
@@ -765,6 +784,60 @@ function reportCard(inp, result) {
   const srcHTML = srcs.length ? `<details class="odet"><summary>${t('Fontes consultadas')} (${srcs.length})</summary>${srcs.map(x => /^https?:/.test(x) ? `<div class="mono" style="font-size:11.5px"><a href="#" data-url="${esc(x)}">${esc(x)}</a></div>` : `<div class="faint" style="font-size:11.5px">${esc(x)}</div>`).join('')}</details>` : '';
   return `<div class="report"><div class="rh"><b>${t('Relatório')}</b><span class="faint">${t(result ? 'conferido pelo infuse com o que de fato rodou' : 'conferindo…')}</span>${bad ? `<span class="tag bad">${bad} ${t('não confirmada(s)')}</span>` : ''}</div>${inp.summary ? `<div class="md sel">${md(inp.summary)}</div>` : ''}${rows}${srcHTML}${inp.next ? `<div class="rnext"><span class="faint">${t('Próximo passo')}</span><span class="grow">${esc(inp.next)}</span><button class="btn sm" data-next="${esc(inp.next)}">${t('Usar')}</button></div>` : ''}</div>`;
 }
+// A subagent in the conversation, as Claude Code shows it: its steps appear one by one while it works
+// (what it says, each tool with what it touched, running/ok/error and the time), each step opens to its
+// output, and its conclusion closes the block.
+function findAgentRun(inp) {
+  const title = inp.description || '', head = String(inp.prompt || '').slice(0, 200);
+  let best = null;
+  for (const L of Object.values(S.live)) for (const a of (L.snap?.agents || [])) {
+    if (a.kind !== (inp.kind || 'general') && inp.kind) continue;
+    if (head && (a.task || '').includes(head)) best = a; else if (!best && title && a.title === title) best = a;
+  }
+  return best;
+}
+function agentTrailHTML(a, bid) {
+  if (!a) return `<div class="astep faint"><span class="spin sm"></span>${t('iniciando o subagente…')}</div>`;
+  const steps = (a.trail || []).map((st, i) => {
+    if (st.kind === 'text') return `<div class="astep txt md sel">${md(st.text || '')}</div>`;
+    let inp = {}; try { inp = JSON.parse(st.input || '{}'); } catch { }
+    const k = `${bid}:s${i}`, open = !!S.fold[k];
+    return `<div class="tool astep${open ? ' open' : ''}"><div class="h" data-fold="${esc(k)}"><span class="chev">›</span><span class="dot ${st.state === 'running' ? 'run' : st.state === 'error' ? 'err' : ''}"></span><b>${esc(t(toolLabel[st.tool] || st.tool))}</b><span class="s">${esc(toolSummary(st.tool, inp))}</span>${st.state !== 'running' && st.ms != null ? `<span class="tdur faint">${fmtDur(st.ms)}</span>` : ''}</div><div class="b">${st.output ? `<pre class="res">${esc(st.output)}</pre>` : `<div class="faint">${t('sem saída')}</div>`}</div></div>`;
+  }).join('');
+  const tail = a.state === 'running' ? `<div class="astep faint"><span class="spin sm"></span>${t('trabalhando…')}</div>`
+    : a.result ? `<div class="astep concl"><div class="lab">${t('Conclusão')}</div><div class="md sel">${md(a.result)}</div></div>` : '';
+  return steps + tail;
+}
+function agentHead(a) {
+  if (!a) return '';
+  return `${a.steps} ${t('passos')} · ${a.state === 'running' ? elapsed(a.started) : fmtDur((a.ended || Date.now()) - a.started)}`;
+}
+function agentBlock(id, inp, result) {
+  const a = findAgentRun(inp), running = a ? a.state === 'running' : !result;
+  const open = S.fold[id] ?? running; // open while it works, as a live view; folded once done
+  const dot = running ? 'run' : result?.is_error || a?.state === 'failed' ? 'err' : '';
+  return `<div class="tool agentblk${open ? ' open' : ''}" data-agentblk="${esc(id)}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${esc(t('Subagente'))}</b><span class="tag">${esc(t(inp.kind || 'general'))}</span><span class="s">${esc(inp.description || String(inp.prompt || '').slice(0, 80))}</span><span class="tdur faint asteps">${agentHead(a)}</span></div>
+    <div class="b"><details class="atask"><summary>${t('Tarefa dada ao subagente')}</summary><div class="md sel">${md(String(inp.prompt || ''))}</div></details><div class="atrail">${agentTrailHTML(a, id)}</div></div></div>`;
+}
+// a step of a subagent changed: only its blocks are redrawn, the conversation stays as it is
+function refreshAgentBlocks(v) {
+  if (!v.el) return;
+  $$('[data-agentblk]', v.el).forEach(blk => {
+    const L = v.sid && S.live[v.sid]; if (!L) return;
+    const id = blk.dataset.agentblk;
+    const tu = (L.snap.messages || []).flatMap(m => m.content || []).find(b => b.type === 'tool_use' && b.id === id);
+    if (!tu) return;
+    const a = findAgentRun(tu.input || {}); if (!a) return;
+    const tr = $('.atrail', blk), hd = $('.asteps', blk);
+    const shown = blk.classList.contains('open');
+    if (tr) { tr.innerHTML = agentTrailHTML(a, id); bindFolds(tr); }
+    if (hd) hd.textContent = agentHead(a);
+    const dot = $('.h .dot', blk); if (dot) dot.className = 'dot ' + (a.state === 'running' ? 'run' : a.state === 'failed' ? 'err' : '');
+    if (shown) stickToEnd(v);
+  });
+}
+function bindFolds(root) { $$('[data-fold]', root).forEach(x => x.onclick = e => { if (e.target.closest('[data-path]')) return; const box = x.parentNode; const open = !box.classList.contains('open'); box.classList.toggle('open', open); S.fold[x.dataset.fold] = open; }); }
+function stickToEnd(v) { if (v.stick !== false) toBottom(v); }
 function toolBlock(id, name, input, result, running) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
   if (name === 'Report' && inp && Array.isArray(inp.claims)) return reportCard(inp, result);
@@ -778,6 +851,7 @@ function toolBlock(id, name, input, result, running) {
     const open = S.fold[id] ?? true;
     return `<div class="tool live${open ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot run"></span><b>${esc(t({ Write: 'Escrevendo', Edit: 'Editando', MultiEdit: 'Editando', Bash: 'Preparando comando' }[name]))}</b><span class="s mono">${esc(p ? relPath(p) : '')}</span><span class="tdur faint">${esc(what)}</span></div><div class="b">${body}</div></div>`;
   }
+  if (name === 'Agent' && inp && !inp._streaming) return agentBlock(id, inp, result);
   const shot = name === 'Browser' && result && String(result.content || '').match(/\.infuse\/shots\/([\w.-]+\.png)/); // the agent's screenshot, shown in place
   const isPath = ['Read', 'Write', 'Edit', 'MultiEdit'].includes(name) && (inp?.path || inp?.file_path);
   let body = '';
@@ -815,6 +889,24 @@ async function decide(v, id, d) {
 async function answer(v, id, a) { const L = S.live[v.sid]; await api(`/api/sessions/${v.sid}/answer`, { body: { id, answer: a }, root: L.root }); if (L.snap) L.snap.pendingQuestion = null; renderChat(v); }
 
 // markdown (small, safe): code blocks, inline code (paths become links), headings, lists, quotes, tables, links
+// Lists, nested by indentation: a sub-item stays inside its item; ordered lists keep their numbers.
+function mdList(m) {
+  let html = ''; const stack = [];
+  for (const l of m.replace(/\n$/, '').split('\n')) {
+    const mm = l.match(/^([ \t]*)([-*]|\d+\.) (.*)$/);
+    if (!mm) { html += ' ' + l.trim(); continue; } // a wrapped line of the item above
+    const ind = mm[1].replace(/\t/g, '    ').length, type = /\d/.test(mm[2]) ? 'ol' : 'ul', n = parseInt(mm[2], 10);
+    while (stack.length > 1 && ind < stack[stack.length - 1].ind) html += `</li></${stack.pop().type}>`;
+    const top = stack[stack.length - 1];
+    const open = () => { html += `<${type}${type === 'ol' && n > 1 ? ` start="${n}"` : ''}><li>`; stack.push({ ind, type }); };
+    if (!top || ind > top.ind) open();
+    else if (top.type !== type) { html += `</li></${stack.pop().type}>`; open(); }
+    else html += '</li><li>';
+    html += mm[3];
+  }
+  while (stack.length) html += `</li></${stack.pop().type}>`;
+  return html;
+}
 function md(src) {
   const blocks = [];
   src = src.replace(/```[\w+-]*\n([\s\S]*?)```/g, (_, c) => { blocks.push(`<div class="codewrap"><button class="ib codecopy" title="Copiar">${I.copy}</button><pre><code>${esc(c.replace(/\n$/, ''))}</code></pre></div>`); return `\u0000${blocks.length - 1}\u0000`; });
@@ -823,7 +915,7 @@ function md(src) {
   x = x.replace(/^### (.*)$/gm, '<h3>$1</h3>').replace(/^## (.*)$/gm, '<h2>$1</h2>').replace(/^# (.*)$/gm, '<h1>$1</h1>').replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>');
   x = x.replace(/`([^`\n]+)`/g, (_, c) => /^[\w.\-/\\]+\.[a-z0-9]{1,6}(:\d+)?$/i.test(c) && c.includes('.') ? `<code class="path" data-path="${c.replace(/:\d+$/, '')}">${c}</code>` : `<code>${c}</code>`);
   x = x.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*\w])\*([^*\n]+)\*/g, '$1<i>$2</i>').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
-  x = x.replace(/(?:^(?:\s*[-*] |\s*\d+\. ).*(?:\n|$))+/gm, m => { const ol = /^\s*\d/.test(m), start = ol ? parseInt(m.trim(), 10) : 1; return `<${ol ? 'ol' : 'ul'}${ol && start > 1 ? ` start="${start}"` : ''}>${m.trim().split('\n').map(l => `<li>${l.replace(/^\s*(?:[-*] |\d+\. )/, '')}</li>`).join('')}</${ol ? 'ol' : 'ul'}>`; });
+  x = x.replace(/(?:^[ \t]*(?:[-*]|\d+\.) .*(?:\n|$)(?:^[ \t]{2,}\S.*(?:\n|$))*)+/gm, mdList);
   x = x.split(/\n{2,}/).map(p => /^\s*<(h\d|ul|ol|pre|table|blockquote)/.test(p) || /^\u0000\d+\u0000$/.test(p.trim()) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
   return x.replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[i]);
 }
@@ -1081,12 +1173,14 @@ function renderRail(v) {
   <div class="card ctxcard" data-card="context" style="cursor:pointer"><div class="ch">${t('Contexto')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(S.settings.contextLimit || 200000)} tokens · ${money(L.snap.cost)}</div></div>
   <div class="card" data-card="env"><div class="ch">${t('Ambiente')}</div><div class="kv"><span>${t('Onde')}</span><span>${t('Este computador')}</span></div><div class="kv"><span>${t('Pasta')}</span><span title="${esc(L.snap.workRoot)}">${esc(baseName(L.snap.workRoot || L.root))}</span></div>${L.snap.branch ? `<div class="kv"><span>${t('Branch')}</span><span class="mono">${esc(L.snap.branch)}</span></div>` : ''}${L.snap.worktree ? `<div class="kv"><span>${t('Worktree')}</span><span>${t('isolado')}</span></div>` : ''}<div class="kv"><span>${t('Modelo')}</span><span class="mono">${esc(L.snap.model || '')}</span></div></div>
   ${(L.snap.pinnedMsgs || []).length ? `<div class="card pins" data-card="pins"><div class="ch">${t('Mensagens fixadas')}<span class="r">${L.snap.pinnedMsgs.length}</span></div>${L.snap.pinnedMsgs.map(i => `<div class="li pinli" data-goto="${i}"><span class="n">${esc(msgText(L.snap.messages[i] || { content: [] }).split('\n')[0].slice(0, 80) || '…')}</span></div>`).join('')}</div>` : ''}
+  ${runningCard(L)}
   ${missionCard(L)}
   <div class="card" data-card="pronto"><div class="ch">${t('Pronto')}<span class="r">${L.verdict ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[L.verdict.verdict] || 'warn'}">${esc(t(L.verdict.verdict))}</span>` : `<span class="faint">${t('não verificado')}</span>`}</span></div>
     <div class="faint" style="margin-bottom:6px">${L.verdict ? esc(L.verdict.summary) : t('Só a execução dos critérios decide; a palavra do agente não conta.')}</div>
     <div class="row"><button class="btn sm line oraclego">${t('Pronto?')}</button><button class="btn sm" data-open="oracle">${t('Critérios')}</button><button class="btn sm revgo" title="${esc(t('Um revisor com contexto limpo lê o diff, o plano e os critérios e aponta problemas'))}">${t('Revisar')}</button></div></div>`;
   $('.revgo', el).onclick = () => runReview(v);
   railFolds(v, el);
+  $$('[data-pane]', el).forEach(x => x.onclick = () => togglePane(x.dataset.pane, true));
   bindScope(el);
   $$('[data-goto]', el).forEach(x => x.onclick = () => { const m = $(`[data-mi="${x.dataset.goto}"]`, v.el); if (m) { v.stick = false; m.scrollIntoView({ behavior: 'smooth', block: 'center' }); m.classList.add('flash'); setTimeout(() => m.classList.remove('flash'), 1400); } });
   const ms = $('.mstop', el); if (ms) ms.onclick = () => api(`/api/session/${L.id}/mission`, { body: { action: 'stop' }, root: L.root });
@@ -1134,7 +1228,14 @@ async function renderPR(v, el) {
     else menu(b, [{ label: 'Abrir no GitHub', f: () => { togglePane('browser', true); setTimeout(() => paneCall('browser', 'go', pr.url), 300); } }, fail ? { label: 'Corrigir o CI agora', sub: 'O agente lê o log da falha e corrige', f: () => fixCI(v, L, pr) } : null, { label: L.autofix ? 'Desligar correção automática do CI' : 'Corrigir o CI automaticamente', sub: 'Quando o CI falhar e a sessão estiver parada, o agente recebe o log e corrige', check: !!L.autofix, f: () => { L.autofix = !L.autofix; lsSet('autofix:' + L.id, L.autofix); toast(t(L.autofix ? 'Correção automática do CI ligada' : 'Correção automática do CI desligada')); } }, { label: 'Mesclar quando pronto', sub: 'Ativa o auto-merge (squash) no GitHub', f: async () => { const r = await api('/api/pr', { body: { action: 'merge-auto' }, root: L.root, dir: L.snap.workRoot || L.root }); toast(r.ok ? 'Auto-merge ativado' : (r.error || r.output)); } }]);
   });
 }
+// The toolbar buttons of the Agents and Processes panes show how many are at work.
+function renderRunBadges(v) {
+  const L = v.sid && S.live[v.sid]; if (!v.el) return;
+  const n = { agents: (L?.snap?.agents || []).filter(a => a.state === 'running').length, procs: (L?.snap?.procs || []).filter(p => p.state === 'running').length };
+  for (const k of ['agents', 'procs']) { const b = $(`.vbar [data-a="${k}"] i`, v.el); if (b) { b.textContent = n[k] || ''; b.parentElement.classList.toggle('working', !!n[k]); } }
+}
 function renderChangesBadge(v) {
+  renderRunBadges(v);
   const L = v.sid && S.live[v.sid]; const b = $('.chg', v.el); if (!b) return;
   const c = L?.changes; b.innerHTML = (c?.isGit || c?.local) && (c.added || c.removed) ? `<span class="add">+${c.added || 0}</span><span class="del">−${c.removed || 0}</span>` : I.diff;
 }
@@ -1208,7 +1309,7 @@ function paletteItems(kind) {
     { label: 'Provedores e chaves', f: () => openSettings('providers') },
     { label: 'Voltar no tempo…', d: 'Esc Esc', f: () => rewindDialog(v) }, { label: 'Pergunta paralela', d: 'Ctrl ;', f: () => openSide(v) },
     { label: 'Alterações', d: 'Ctrl Shift D', f: () => togglePane('changes', true) }, { label: 'Terminal', d: 'Ctrl `', f: () => togglePane('terminal', true) }, { label: 'Arquivos', f: () => togglePane('files', true) }, { label: 'Navegador', d: 'Ctrl Shift B', f: () => togglePane('browser', true) },
-    { label: 'Tarefas', f: () => togglePane('tasks', true) }, { label: 'Plano', f: () => togglePane('plan', true) }, { label: 'Pronto (critérios)', f: () => togglePane('oracle', true) }, { label: 'Memória', f: () => togglePane('memory', true) }, { label: 'Regras', f: () => togglePane('rules', true) }, { label: 'Jornal', f: () => togglePane('journal', true) }, { label: 'Vícios', f: () => togglePane('vices', true) }, { label: 'Mapa do projeto', f: () => togglePane('map', true) },
+    { label: 'Tarefas', f: () => togglePane('tasks', true) }, { label: 'Plano', f: () => togglePane('plan', true) }, { label: 'Processos', f: () => togglePane('procs', true) }, { label: 'Agentes', f: () => togglePane('agents', true) }, { label: 'Pronto (critérios)', f: () => togglePane('oracle', true) }, { label: 'Memória', f: () => togglePane('memory', true) }, { label: 'Regras', f: () => togglePane('rules', true) }, { label: 'Jornal', f: () => togglePane('journal', true) }, { label: 'Vícios', f: () => togglePane('vices', true) }, { label: 'Mapa do projeto', f: () => togglePane('map', true) },
     ...Object.entries(modeInfo).map(([k, [l]]) => ({ label: t('Modo: ') + t(l), f: () => setSessionOpts(v, { mode: k }) })),
     { label: 'Exibição: Normal', f: () => setViewMode('normal') }, { label: 'Exibição: Pensamento', f: () => setViewMode('thinking') }, { label: 'Exibição: Detalhado', d: 'Ctrl O', f: () => setViewMode('verbose') },
     { label: 'Barra lateral', d: 'Ctrl B', f: () => document.body.classList.toggle('nosb') }, { label: 'Atalhos de teclado', d: 'Ctrl /', f: shortcutsDialog },
@@ -1267,6 +1368,8 @@ addEventListener('keydown', e => {
   if (ctrl && e.shiftKey && (e.key === ']' || e.key === '[' || e.code === 'BracketRight' || e.code === 'BracketLeft')) { e.preventDefault(); const order = $$('#sessList .srow').map(r => r); const ids = S.sessions.map(s => s.id); const i = ids.indexOf(v?.sid); const s = S.sessions[(i + ((e.code === 'BracketRight' || e.key === ']') ? 1 : -1) + ids.length) % ids.length]; if (s) openSession(s.root, s.id); return; }
   if (ctrl && e.shiftKey && k === 'd') { e.preventDefault(); togglePane('changes'); return; }
   if (ctrl && e.shiftKey && k === 'b') { e.preventDefault(); togglePane('browser'); return; }
+  if (ctrl && e.shiftKey && k === 'a') { e.preventDefault(); togglePane('agents'); return; }
+  if (ctrl && e.shiftKey && k === 'p') { e.preventDefault(); togglePane('procs'); return; }
   if (ctrl && e.shiftKey && k === 's') { e.preventDefault(); togglePane('browser', true); setTimeout(() => paneCall('browser', 'pick'), 100); return; }
   if (e.ctrlKey && (e.key === '`' || e.code === 'Backquote')) { e.preventDefault(); togglePane('terminal'); return; }
   if (ctrl && e.key === '\\') { e.preventDefault(); closeFocusedPane(); return; }

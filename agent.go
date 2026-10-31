@@ -68,6 +68,12 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 		}
 	}
 	id := "a" + randomHex(6)
+	run := s.agentStart(id, kind, title, task)
+	defer s.agentUpdate(run, func(a *AgentRun) { // an error or the step limit: the run shows as failed
+		if a.State == "running" {
+			a.State = "failed"
+		}
+	})
 	s.emit("subagent", map[string]any{"id": id, "kind": kind, "title": title, "state": "start"})
 	msgs := []Message{{Role: "user", Content: []Block{{Type: "text", Text: task}}, TS: time.Now().UnixMilli()}}
 	var breaker loopBreaker
@@ -87,9 +93,16 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 		s.mu.Unlock()
 		recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cost: cost})
 		msgs = append(msgs, Message{Role: "assistant", Content: res.Content})
+		for _, b := range res.Content { // what the subagent says between its steps joins its trail
+			if b.Type == "text" && strings.TrimSpace(b.Text) != "" && res.StopReason == "tool_use" {
+				text := truncate(strings.TrimSpace(b.Text), 1200)
+				s.agentUpdate(run, func(a *AgentRun) { a.addStep(AgentStep{Kind: "text", Text: text}) })
+			}
+		}
 		if res.StopReason != "tool_use" {
 			out := strings.TrimSpace(msgText(Message{Content: res.Content}))
 			s.emit("subagent", map[string]any{"id": id, "state": "done", "steps": iter})
+			s.agentUpdate(run, func(a *AgentRun) { a.State, a.Result = "done", truncate(out, 12000) }) // steps stay the tool calls counted live
 			return out, nil
 		}
 		var results []Block
@@ -99,6 +112,14 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 			}
 			var out string
 			var isErr bool
+			input := truncate(string(b.Input), 2000)
+			step := -1
+			s.agentUpdate(run, func(a *AgentRun) { // the step shows while it runs, as the main agent's do
+				a.Steps++
+				a.Tool, a.Summary = b.Name, truncate(firstLine(string(b.Input)), 160)
+				step = a.addStep(AgentStep{Kind: "tool", Tool: b.Name, Input: input, State: "running", Started: time.Now().UnixMilli()})
+			})
+			t0 := time.Now()
 			if !allowed(b.Name) {
 				out, isErr = "ferramenta indisponível para este subagente: "+b.Name, true
 			} else {
@@ -107,6 +128,12 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 			}
 			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr})
 			s.emit("subagent", map[string]any{"id": id, "state": "tool", "tool": b.Name, "summary": firstLine(string(b.Input))})
+			ms := time.Since(t0).Milliseconds()
+			s.agentUpdate(run, func(a *AgentRun) {
+				if step >= 0 && step < len(a.Trail) {
+					a.Trail[step].State, a.Trail[step].Ms, a.Trail[step].Output = map[bool]string{true: "error", false: "ok"}[isErr], ms, truncate(out, 1500)
+				}
+			})
 			if err := breaker.record(b.Name, b.Input, isErr); err != nil {
 				return "", fmt.Errorf("subagente interrompido: %w", err)
 			}
@@ -242,4 +269,71 @@ func (s *Session) IndependentReview(ctx context.Context, focus string) (string, 
 	s.save()
 	s.emit("session", s.snapshot())
 	return out, nil
+}
+
+// AgentStep is one step of a subagent: what it said, or a tool it ran (input, state, time, output).
+type AgentStep struct {
+	Kind    string `json:"kind"` // text | tool
+	Text    string `json:"text,omitempty"`
+	Tool    string `json:"tool,omitempty"`
+	Input   string `json:"input,omitempty"`
+	State   string `json:"state,omitempty"` // running | ok | error
+	Ms      int64  `json:"ms,omitempty"`
+	Output  string `json:"output,omitempty"`
+	Started int64  `json:"started,omitempty"`
+}
+
+// addStep appends to the trail (the last 150 steps are kept) and returns the step's index.
+func (a *AgentRun) addStep(st AgentStep) int {
+	a.Trail = append(a.Trail, st)
+	if len(a.Trail) > 150 {
+		a.Trail = a.Trail[len(a.Trail)-150:]
+	}
+	return len(a.Trail) - 1
+}
+
+// AgentRun is one subagent's work, kept with the session and shown live in the Agents pane.
+type AgentRun struct {
+	ID      string      `json:"id"`
+	Kind    string      `json:"kind"`
+	Title   string      `json:"title"`
+	Task    string      `json:"task"`
+	State   string      `json:"state"` // running | done | failed
+	Steps   int         `json:"steps"`
+	Tool    string      `json:"tool,omitempty"`
+	Summary string      `json:"summary,omitempty"`
+	Result  string      `json:"result,omitempty"`
+	Started int64       `json:"started"`
+	Ended   int64       `json:"ended,omitempty"`
+	Trail   []AgentStep `json:"trail,omitempty"`
+}
+
+func (s *Session) agentStart(id, kind, title, task string) int {
+	s.mu.Lock()
+	s.Agents = append(s.Agents, AgentRun{ID: id, Kind: kind, Title: firstNonEmpty(title, truncate(firstLine(task), 80)), Task: truncate(task, 4000), State: "running", Started: time.Now().UnixMilli()})
+	if len(s.Agents) > 200 {
+		s.Agents = s.Agents[len(s.Agents)-200:]
+	}
+	i := len(s.Agents) - 1
+	list := append([]AgentRun{}, s.Agents...)
+	s.mu.Unlock()
+	s.emit("agents", list)
+	return i
+}
+
+// agentUpdate changes one run (found by position, then by id if the list moved) and tells the page.
+func (s *Session) agentUpdate(i int, f func(*AgentRun)) {
+	s.mu.Lock()
+	if i >= len(s.Agents) {
+		i = len(s.Agents) - 1
+	}
+	if i >= 0 {
+		f(&s.Agents[i])
+		if s.Agents[i].State != "running" && s.Agents[i].Ended == 0 {
+			s.Agents[i].Ended = time.Now().UnixMilli()
+		}
+	}
+	list := append([]AgentRun{}, s.Agents...)
+	s.mu.Unlock()
+	s.emit("agents", list)
 }
