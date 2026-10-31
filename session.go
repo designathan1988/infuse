@@ -66,8 +66,9 @@ type SessionData struct {
 	Mode        string                   `json:"mode,omitempty"`     // permission mode; "" = settings
 	Effort      string                   `json:"effort,omitempty"`   // low | medium | high | max
 	Archived    bool                     `json:"archived,omitempty"`
-	Working     bool                     `json:"working,omitempty"`  // a turn was in progress when last saved (resumed at startup)
-	Worktree    string                   `json:"worktree,omitempty"` // absolute path when the session has its own worktree
+	Diagnoses   []Diagnosis              `json:"diagnoses,omitempty"` // the diagnoses registered, with their verified evidence
+	Working     bool                     `json:"working,omitempty"`   // a turn was in progress when last saved (resumed at startup)
+	Worktree    string                   `json:"worktree,omitempty"`  // absolute path when the session has its own worktree
 	Branch      string                   `json:"branch,omitempty"`
 	Plan        string                   `json:"plan,omitempty"`       // the latest plan proposed in plan mode
 	LastInput   int                      `json:"lastInput,omitempty"`  // context size of the latest request
@@ -294,7 +295,7 @@ func (s *Session) snapshot() map[string]any {
 		"pendingQuestion": s.pendingAsk, "error": s.lastError, "compactions": s.Compactions, "mode": s.mode(),
 		"provider": s.providerID(), "effort": s.effort(), "archived": s.Archived, "worktree": s.Worktree, "branch": s.Branch,
 		"workRoot": s.workRoot(), "plan": s.Plan, "mission": s.Mission.clone(), "pinnedMsgs": s.PinnedMsgs, "created": s.Created, "updated": s.Updated, "lastInput": s.LastInput,
-		"procs": s.procListLocked(), "agents": s.Agents, "contextLimit": s.contextLimitLocked(),
+		"procs": s.procListLocked(), "agents": s.Agents, "contextLimit": s.contextLimitLocked(), "diagnoses": s.Diagnoses,
 	}
 }
 
@@ -700,7 +701,9 @@ func (s *Session) run(ctx context.Context) {
 	rules := LoadRules(s.Root)
 	mcpFor(s.Root).ensure(ctx)           // approved connectors start before the first request
 	s.ensureCompiledRules(ctx, provider) // the instructions' meaning, as quote-checked rules
-	var breaker loopBreaker              // stops a turn that keeps repeating the same failure
+	s.ensureKnowledge(ctx, provider)     // the project's documents, read to the last line
+	know := knowledgePrompt(s.Root)
+	var breaker loopBreaker // stops a turn that keeps repeating the same failure
 	stopHooks := 0
 	var tripped error
 	breakerTrips := 0 // the breaker warns, then demands research, then ends the turn
@@ -730,7 +733,7 @@ func (s *Session) run(ctx context.Context) {
 		if budget > 0 && maxTok <= budget+1024 {
 			maxTok = budget + 8000
 		}
-		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules), Messages: repairTranscript(s.copyMessages()), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
+		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules) + "\n" + diagnosisRule + "\n\n" + know, Messages: repairTranscript(s.copyMessages()), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
 		started := time.Now()
 		var thinkFrom, thinkTo time.Time // how long the model spent in its reasoning, from the stream
 		res, err := s.streamResilient(ctx, provider, req, func(ev StreamEvent) {
@@ -883,6 +886,7 @@ func (s *Session) run(ctx context.Context) {
 				tripped = nil
 				s.mu.Lock()
 				s.gate.fails, s.gate.needWeb = 2, true // the research gate now accepts only outside research
+				s.gate.diagnosed, s.gate.redoWhy = false, "the same call failed repeatedly, twice"
 				last := &s.Messages[len(s.Messages)-1]
 				last.Content = append(last.Content, Block{Type: "text", Text: note})
 				s.mu.Unlock()
@@ -973,10 +977,13 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 			return why, true
 		}
 	}
-	if why := s.loopCheck(b.Name, tool.Category(), toolPath(b.Input), b.Name == "Agent" && strings.Contains(string(b.Input), `"explore"`)); why != "" {
+	if why := s.diagnosisGate(b.Name, tool.Category(), b.Input); why != "" { // the cause, from the project's knowledge, before acting
 		Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})
 		s.emit("gate", map[string]any{"message": why})
 		return why, true
+	}
+	if tool.Category() == "write" {
+		s.noteFileStateBefore(toolPath(b.Input))
 	}
 	if tool.Category() == "write" { // the protocol: plan, docs before use, conventions, size
 		if why := s.protocolCheckWrite(b.Name, b.Input); why != "" {
@@ -1031,6 +1038,7 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 		s.recordRun(bashCommand(b.Input), !isErr)
 	} else if tool.Category() == "write" && !isErr {
 		s.noteWrite()
+		s.noteFileState(toolPath(b.Input))
 	}
 	s.noteRead(b.Name, b.Input, out, isErr)
 	if b.Name == "Bash" && !isErr {

@@ -1,3 +1,5 @@
 build/
 legacy/ts/node_modules/
 legacy/ts/dist/
+
+.claude/worktrees/

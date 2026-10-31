@@ -16,6 +16,7 @@ func TestBackgroundProcesses(t *testing.T) {
 	testHome(t)
 	root := t.TempDir()
 	s := newSession(root)
+	s.gate.diagnosed = true // this test is about another gate
 	s.Mode = "bypass"
 	run := func(name, in string) (string, bool) {
 		return s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "x", Name: name, Input: json.RawMessage(in)})
@@ -93,6 +94,7 @@ func TestBackgroundProcesses(t *testing.T) {
 func TestParallelSubagentsAreEachRecorded(t *testing.T) {
 	testHome(t)
 	s := newSession(t.TempDir())
+	s.gate.diagnosed = true // this test is about another gate
 	s.Provider = "mock"
 	content := []Block{
 		{Type: "tool_use", ID: "a", Name: "Agent", Input: json.RawMessage(`{"kind":"explore","description":"pesquisa A","prompt":"olá 1"}`)},

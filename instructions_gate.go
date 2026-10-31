@@ -139,6 +139,21 @@ func (s *Session) recordRun(cmd string, ok bool) {
 	rc.writesAt = g.writes
 	if rc.rounds >= 3 && g.loopKey == "" {
 		g.loopKey, g.loopSince = k, time.Now()
+		g.diagnosed, g.redoWhy = false, fmt.Sprintf("`%s` ran again after each change, %d rounds, without the cause being found", k, rc.rounds)
+	}
+	// a check the project declares, which passed earlier in this turn, fails after a change: a regression
+	if !ok {
+		for _, want := range loadProjectRules(s.Root).AfterChange {
+			w := normSpace(want)
+			if !strings.Contains(normSpace(cmd), w) {
+				continue
+			}
+			for _, prev := range g.ran[:len(g.ran)-1] {
+				if prev.ok && strings.Contains(prev.cmd, w) && prev.afterWrites < g.writes {
+					g.diagnosed, g.redoWhy = false, fmt.Sprintf("the project's check `%s` passed before your last change and fails after it", want)
+				}
+			}
+		}
 	}
 }
 
@@ -248,4 +263,65 @@ func instructionsPrompt(root string) string {
 	}
 	b.WriteString("- Repetir uma medição depois de cada ajuste, sem pesquisar a causa, bloqueia o turno até você estudar a documentação.\n")
 	return b.String()
+}
+
+// noteFileState records the content a write left; returning a file to a content it had earlier in the
+// turn (other than the one just before) is the agent undoing its own work: the approach was wrong.
+func (s *Session) noteFileState(path string) {
+	if path == "" {
+		return
+	}
+	abs := path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(s.Cwd, abs)
+	}
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		return
+	}
+	h := fileHash(b)
+	rel := relTo(s.Root, abs)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g := &s.gate
+	if g.fileHashes == nil {
+		g.fileHashes = map[string][]string{}
+	}
+	hist := g.fileHashes[rel]
+	for i, old := range hist {
+		if old == h && i < len(hist)-1 {
+			g.diagnosed, g.redoWhy = false, "you returned "+rel+" to a content it had earlier in this turn, undoing your own change"
+			break
+		}
+	}
+	g.fileHashes[rel] = append(hist, h)
+}
+
+// noteFileStateBefore records a file's content before its first change in the turn.
+func (s *Session) noteFileStateBefore(path string) {
+	if path == "" {
+		return
+	}
+	abs := path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(s.Cwd, abs)
+	}
+	rel := relTo(s.Root, abs)
+	s.mu.Lock()
+	_, known := s.gate.fileHashes[rel]
+	s.mu.Unlock()
+	if known {
+		return
+	}
+	b, err := os.ReadFile(abs)
+	h := "absent"
+	if err == nil {
+		h = fileHash(b)
+	}
+	s.mu.Lock()
+	if s.gate.fileHashes == nil {
+		s.gate.fileHashes = map[string][]string{}
+	}
+	s.gate.fileHashes[rel] = []string{h}
+	s.mu.Unlock()
 }
