@@ -101,11 +101,13 @@ func (tc *ToolContext) afterWrite(abs string) []string {
 	tc.S.scheduleMapRefresh()
 	var lines []string
 	if m := LoadMap(tc.Root); m != nil {
-		if d := DescribeDependents(m, rel); d != "" {
-			lines = append(lines, d)
+		if d := DependentsMsg(m, rel); !d.Empty() {
+			lines = append(lines, tc.Say(d))
 		}
 	}
-	lines = append(lines, ApplyWriteRules(tc.Root, tc.Rules, []string{abs})...)
+	for _, m := range ApplyWriteRulesMsgs(tc.Root, tc.Rules, []string{abs}) {
+		lines = append(lines, tc.Say(m))
+	}
 	if tc.S.settings.Diagnostics == nil || *tc.S.settings.Diagnostics {
 		if d := fileDiagnostics(tc.Root, abs); d != "" {
 			lines = append(lines, tc.Say(M("write.diagnostics", "problems", d)))
@@ -143,7 +145,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	started := time.Now().UnixMilli()
 	// The guard runs first: protected targets are refused or neutralized before the transform can write.
-	guarded, guardNotes, gerr := newGuard(tc.Root, tc.S.settings.ProtectedPaths).GuardCommand(in.Command, tc.Cwd)
+	guarded, guardNotes, gerr := newGuard(tc.Root, tc.S.settings.ProtectedPaths).GuardCommandMsgs(in.Command, tc.Cwd)
 	if gerr != nil {
 		return tc.SayErr(gerr), true
 	}
@@ -159,7 +161,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if tc.Rules.Disabled["heredoc"] {
 		tr = TransformResult{Command: in.Command}
 	}
-	command, ruleLines := ApplyCommandRules(tc.Root, tc.Rules, tr.Command)
+	command, ruleLines := ApplyCommandRulesMsgs(tc.Root, tc.Rules, tr.Command)
 	Journal(tc.Root, JournalEntry{Kind: "command", Command: in.Command, Detail: "agente"})
 	for _, a := range tr.Actions {
 		if a.Kind == ActLesson && a.Vice != "" {
@@ -224,9 +226,12 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		out += fmt.Sprintf("\n[exit %d]", exitCode(err))
 		isErr = true
 	}
-	trailer := buildTrailer(tc.Root, tc.Cwd, in.Command, tr.Actions, started, tc.Rules, append(guardNotes, ruleLines...))
-	if trailer != "" {
-		out = strings.TrimRight(out, "\n") + "\n\n" + trailer
+	var trailer []string
+	for _, m := range trailerMsgs(tc.Root, tc.Cwd, in.Command, tr.Actions, started, tc.Rules, append(guardNotes, ruleLines...)) {
+		trailer = append(trailer, tc.Say(m)) // each note recorded: the user reads it in their language
+	}
+	if len(trailer) > 0 {
+		out = strings.TrimRight(out, "\n") + "\n\n" + strings.Join(trailer, "\n")
 	}
 	return tc.clip(out), isErr
 }
@@ -296,8 +301,8 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	tc.S.markRead(abs)
 	out := sb.String()
 	if m := LoadMap(tc.Root); m != nil {
-		if d := DescribeDependents(m, relTo(tc.Root, abs)); d != "" {
-			out += "\n" + d
+		if d := DependentsMsg(m, relTo(tc.Root, abs)); !d.Empty() {
+			out += "\n" + tc.Say(d)
 		}
 	}
 	return tc.clip(out), false
@@ -694,8 +699,8 @@ func (lsTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (
 	if d := DescribeDir(m, rel); d != "" {
 		sb.WriteString("\n" + d + "\n")
 	}
-	for _, l := range ApplyListRules(tc.Root, tc.Rules, rel) {
-		sb.WriteString(l + "\n")
+	for _, m := range ApplyListRulesMsgs(tc.Root, tc.Rules, rel) {
+		sb.WriteString(tc.Say(m) + "\n")
 	}
 	return tc.clip(sb.String()), false
 }
@@ -719,8 +724,8 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 		Offset int
 	}
 	_ = json.Unmarshal(input, &in)
-	if bad, why := privateTarget(in.URL); bad { // no requests into this machine or the private network
-		Journal(tc.Root, JournalEntry{Kind: "blocked", Command: in.URL, Detail: "WebFetch recusado: " + why})
+	if bad, why := privateTargetMsg(in.URL); bad { // no requests into this machine or the private network
+		Journal(tc.Root, JournalEntry{Kind: "blocked", Command: in.URL, Detail: why.Render("pt-BR")})
 		return tc.Say(M("fetch.refused", "why", why)), true
 	}
 	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.URL, Detail: "pesquisa"})

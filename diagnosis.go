@@ -35,6 +35,7 @@ type Diagnosis struct {
 	Evidence   []Evidence `json:"evidence"`
 	At         int64      `json:"at"`
 	Redo       Msg        `json:"redo,omitempty"`       // why a new diagnosis was demanded
+	RedoText   string     `json:"redo_text,omitempty"`  // that reason in the user's language, for the screen
 	Continuing bool       `json:"continuing,omitempty"` // carried over from the previous turn
 }
 
@@ -155,6 +156,9 @@ func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	}
 	s.mu.Lock()
 	d.Turn, d.At, d.Redo = s.Turn, time.Now().UnixMilli(), redo
+	if !redo.Empty() {
+		d.RedoText = redo.Render(s.uiLang())
+	}
 	s.Diagnoses = append(s.Diagnoses, d)
 	s.gate.diagnosed, s.gate.redoWhy = true, Msg{}
 	list := append([]Diagnosis{}, s.Diagnoses...)

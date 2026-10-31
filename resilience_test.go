@@ -56,6 +56,8 @@ func runScript(t *testing.T, steps ...func(ModelRequest) (ModelResult, error)) (
 	name := fmt.Sprintf("script-%d", scriptSeq)
 	p := &scriptProvider{steps: steps}
 	registerProvider(name, func(ProviderConfig) Provider { return p })
+	// these tests script every model call: no extra call to compile prohibitions (read at Send)
+	_ = writeJSON(settingsFile(), map[string]any{"userProhibitions": false})
 	s := newSession(t.TempDir())
 	s.Provider, s.Model, s.Mode = name, "script", "bypass"
 	if err := s.Send("faça a tarefa", nil, nil); err != nil {

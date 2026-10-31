@@ -303,3 +303,68 @@ func unknownPackages(ctx context.Context, cmd string) Msg {
 	}
 	return Msg{}
 }
+
+// ---------------------------------------------------------------- the turn's end and the work's state
+
+// workObligation: what the work itself still owes before the turn may end (a changed screen not looked
+// at; web addresses cited that were never fetched).
+func (s *Session) workObligation() Msg {
+	if m := s.missingScreenshot(); !m.Empty() {
+		return m
+	}
+	var text strings.Builder
+	s.mu.Lock()
+	start := 0
+	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) {
+		start = s.TurnStarts[s.Turn-1]
+	}
+	for _, m := range s.Messages[min(start, len(s.Messages)):] {
+		if m.Role != "assistant" {
+			continue
+		}
+		for _, b := range m.Content {
+			if b.Type == "text" {
+				text.WriteString(b.Text + "\n")
+			}
+		}
+	}
+	s.mu.Unlock()
+	if urls := s.unfetchedCitations(text.String()); len(urls) > 0 {
+		return M("claims.unfetched", "urls", strings.Join(firstN(urls, 6), ", "))
+	}
+	return Msg{}
+}
+
+// workStatePrompt keeps the state of the work in every request — the diagnosis, the plan, the user's
+// prohibitions — so that a compaction or a long turn never loses what was decided.
+func (s *Session) workStatePrompt() string {
+	var b strings.Builder
+	b.WriteString("## State of the work (kept by infuse; it survives compaction)\n")
+	s.mu.Lock()
+	if n := len(s.Diagnoses); n > 0 {
+		d := s.Diagnoses[n-1]
+		fmt.Fprintf(&b, "Current diagnosis (turn %d):\n- problem: %s\n- root cause: %s\n- approach: %s\n- why it treats the cause: %s\n", d.Turn, d.Problem, d.RootCause, d.Approach, d.WhyCause)
+		for _, e := range d.Evidence {
+			fmt.Fprintf(&b, "  - evidence %s: “%s”\n", e.File, truncate(e.Quote, 200))
+		}
+	} else {
+		b.WriteString("No diagnosis registered yet in this session.\n")
+	}
+	if len(s.Tasks) > 0 {
+		b.WriteString("Plan:\n")
+		for _, t := range s.Tasks {
+			fmt.Fprintf(&b, "- [%s] %s\n", t.Status, t.Text)
+		}
+	}
+	s.mu.Unlock()
+	var bans []string
+	for _, x := range s.Bans() {
+		if !x.Off {
+			bans = append(bans, fmt.Sprintf("- %s %q — the user's words: “%s”", x.Kind, x.Value, x.Quote))
+		}
+	}
+	if len(bans) > 0 {
+		b.WriteString("The user's prohibitions in force (infuse refuses calls that break them):\n" + strings.Join(bans, "\n") + "\n")
+	}
+	return b.String()
+}

@@ -38,6 +38,7 @@ type Settings struct {
 	EnforceConventions   *bool                 `json:"enforceConventions,omitempty"`   // refuse writes that break the project's conventions (nil = yes)
 	RequireReview        *bool                 `json:"requireReview,omitempty"`        // independent review at the end of each turn with changes (nil = yes)
 	MaxFileLines         int                   `json:"maxFileLines,omitempty"`         // refuse code files longer than this (0 = 400, -1 = no limit)
+	UserProhibitions     *bool                 `json:"userProhibitions,omitempty"`     // the user's prohibitions compiled and enforced (nil = on)
 	RequireDiagnosis     *bool                 `json:"requireDiagnosis,omitempty"`     // a verified diagnosis before changes and commands (nil = on)
 	ReadProjectKnowledge *bool                 `json:"readProjectKnowledge,omitempty"` // infuse reads the project documents to the end (nil = on)
 	EnforceArchitecture  *bool                 `json:"enforceArchitecture,omitempty"`  // architecture rules on every write (nil = on)

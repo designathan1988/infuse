@@ -392,6 +392,7 @@ function onEvent(L, ev) {
     case 'error': L.snap.error = d; L.snap.pendingPermission = null; L.snap.pendingQuestion = null; re(); attention(L, 'infuse: erro', String(d)); break;
     case 'tasks': L.snap.tasks = d; vs.forEach(renderRail); paneRefresh('tasks'); break;
     case 'diagnoses': L.snap.diagnoses = d; vs.forEach(renderRail); break;
+    case 'bans': L.bans = d; vs.forEach(renderRail); break;
     case 'procs': L.snap.procs = d; vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('procs'); break;
     case 'agents': L.snap.agents = d; vs.forEach(renderLive); vs.forEach(refreshAgentBlocks); vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('agents'); break;
     case 'memory': paneRefresh('memory'); break;
@@ -562,13 +563,22 @@ function runningCard(L) {
     ${ps.length > live.length ? `<div class="li faint" data-pane="procs">${ps.length - live.length} ${t('processo(s) encerrado(s)')}</div>` : ''}</div>`;
 }
 
+// What the user forbade in this session, in the user's own words; each one is enforced by infuse until
+// the user lifts it here.
+function bansCard(L) {
+  if (L.bans === undefined) { L.bans = []; api(`/api/session/${L.id}/bans`, { root: L.root }).then(r => { L.bans = r.bans || []; viewsOf(L).forEach(renderRail); }); }
+  const bs = L.bans || []; if (!bs.length) return '';
+  const on = bs.filter(b => !b.off).length;
+  return `<div class="card bans" data-card="bans"><div class="ch">${t('Proibições')}<span class="r">${on}</span></div>
+    ${bs.map((b, i) => `<div class="ban${b.off ? ' off' : ''}"><q>${esc(b.quote)}</q><span class="faint">${esc(t({ tool: 'ferramenta', command: 'comando', path: 'caminho', action: 'ação' }[b.kind] || b.kind))}: <code>${esc(b.value)}</code> · ${t('turno')} ${b.turn}</span><button class="btn sm line" data-ban="${i}" data-off="${b.off ? '0' : '1'}">${t(b.off ? 'Restaurar' : 'Retirar')}</button></div>`).join('')}</div>`;
+}
+
 // The diagnosis the agent had to register before acting: the cause, the approach and the evidence,
 // each quote checked by infuse against a file the agent read to the end.
 function diagnosisCard(L) {
   const ds = L.snap.diagnoses || []; if (!ds.length) return '';
   const d = ds[ds.length - 1], turn = L.snap.turn;
-  const cont = d.redo === 'continues the diagnosis of the previous turn';
-  const tag = d.turn !== turn ? `<span class="tag">${t('turno')} ${d.turn}</span>` : cont ? `<span class="tag">${t('continuação')}</span>` : d.redo ? `<span class="tag warn" title="${esc(d.redo)}">${t('refeito')}</span>` : `<span class="tag ok">${t('conferido')}</span>`;
+  const tag = d.turn !== turn ? `<span class="tag">${t('turno')} ${d.turn}</span>` : d.continuing ? `<span class="tag">${t('continuação')}</span>` : d.redo_text ? `<span class="tag warn" title="${esc(d.redo_text)}">${t('refeito')}</span>` : `<span class="tag ok">${t('conferido')}</span>`;
   const row = (k, v) => `<div class="dg"><div class="dk">${t(k)}</div><div class="dv md sel">${md(v || '')}</div></div>`;
   return `<div class="card diag" data-card="diagnosis"><div class="ch">${t('Diagnóstico')}<span class="r">${tag}</span></div>
     ${row('Problema', d.problem)}${row('Causa raiz', d.root_cause)}${row('Abordagem', d.approach)}${row('Por que trata a causa', d.why_cause)}
@@ -920,7 +930,7 @@ function toolBlock(id, name, input, result, running, meta) {
   else if (name === 'Edit' && inp?.old_string != null) body += diffHTML(inp.old_string.split('\n').map(l => '-' + l).join('\n') + '\n' + (inp.new_string || '').split('\n').map(l => '+' + l).join('\n'));
   else if (inp && Object.keys(inp).length && name !== 'TodoWrite') body += `<div class="lab">${t('entrada')}</div><pre>${esc(JSON.stringify(inp, null, 2))}</pre>`;
   if (name === 'TodoWrite' && Array.isArray(inp?.todos || inp?.tasks)) body += (inp.todos || inp.tasks).map(x => `<div>${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text || x.content || '')}</div>`).join('');
-  if (result) { const o = String(result.display || result.content || ''); const k = o.indexOf('\n[infuse'); const main = k >= 0 ? o.slice(0, k) : o, inf = k >= 0 ? o.slice(k + 1) : ''; body += `<div class="lab">${t('resultado')}<button class="ib mini" data-copy-tool="out" title="${esc(t('Copiar resultado'))}">${I.copy}</button></div><pre class="res">${esc(main.length > 20000 ? main.slice(0, 20000) + '\n…' : main)}</pre>` + (inf ? `<div class="lab">${t('infundido')}</div><pre class="inf">${esc(inf)}</pre>` : ''); }
+  if (result) { const main = String(result.display || result.content || ''), inf = ''; /* the whole result: infuse's notes are already in the user's language */ body += `<div class="lab">${t('resultado')}<button class="ib mini" data-copy-tool="out" title="${esc(t('Copiar resultado'))}">${I.copy}</button></div><pre class="res">${esc(main.length > 20000 ? main.slice(0, 20000) + '\n…' : main)}</pre>` + (inf ? `<div class="lab">${t('infundido')}</div><pre class="inf">${esc(inf)}</pre>` : ''); }
   const dot = running ? 'run' : result ? (result.is_error ? 'err' : '') : 'pend';
   const open = S.fold[id] ?? (S.viewMode === 'verbose'); // an error does not open the block by itself: its first line shows in the header
   const errLine = result?.is_error ? String(result.display || result.content || '').split('\n').find(l => l.trim()) || '' : '';
@@ -1226,6 +1236,7 @@ function renderRail(v) {
   const pct = Math.min(100, Math.round(((L.lastIn || 0) / ctxLimit(L)) * 100));
   const tasks = L.snap.tasks || [];
   el.innerHTML = `
+  ${bansCard(L)}
   ${diagnosisCard(L)}
   ${planCard(L)}
   <div class="card" data-card="changes"><div class="ch">${t('Alterações')}<span class="r mono">${c.isGit === false && !c.local ? t('sem git') : `<span class="add">+${c.added || 0}</span> <span class="del">−${c.removed || 0}</span>`}</span></div>${c.local ? `<div class="segrow">${scopeSwitch()}</div>` : ''}
@@ -1242,6 +1253,7 @@ function renderRail(v) {
   $('.revgo', el).onclick = () => runReview(v);
   railFolds(v, el);
   $$('.card.diag [data-path]', el).forEach(x => x.onclick = e => { e.stopPropagation(); openFileInPane(x.dataset.path); });
+  $$('.card.bans [data-ban]', el).forEach(b => b.onclick = async e => { e.stopPropagation(); const r = await api(`/api/session/${L.id}/bans`, { body: { action: 'set', index: +b.dataset.ban, off: b.dataset.off === '1' }, root: L.root }); L.bans = r.bans || L.bans; renderRail(v); });
   $$('[data-pane]', el).forEach(x => x.onclick = () => togglePane(x.dataset.pane, true));
   bindScope(el);
   $$('[data-goto]', el).forEach(x => x.onclick = () => { const m = $(`[data-mi="${x.dataset.goto}"]`, v.el); if (m) { v.stick = false; m.scrollIntoView({ behavior: 'smooth', block: 'center' }); m.classList.add('flash'); setTimeout(() => m.classList.remove('flash'), 1400); } });

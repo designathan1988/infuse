@@ -163,6 +163,23 @@ func (s *Session) verifyClaim(c *ReportClaim) {
 		default:
 			c.Status, c.Evidence = "nao-confirmado", M("report.ev_missing")
 		}
+	case "read": // "I read X": the lines infuse showed the agent, not its word
+		abs := filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(filepath.ToSlash(c.Ref), "./")))
+		seen, total, _ := s.readProgress(abs)
+		switch {
+		case total > 0 && seen >= total:
+			c.Status, c.Evidence = "confirmado", M("report.ev_read_full", "total", total)
+		case seen > 0:
+			c.Status, c.Evidence = "parcial", M("report.ev_read_partial", "seen", seen, "total", total)
+		default:
+			c.Status, c.Evidence = "nao-confirmado", M("report.ev_not_read")
+		}
+	case "url": // "this page says…": the page was fetched in this session
+		if len(s.unfetchedCitations(c.Ref)) == 0 && strings.TrimSpace(c.Ref) != "" {
+			c.Status, c.Evidence = "confirmado", M("report.ev_fetched")
+		} else {
+			c.Status, c.Evidence = "nao-confirmado", M("report.ev_not_fetched")
+		}
 	default:
 		c.Kind, c.Status, c.Evidence = "other", "sem-evidencia", M("report.ev_none")
 	}
@@ -252,7 +269,7 @@ type reportTool struct{}
 func (reportTool) Category() string { return "ui" }
 func (reportTool) Spec() ToolSpec {
 	return ToolSpec{Name: "Report", Description: "When you finish a piece of work, report what was done as claims, each with the evidence it relies on: kind=command with ref = the command you ran (build, tests), kind=file with ref = the file changed, or kind=other. infuse checks each claim against what actually happened in the turn and shows the result to the user. Put the suggested next step in next, if there is one.",
-		InputSchema: schema(`{"type":"object","properties":{"summary":{"type":"string"},"claims":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"kind":{"type":"string","enum":["command","file","other"]},"ref":{"type":"string"}},"required":["text","kind"]}},"next":{"type":"string"}},"required":["summary","claims"]}`)}
+		InputSchema: schema(`{"type":"object","properties":{"summary":{"type":"string"},"claims":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"kind":{"type":"string","enum":["command","file","read","url","other"],"description":"command: a command you ran (ref = the command); file: a file you changed (ref = path); read: a file you read (ref = path; infuse checks you were shown every line); url: a page you cite (ref = address; infuse checks you fetched it); other: anything else (no evidence)"},"ref":{"type":"string"}},"required":["text","kind"]}},"next":{"type":"string"}},"required":["summary","claims"]}`)}
 }
 
 func (reportTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {

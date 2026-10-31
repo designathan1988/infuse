@@ -5,19 +5,13 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"regexp"
 )
 
 var (
 	reTestFile = regexp.MustCompile(`(?i)(^|/)(tests?|__tests__|specs?|e2e)/|[._-](test|spec)\.[a-z0-9]+$|_test\.go$|(^|/)test_[^/]+\.py$|(^|/)conftest\.py$`)
-	// a request to make failing tests pass (not merely one that mentions tests)
-	reMakePass = regexp.MustCompile(`(?i)(fa[çc]a|fazer|deix\w*|make|get)\s+(os\s+|the\s+)?(test\w*|ci)\s+(passar|pass\w*|verde|green)` +
-		`|(test\w*|ci|specs?)\s+(est[ãa]o\s+|is\s+|are\s+)?(falhando|falhou|falham|quebrad\w*|failing|fails|failed|broken|red|vermelh\w*)` +
-		`|(corrij\w*|corrigir|consert\w*|fix\w*)\s+(os?\s+|the\s+)?(test\w*|ci|build)` +
-		`|(test\w*|ci)\s+(para\s+|to\s+)?pass` +
-		`|\b(failing|broken|red)\s+(unit\s+)?tests?|testes?\s+(que\s+)?(falham|quebrad\w*)` +
-		`|reprovou`)
 )
 
 // turnStart is the message that started the current turn.
@@ -65,11 +59,12 @@ func (s *Session) sentinelMsg(tool Tool, input json.RawMessage) Msg {
 	if p == "" || !reTestFile.MatchString(filepath.ToSlash(p)) {
 		return Msg{}
 	}
-	m, _ := s.turnStart()
-	if n, ok := missionNoteOf(m); ok && n.Verdict == "reprovado" { // the mission came back because Done? failed: the request is to make it pass
-		return M("sentinel.test_edit")
+	// an existing test is the user's oracle: changing it always needs the user's yes (a new test is free)
+	abs := p
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(s.Cwd, abs)
 	}
-	if reMakePass.MatchString(s.turnRequest()) {
+	if _, err := os.Stat(abs); err == nil {
 		return M("sentinel.test_edit")
 	}
 	return Msg{}

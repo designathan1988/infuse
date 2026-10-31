@@ -60,6 +60,9 @@ Only explicit prohibitions. A later message that allows something again removes 
 // compileBans reads the user's messages and replaces the session's prohibitions with what is in force,
 // keeping the ones the user removed on screen removed.
 func (s *Session) compileBans(ctx context.Context, p Provider) {
+	if s.settings.UserProhibitions != nil && !*s.settings.UserProhibitions {
+		return
+	}
 	text := s.userWords()
 	if strings.TrimSpace(text) == "" {
 		return

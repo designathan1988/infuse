@@ -40,6 +40,21 @@ func init() {
 		"ban.refused": {
 			"en":    "[infuse] Blocked by the user's prohibition (turn {turn}): “{quote}”. It holds until the user lifts it.",
 			"pt-BR": "[infuse] Bloqueado pela proibição do usuário (turno {turn}): “{quote}”. Vale até o usuário retirá-la."},
+		"report.ev_read_full": {
+			"en":    "infuse showed you all {total} lines of it",
+			"pt-BR": "o infuse mostrou ao agente todas as {total} linhas"},
+		"report.ev_read_partial": {
+			"en":    "you were shown {seen} of its {total} lines",
+			"pt-BR": "o agente viu {seen} das {total} linhas"},
+		"report.ev_not_read": {
+			"en":    "you never read it in this session",
+			"pt-BR": "o agente não leu nesta sessão"},
+		"report.ev_fetched": {
+			"en":    "fetched in this session",
+			"pt-BR": "buscado nesta sessão"},
+		"report.ev_not_fetched": {
+			"en":    "never fetched in this session",
+			"pt-BR": "nunca buscado nesta sessão"},
 		"claims.unfetched": {
 			"en":    "[infuse] The turn cannot end: you cite web addresses you never fetched nor saw in a search result: {urls}. Fetch them and check what they say, or remove them.",
 			"pt-BR": "[infuse] O turno não pode terminar: você cita endereços da web que nunca buscou nem viu num resultado de pesquisa: {urls}. Busque e confira o que dizem, ou retire."},

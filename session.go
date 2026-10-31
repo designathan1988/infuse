@@ -639,6 +639,7 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 	}
 	s.lastError = ""
 	s.gate.reset()
+	s.resetTurnLocks()
 	s.Turn++
 	s.TurnStarts = append(s.TurnStarts, len(s.Messages))
 	blocks := userBlocks(text, atts, imgs)
@@ -694,6 +695,7 @@ func (s *Session) run(ctx context.Context) {
 	mcpFor(s.Root).ensure(ctx)           // approved connectors start before the first request
 	s.ensureCompiledRules(ctx, provider) // the instructions' meaning, as quote-checked rules
 	s.ensureKnowledge(ctx, provider)     // the project's documents, read to the last line
+	s.compileBans(ctx, provider)         // what the user forbade, in the user's words, checked
 	know := knowledgePrompt(s.Root)
 	var breaker loopBreaker // stops a turn that keeps repeating the same failure
 	stopHooks := 0
@@ -722,7 +724,7 @@ func (s *Session) run(ctx context.Context) {
 		if budget > 0 && maxTok <= budget+1024 {
 			maxTok = budget + 8000
 		}
-		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules) + "\n" + diagnosisRule + "\n\n" + know, Messages: repairTranscript(s.copyMessages()), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
+		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules) + "\n" + diagnosisRule + "\n\n" + s.workStatePrompt() + "\n\n" + know, Messages: repairTranscript(s.copyMessages()), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
 		started := time.Now()
 		var thinkFrom, thinkTo time.Time // how long the model spent in its reasoning, from the stream
 		res, err := s.streamResilient(ctx, provider, req, func(ev StreamEvent) {
@@ -796,7 +798,11 @@ func (s *Session) run(ctx context.Context) {
 			continue
 		}
 		if res.StopReason != "tool_use" {
-			if why := s.turnObligation(ctx); !why.Empty() { // the protocol decides when the turn may end
+			why := s.workObligation()
+			if why.Empty() {
+				why = s.turnObligation(ctx)
+			}
+			if !why.Empty() { // the protocol decides when the turn may end
 				s.mu.Lock()
 				s.gate.obligationAsks++
 				if why.ID == "gate.no_report" {
@@ -980,6 +986,9 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	if o := s.runHooks(ctx, "PreToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput}); o.Block {
 		return s.say(b.ID, o.blockMsg()), true
 	}
+	if m := s.banCheck(b.Name, b.Input); !m.Empty() { // what the user forbade in this session
+		return s.refuse(b.ID, bashCommand(b.Input), m)
+	}
 	if inv, _ := isResearch(b.Name, b.Input); inv && b.Name != "Read" || b.Name == "Read" && isSourceRead(b.Input) {
 		s.noteResearch(b.Name, b.Input)
 	}
@@ -998,11 +1007,32 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 		if why := s.protocolCheckWrite(b.Name, b.Input); !why.Empty() {
 			return s.refuse(b.ID, "", why)
 		}
+		if p, before, after, ok := editedContent(s.workRoot(), s.Cwd, b.Name, b.Input); ok {
+			rel := relTo(s.workRoot(), p)
+			if why := s.largeRemoval(rel, before, after); !why.Empty() {
+				return s.refuse(b.ID, "", why)
+			}
+			if why := cheatWriteCheck(s.workRoot(), rel, before, after); !why.Empty() {
+				if why.ID != "cheat.test_infra" {
+					return s.refuse(b.ID, "", why)
+				}
+				// the test infrastructure may have to change: the user decides, every time
+				if !s.askPermissionWhy(ctx, tool, b.Input, "cheat:"+rel, why) {
+					return s.say(b.ID, M("perm.user_refused", "why", why)), true
+				}
+			}
+		}
 	}
 	if b.Name == "Bash" { // docs before commands: options the agent has not read about are refused
 		var in struct{ Command string }
 		_ = json.Unmarshal(b.Input, &in)
 		if why := s.commandDocCheck(in.Command); !why.Empty() {
+			return s.refuse(b.ID, in.Command, why)
+		}
+		if why := swallowedTestCommand(in.Command); !why.Empty() { // a test run judged by its real exit code
+			return s.refuse(b.ID, in.Command, why)
+		}
+		if why := unknownPackages(ctx, in.Command); !why.Empty() { // packages exist before they are installed
 			return s.refuse(b.ID, in.Command, why)
 		}
 	} else if tool.Category() == "write" {
@@ -1044,6 +1074,26 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	} else if tool.Category() == "write" && !isErr {
 		s.noteWrite()
 		s.noteFileState(toolPath(b.Input))
+		if p := toolPath(b.Input); p != "" {
+			abs := p
+			if !filepath.IsAbs(abs) {
+				abs = filepath.Join(s.Cwd, abs)
+			}
+			s.noteUIChange(relTo(s.workRoot(), abs))
+		}
+	}
+	if !isErr {
+		switch b.Name {
+		case "Browser":
+			var in struct{ Action string }
+			_ = json.Unmarshal(b.Input, &in)
+			if in.Action == "screenshot" || in.Action == "record_stop" {
+				s.noteScreenshot()
+			}
+			s.noteFetched(string(b.Input) + "\n" + out)
+		case "WebFetch", "WebSearch":
+			s.noteFetched(string(b.Input) + "\n" + out)
+		}
 	}
 	s.noteRead(b.Name, b.Input, out, isErr)
 	if b.Name == "Bash" && !isErr {
@@ -1057,8 +1107,8 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 		Lesson(s.Root, "atalho", strings.Join(msgStrings(shortcutWarn), ", "))
 		out += "\n" + s.say(b.ID, M("shortcut.introduced", "items", shortcutWarn))
 	}
-	if n := s.procNotes(); n != "" {
-		out += "\n" + n
+	for _, m := range s.procNoteMsgs() {
+		out += "\n" + s.say(b.ID, m)
 	}
 	if o := s.runHooks(ctx, "PostToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput, "tool_response": out}); o.Message != "" {
 		out += "\n" + s.say(b.ID, M("hook.post", "message", o.Message))
@@ -1076,15 +1126,15 @@ func (s *Session) runToolChecked(ctx context.Context, rules *RuleSet, tool Tool,
 	}
 	// sentinels: deterministic checks that ask the user even when the mode would allow the action
 	if decision != "deny" {
-		if why := s.sentinel(tool, b.Input); why != "" {
+		if why := s.sentinelMsg(tool, b.Input); !why.Empty() {
+			key := "sentinel:" + why.ID + ":" + toolPath(b.Input)
 			s.mu.Lock()
-			silenced := s.allowAlways["sentinel:"+why]
+			silenced := s.allowAlways[key]
 			s.mu.Unlock()
 			if !silenced {
-				Journal(s.Root, JournalEntry{Kind: "sentinel", Detail: why})
-				// the sentinel's reason (sentinel.go) is still text: it is shown as it is
-				if !s.askPermissionWhy(ctx, tool, b.Input, why, M("text.verbatim", "text", why)) {
-					Lesson(s.Root, "teste-alterado", why)
+				Journal(s.Root, JournalEntry{Kind: "sentinel", Detail: why.Render(s.uiLang())})
+				if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
+					Lesson(s.Root, "teste-alterado", why.String())
 					return s.say(b.ID, M("perm.user_refused", "why", why)), true
 				}
 				decision = "allow"

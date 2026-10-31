@@ -123,7 +123,7 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 			if !allowed(b.Name) {
 				out, isErr = s.say(b.ID, M("agent.tool_unavailable", "tool", b.Name)), true
 			} else {
-				out, isErr = s.runTool(ctx, rules, b)
+				out, isErr = s.safeRunTool(ctx, rules, b)
 				out = redactSecrets(out)
 			}
 			display := displayFor(s.uiLang(), out, s.takeCallMsgs(b.ID)) // the trail shows infuse's messages in the user's language
