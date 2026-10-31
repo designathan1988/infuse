@@ -6,7 +6,7 @@
 // Full pages that replace the session area: Settings, Scheduled, Customize. Every control applies on change.
 
 function showPage(name) {
-  S.page = name; let pg = $('#page');
+  UI.set('page', name); let pg = $('#page');
   if (!name) { if (pg) pg.remove(); $('#views').classList.remove('hidden'); renderPanes(); renderSidebar(); return null; }
   if (!pg) { pg = h('<div id="page" class="page"></div>'); $('#main').prepend(pg); }
   pg.innerHTML = ''; $('#views').classList.add('hidden'); $('#panes').classList.add('empty'); renderSidebar();

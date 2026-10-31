@@ -72,8 +72,8 @@ function agentBlock(id, inp, result) {
 }
 // a step of a subagent changed: only its blocks are redrawn, the conversation stays as it is
 function refreshAgentBlocks(v) {
-  if (!v.el) return;
-  $$('[data-agentblk]', v.el).forEach(blk => {
+  if (!elOf(v)) return;
+  $$('[data-agentblk]', elOf(v)).forEach(blk => {
     const L = v.sid && S.live[v.sid]; if (!L) return;
     const id = blk.dataset.agentblk;
     const tu = (L.snap.messages || []).flatMap(m => m.content || []).find(b => b.type === 'tool_use' && b.id === id);
@@ -87,8 +87,8 @@ function refreshAgentBlocks(v) {
     if (shown) stickToEnd(v);
   });
 }
-function bindFolds(root) { $$('[data-fold]', root).forEach(x => x.onclick = e => { if (e.target.closest('[data-path]')) return; const box = x.parentNode; const open = !box.classList.contains('open'); box.classList.toggle('open', open); S.fold[x.dataset.fold] = open; }); }
-function stickToEnd(v) { if (v.stick !== false) toBottom(v); }
+function bindFolds(root) { $$('[data-fold]', root).forEach(x => x.onclick = e => { if (e.target.closest('[data-path]')) return; const box = x.parentNode; const open = !box.classList.contains('open'); box.classList.toggle('open', open); UI.sub('fold', x.dataset.fold, open); }); }
+function stickToEnd(v) { if (viewRT(v).stick !== false) toBottom(v); }
 function toolBlock(id, name, input, result, running, meta) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
   if (name === 'Report' && inp && Array.isArray(inp.claims)) return reportCard(inp, result, meta);

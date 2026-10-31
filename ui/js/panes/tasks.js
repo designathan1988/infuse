@@ -49,6 +49,6 @@ function mountAgents(pb) {
 }
 
 function mountPlan(pb) {
-  const draw = () => { const L = curL(); const p = L?.snap?.plan; pb.innerHTML = p ? `<div class="plist md sel">${md(p)}</div><div class="pfoot"><span class="grow faint">${t('Plano proposto no modo Plano')}</span><button class="btn sm pri">${t('Aprovar e executar')}</button></div>` : `<div class="empty">${t('Nenhum plano ainda. Use o modo Plano (Shift+Tab ou /plan) para o agente propor antes de editar.')}</div>`; const b = $('.btn', pb); if (b) b.onclick = async () => { const v = V(); await setSessionOpts(v, { mode: 'acceptEdits' }); const P = $('.prompt', v.el); P.value = t('Plano aprovado. Execute-o.'); send(v); }; };
+  const draw = () => { const L = curL(); const p = L?.snap?.plan; pb.innerHTML = p ? `<div class="plist md sel">${md(p)}</div><div class="pfoot"><span class="grow faint">${t('Plano proposto no modo Plano')}</span><button class="btn sm pri">${t('Aprovar e executar')}</button></div>` : `<div class="empty">${t('Nenhum plano ainda. Use o modo Plano (Shift+Tab ou /plan) para o agente propor antes de editar.')}</div>`; const b = $('.btn', pb); if (b) b.onclick = async () => { const v = V(); await setSessionOpts(v, { mode: 'acceptEdits' }); const P = $('.prompt', elOf(v)); P.value = t('Plano aprovado. Execute-o.'); send(v); }; };
   draw(); return { refresh: draw };
 }

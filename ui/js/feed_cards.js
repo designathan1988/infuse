@@ -14,8 +14,8 @@ function questionCard(q) {
 }
 async function decide(v, id, d) {
   if (d === 'all') { await setSessionOpts(v, { mode: 'bypass' }); d = 'allow'; toast(t('Modo: ') + t('Aceitar tudo')); }
-  const L = S.live[v.sid]; await api(`/api/sessions/${v.sid}/permission`, { body: { id, decision: d }, root: L.root }); if (L.snap) L.snap.pendingPermission = null; renderChat(v); if (d === 'deny') setTimeout(() => $('.prompt', v.el).focus(), 50); }
-async function answer(v, id, a) { const L = S.live[v.sid]; await api(`/api/sessions/${v.sid}/answer`, { body: { id, answer: a }, root: L.root }); if (L.snap) L.snap.pendingQuestion = null; renderChat(v); }
+  const L = S.live[v.sid]; await api(`/api/sessions/${v.sid}/permission`, { body: { id, decision: d }, root: L.root }); if (L.snap) Live.snap(L.id, { pendingPermission: null }); renderChat(v); if (d === 'deny') setTimeout(() => $('.prompt', elOf(v)).focus(), 50); }
+async function answer(v, id, a) { const L = S.live[v.sid]; await api(`/api/sessions/${v.sid}/answer`, { body: { id, answer: a }, root: L.root }); if (L.snap) Live.snap(L.id, { pendingQuestion: null }); renderChat(v); }
 
 // markdown (small, safe): code blocks, inline code (paths become links), headings, lists, quotes, tables, links
 // Lists, nested by indentation: a sub-item stays inside its item; ordered lists keep their numbers.

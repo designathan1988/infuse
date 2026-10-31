@@ -28,7 +28,8 @@ function liveCodeHTML(text, cls) {
 }
 document.addEventListener('click', e => { if (e.target.closest('.agentsgo')) togglePane('agents', true); });
 function renderLive(v) {
-  if (!v.el) return; const el = $('.live', v.el); const L = v.sid && S.live[v.sid]; if (!el || !L) return;
+  v = freshView(v);
+  if (!elOf(v)) return; const el = $('.live', elOf(v)); const L = v.sid && S.live[v.sid]; if (!el || !L) return;
   const parts = [];
   if (L.think) parts.push(['think', thinkBlock(`${L.id}:live`, L.think, true)]);
   if (L.text) parts.push(['text', `<div class="a"><div class="md sel">${md(L.text)}<span class="cursor"></span></div></div>`]);
@@ -40,7 +41,7 @@ function renderLive(v) {
   if (st === 'thinking' || st === 'tool' || st === 'compacting') out += `<div class="status"><span class="spin"></span><span>${st === 'tool' ? t('executando ') + esc(L.running?.name || '') : st === 'compacting' ? t('compactando contexto') : t('pensando')}</span><span class="faint el" data-el="${L.id}"></span></div>`;
   if (out) parts.push(['status', `<div>${out}</div>`]);
   patchParts(v, el, parts);
-  if (v.stick !== false) toBottom(v); updateJump(v);
+  if (viewRT(v).stick !== false) toBottom(v); updateJump(v);
 }
 // Updates a container part by part (keyed): an unchanged part keeps its element, so nothing flashes,
 // folds stay as they are and a code view keeps its scroll (following the end only if it was there).

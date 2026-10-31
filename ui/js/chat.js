@@ -4,8 +4,9 @@
 
 // ---------------------------------------------------------------- transcript
 function renderChat(v) {
-  if (!v.el) return;
-  const chat = $('.chat', v.el); const L = v.sid && S.live[v.sid];
+  v = freshView(v);
+  if (!elOf(v)) return;
+  const chat = $('.chat', elOf(v)); const L = v.sid && S.live[v.sid];
   if (!L?.snap) { chat.innerHTML = ''; return; }
   const s = L.snap, msgs = s.messages, results = {};
   for (const m of msgs) for (const b of m.content || []) if (b.type === 'tool_result') results[b.tool_use_id] = b;
@@ -45,10 +46,10 @@ function renderChat(v) {
   if (s.pendingPermission) parts.push(['perm', permCard(s.pendingPermission)]);
   if (s.pendingQuestion) parts.push(['question', questionCard(s.pendingQuestion)]);
   if (s.error && s.state === 'error') parts.push(['error', `<div class="errbox">${esc(s.error)}</div>`]);
-  const sc = $('.scroller', v.el); if (v._jump !== v.sid) v.stick = true;
+  const sc = $('.scroller', elOf(v)); if (viewRT(v).jump !== v.sid) viewRT(v).stick = true;
   if (chat.dataset.sid !== v.sid) { chat.innerHTML = ''; chat.dataset.sid = v.sid; } // another session: start clean
   patchParts(v, chat, parts); renderLive(v);
-  if (v.stick !== false) toBottom(v); v._jump = v.sid; renderToc(v); updateJump(v);
+  if (viewRT(v).stick !== false) toBottom(v); viewRT(v).jump = v.sid; renderToc(v); updateJump(v);
 }
 const fmtClock = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 function fmtDur(ms) { if (ms == null) return ''; if (ms < 1000) return ms + ' ms'; const s = ms / 1000; if (s < 60) return (s < 10 ? s.toFixed(1) : Math.round(s)) + ' s'; const m = Math.floor(s / 60); return `${m}m ${Math.round(s % 60)}s`; }
@@ -108,7 +109,7 @@ function runningCard(L) {
 // What the user forbade in this session, in the user's own words; each one is enforced by infuse until
 // the user lifts it here.
 function bansCard(L) {
-  if (L.bans === undefined) { L.bans = []; api(`/api/session/${L.id}/bans`, { root: L.root }).then(r => { L.bans = r.bans || []; viewsOf(L).forEach(renderRail); }); }
+  if (L.bans === undefined) { Live.patch(L.id, { bans: [] }); api(`/api/session/${L.id}/bans`, { root: L.root }).then(r => { Live.patch(L.id, { bans: r.bans || [] }); viewsOf(L).forEach(renderRail); }); }
   const bs = L.bans || []; if (!bs.length) return '';
   const on = bs.filter(b => !b.off).length;
   return `<div class="card bans" data-card="bans"><div class="ch">${t('Proibições')}<span class="r">${on}</span></div>
@@ -134,7 +135,7 @@ const PLAN_ICON = { done: ['✓', 'ok'], in_progress: ['', 'now'], blocked: ['�
 function planCard(L) {
   const tasks = L.snap.tasks || []; if (!tasks.length) return '';
   const done = tasks.filter(x => x.status === 'done').length, pct = Math.round(done / tasks.length * 100);
-  const prev = L._planPrev || {}; L._planPrev = Object.fromEntries(tasks.map(x => [x.id, x.status]));
+  const R = liveRT(L.id); const prev = R.planPrev; R.planPrev = Object.fromEntries(tasks.map(x => [x.id, x.status]));
   // only a running agent has a task "now"; once it stops, an unfinished task shows as stopped
   const live = busy(L), open = tasks.filter(x => x.status !== 'done' && x.status !== 'blocked').length;
   const head = !live && open ? `<span class="r warn">${t('parado')} · ${done} ${t('de')} ${tasks.length}</span>` : `<span class="r">${done} ${t('de')} ${tasks.length}</span>`;
@@ -170,7 +171,7 @@ function missionCard(L) {
     <div class="row" style="margin-top:6px">${m.state === 'running' ? `<button class="btn sm mstop">${t('Parar missão')}</button>` : `<button class="btn sm line mnew">${t('Nova missão')}</button>`}</div></div>`;
 }
 function missionDialog(v) {
-  const L = v.sid && S.live[v.sid]; const P = $('.prompt', v.el);
+  const L = v.sid && S.live[v.sid]; const P = $('.prompt', elOf(v));
   const d = h(`<div class="dlg" style="width:min(560px,92vw)"><h3 style="margin:0 0 4px">${t('Iniciar missão')}</h3><div class="faint" style="margin-bottom:10px">${t('O agente trabalha sozinho até os critérios do Pronto? passarem. Depois de cada turno o infuse roda os critérios numa cópia do projeto; se falharem, o agente recebe os motivos e continua. Ele pode declarar impasse quando não houver caminho.')}</div>
     <textarea class="doc mg" style="min-height:110px" placeholder="${esc(t('O objetivo. Ex.: a página de login autentica com e-mail e senha e mostra erro claro quando a senha está errada.'))}">${esc(P?.value || '')}</textarea>
     <div class="cs" style="padding:8px 0 0">${t('Gastar no máximo')} US$ <input class="slot mono mb" value="2.00"> ${t('e')} <input class="slot mono mt" value="10"> ${t('turnos')}.</div>
@@ -190,36 +191,36 @@ function missionDialog(v) {
 async function runReview(v, focus) {
   const L = v.sid && S.live[v.sid]; if (!L) return toast(t('Abra uma sessão para revisar'));
   if (busy(L)) return toast(t('Espere o agente terminar para revisar'));
-  const st = $('.live', v.el); if (st) st.innerHTML = `<div class="status"><span class="spin"></span>${t('revisor independente lendo as alterações…')}</div>`;
+  const st = $('.live', elOf(v)); if (st) st.innerHTML = `<div class="status"><span class="spin"></span>${t('revisor independente lendo as alterações…')}</div>`;
   const r = await api(`/api/session/${L.id}/review`, { body: { focus: focus || '' }, root: L.root });
   if (!r.ok) { toast(r.error || t('Revisão falhou')); renderChat(v); }
 }
 // The element the user picked in the browser pane goes into the message being written.
 if (window.infuse?.on) infuse.on('browserPick', p => insertPick(p));
 function insertPick(p) {
-  if (!p) return; const v = V(); if (!v?.el) return; const P = $('.prompt', v.el);
+  if (!p) return; const v = V(); if (!v?.el) return; const P = $('.prompt', elOf(v));
   const st = p.style ? `\n${t('Estilo')}: ${p.style.font} · ${t('cor')} ${p.style.color} · ${t('fundo')} ${p.style.background} · margin ${p.style.margin} · padding ${p.style.padding}` : '';
   P.value = (P.value.trim() ? P.value.trimEnd() + '\n\n' : '') + `[${t('Elemento selecionado em')} ${p.url}]\n${t('Seletor')}: ${p.selector}\n${t('Posição')}: ${p.rect.x},${p.rect.y} · ${p.rect.w}×${p.rect.h}${st}${p.text ? `\n${t('Texto')}: ${p.text}` : ''}\n\`\`\`html\n${p.html}\n\`\`\`\n`;
   grow(P); P.focus(); P.setSelectionRange(P.value.length, P.value.length); toast(t('Elemento adicionado à mensagem'));
 }
 // Scrolling: the conversation follows the end only while the user is there; scrolling up stops it.
-function toBottom(v) { const sc = v.el && $('.scroller', v.el); if (!sc) return; v._prog = true; sc.scrollTop = sc.scrollHeight; }
+function toBottom(v) { const sc = elOf(v) && $('.scroller', elOf(v)); if (!sc) return; viewRT(v).prog = true; sc.scrollTop = sc.scrollHeight; }
 function updateJump(v) {
-  const sc = v.el && $('.scroller', v.el), b = v.el && $('.jumpdown', v.el); if (!sc || !b) return;
+  const sc = elOf(v) && $('.scroller', elOf(v)), b = elOf(v) && $('.jumpdown', elOf(v)); if (!sc || !b) return;
   const far = sc.scrollHeight - sc.scrollTop - sc.clientHeight > 120; const L = v.sid && S.live[v.sid];
   b.classList.toggle('show', far); b.classList.toggle('live', far && busy(L));
-  b.style.bottom = ($('.composer', v.el)?.offsetHeight || 120) + 14 + 'px';
+  b.style.bottom = ($('.composer', elOf(v))?.offsetHeight || 120) + 14 + 'px';
 }
 function bindScroll(v) {
-  const sc = $('.scroller', v.el); if (!sc || sc._bound) return; sc._bound = true;
-  sc.addEventListener('wheel', e => { if (e.deltaY < 0) v.stick = false; }, { passive: true });
+  const sc = $('.scroller', elOf(v)); if (!sc || sc._bound) return; sc._bound = true;
+  sc.addEventListener('wheel', e => { if (e.deltaY < 0) viewRT(v).stick = false; }, { passive: true });
   sc.addEventListener('scroll', () => {
     const dist = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
-    if (v._prog) v._prog = false; else if (dist > 24) v.stick = false;
-    if (dist < 8) v.stick = true;
+    if (viewRT(v).prog) viewRT(v).prog = false; else if (dist > 24) viewRT(v).stick = false;
+    if (dist < 8) viewRT(v).stick = true;
     updateJump(v); markToc(v);
   }, { passive: true });
-  $('.jumpdown', v.el).onclick = () => { v.stick = true; sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' }); };
+  $('.jumpdown', elOf(v)).onclick = () => { viewRT(v).stick = true; sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' }); };
 }
 // Chapters: one per turn, titled by what the user asked; hover lists them, a click goes to the exact point.
 function chapterTitle(m) {
@@ -228,18 +229,18 @@ function chapterTitle(m) {
   return tx.split('\n')[0].slice(0, 90) || t('(sem texto)');
 }
 function renderToc(v) {
-  const L = v.sid && S.live[v.sid], toc = v.el && $('.toc', v.el); if (!toc) return; bindScroll(v);
+  const L = v.sid && S.live[v.sid], toc = elOf(v) && $('.toc', elOf(v)); if (!toc) return; bindScroll(v);
   const s = L?.snap; const starts = s?.turnStarts || [];
   if (starts.length < 2) { toc.classList.add('hidden'); return; }
   toc.classList.remove('hidden');
   const items = starts.map((idx, k) => ({ turn: k + 1, title: chapterTitle(s.messages[idx] || { content: [] }), ts: s.messages[idx]?.ts }));
   $('.ticks', toc).innerHTML = items.slice(-14).map(x => `<i data-t="${x.turn}"></i>`).join('');
   $('.toclist', toc).innerHTML = `<div class="th">${t('Capítulos')}</div>` + items.map(x => `<div class="ti" data-t="${x.turn}"><span class="n">${x.turn}</span><span class="tt">${esc(x.title)}</span>${x.ts ? `<span class="tm">${fmtClock(x.ts)}</span>` : ''}</div>`).join('');
-  $$('[data-t]', toc).forEach(el => el.onclick = () => { const sep = $(`.turnsep[data-turn="${el.dataset.t}"]`, v.el); if (sep) { v.stick = false; sep.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+  $$('[data-t]', toc).forEach(el => el.onclick = () => { const sep = $(`.turnsep[data-turn="${el.dataset.t}"]`, elOf(v)); if (sep) { viewRT(v).stick = false; sep.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
   markToc(v);
 }
 function markToc(v) {
-  const sc = $('.scroller', v.el), toc = $('.toc', v.el); if (!sc || !toc) return;
+  const sc = $('.scroller', elOf(v)), toc = $('.toc', elOf(v)); if (!sc || !toc) return;
   const top = sc.getBoundingClientRect().top + 40; let cur = 1;
   for (const sep of $$('.turnsep', sc)) { if (sep.getBoundingClientRect().top <= top) cur = +sep.dataset.turn; else break; }
   $$('[data-t]', toc).forEach(el => el.classList.toggle('on', +el.dataset.t === cur));
@@ -281,14 +282,14 @@ function bindChat(v, root) {
   $$('.codecopy', root).forEach(b => b.onclick = () => copyText(b.nextElementSibling.innerText, 'Código copiado'));
   $$('[data-url]', root).forEach(a => a.onclick = e => { e.preventDefault(); togglePane('browser', true); setTimeout(() => paneCall('browser', 'go', a.dataset.url), 300); });
   $$('[data-fork]', root).forEach(b => b.onclick = async e => { e.stopPropagation(); const r = await api(`/api/session/${L.id}/fork`, { body: { upTo: +b.dataset.fork }, root: L.root }); if (!r.ok) return toast(r.error); await loadSessions(); await openSession(r.root, r.id); toast(t('Nova sessão a partir desta mensagem')); });
-  $$('[data-pinmsg]', root).forEach(b => b.onclick = async e => { e.stopPropagation(); const r = await api(`/api/session/${L.id}/pinmsg`, { body: { index: +b.dataset.pinmsg }, root: L.root }); L.snap.pinnedMsgs = r.pinned || []; renderChat(v); renderRail(v); });
+  $$('[data-pinmsg]', root).forEach(b => b.onclick = async e => { e.stopPropagation(); const r = await api(`/api/session/${L.id}/pinmsg`, { body: { index: +b.dataset.pinmsg }, root: L.root }); Live.snap(L.id, { pinnedMsgs: r.pinned || [] }); renderChat(v); renderRail(v); });
   $$('[data-speak]', root).forEach(b => b.onclick = e => { e.stopPropagation(); speakMsg(b, msgText(L.snap.messages[+b.dataset.speak])); });
-  $$('[data-fixreview]', root).forEach(b => b.onclick = () => { const P = $('.prompt', v.el); P.value = t('Corrija os achados da revisão independente acima. Para cada um, diga o que mudou ou por que não procede.'); send(v); });
-  $$('[data-next]', root).forEach(b => b.onclick = () => { const P = $('.prompt', v.el); P.value = b.dataset.next; grow(P); P.focus(); });
+  $$('[data-fixreview]', root).forEach(b => b.onclick = () => { const P = $('.prompt', elOf(v)); P.value = t('Corrija os achados da revisão independente acima. Para cada um, diga o que mudou ou por que não procede.'); send(v); });
+  $$('[data-next]', root).forEach(b => b.onclick = () => { const P = $('.prompt', elOf(v)); P.value = b.dataset.next; grow(P); P.focus(); });
   $$('[data-copy-think]', root).forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.closest('.tool').querySelector('.thinktext')?.innerText || '', 'Raciocínio copiado'); });
   $$('[data-copy-tool]', root).forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.closest('.tool').querySelector(b.dataset.copyTool === 'out' ? '.res' : '.inp')?.innerText || '', 'Copiado'); });
   $$('[data-rw]', root).forEach(b => b.onclick = () => rewindDialog(v, +b.dataset.rw));
-  $$('[data-fold]', root).forEach(x => x.onclick = e => { if (e.target.closest('[data-path]')) return; const box = x.parentNode; const open = !box.classList.contains('open'); box.classList.toggle('open', open); S.fold[x.dataset.fold] = open; });
+  $$('[data-fold]', root).forEach(x => x.onclick = e => { if (e.target.closest('[data-path]')) return; const box = x.parentNode; const open = !box.classList.contains('open'); box.classList.toggle('open', open); UI.sub('fold', x.dataset.fold, open); });
   $$('[data-path]', root).forEach(x => { x.onclick = () => openFileInPane(x.dataset.path); x.oncontextmenu = e => { e.preventDefault(); pathMenu(x.dataset.path, e); }; });
   $$('[data-perm]', root).forEach(b => b.onclick = () => decide(v, b.dataset.id, b.dataset.perm));
   $$('[data-ans]', root).forEach(b => b.onclick = () => answer(v, b.dataset.id, b.dataset.ans));

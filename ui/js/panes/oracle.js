@@ -22,7 +22,7 @@ async function runOracleUI(c, out) {
   out.innerHTML = `<div class="vbox"><div class="status"><span class="spin"></span>${t('copiando o projeto e rodando cada critério…')}</div></div>`;
   const L = curL();
   const r = await api('/api/oracle/run', { body: { session: L?.id || '' }, root: c.root, dir: c.dir });
-  const v = r.verdict || {}; drawVerdict(c, out, v, r.error); if (L) { L.verdict = v; viewsOf(L).forEach(renderRail); }
+  const v = r.verdict || {}; drawVerdict(c, out, v, r.error); if (L) { liveRT(L.id).verdict = v; viewsOf(L).forEach(renderRail); }
   out.dispatchEvent(new CustomEvent('verdict', { detail: v, bubbles: true }));
 }
 function drawVerdict(c, out, v, err) {

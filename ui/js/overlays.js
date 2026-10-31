@@ -36,8 +36,8 @@ function rewindDialog(v, preselect) {
   const run = async body => {
     const r = await api(`/api/session/${L.id}/rewind`, { body, root: L.root }); close();
     if (r.error) return toast(r.error);
-    L.snap = norm(r.session); viewsOf(L).forEach(renderView); refreshChanges(L);
-    if (body.conversation && r.prompt) { const P = $('.prompt', v.el); P.value = r.prompt; grow(P); P.focus(); }
+    Live.patch(L.id, { snap: norm(r.session) }); viewsOf(L).forEach(renderView); refreshChanges(L);
+    if (body.conversation && r.prompt) { const P = $('.prompt', elOf(v)); P.value = r.prompt; grow(P); P.focus(); }
     toast(body.code && body.conversation ? 'Código e conversa restaurados' : body.code ? 'Código restaurado' : 'Conversa restaurada');
   };
   dlg.tabIndex = 0; dlg.onkeydown = e => { if (e.key === 'ArrowDown') { k = Math.min(k + 1, turns.length - 1); list(); } else if (e.key === 'ArrowUp') { k = Math.max(0, k - 1); list(); } else if (e.key === 'Enter') choose(turns[k]); };
@@ -86,12 +86,12 @@ function shortcutsDialog() {
 }
 function openSide(v, first) {
   const L = v.sid && S.live[v.sid]; if (!L) return toast('Abra uma sessão primeiro');
-  if (v.sideEl) { v.sideEl.remove(); v.sideEl = null; if (!first) return; }
+  if (viewRT(v).sideEl) { viewRT(v).sideEl.remove(); viewRT(v).sideEl = null; if (!first) return; }
   const el = h(`<div class="side"><div class="sh">${t('Pergunta paralela')}<span class="faint" style="font-weight:400">${t('não entra no histórico')}</span><span class="grow"></span><button class="ib">${I.close}</button></div><div class="sb"></div><textarea rows="1" placeholder="${esc(t('Pergunte sobre a sessão… Enter envia'))}"></textarea></div>`);
-  v.sideEl = el; v.el.appendChild(el); const sb = $('.sb', el), ta = $('textarea', el);
-  $('.sh button', el).onclick = () => { el.remove(); v.sideEl = null; };
+  viewRT(v).sideEl = el; elOf(v).appendChild(el); const sb = $('.sb', el), ta = $('textarea', el);
+  $('.sh button', el).onclick = () => { el.remove(); viewRT(v).sideEl = null; };
   const ask = async q => { sb.appendChild(h(`<div class="sq">${esc(q)}</div>`)); const w = h(`<div class="status"><span class="spin"></span></div>`); sb.appendChild(w); sb.scrollTop = sb.scrollHeight; const r = await api(`/api/session/${L.id}/btw`, { body: { question: q }, root: L.root }); w.replaceWith(h(`<div class="md sel">${r.ok ? md(r.answer) : `<span class="del">${esc(r.error)}</span>`}</div>`)); sb.scrollTop = sb.scrollHeight; };
-  ta.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const q = ta.value.trim(); if (q) { ta.value = ''; ask(q); } } if (e.key === 'Escape') { el.remove(); v.sideEl = null; } };
+  ta.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const q = ta.value.trim(); if (q) { ta.value = ''; ask(q); } } if (e.key === 'Escape') { el.remove(); viewRT(v).sideEl = null; } };
   ta.focus(); if (first) ask(first);
 }
 function pathMenu(path, ev) {
@@ -99,7 +99,7 @@ function pathMenu(path, ev) {
   const rel = abs.startsWith(root) ? abs.slice(root.length).replace(/^[\\/]/, '').replace(/\\/g, '/') : path;
   menu(null, [
     { label: 'Abrir no painel Arquivos', f: () => openFileInPane(rel) },
-    { label: 'Anexar como contexto', f: () => { const v = V(); if (!v.atts.find(a => a.path === abs)) v.atts.push({ path: abs, name: baseName(abs), size: 0 }); renderAtts(v); } },
+    { label: 'Anexar como contexto', f: () => { const v = V(); if (!viewRT(v).atts.find(a => a.path === abs)) viewRT(v).atts.push({ path: abs, name: baseName(abs), size: 0 }); renderAtts(v); } },
     { sep: 1 }, ...openInItems(abs), { sep: 1 },
     { label: 'Copiar caminho absoluto', f: () => navigator.clipboard.writeText(abs) }, { label: 'Copiar caminho relativo', f: () => navigator.clipboard.writeText(rel) }, { label: 'Copiar nome do arquivo', f: () => navigator.clipboard.writeText(baseName(abs)) },
   ], ev);
@@ -137,13 +137,13 @@ addEventListener('keydown', e => {
   if (ctrl && e.key === '\\') { e.preventDefault(); closeFocusedPane(); return; }
   if (ctrl && e.key === ';') { e.preventDefault(); openSide(v); return; }
   if (ctrl && !e.shiftKey && k === 'o') { e.preventDefault(); const order = ['normal', 'thinking', 'verbose']; setViewMode(order[(order.indexOf(S.viewMode) + 1) % 3]); return; }
-  if (ctrl && e.shiftKey && k === 'm') { e.preventDefault(); modeMenu(v, $('.modechip', v.el)); return; }
-  if (ctrl && e.shiftKey && k === 'i') { e.preventDefault(); modelMenu(v, $('.under .chip:last-child', v.el)); return; }
-  if (ctrl && e.shiftKey && k === 'e') { e.preventDefault(); modelMenu(v, $('.under .chip:last-child', v.el), true); return; }
+  if (ctrl && e.shiftKey && k === 'm') { e.preventDefault(); modeMenu(v, $('.modechip', elOf(v))); return; }
+  if (ctrl && e.shiftKey && k === 'i') { e.preventDefault(); modelMenu(v, $('.under .chip:last-child', elOf(v))); return; }
+  if (ctrl && e.shiftKey && k === 'e') { e.preventDefault(); modelMenu(v, $('.under .chip:last-child', elOf(v)), true); return; }
   if (!inField && L?.snap?.pendingPermission && !ctrl) { const id = L.snap.pendingPermission.id; if (k === 'y') { decide(v, id, 'allow'); return; } if (k === 't') { decide(v, id, 'all'); return; } if (k === 'a') { decide(v, id, 'always'); return; } if (k === 'n') { decide(v, id, 'deny'); return; } }
   if (!inField && L?.snap?.pendingQuestion && /^[1-9]$/.test(e.key)) { const o = L.snap.pendingQuestion.options?.[+e.key - 1]; if (o) answer(v, L.snap.pendingQuestion.id, o); return; }
   if (e.key === 'Escape' && !inField && busy(L)) { stop(v); return; }
-  if (!inField && !ctrl && e.key.length === 1 && v?.el && !S.page) { $('.prompt', v.el).focus(); }
+  if (!inField && !ctrl && e.key.length === 1 && v?.el && !S.page) { $('.prompt', elOf(v)).focus(); }
 }, true);
 
 // drag & drop: folders become projects, files attachments (native window reads real paths)
@@ -157,7 +157,7 @@ addEventListener('drop', async e => {
   if (native) {
     const r = await infuse.drop(files);
     if (r.projects?.length) { await loadSessions(); newSessionScreen(r.projects[0]); }
-    for (const a of r.attachments || []) if (!v.atts.find(x => x.path === a.path)) v.atts.push(a);
+    for (const a of r.attachments || []) if (!viewRT(v).atts.find(x => x.path === a.path)) viewRT(v).atts.push(a);
     renderAtts(v);
   } else { files.forEach(f => readBrowserFile(v, f)); if ([...e.dataTransfer.items].some(i => i.webkitGetAsEntry?.()?.isDirectory)) toast('Para abrir uma pasta use o seletor de pasta abaixo da caixa de texto'); }
 });

@@ -39,11 +39,11 @@ async function openSettings(section = 'general') {
             <div class="f"><input class="base" placeholder="${esc(p.defaultBaseUrl || 'https://…')}" value="${esc(p.baseUrl !== p.defaultBaseUrl ? p.baseUrl : '')}"><span class="faint">${t('endpoint')}</span></div>
             <div class="row"><button class="btn sm pri go">${t('Testar e salvar')}</button><span class="faint res"></span></div>${p.models?.length ? `<div class="mlist">${p.models.slice(0, 60).map(m => `<span>${esc(m)}</span>`).join('')}</div>` : ''}</div>`);
           r.appendChild(ex); $('input', ex)?.focus();
-          const go = async () => { const res = $('.res', ex); res.textContent = t('testando…'); const out = await api('/api/connections/connect', { body: { id: p.id, apiKey: $('.key', ex)?.value || '', baseUrl: $('.base', ex).value.trim() }, root: '' }); if (!out.ok) { res.innerHTML = `<span class="del">${esc(out.error)}</span>`; return; } toast(t('Conectado: ') + p.label + ` · ${out.connection.models?.length || 0} ${t('modelos')}`); S.models = await api('/api/models', { root: '' }); await loadSettings(); draw(await api('/api/connections', { root: '' })); S.views.forEach(renderComposer); };
+          const go = async () => { const res = $('.res', ex); res.textContent = t('testando…'); const out = await api('/api/connections/connect', { body: { id: p.id, apiKey: $('.key', ex)?.value || '', baseUrl: $('.base', ex).value.trim() }, root: '' }); if (!out.ok) { res.innerHTML = `<span class="del">${esc(out.error)}</span>`; return; } toast(t('Conectado: ') + p.label + ` · ${out.connection.models?.length || 0} ${t('modelos')}`); Server.set('models', await api('/api/models', { root: '' })); await loadSettings(); draw(await api('/api/connections', { root: '' })); S.views.forEach(renderComposer); };
           $('.go', ex).onclick = go; $$('input', ex).forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); });
         };
         $('.cn', r) && ($('.cn', r).onclick = expand); $('.ed', r) && ($('.ed', r).onclick = expand);
-        $('.dc', r) && ($('.dc', r).onclick = async () => { await api('/api/connections/disconnect', { body: { id: p.id }, root: '' }); S.models = await api('/api/models', { root: '' }); await loadSettings(); draw(await api('/api/connections', { root: '' })); });
+        $('.dc', r) && ($('.dc', r).onclick = async () => { await api('/api/connections/disconnect', { body: { id: p.id }, root: '' }); Server.set('models', await api('/api/models', { root: '' })); await loadSettings(); draw(await api('/api/connections', { root: '' })); });
         $('.mk', r) && ($('.mk', r).onclick = async () => { await api('/api/connections/default', { body: { id: p.id, model: p.models?.[0] || '' }, root: '' }); await loadSettings(); draw(await api('/api/connections', { root: '' })); });
         list.appendChild(r);
       });
@@ -52,7 +52,7 @@ async function openSettings(section = 'general') {
   }
   if (section === 'models') {
     el.append(h(`<h1>${t('Modelos e custos')}</h1>`));
-    if (!S.models.length) S.models = await api('/api/models', { root: '' });
+    if (!S.models.length) Server.set('models', await api('/api/models', { root: '' }));
     const opts = S.models.map(m => [m.provider + '|' + m.model, `${m.label} · ${m.model}`]);
     el.append(setRow('Modelo padrão', 'Usado em novas sessões', selectEl(opts.length ? opts : [['', '— conecte um provedor —']], s.provider + '|' + s.model, v => { const [p, m] = v.split('|'); save({ provider: p, model: m }); })));
     el.append(setRow('Modelo rápido', 'Usado para resumir e compactar o contexto', selectEl(opts.length ? opts : [['', '—']], s.provider + '|' + s.fastModel, v => save({ fastModel: v.split('|')[1] }))));

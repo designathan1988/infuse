@@ -44,13 +44,7 @@ const I = {
   pc: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
 };
 
-// ---------------------------------------------------------------- state
-const S = {
-  settings: {}, projects: [], sessions: [], archived: [], models: [], connections: [], editors: [],
-  commands: {}, files: {}, live: {}, views: [], focus: 0, page: null,
-  history: lsGet('hist', []), sb: lsGet('sb', { group: 'folder', sort: 'updated', closed: {} }), unread: new Set(lsGet('unread', [])), hits: {}, hitsQ: '',
-  viewMode: lsGet('viewMode', 'normal'), rail: lsGet('rail', true), recent: [], lang: 'pt', fold: {},
-};
+// ---------------------------------------------------------------- persisted small values
 function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } }
 const native = !!window.infuse;

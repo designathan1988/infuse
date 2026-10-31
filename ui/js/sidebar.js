@@ -5,12 +5,12 @@
 function newView() {
   const d = S.settings;
   const lastRoot = lsGet('lastRoot', '') || (S.projects[0]?.root || '');
-  return { sid: '', root: '', draft: { root: S.projects.find(p => p.root === lastRoot) ? lastRoot : (S.projects[0]?.root || ''), worktree: false, mode: '', provider: d.provider, model: d.model, effort: d.effort || 'medium' }, el: null, atts: [], images: [], sideOpen: false, side: [] };
+  return { id: newViewId(), sid: '', root: '', draft: { root: S.projects.find(p => p.root === lastRoot) ? lastRoot : (S.projects[0]?.root || ''), worktree: false, mode: '', provider: d.provider, model: d.model, effort: d.effort || 'medium' } };
 }
 
 function mountViews() {
   const host = $('#views'); host.innerHTML = ''; host.classList.toggle('split', S.views.length > 1);
-  S.views.forEach((v, i) => { if (!v.el) buildView(v); v.el.classList.toggle('focus', i === S.focus); host.appendChild(v.el); renderView(v); });
+  S.views.forEach((v, i) => { if (!elOf(v)) buildView(v); elOf(v).classList.toggle('focus', i === S.focus); host.appendChild(elOf(v)); renderView(v); });
 }
 
 function buildView(v) {
@@ -26,14 +26,14 @@ function buildView(v) {
           <div class="brow"><button class="ib plusbtn" title="Anexar e mais">${I.plus}</button><span class="sp"></span><span class="ring" title="Uso do contexto"></span><button class="send" title="Enviar (Enter)">${I.up}</button></div></div>
         <div class="under"></div></div></div>
       <aside class="rail"></aside></div></section>`);
-  v.el = el;
-  el.addEventListener('mousedown', () => { const i = S.views.indexOf(v); if (i >= 0 && i !== S.focus) { S.focus = i; $$('.view').forEach((x, j) => x.classList.toggle('focus', j === i)); renderSidebar(); renderPanes(); } }, true);
+  setViewEl(v, el);
+  el.addEventListener('mousedown', () => { const i = S.views.indexOf(v); if (i >= 0 && i !== S.focus) { UI.set('focus', i); $$('.view').forEach((x, j) => x.classList.toggle('focus', j === i)); renderSidebar(); renderPanes(); } }, true);
   const title = $('.title', el);
   title.onclick = () => renameInline(v);
   $('.caret', el).onclick = e => sessionMenu(v, e.currentTarget);
   $$('[data-a]', el).forEach(b => b.onclick = e => {
     const a = b.dataset.a;
-    if (a === 'rail') { S.rail = !S.rail; lsSet('rail', S.rail); S.views.forEach(renderView); }
+    if (a === 'rail') { UI.set('rail', !S.rail); S.views.forEach(renderView); }
     else if (a === 'more') moreMenu(v, e.currentTarget);
     else togglePane(a);
   });
@@ -50,7 +50,8 @@ const busy = L => !!(L?.snap && L.snap.state !== 'idle' && L.snap.state !== 'err
 function grow(P) { P.style.height = 'auto'; P.style.height = Math.min(P.scrollHeight, 300) + 'px'; }
 
 function renderView(v) {
-  const el = v.el; if (!el) return;
+  v = freshView(v);
+  const el = elOf(v); if (!el) return;
   const L = v.sid ? S.live[v.sid] : null;
   el.classList.toggle('home', !L);
   el.classList.toggle('norail', !S.rail);
@@ -68,7 +69,7 @@ function renderView(v) {
 function stateClass(st) { return !st || st === 'idle' ? '' : st === 'error' ? 'err' : st.startsWith('waiting') ? 'wait' : 'busy'; }
 async function loadSessions() {
   const [list, projects] = await Promise.all([api('/api/sessions/all', { root: '' }), api('/api/projects', { root: '' })]);
-  S.sessions = Array.isArray(list) ? list : []; S.projects = Array.isArray(projects) ? projects : [];
+  Server.set('sessions', Array.isArray(list) ? list : []); Server.set('projects', Array.isArray(projects) ? projects : []);
   renderSidebar();
 }
 function projectLabel(root) { const p = S.projects.find(x => x.root === root); return p?.label || baseName(root); }
@@ -78,14 +79,14 @@ function renderSidebar() {
   $('#navScheduled').classList.toggle('on', S.page === 'scheduled'); $('#navCustomize').classList.toggle('on', S.page === 'customize');
   const archivedMode = S.sb.show === 'archived';
   $('#sbHeadLabel').textContent = t(archivedMode ? 'Arquivadas' : 'Sessões');
-  if (q.length >= 2 && S.hitsQ !== q) searchTranscripts(q); else if (!q) { S.hits = {}; S.hitsQ = ''; }
+  if (q.length >= 2 && S.hitsQ !== q) searchTranscripts(q); else if (!q) { UI.set('hits', {}); UI.set('hitsQ', ''); }
   let list = (archivedMode ? S.archived : S.sessions).filter(s => !q || S.hits[s.id] || (s.title || '').toLowerCase().includes(q) || (s.root || '').toLowerCase().includes(q) || (s.branch || '').toLowerCase().includes(q));
   const sortKey = S.sb.sort; list.sort((a, b) => sortKey === 'title' ? (a.title || '').localeCompare(b.title || '') : (b[sortKey] || 0) - (a[sortKey] || 0));
   const openIds = S.views.map(v => v.sid);
   const row = s => {
     const L = S.live[s.id]; const st = L?.snap?.state || s.state;
     const hit = q && S.hits[s.id] && S.hits[s.id] !== s.title ? S.hits[s.id] : '';
-    const r = h(`<div class="srow${openIds[S.focus] === s.id ? ' on' : ''}${openIds.includes(s.id) && openIds[S.focus] !== s.id ? ' split' : ''}${S.unread.has(s.id) ? ' unread' : ''}${hit ? ' hit' : ''}" draggable="true"><span class="st ${stateClass(st)}"></span><span class="t"><span class="tt">${s.pinned ? '<span class="pin">📌</span>' : ''}${esc(L?.snap?.title || s.title || t('Nova sessão'))}</span>${hit ? `<span class="snip">${esc(hit)}</span>` : ''}</span><span class="w">${ago(s.updated)}</span><button class="ib more act" data-act="${archivedMode ? 'delete' : 'archive'}" title="${esc(t(archivedMode ? 'Excluir' : 'Arquivar'))}">${archivedMode ? I.trash : I.archive}</button><button class="ib more" title="Mais">${I.more}</button></div>`);
+    const r = h(`<div class="srow${openIds[S.focus] === s.id ? ' on' : ''}${openIds.includes(s.id) && openIds[S.focus] !== s.id ? ' split' : ''}${S.unread.includes(s.id) ? ' unread' : ''}${hit ? ' hit' : ''}" draggable="true"><span class="st ${stateClass(st)}"></span><span class="t"><span class="tt">${s.pinned ? '<span class="pin">📌</span>' : ''}${esc(L?.snap?.title || s.title || t('Nova sessão'))}</span>${hit ? `<span class="snip">${esc(hit)}</span>` : ''}</span><span class="w">${ago(s.updated)}</span><button class="ib more act" data-act="${archivedMode ? 'delete' : 'archive'}" title="${esc(t(archivedMode ? 'Excluir' : 'Arquivar'))}">${archivedMode ? I.trash : I.archive}</button><button class="ib more" title="Mais">${I.more}</button></div>`);
     r.title = (s.branch ? s.branch + ' · ' : '') + s.root;
     r.onclick = e => { const act = e.target.closest('[data-act]'); if (act) { e.stopPropagation(); return act.dataset.act === 'delete' ? deleteSession(s) : archiveSession(s); } if (e.target.closest('.more')) return sessionRowMenu(s, e.target.closest('.more')); if (archivedMode) return; if (e.altKey) openInSplit(s.root, s.id); else openSession(s.root, s.id); };
     r.oncontextmenu = e => { e.preventDefault(); sessionRowMenu(s, null, e); };
@@ -121,8 +122,8 @@ function renderSidebar() {
   if (!S.projects.length && !list.length) el.appendChild(h(`<div class="empty">${t('Nenhuma sessão ainda.')}<br>${t('Clique em Nova sessão e escolha a pasta do projeto.')}</div>`));
   if (archivedMode) {
     const bar = h(`<div class="row" style="padding:2px 4px 6px"><button class="btn sm back">← ${t('Voltar às sessões')}</button><span class="grow"></span>${list.length ? `<button class="btn sm danger delall">${t('Excluir todas')}</button>` : ''}</div>`);
-    $('.back', bar).onclick = () => { S.sb.show = ''; lsSet('sb', S.sb); renderSidebar(); };
-    if ($('.delall', bar)) $('.delall', bar).onclick = async () => { if (!confirm(t('Excluir todas as sessões arquivadas e seus checkpoints? Isto não pode ser desfeito.'))) return; for (const x of list) await api(`/api/sessions/${x.id}`, { method: 'DELETE', root: x.root }); S.archived = await api('/api/sessions/all?archived=1', { root: '' }); renderSidebar(); toast('Sessões excluídas'); };
+    $('.back', bar).onclick = () => { setSb('show', ''); };
+    if ($('.delall', bar)) $('.delall', bar).onclick = async () => { if (!confirm(t('Excluir todas as sessões arquivadas e seus checkpoints? Isto não pode ser desfeito.'))) return; for (const x of list) await api(`/api/sessions/${x.id}`, { method: 'DELETE', root: x.root }); Server.set('archived', await api('/api/sessions/all?archived=1', { root: '' })); renderSidebar(); toast('Sessões excluídas'); };
     el.prepend(bar);
   }
 }
@@ -130,20 +131,20 @@ $('#search').oninput = renderSidebar;
 $('#btnGroup').onclick = e => menu(e.currentTarget, [
   { h: 'Agrupar por' }, { label: 'Pasta', check: S.sb.group === 'folder', f: () => setSb('group', 'folder') }, { label: 'Nenhum', check: S.sb.group === 'none', f: () => setSb('group', 'none') },
   { h: 'Ordenar por' }, { label: 'Atividade recente', check: S.sb.sort === 'updated', f: () => setSb('sort', 'updated') }, { label: 'Criação', check: S.sb.sort === 'created', f: () => setSb('sort', 'created') }, { label: 'Título', check: S.sb.sort === 'title', f: () => setSb('sort', 'title') },
-  { sep: 1 }, { label: 'Ver arquivadas', f: async () => { S.archived = await api('/api/sessions/all?archived=1', { root: '' }); setSb('show', 'archived'); } },
+  { sep: 1 }, { label: 'Ver arquivadas', f: async () => { Server.set('archived', await api('/api/sessions/all?archived=1', { root: '' })); setSb('show', 'archived'); } },
 ]);
-function setSb(k, v) { S.sb[k] = v; lsSet('sb', S.sb); renderSidebar(); }
+function setSb(k, v) { UI.sub('sb', k, v); renderSidebar(); }
 
 function sessionRowMenu(s, anchor, ev) {
   const items = s.archived ? [
-    { label: 'Desarquivar', f: async () => { await api(`/api/session/${s.id}/unarchive`, { body: {}, root: s.root }); S.archived = await api('/api/sessions/all?archived=1', { root: '' }); await loadSessions(); } },
+    { label: 'Desarquivar', f: async () => { await api(`/api/session/${s.id}/unarchive`, { body: {}, root: s.root }); Server.set('archived', await api('/api/sessions/all?archived=1', { root: '' })); await loadSessions(); } },
     { label: 'Excluir', danger: 1, f: () => deleteSession(s) },
   ] : [
     { label: 'Abrir', f: () => openSession(s.root, s.id) },
     { label: 'Abrir em', items: [{ label: 'Tela dividida', d: 'Alt+clique', f: () => openInSplit(s.root, s.id) }, { sep: 1 }, ...openInItems(s.root)] },
     { label: 'Renomear', f: () => { openSession(s.root, s.id).then(() => renameInline(V())); } },
     { label: s.pinned ? 'Desafixar' : 'Fixar no topo', f: async () => { await api(`/api/session/${s.id}/pin`, { body: { pinned: !s.pinned }, root: s.root }); await loadSessions(); } },
-    { label: S.unread.has(s.id) ? 'Marcar como lida' : 'Marcar como não lida', f: () => setUnread(s.id, !S.unread.has(s.id)) },
+    { label: S.unread.includes(s.id) ? 'Marcar como lida' : 'Marcar como não lida', f: () => setUnread(s.id, !S.unread.includes(s.id)) },
     { sep: 1 }, { label: 'Arquivar', f: () => archiveSession(s) }, { label: 'Excluir', danger: 1, f: () => deleteSession(s) },
   ];
   menu(anchor, items, ev);
@@ -163,14 +164,14 @@ function projectMenu(root, anchor, ev) {
 async function archiveSession(s, force) {
   const r = await api(`/api/session/${s.id}/archive`, { body: { force: !!force }, root: s.root });
   if (r.dirty) { if (confirm(t('O worktree desta sessão tem alterações não commitadas. Arquivar mesmo assim?'))) return archiveSession(s, true); return; }
-  S.views.forEach(v => { if (v.sid === s.id) { v.sid = ''; v.draft.root = s.root; } });
+  S.views.forEach(v => { if (v.sid === s.id) { View.set(v.id, { sid: '' }); View.draft(v.id, { root: s.root }); } });
   closeLive(s.id); await loadSessions(); mountViews(); renderPanes(); toast('Sessão arquivada');
 }
 async function deleteSession(s) {
   if (!confirm(t('Excluir esta sessão e seus checkpoints? Isto não pode ser desfeito.'))) return;
   await api(`/api/sessions/${s.id}`, { method: 'DELETE', root: s.root });
-  S.views.forEach(v => { if (v.sid === s.id) { v.sid = ''; v.draft.root = s.root; } });
-  closeLive(s.id); await loadSessions(); if (S.sb.show === 'archived') S.archived = await api('/api/sessions/all?archived=1', { root: '' }); renderSidebar(); mountViews(); renderPanes();
+  S.views.forEach(v => { if (v.sid === s.id) { View.set(v.id, { sid: '' }); View.draft(v.id, { root: s.root }); } });
+  closeLive(s.id); await loadSessions(); if (S.sb.show === 'archived') Server.set('archived', await api('/api/sessions/all?archived=1', { root: '' })); renderSidebar(); mountViews(); renderPanes();
 }
 
 // ---------------------------------------------------------------- inline editing
@@ -182,7 +183,7 @@ function inlineEdit(el, current, apply) {
 }
 function renameInline(v) {
   const L = v.sid && S.live[v.sid]; if (!L) return;
-  inlineEdit($('.title', v.el), L.snap.title, val => setSessionOpts(v, { title: val }));
+  inlineEdit($('.title', elOf(v)), L.snap.title, val => setSessionOpts(v, { title: val }));
 }
 
 // ---------------------------------------------------------------- menus
@@ -266,13 +267,13 @@ function moreMenu(v, anchor) {
   menu(anchor, [
     { label: 'Tarefas', f: () => togglePane('tasks') }, { label: 'Plano', f: () => togglePane('plan') }, { label: 'Processos', f: () => togglePane('procs') }, { label: 'Agentes', f: () => togglePane('agents') },
     { label: 'Filtro', items: [{ label: 'Pronto (critérios)', f: () => togglePane('oracle') }, { label: 'Memória', f: () => togglePane('memory') }, { label: 'Regras', f: () => togglePane('rules') }, { label: 'Jornal', f: () => togglePane('journal') }, { label: 'Vícios', f: () => togglePane('vices') }, { label: 'Mapa do projeto', f: () => togglePane('map') }] },
-    { sep: 1 }, { label: S.rail ? 'Ocultar detalhes da sessão' : 'Mostrar detalhes da sessão', f: () => { S.rail = !S.rail; lsSet('rail', S.rail); S.views.forEach(renderView); } },
+    { sep: 1 }, { label: S.rail ? 'Ocultar detalhes da sessão' : 'Mostrar detalhes da sessão', f: () => { UI.set('rail', !S.rail); S.views.forEach(renderView); } },
   ], null, { alignRight: true });
 }
-function foldAll(v, open) { $$('[data-fold]', v.el).forEach(x => { S.fold[x.dataset.fold] = open; x.parentNode.classList.toggle('open', open); }); }
+function foldAll(v, open) { const patch = {}; $$('[data-fold]', elOf(v)).forEach(x => { patch[x.dataset.fold] = open; x.parentNode.classList.toggle('open', open); }); UI.merge('fold', patch); }
 const VIEW_MODES = [['normal', 'Normal', 'Texto completo; raciocínio e ferramentas em uma linha cada'], ['thinking', 'Pensamento', 'Também abre o raciocínio do modelo'], ['verbose', 'Detalhado', 'Abre tudo: raciocínio, cada ferramenta com entrada e saída, cada passo dos subagentes']];
 function setViewMode(k) {
-  S.fold = {}; S.viewMode = k; lsSet('viewMode', k); S.views.forEach(renderChat);
+  UI.set('fold', {}); UI.set('viewMode', k); S.views.forEach(renderChat);
   const L = curL(); const thinks = (L?.snap?.messages || []).some(m => (m.content || []).some(b => b.type === 'thinking'));
   toast(t('Exibição: ') + t({ normal: 'Normal', thinking: 'Pensamento', verbose: 'Detalhado' }[k]) + (k !== 'normal' && L && !thinks ? ' · ' + t('esta sessão ainda não tem raciocínio: o esforço Baixo desliga o modo de pensamento') : ''));
 }

@@ -76,7 +76,7 @@ function renderPanes() {
     if (i < P2.open.length - 1) { const sp = h('<div class="vsplit"></div>'); host.appendChild(sp); sp.onmousedown = e => dragSplit(e, id, P2.open[i + 1]); }
   });
   for (const id of P2.open) P2.inst[id]?.fit?.();
-  S.views.forEach(v => { if (!v.el) return; $$('.vbar [data-a]', v.el).forEach(b => b.classList.toggle('on', P2.open.includes(b.dataset.a))); $('.chg', v.el)?.classList.toggle('on', P2.open.includes('changes')); });
+  S.views.forEach(v => { if (!elOf(v)) return; $$('.vbar [data-a]', elOf(v)).forEach(b => b.classList.toggle('on', P2.open.includes(b.dataset.a))); $('.chg', elOf(v))?.classList.toggle('on', P2.open.includes('changes')); });
 }
 function dragSplit(e, a, b) {
   e.preventDefault(); const pa = $(`.pane[data-id="${a}"]`), pb = $(`.pane[data-id="${b}"]`); const ha = pa.offsetHeight, hb = pb.offsetHeight, y0 = e.clientY; const done = dragShield('row-resize');

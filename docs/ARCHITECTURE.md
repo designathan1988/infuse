@@ -79,21 +79,23 @@ internal/
 ## Frontend
 
 - `ui/index.html` is the shell: CSS links in order, classic scripts in dependency order, `boot.js` last.
-- `ui/js/core.js` holds shared helpers, state (`S`), the API client and the native bridge.
+- `ui/js/store.js` is the state container: `dispatch` is the only writer, state is deep-frozen after
+  every action, and modules subscribe to receive the new `S`. `ui/js/state.js` holds the reducer,
+  action creators and selectors; server data is a cache fed by the API and SSE, and live-session
+  events are folded in by the reducer.
+- `ui/js/runtime.js` holds what is not application state: DOM nodes per view, scroll/fold/attachment
+  runtime, and the SSE connections. That keeps the store plain and freezable.
+- `ui/js/core.js` holds shared helpers, the API client and the native bridge.
 - One file per area: `sidebar`, `session`, `chat`, `feed_live`, `feed_tools`, `feed_cards`,
   `markdown`, `composer`, `rail`, `overlays`, `boot`.
 - One file per pane (`ui/js/panes/*`) and per page (`ui/js/pages/*`); the registry in
   `panes/core.js` is loaded after the pane implementations it names.
 - `ui/styles/*` is the only place for static styles; dynamic geometry uses CSS custom properties.
-- Remaining debt: the global `S` object with direct mutation is being replaced by a store with
-  actions/reducers/selectors; the split above is the structural prerequisite and keeps behaviour
-  unchanged. Inline styles in generated markup (107) are still being moved to component classes; only
-  dynamic geometry (pane widths) should remain inline as CSS variables.
+- Remaining debt: inline styles in generated markup (107) are still being moved to component classes;
+  only dynamic geometry (pane widths) should remain inline as CSS variables.
 
 ## Known debt
 
-- Frontend store: `S` is still mutated directly by the modules; the planned vanilla store
-  (`dispatch`/`reducers`/`selectors`/`subscribe`) is not wired yet.
 - i18n: UI translations are keyed by the Portuguese source sentence and a `MutationObserver` applies
   them; the target is stable namespaced ids and a shared catalog, with no observer.
 - A few functions are still above the 60-line target (the turn loop, the largest route group, provider
