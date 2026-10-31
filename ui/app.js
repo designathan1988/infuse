@@ -359,14 +359,14 @@ function onEvent(L, ev) {
       if (d.state === 'thinking') { L.text = ''; L.think = ''; if (!L.started) L.started = Date.now(); }
       if (d.state === 'idle' || d.state === 'error') { L.started = 0; drainQueue(L); }
       vs.forEach(v => { renderLive(v); renderComposer(v); }); renderSidebarState(L); break;
-    case 'turn': if (L.snap) { L.snap.turn = d.turn; L.snap.title = d.title; L.snap.turnStarts.push(L.snap.messages.length); L.snap.messages.push({ role: 'user', content: [{ type: 'text', text: d.text }] }); } vs.forEach(renderView); loadSessions(); break;
+    case 'turn': if (L.snap) { L.snap.turn = d.turn; L.snap.title = d.title; L.snap.turnStarts.push(L.snap.messages.length); L.snap.messages.push({ role: 'user', content: [{ type: 'text', text: d.text }], ts: Date.now() }); } vs.forEach(renderView); loadSessions(); break;
     case 'stream':
       if (d.kind === 'text') L.text += d.text; else if (d.kind === 'thinking') L.think += d.text;
       else if (d.kind === 'tool_start') L.tools[d.id] = { name: d.name, input: '' }; else if (d.kind === 'tool_input') (L.tools[d.id] = L.tools[d.id] || { name: '', input: '' }).input += d.text;
       vs.forEach(renderLive); break;
     case 'message': L.snap.messages.push(d.message); L.snap.usage = d.totalUsage; L.snap.cost = d.cost; L.lastIn = d.lastInput; L.lastOut = d.usage?.output || 0; L.text = ''; L.think = ''; L.tools = {}; re(); vs.forEach(renderRail); break;
     case 'tool_run': L.running = d; vs.forEach(renderLive); break;
-    case 'tool_result': L.running = null; L.snap.messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, is_error: d.isError }] }); vs.forEach(renderChat); refreshChanges(L); break;
+    case 'tool_result': L.running = null; L.snap.messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, is_error: d.isError, ms: d.ms }], ts: Date.now() }); vs.forEach(renderChat); refreshChanges(L); break;
     case 'permission': L.snap.pendingPermission = d; vs.forEach(renderChat); attention(L, 'infuse precisa de você', t('Aprovar ') + d.tool + '?'); break;
     case 'question': L.snap.pendingQuestion = d; vs.forEach(renderChat); attention(L, 'infuse tem uma pergunta', d.question); break;
     case 'done': L.snap.pendingPermission = null; L.snap.pendingQuestion = null; L.snap.cost = d.cost; L.snap.usage = d.usage; re(); vs.forEach(renderRail); attention(L, 'infuse terminou', L.snap.title || ''); refreshChanges(L); loadUsage(); break;
@@ -436,17 +436,19 @@ function renderChat(v) {
       const main = texts[0]?.text || '';
       if (main.startsWith('[Conversa resumida]') || main.startsWith('[Contexto compactado')) { out += `<div class="marker" title="${esc(main.slice(0, 600))}">${t('Conversa resumida')}</div>`; return; }
       const attached = texts.slice(1).map(b => (b.text.match(/path="([^"]+)"/) || [])[1]).filter(Boolean);
-      out += `<div class="umsg"><div class="msgacts"><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button>${turnOf(s, i) ? `<button class="ib" data-rw="${turnOf(s, i)}" title="${esc(t('Voltar aqui'))}">↶</button>` : ''}</div><div class="u sel">${esc(main)}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div></div>`;
+      out += `<div class="umsg"><div class="msgacts">${m.ts ? `<span class="mtime" title="${esc(new Date(m.ts).toLocaleString())}">${fmtClock(m.ts)}</span>` : ''}<button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button>${turnOf(s, i) ? `<button class="ib" data-rw="${turnOf(s, i)}" title="${esc(t('Voltar aqui'))}">↶</button>` : ''}</div><div class="u sel">${esc(main)}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div></div>`;
     } else {
       if (m.content.length === 2 && m.content[0]?.text === 'Entendido, continuo a partir desse estado.') return;
       let inner = '';
       for (const [bi, b] of m.content.entries()) {
         if (b.type === 'text' && b.text?.trim()) inner += `<div class="md sel">${md(b.text.trim())}</div>`;
-        else if (b.type === 'thinking' && b.thinking?.trim()) inner += thinkBlock(`${v.sid}:${i}:${bi}`, b.thinking, false);
+        else if (b.type === 'thinking' && b.thinking?.trim()) inner += thinkBlock(`${v.sid}:${i}:${bi}`, b.thinking, false, b.ms);
         else if (b.type === 'tool_use') inner += toolBlock(b.id, b.name, b.input, results[b.id], false);
       }
-      if (inner) out += `<div class="a">${inner}${m.content.some(b => b.type === 'text' && b.text?.trim()) ? `<div class="msgacts low"><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar resposta'))}">${I.copy}</button></div>` : ''}</div>`; // a message with nothing visible leaves no gap
+      if (inner) out += `<div class="a">${inner}${m.content.some(b => b.type === 'text' && b.text?.trim()) ? msgFoot(m, i) : ''}</div>`; // a message with nothing visible leaves no gap
     }
+    const next = i + 1;
+    if (turn && (starts.has(next) || (next === msgs.length && !['thinking', 'tool', 'waiting_permission', 'waiting_user', 'compacting'].includes(s.state)))) out += turnSummary(s, msgs, s.turnStarts[turn - 1], i);
   });
   out += '<div class="live"></div>';
   if (s.pendingPermission) out += permCard(s.pendingPermission);
@@ -456,6 +458,24 @@ function renderChat(v) {
   const sc = $('.scroller', v.el); const atBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
   chat.innerHTML = out; bindChat(v, chat); renderLive(v);
   if (atBottom || v._jump !== v.sid) { sc.scrollTop = sc.scrollHeight; v._jump = v.sid; }
+}
+const fmtClock = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function fmtDur(ms) { if (ms == null) return ''; if (ms < 1000) return ms + ' ms'; const s = ms / 1000; if (s < 60) return (s < 10 ? s.toFixed(1) : Math.round(s)) + ' s'; const m = Math.floor(s / 60); return `${m}m ${Math.round(s % 60)}s`; }
+const fmtTok = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n || 0);
+// Under each answer: when it arrived, how long the model took, which model, how many tokens; copy on hover.
+function msgFoot(m, i) {
+  const meta = [m.ts && `<span title="${esc(new Date(m.ts).toLocaleString())}">${fmtClock(m.ts)}</span>`, m.ms && `<span title="${esc(t('tempo de resposta do modelo'))}">${fmtDur(m.ms)}</span>`, m.model && `<span>${esc(m.model)}</span>`, m.tokens && `<span>${fmtTok(m.tokens)} tokens</span>`].filter(Boolean).join('<span class="dotsep">·</span>');
+  return `<div class="afoot"><span class="meta">${meta}</span><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar resposta'))}">${I.copy}</button></div>`;
+}
+// End of a turn: how long the agent worked, tools used, tokens; copy the turn's answers.
+function turnSummary(s, msgs, from, to) {
+  if (from == null) return '';
+  const first = msgs[from], last = msgs[to]; let tools = 0, tokens = 0, texts = 0;
+  for (let k = from; k <= to; k++) { const m = msgs[k]; if (m.role !== 'assistant') continue; tokens += m.tokens || 0; for (const b of m.content || []) { if (b.type === 'tool_use') tools++; if (b.type === 'text' && b.text?.trim()) texts++; } }
+  if (!texts && !tools) return '';
+  const dur = first?.ts && last?.ts ? last.ts - first.ts : null;
+  const bits = [dur != null && `${t('Trabalhou por')} ${fmtDur(dur)}`, tools && `${tools} ${t(tools === 1 ? 'ferramenta' : 'ferramentas')}`, tokens && `${fmtTok(tokens)} tokens`].filter(Boolean).join('<span class="dotsep">·</span>');
+  return `<div class="turnsum"><span class="ok">✓</span><span class="meta">${bits}</span><span class="grow"></span>${texts ? `<button class="btn sm ghost" data-copy-turn="${from}:${to}" title="${esc(t('Copiar todas as respostas deste turno'))}">${I.copy} ${t('Copiar')}</button>` : ''}</div>`;
 }
 function turnOf(s, msgIndex) { const k = s.turnStarts.indexOf(msgIndex); return k >= 0 ? k + 1 : 0; }
 function msgText(m) { return (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim(); }
@@ -482,7 +502,9 @@ function exportTranscript(L) {
 function bindChat(v, root) {
   const L = v.sid && S.live[v.sid];
   $$('[data-copy-msg]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const m = L.snap.messages[+b.dataset.copyMsg]; copyText(msgText(m), 'Mensagem copiada'); });
+  $$('[data-copy-turn]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const [a, z] = b.dataset.copyTurn.split(':').map(Number); copyText(L.snap.messages.slice(a + 1, z + 1).filter(m => m.role === 'assistant').map(msgText).filter(Boolean).join('\n\n'), 'Respostas copiadas'); });
   $$('.codecopy', root).forEach(b => b.onclick = () => copyText(b.nextElementSibling.innerText, 'Código copiado'));
+  $$('[data-copy-think]', root).forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.closest('.tool').querySelector('.thinktext')?.innerText || '', 'Raciocínio copiado'); });
   $$('[data-copy-tool]', root).forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.closest('.tool').querySelector(b.dataset.copyTool === 'out' ? '.res' : '.inp')?.innerText || '', 'Copiado'); });
   $$('[data-rw]', root).forEach(b => b.onclick = () => rewindDialog(v, +b.dataset.rw));
   $$('[data-fold]', root).forEach(x => x.onclick = e => { if (e.target.closest('[data-path]')) return; const box = x.parentNode; const open = !box.classList.contains('open'); box.classList.toggle('open', open); S.fold[x.dataset.fold] = open; });
@@ -521,10 +543,10 @@ function relPath(p) {
   return np.startsWith(nr) ? p.replace(/\\/g, '/').slice(nr.length) : p;
 }
 // Reasoning is part of the transcript: shown open by default (Configurações or Ctrl+O hide it), with a caret.
-function thinkBlock(key, text, live) {
+function thinkBlock(key, text, live, ms) {
   const open = S.fold[key] ?? (S.viewMode !== 'normal' || S.settings.showThinking !== false);
   const words = text.trim().split(/\s+/).length;
-  return `<div class="tool think2${open ? ' open' : ''}"><div class="h" data-fold="${esc(key)}"><span class="chev">›</span><b>${t(live ? 'Pensando…' : 'Raciocínio')}</b><span class="s faint">${words} ${t('palavras')}</span></div><div class="b"><pre class="thinktext">${esc(text)}</pre></div></div>`;
+  return `<div class="tool think2${open ? ' open' : ''}"><div class="h" data-fold="${esc(key)}"><span class="chev">›</span><b>${live ? t('Pensando…') : ms ? `${t('Pensou por')} ${fmtDur(ms)}` : t('Raciocínio')}</b><span class="s faint">${words} ${t('palavras')}</span><button class="ib mini" data-copy-think title="${esc(t('Copiar raciocínio'))}">${I.copy}</button></div><div class="b"><pre class="thinktext">${esc(text)}</pre></div></div>`;
 }
 function toolBlock(id, name, input, result, running) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
@@ -541,7 +563,7 @@ function toolBlock(id, name, input, result, running) {
   const fullPath = isPath ? (inp.path || inp.file_path) : '';
   const shown = isPath ? relPath(fullPath) : '';
   const summ = isPath ? `<span class="s"><span class="path" data-path="${esc(shown)}" title="${esc(fullPath)}">${esc(shown)}</span></span>` : `<span class="s">${esc(toolSummary(name, inp))}</span>`;
-  return `<div class="tool${open ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${esc(t(toolLabel[name] || name))}</b>${summ}${lineCounts(name, inp)}</div><div class="b">${body}</div></div>`;
+  return `<div class="tool${open ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${esc(t(toolLabel[name] || name))}</b>${summ}${lineCounts(name, inp)}${result?.ms != null ? `<span class="tdur faint" title="${esc(t('tempo de execução'))}">${fmtDur(result.ms)}</span>` : ''}</div><div class="b">${body}</div></div>`;
 }
 const diffHTML = text => `<div class="diff">${text.split('\n').map(l => `<div class="${l.startsWith('+') && !l.startsWith('+++') ? 'a1' : l.startsWith('-') && !l.startsWith('---') ? 'd1' : /^(@@|---|\+\+\+|diff )/.test(l) ? 'hh' : ''}">${esc(l) || ' '}</div>`).join('')}</div>`;
 function permCard(p) {

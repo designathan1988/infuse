@@ -33,7 +33,7 @@ a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
 .ib{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;color:var(--text2);flex:none} .ib:hover{background:var(--s3);color:var(--text)} .ib.on{color:var(--text);background:var(--s3)}
 svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .btn{display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:5px 11px;font-size:12.5px;color:var(--text2);white-space:nowrap} .btn:hover{background:var(--s3);color:var(--text)}
-.btn.pri{background:var(--text);color:var(--bg)} .btn.pri:hover{opacity:.88} .btn.line{box-shadow:inset 0 0 0 1px var(--border2);color:var(--text)} .btn.sm{padding:3px 8px;font-size:12px}
+.btn.pri{background:var(--text);color:var(--bg)} .btn.pri:hover{opacity:.88} .btn.line{box-shadow:inset 0 0 0 1px var(--border2);color:var(--text)} .btn.sm{padding:3px 8px;font-size:12px} .btn.ghost{background:transparent;color:var(--text2)} .btn.ghost:hover{background:var(--s2);color:var(--text)}
 .btn.danger:hover{color:var(--bad);background:var(--bad-soft)}
 .muted{color:var(--text2)} .faint{color:var(--text3);font-size:12px} .mono{font-family:var(--mono);font-size:12px}
 .kbd{font-family:var(--sans);font-size:10.5px;color:var(--text3);border:1px solid var(--border2);border-radius:4px;padding:0 4px;line-height:15px;white-space:nowrap}
@@ -95,7 +95,12 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .turnsep{display:flex;align-items:center;gap:10px;color:var(--text3);font-size:11px;margin-top:6px} .turnsep .l{flex:1;border-top:1px solid var(--border)} .turnsep button{visibility:hidden} .turnsep:hover button{visibility:visible}
 .umsg{align-self:flex-end;max-width:86%;display:flex;flex-direction:column;align-items:flex-end;position:relative}
 .msgacts{display:flex;gap:2px;opacity:0;transition:opacity .1s;position:absolute;z-index:2} .msgacts .ib{width:24px;height:24px;background:var(--bg)} .umsg:hover .msgacts,.a:hover>.msgacts{opacity:1}
-.umsg>.msgacts{right:calc(100% + 4px);top:6px} .a{position:relative} .a>.msgacts{right:-34px;top:0}
+.umsg>.msgacts{right:calc(100% + 4px);top:6px;align-items:center} .a{position:relative} .a>.msgacts{right:-34px;top:0}
+.mtime{font-size:11px;color:var(--text3);padding:0 4px;white-space:nowrap}
+.afoot{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11.5px;color:var(--text3);min-height:24px} .afoot .meta{opacity:.75;display:flex;gap:5px;flex-wrap:wrap} .afoot .ib{width:24px;height:24px;opacity:0;transition:opacity .1s} .a:hover .afoot .ib{opacity:1} .a:hover .afoot .meta{opacity:1}
+.dotsep{color:var(--border2)}
+.turnsum{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);padding:4px 0 2px;border-top:1px dashed var(--border);margin-top:2px} .turnsum .ok{color:var(--ok)} .turnsum .meta{display:flex;gap:5px;flex-wrap:wrap} .turnsum .btn{font-size:11.5px}
+.tool .h .tdur{margin-left:auto;font-size:11px;padding-left:8px;white-space:nowrap} .tool .h .ib.mini{margin-left:auto;opacity:0} .tool .h:hover .ib.mini{opacity:1} .tool .h .tdur+.ib.mini{margin-left:4px}
 .umsg .u{max-width:100%}
 .codewrap{position:relative} .codewrap .codecopy{position:absolute;right:6px;top:6px;width:24px;height:24px;opacity:0;background:var(--surface)} .codewrap:hover .codecopy{opacity:1}
 .ib.mini{width:20px;height:20px;margin-left:6px;vertical-align:middle} .ib.mini svg.i{width:13px;height:13px}

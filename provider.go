@@ -26,11 +26,18 @@ type Block struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   string          `json:"content,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
+	Ms        int64           `json:"ms,omitempty"` // tool_result: how long the tool ran; thinking: how long the model thought
 }
 
+// Message carries, besides the content sent to providers, what the transcript shows about it: when it
+// arrived and, for the agent's messages, how long the model took, which model and how many tokens.
 type Message struct {
 	Role    string  `json:"role"` // user | assistant
 	Content []Block `json:"content"`
+	TS      int64   `json:"ts,omitempty"`     // unix ms
+	Ms      int64   `json:"ms,omitempty"`     // assistant: request duration
+	Model   string  `json:"model,omitempty"`  // assistant
+	Tokens  int     `json:"tokens,omitempty"` // assistant: output tokens
 }
 
 type ToolSpec struct {

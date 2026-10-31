@@ -535,7 +535,7 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 	s.lastError = ""
 	s.Turn++
 	s.TurnStarts = append(s.TurnStarts, len(s.Messages))
-	s.Messages = append(s.Messages, Message{Role: "user", Content: userBlocks(text, atts, imgs)})
+	s.Messages = append(s.Messages, Message{Role: "user", Content: userBlocks(text, atts, imgs), TS: time.Now().UnixMilli()})
 	if s.Turn == 1 && (s.Title == "" || s.Title == "Nova sessão") {
 		s.Title = truncate(strings.SplitN(strings.TrimSpace(text), "\n", 2)[0], 60)
 	}
@@ -597,7 +597,16 @@ func (s *Session) run(ctx context.Context) {
 			maxTok = budget + 8000
 		}
 		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules), Messages: s.copyMessages(), Tools: toolSpecs(), MaxTokens: maxTok, Thinking: budget}
-		res, err := provider.Stream(ctx, req, func(ev StreamEvent) { s.emit("stream", ev) })
+		started := time.Now()
+		var thinkFrom, thinkTo time.Time // how long the model spent in its reasoning, from the stream
+		res, err := provider.Stream(ctx, req, func(ev StreamEvent) {
+			if ev.Kind == "thinking" && thinkFrom.IsZero() {
+				thinkFrom = time.Now()
+			} else if ev.Kind != "thinking" && !thinkFrom.IsZero() && thinkTo.IsZero() {
+				thinkTo = time.Now()
+			}
+			s.emit("stream", ev)
+		})
 		if err != nil {
 			if ctx.Err() != nil {
 				s.finish("cancelado")
@@ -606,8 +615,19 @@ func (s *Session) run(ctx context.Context) {
 			s.fail(err)
 			return
 		}
+		if !thinkFrom.IsZero() {
+			if thinkTo.IsZero() {
+				thinkTo = time.Now()
+			}
+			for i := range res.Content {
+				if res.Content[i].Type == "thinking" {
+					res.Content[i].Ms = thinkTo.Sub(thinkFrom).Milliseconds()
+				}
+			}
+		}
+		reply := Message{Role: "assistant", Content: res.Content, TS: time.Now().UnixMilli(), Ms: time.Since(started).Milliseconds(), Model: s.Model, Tokens: res.Usage.Output}
 		s.mu.Lock()
-		s.Messages = append(s.Messages, Message{Role: "assistant", Content: res.Content})
+		s.Messages = append(s.Messages, reply)
 		s.Usage.Input += res.Usage.Input
 		s.Usage.Output += res.Usage.Output
 		s.Usage.CacheRead += res.Usage.CacheRead
@@ -624,7 +644,7 @@ func (s *Session) run(ctx context.Context) {
 		}
 		s.mu.Unlock()
 		recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cache: res.Usage.CacheRead + res.Usage.CacheWrite, Cost: cost})
-		s.emit("message", map[string]any{"message": Message{Role: "assistant", Content: res.Content}, "usage": res.Usage, "totalUsage": s.Usage, "cost": s.Cost, "lastInput": res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite})
+		s.emit("message", map[string]any{"message": reply, "usage": res.Usage, "totalUsage": s.Usage, "cost": s.Cost, "lastInput": res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite})
 		s.save()
 		if lim := s.settings.DailyLimitUSD; lim > 0 { // the day's total across every session, from the ledger
 			if spent := todaySpend(); spent > lim {
@@ -641,10 +661,12 @@ func (s *Session) run(ctx context.Context) {
 			if b.Type != "tool_use" {
 				continue
 			}
+			toolStart := time.Now()
 			out, isErr := s.runTool(ctx, rules, b)
 			out = redactSecrets(out) // credentials never reach the model, the transcript or the UI
-			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr})
-			s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": out, "isError": isErr})
+			ms := time.Since(toolStart).Milliseconds()
+			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms})
+			s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": out, "isError": isErr, "ms": ms})
 			if err := breaker.record(b.Name, b.Input, isErr); err != nil {
 				tripped = err
 			}
@@ -664,7 +686,7 @@ func (s *Session) run(ctx context.Context) {
 					results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: why, IsError: true})
 				}
 			}
-			s.Messages = append(s.Messages, Message{Role: "user", Content: results})
+			s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
 			s.mu.Unlock()
 			if tripped != nil {
 				Lesson(s.Root, "loop-errático", tripped.Error())
@@ -675,7 +697,7 @@ func (s *Session) run(ctx context.Context) {
 			return
 		}
 		s.mu.Lock()
-		s.Messages = append(s.Messages, Message{Role: "user", Content: results})
+		s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
 		s.mu.Unlock()
 		s.save()
 	}
