@@ -48,14 +48,17 @@ func (s *Session) setBans(list []Ban) {
 
 var toolNames = map[string]bool{"Agent": true, "Browser": true, "WebSearch": true, "WebFetch": true, "Bash": true, "Write": true, "Edit": true, "MultiEdit": true, "Skill": true, "Memory": true}
 
-const bansPrompt = `You read the messages a user wrote to a coding agent (any language). List every prohibition or limit the user stated for this session that is still in force, as JSON:
-{"bans":[{"kind":"tool|command|path|action","value":"…","quote":"…"}]}
+const bansPrompt = `You read the messages a user wrote to a coding agent (any language). List every prohibition or limit the user stated for this session that is still in force, by calling Prohibitions:
 - tool: a tool the agent must not use; value is one of: Agent (subagents), Browser, WebSearch, WebFetch, Bash, Write, Edit, Skill.
 - command: a program or command the agent must not run; value is the exact command or program name as the user wrote it.
 - path: a file or folder the agent must not change; value is the path as written.
 - action: value is commit (no git commit), push (no git push) or install (no package installation).
 quote: words copied EXACTLY from the user's message where the prohibition is stated, in the user's language, 3 to 30 words.
-Only explicit prohibitions. A later message that allows something again removes it from the list. If there are none, {"bans":[]}.`
+Only explicit prohibitions. A later message that allows something again removes it from the list. If there are none, call Prohibitions with an empty list.`
+
+// bansSpec is the shape of the compiled prohibitions.
+var bansSpec = ToolSpec{Name: "Prohibitions", Description: "The prohibitions the user stated that are still in force, each with the user's own words.",
+	InputSchema: schema(`{"type":"object","properties":{"bans":{"type":"array","items":{"type":"object","properties":{"kind":{"type":"string","enum":["tool","command","path","action"]},"value":{"type":"string"},"quote":{"type":"string"}},"required":["kind","value","quote"]}}},"required":["bans"]}`)}
 
 // compileBans reads the user's messages and replaces the session's prohibitions with what is in force,
 // keeping the ones the user removed on screen removed.
@@ -67,22 +70,17 @@ func (s *Session) compileBans(ctx context.Context, p Provider) {
 	if strings.TrimSpace(text) == "" {
 		return
 	}
-	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), System: bansPrompt, Messages: []Message{{Role: "user", Content: []Block{{Type: "text", Text: text}}}}, MaxTokens: 2000}, func(StreamEvent) {})
-	if err != nil {
-		return
-	}
-	s.mu.Lock()
-	s.Cost += s.settings.costOf(s.fastModel(), res.Usage)
-	turn := s.Turn
-	s.mu.Unlock()
-	raw := msgText(Message{Content: res.Content})
-	if i, j := strings.Index(raw, "{"), strings.LastIndex(raw, "}"); i >= 0 && j > i {
-		raw = raw[i : j+1]
-	}
 	var out struct {
 		Bans []Ban `json:"bans"`
 	}
-	if json.Unmarshal([]byte(raw), &out) != nil {
+	usage, err := askJSON(ctx, p, s.fastModel(), bansPrompt, text, bansSpec, 4000, &out)
+	s.mu.Lock()
+	s.Cost += s.settings.costOf(s.fastModel(), usage)
+	turn := s.Turn
+	s.mu.Unlock()
+	if err != nil { // the prohibitions already in force stay; the user is told the new words were not read
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "compiling the prohibitions: " + err.Error()})
+		s.emitMsg("gate", M("ban.compile_failed", "error", firstLine(err.Error())))
 		return
 	}
 	norm := normSpace(text)

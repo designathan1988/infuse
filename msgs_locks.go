@@ -40,6 +40,12 @@ func init() {
 		"ban.refused": {
 			"en":    "[infuse] Blocked by the user's prohibition (turn {turn}): “{quote}”. It holds until the user lifts it.",
 			"pt-BR": "[infuse] Bloqueado pela proibição do usuário (turno {turn}): “{quote}”. Vale até o usuário retirá-la."},
+		"ban.compile_failed": {
+			"en":    "[infuse] Your latest messages could not be read for prohibitions ({error}). The prohibitions already listed stay in force; repeat a new one in your next message.",
+			"pt-BR": "[infuse] Não foi possível ler as proibições nas suas últimas mensagens ({error}). As já listadas continuam valendo; repita uma nova na próxima mensagem."},
+		"instr.compile_failed": {
+			"en":    "[infuse] The project's instructions could not be compiled into rules ({error}): their required reading and verification commands are not enforced in this turn. infuse tries again at the next message.",
+			"pt-BR": "[infuse] Não foi possível compilar as instruções do projeto em regras ({error}): a leitura obrigatória e os comandos de verificação delas não estão valendo neste turno. O infuse tenta de novo na próxima mensagem."},
 		"report.ev_read_full": {
 			"en":    "infuse showed you all {total} lines of it",
 			"pt-BR": "o infuse mostrou ao agente todas as {total} linhas"},

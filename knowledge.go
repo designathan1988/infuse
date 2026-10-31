@@ -13,7 +13,6 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -108,8 +107,12 @@ func loadDigest(root, hash string) *knowledgeDigest {
 }
 
 const digestPrompt = `You are given one part of a document of a software project, with line numbers. Extract every statement an engineer working on this project must know before acting: problems found and their causes, decisions and their reasons, plans and their steps and order, rules and prohibitions, measurements and limits, and the current state of work. Do not judge or summarize away details; keep numbers, names and paths.
-Answer only with JSON: {"facts":[{"line":<line number where the quote starts>,"kind":"problem|cause|decision|plan|rule|measurement|state","fact":"<the statement, in English, self-contained>","quote":"<words copied exactly from the document, in its own language, 8 to 40 words>"}]}
-If the part has nothing of that kind, answer {"facts":[]}.`
+Answer by calling Facts. For each fact: line is the line number where the quote starts; fact is the statement, in English, self-contained; quote is words copied exactly from the document, in its own language, 8 to 40 words.
+If the part has nothing of that kind, call Facts with an empty list.`
+
+// factsSpec is the shape of a digested document part.
+var factsSpec = ToolSpec{Name: "Facts", Description: "What an engineer must know from this part of the document, each with its verbatim quote.",
+	InputSchema: schema(`{"type":"object","properties":{"facts":{"type":"array","items":{"type":"object","properties":{"line":{"type":"integer"},"kind":{"type":"string","enum":["problem","cause","decision","plan","rule","measurement","state"]},"fact":{"type":"string"},"quote":{"type":"string"}},"required":["line","kind","fact","quote"]}}},"required":["facts"]}`)}
 
 const digestPartLines = 400
 
@@ -123,24 +126,17 @@ func (s *Session) digestDocument(ctx context.Context, p Provider, rel string, b 
 		for i := start; i < end; i++ {
 			fmt.Fprintf(&part, "%d\t%s\n", i+1, lines[i])
 		}
-		res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), System: digestPrompt, Messages: []Message{{Role: "user", Content: []Block{{Type: "text", Text: fmt.Sprintf("Document %s, lines %d–%d of %d:\n\n%s", rel, start+1, end, len(lines), part.String())}}}}, MaxTokens: 8000}, func(StreamEvent) {})
-		if err != nil {
-			return nil, err
-		}
-		d.Parts++
-		s.mu.Lock()
-		s.Cost += s.settings.costOf(s.fastModel(), res.Usage)
-		s.mu.Unlock()
-		raw := msgText(Message{Content: res.Content})
-		if i, j := strings.Index(raw, "{"), strings.LastIndex(raw, "}"); i >= 0 && j > i {
-			raw = raw[i : j+1]
-		}
 		var out struct {
 			Facts []knowledgeFact `json:"facts"`
 		}
-		if json.Unmarshal([]byte(raw), &out) != nil {
-			continue
+		usage, err := askJSON(ctx, p, s.fastModel(), digestPrompt, fmt.Sprintf("Document %s, lines %d–%d of %d:\n\n%s", rel, start+1, end, len(lines), part.String()), factsSpec, 16000, &out)
+		s.mu.Lock()
+		s.Cost += s.settings.costOf(s.fastModel(), usage)
+		s.mu.Unlock()
+		if err != nil { // a part not read is a document not known: no digest is kept, the next run tries again
+			return nil, fmt.Errorf("lines %d–%d: %w", start+1, end, err)
 		}
+		d.Parts++
 		window := normSpace(strings.Join(lines[start:end], "\n"))
 		for _, f := range out.Facts {
 			q := normSpace(f.Quote)

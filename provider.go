@@ -62,7 +62,8 @@ type ModelRequest struct {
 	Messages  []Message
 	Tools     []ToolSpec
 	MaxTokens int
-	Thinking  int // budget tokens; 0 = off
+	Thinking  int    // budget tokens; 0 = off
+	ForceTool string // the model must answer by calling this tool (askjson.go); needs Thinking 0
 }
 
 type ModelResult struct {
@@ -140,6 +141,9 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ModelRequest, emit f
 	}
 	if req.Thinking > 0 {
 		body["thinking"] = map[string]any{"type": "enabled", "budget_tokens": req.Thinking}
+	}
+	if req.ForceTool != "" {
+		body["tool_choice"] = map[string]any{"type": "tool", "name": req.ForceTool}
 	}
 	resp, err := postJSON(ctx, p.client, p.base+"/v1/messages", map[string]string{"x-api-key": p.key, "anthropic-version": "2023-06-01"}, body)
 	if err != nil {

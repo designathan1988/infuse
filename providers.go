@@ -143,6 +143,9 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 		}
 		body["tools"] = ts
 	}
+	if req.ForceTool != "" {
+		body["tool_choice"] = map[string]any{"type": "function", "function": map[string]any{"name": req.ForceTool}}
+	}
 	headers := map[string]string{}
 	if p.key != "" {
 		headers["authorization"] = "Bearer " + p.key
@@ -385,6 +388,9 @@ func (p *googleProvider) Stream(ctx context.Context, req ModelRequest, emit func
 		}
 		body["tools"] = []map[string]any{{"functionDeclarations": fds}}
 	}
+	if req.ForceTool != "" {
+		body["toolConfig"] = map[string]any{"functionCallingConfig": map[string]any{"mode": "ANY", "allowedFunctionNames": []string{req.ForceTool}}}
+	}
 	url := p.base + "/v1beta/models/" + req.Model + ":streamGenerateContent?alt=sse"
 	resp, err := postJSON(ctx, p.client, url, map[string]string{"x-goog-api-key": p.key}, body)
 	if err != nil {
@@ -553,7 +559,13 @@ func (p *ollamaProvider) Stream(ctx context.Context, req ModelRequest, emit func
 	if req.MaxTokens > 0 {
 		body["options"] = map[string]any{"num_predict": req.MaxTokens}
 	}
-	if len(req.Tools) > 0 {
+	if req.ForceTool != "" { // Ollama has no forced call: the answer is constrained to the schema instead
+		for _, t := range req.Tools {
+			if t.Name == req.ForceTool {
+				body["format"] = t.InputSchema
+			}
+		}
+	} else if len(req.Tools) > 0 {
 		var ts []map[string]any
 		for _, t := range req.Tools {
 			ts = append(ts, map[string]any{"type": "function", "function": map[string]any{"name": t.Name, "description": t.Description, "parameters": t.InputSchema}})

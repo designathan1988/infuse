@@ -11,8 +11,6 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,23 +58,23 @@ const compilePrompt = `You receive the instructions of a software project (they 
 - "read": a document that the instructions say to read, consult or follow.
 - "verify": a command that the instructions declare for verifying, testing or measuring the work; "when" is "after-change" when it must run after changes, "before-commit" when it must run before a commit, and "on-request" in every other case.
 For each rule, "quote" is a passage copied EXACTLY from the text, in the original language of the instructions (the same words, neither translated nor summarized), that contains the path or the command and the instruction itself. A rule without a verbatim quote will be discarded. Do not invent anything the text does not say.
-Answer with JSON only: {"rules":[{"kind":"reference|read|verify","path":"…","command":"…","when":"…","quote":"…"}]}`
+Answer by calling ProjectRules with every rule found (an empty list when the text states none).`
+
+// projectRulesSpec is the shape of the compiled instructions.
+var projectRulesSpec = ToolSpec{Name: "ProjectRules", Description: "The rules stated in the project's instructions, each with its verbatim quote.",
+	InputSchema: schema(`{"type":"object","properties":{"rules":{"type":"array","items":{"type":"object","properties":{"kind":{"type":"string","enum":["reference","read","verify"]},"path":{"type":"string"},"command":{"type":"string"},"when":{"type":"string","enum":["after-change","before-commit","on-request"]},"quote":{"type":"string"}},"required":["kind","quote"]}}},"required":["rules"]}`)}
 
 // compileInstructions asks the model for the rules and keeps those whose quote is in the text.
 func (s *Session) compileInstructions(ctx context.Context, p Provider, text string) (*compiledRules, error) {
-	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), System: compilePrompt, Messages: []Message{{Role: "user", Content: []Block{{Type: "text", Text: text}}}}, MaxTokens: 4000}, func(StreamEvent) {})
-	if err != nil {
-		return nil, err
-	}
-	raw := msgText(Message{Content: res.Content})
-	if i, j := strings.Index(raw, "{"), strings.LastIndex(raw, "}"); i >= 0 && j > i {
-		raw = raw[i : j+1]
-	}
 	var out struct {
 		Rules []compiledRule `json:"rules"`
 	}
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, fmt.Errorf("compiling the instructions did not return JSON: %w", err)
+	usage, err := askJSON(ctx, p, s.fastModel(), compilePrompt, text, projectRulesSpec, 8000, &out)
+	s.mu.Lock()
+	s.Cost += s.settings.costOf(s.fastModel(), usage)
+	s.mu.Unlock()
+	if err != nil {
+		return nil, err
 	}
 	c := &compiledRules{Hash: instructionsHash(text), Compiled: time.Now().UnixMilli(), Model: s.fastModel()}
 	norm := normSpace(text)
@@ -89,9 +87,6 @@ func (s *Session) compileInstructions(ctx context.Context, p Provider, text stri
 		r.Disabled = false
 		c.Rules = append(c.Rules, r)
 	}
-	s.mu.Lock()
-	s.Cost += s.settings.costOf(s.fastModel(), res.Usage)
-	s.mu.Unlock()
 	return c, nil
 }
 
@@ -133,8 +128,9 @@ func (s *Session) ensureCompiledRules(ctx context.Context, p Provider) {
 	}
 	s.emitMsg("gate", M("instr.compiling"))
 	c, err := s.compileInstructions(ctx, p, pr.text)
-	if err != nil {
+	if err != nil { // the user sees it: without the compiled rules their locks are not in force
 		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "compiling the instructions: " + err.Error()})
+		s.emitMsg("gate", M("instr.compile_failed", "error", firstLine(err.Error())))
 		return
 	}
 	if old != nil { // the user's switches survive a recompilation
