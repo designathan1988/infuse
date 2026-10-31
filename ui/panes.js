@@ -156,9 +156,9 @@ function mountTerminal(pb, extra, c) {
     const es = new EventSource(`/api/term/${r.id}/stream?root=${encodeURIComponent(c.root)}`); tb.es = es;
     es.onmessage = e => { const bin = atob(e.data); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); term.write(bytes); };
     es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('processo encerrado')}]\x1b[0m\r\n`); es.close(); tb.dead = true; });
-    es.onerror = () => { if (es.readyState === EventSource.CLOSED || tb.dead) return; fetch(`/api/term/${r.id}/resize?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN }, body: JSON.stringify({ cols: term.cols, rows: term.rows }) }).then(x => { if (x.status === 404) { es.close(); tb.dead = true; term.write(`\r\n\x1b[2m[${t('terminal encerrado')}]\x1b[0m\r\n`); } }); };
+    es.onerror = () => { if (es.readyState === EventSource.CLOSED || tb.dead) return; fetch(`/api/term/${r.id}/resize?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ cols: term.cols, rows: term.rows }) }).then(x => { if (x.status === 404) { es.close(); tb.dead = true; term.write(`\r\n\x1b[2m[${t('terminal encerrado')}]\x1b[0m\r\n`); } }); };
     let pending = '', timer = null;
-    term.onData(d => { if (tb.dead) return; pending += d; if (!timer) timer = setTimeout(() => { const data = pending; pending = ''; timer = null; fetch(`/api/term/${r.id}/input?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN }, body: JSON.stringify({ data }) }); }, 8); });
+    term.onData(d => { if (tb.dead) return; pending += d; if (!timer) timer = setTimeout(() => { const data = pending; pending = ''; timer = null; fetch(`/api/term/${r.id}/input?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ data }) }); }, 8); });
     term.onResize(({ cols, rows }) => api(`/api/term/${r.id}/resize`, { body: { cols, rows }, root: c.root }));
     tabs.push(tb); show(tb);
   };
@@ -178,7 +178,7 @@ function mountFiles(pb, extra, c) {
   ta.onscroll = () => gut.scrollTop = ta.scrollTop;
   const save = async (force) => {
     if (!curPath || !dirty) return; fstat.textContent = t('salvando…');
-    const r = await fetch(`/api/file?root=${encodeURIComponent(c.root)}&dir=${encodeURIComponent(c.dir)}`, { method: 'PUT', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN }, body: JSON.stringify({ path: curPath, content: ta.value, mtime, force: !!force }) });
+    const r = await fetch(`/api/file?root=${encodeURIComponent(c.root)}&dir=${encodeURIComponent(c.dir)}`, { method: 'PUT', headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: JSON.stringify({ path: curPath, content: ta.value, mtime, force: !!force }) });
     const j = await r.json();
     if (r.status === 409) { fstat.innerHTML = ''; const bar = h(`<span class="row"><span class="del">${t('O arquivo mudou no disco.')}</span><button class="btn sm line">${t('Sobrescrever')}</button><button class="btn sm">${t('Descartar minhas edições')}</button></span>`); fstat.appendChild(bar); $$('button', bar)[0].onclick = () => save(true); $$('button', bar)[1].onclick = () => { ta.value = j.content; mtime = j.mtime; dirty = false; gutter(); fstat.textContent = ''; }; return; }
     if (j.error) { fstat.textContent = j.error; return; }
@@ -249,12 +249,63 @@ function mountPlan(pb) {
 }
 
 // ---------------------------------------------------------------- infuse: oracle, rules, journal, vices, map
+// Pronto: the executor's verdict (run by the user's "Pronto?" only), the executable criteria
+// (.infuse/oracle/checks.json) edited in place, and the criteria in prose for the agent to read.
+const CHECK_KINDS = { command: ['Comando', 'run', 'npm test', 'sai com código 0; contém…'], http: ['Página/HTTP', 'url', 'http://localhost:3000/', 'status 200; contém…'], file: ['Arquivo', 'path', 'src/login.ts', 'existe; contém…'], maxLines: ['Tamanho de arquivo', 'glob', 'src/**/*.ts', 'máximo de linhas'] };
+async function runOracleUI(c, out) {
+  out.innerHTML = `<div class="status"><span class="spin"></span>${t('executando os critérios num snapshot…')}</div>`;
+  const L = curL();
+  const r = await api('/api/oracle/run', { body: { session: L?.id || '' }, root: c.root, dir: c.dir });
+  const v = r.verdict || {}; drawVerdict(c, out, v, r.error); if (L) { L.verdict = v; viewsOf(L).forEach(renderRail); }
+}
+function drawVerdict(c, out, v, err) {
+  if (!v || !v.run) { out.innerHTML = err ? `<div class="errbox">${esc(err)}</div>` : `<div class="faint">${t('Ainda não executado.')}</div>`; return; }
+  const tag = { aprovado: 'ok', reprovado: 'bad', 'sem-criterios': 'warn', erro: 'bad' }[v.verdict] || '';
+  out.innerHTML = `<div class="row" style="margin-bottom:6px"><span class="tag ${tag}" style="font-size:12px;padding:2px 10px">${esc(t(v.verdict))}</span><span class="faint">${esc(v.summary || '')}</span><span class="grow"></span><span class="faint mono" title="${esc(t('snapshot imutável em que os critérios rodaram'))}">${esc(v.snapshot || '')}</span></div>
+    ${(v.checks || []).map(k => `<div class="row" style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12.5px"><span class="${k.passed ? 'add' : 'del'}">${k.passed ? '✓' : '✗'}</span><b style="font-weight:500">${esc(k.id)}</b><span class="faint grow trunc">${esc(k.detail)}</span><span class="faint">${k.millis} ms</span>${k.evidence ? `<button class="btn sm" data-ev="${esc(k.evidence)}">${t('evidência')}</button>` : ''}</div>`).join('')}
+    <div class="evbox"></div>`;
+  $$('[data-ev]', out).forEach(b => b.onclick = async () => { const e = await api(`/api/oracle/evidence?run=${encodeURIComponent(v.run)}&file=${encodeURIComponent(b.dataset.ev)}`, { root: c.root }); $('.evbox', out).innerHTML = `<pre class="out sel" style="max-height:300px;overflow:auto;margin-top:8px;white-space:pre-wrap;font-family:var(--mono);font-size:12px;background:var(--s2);border-radius:7px;padding:8px">${esc(e.content || e.error)}</pre>`; });
+}
 function mountOracle(pb, extra, c) {
   const draw = async () => {
-    const files = await api('/api/oracle', { root: c.root });
-    pb.innerHTML = `<div class="plist"><div class="faint" style="margin-bottom:10px">${t('Critérios de pronto. O agente lê; não consegue alterar por nenhuma ferramenta (bloqueado e registrado no jornal).')}</div><div class="docs"></div><input class="nf" style="margin-top:10px;padding:6px 10px;border-radius:7px;background:var(--s2);width:100%" placeholder="${esc(t('novo arquivo de critérios (ex.: performance.md) e Enter'))}"></div>`;
+    const [files, specR, hist] = await Promise.all([api('/api/oracle', { root: c.root }), api('/api/oracle/spec', { root: c.root }), api('/api/oracle/verdicts', { root: c.root })]);
+    const spec = specR.spec || { checks: [] };
+    pb.innerHTML = `<div class="plist">
+      <div class="row" style="margin-bottom:8px"><button class="btn pri run">${t('Pronto?')}</button><span class="faint grow">${t('Executa os critérios num snapshot imutável; a palavra do agente não conta.')}</span></div>
+      <div class="verdict" style="margin-bottom:14px"></div>
+      <div class="sect" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin:4px 0">${t('Critérios executáveis')}</div>
+      <div class="checks"></div>
+      <div class="row" style="margin-top:6px"><button class="btn sm addc">${I.plus} ${t('critério')}</button><span class="grow"></span><span class="faint">${t('preparação')}</span><input class="setup mono" style="flex:1;max-width:240px;padding:3px 8px;border-radius:6px;background:var(--s2);font-size:12px" placeholder="npm ci" value="${esc(spec.setup || '')}"></div>
+      <div class="sect" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin:18px 0 4px">${t('Critérios em texto (o agente lê)')}</div>
+      <div class="faint" style="margin-bottom:10px">${t('Critérios de pronto. O agente lê; não consegue alterar por nenhuma ferramenta (bloqueado e registrado no jornal).')}</div><div class="docs"></div><input class="nf" style="margin-top:10px;padding:6px 10px;border-radius:7px;background:var(--s2);width:100%" placeholder="${esc(t('novo arquivo de critérios (ex.: performance.md) e Enter'))}"></div>`;
+    drawVerdict(c, $('.verdict', pb), hist[0]);
+    $('.run', pb).onclick = () => runOracleUI(c, $('.verdict', pb));
+    const saveSpec = debounce(() => api('/api/oracle/spec', { method: 'PUT', body: { spec }, root: c.root }), 500);
+    $('.setup', pb).oninput = e => { spec.setup = e.target.value; saveSpec(); };
+    const drawChecks = () => {
+      const box = $('.checks', pb); box.innerHTML = spec.checks.length ? '' : `<div class="faint">${t('Nenhum critério executável. Sem eles, "Pronto?" não tem o que verificar.')}</div>`;
+      spec.checks.forEach((k, i) => {
+        const [label, field, ph, expPh] = CHECK_KINDS[k.kind] || CHECK_KINDS.command; k.expect = k.expect || {};
+        const exp = k.kind === 'maxLines' ? String(k.max || '') : k.kind === 'http' ? `${k.expect.status || 200}${k.expect.contains ? '; ' + k.expect.contains : ''}` : k.kind === 'command' ? `${k.expect.exit ?? 0}${k.expect.contains ? '; ' + k.expect.contains : ''}` : (k.expect.exists === false ? 'não existe' : (k.expect.contains || ''));
+        const row = h(`<div class="rule" style="grid-template-columns:110px 120px 1fr 1fr 22px"><input class="cid" value="${esc(k.id || '')}" placeholder="${esc(t('nome'))}"><span class="chip kind" style="padding:2px 6px">${esc(t(label))} ${I.caret}</span><input class="tgt mono" value="${esc(k[field] || '')}" placeholder="${esc(ph)}"><input class="exp" value="${esc(exp)}" placeholder="${esc(t(expPh))}"><button class="ib del" style="width:22px;height:22px">${I.close}</button></div>`);
+        $('.cid', row).oninput = e => { k.id = e.target.value; saveSpec(); };
+        $('.tgt', row).oninput = e => { k[field] = e.target.value; saveSpec(); };
+        $('.exp', row).oninput = e => { const val = e.target.value.trim(); const [a, ...rest] = val.split(';'); const more = rest.join(';').trim(); k.expect = {};
+          if (k.kind === 'maxLines') k.max = parseInt(val) || 400;
+          else if (k.kind === 'http') { k.expect.status = parseInt(a) || 200; if (more) k.expect.contains = more; }
+          else if (k.kind === 'command') { if (/^\d+$/.test(a.trim())) { k.expect.exit = parseInt(a); if (more) k.expect.contains = more; } else if (val) k.expect.contains = val; }
+          else if (/^não existe$/i.test(val)) k.expect.exists = false; else if (val) k.expect.contains = val;
+          saveSpec(); };
+        $('.kind', row).onclick = e => menu(e.currentTarget, Object.entries(CHECK_KINDS).map(([kk, [l]]) => ({ label: l, check: k.kind === kk, f: () => { k.kind = kk; saveSpec(); drawChecks(); } })));
+        $('.del', row).onclick = () => { spec.checks.splice(i, 1); saveSpec(); drawChecks(); };
+        box.appendChild(row);
+      });
+    };
+    drawChecks();
+    $('.addc', pb).onclick = () => { spec.checks.push({ id: 'criterio-' + (spec.checks.length + 1), kind: 'command', run: '', expect: {} }); drawChecks(); saveSpec(); setTimeout(() => $$('.checks .tgt', pb).pop()?.focus(), 30); };
     const docs = $('.docs', pb);
-    (files.length ? files : [{ name: 'pronto.md', content: '' }]).forEach(f => {
+    const prose = files.filter(f => f.name !== 'checks.json'); // the executable criteria have their own editor above
+    (prose.length ? prose : [{ name: 'pronto.md', content: '' }]).forEach(f => {
       const d = h(`<div style="margin-bottom:12px"><div class="row" style="margin-bottom:4px"><span class="mono">.infuse/oracle/${esc(f.name)}</span><span class="faint st"></span></div><textarea class="doc" placeholder="${esc(t('Ex.: a página /login autentica com e-mail e senha; o teste e2e login.spec passa; nenhum arquivo acima de 400 linhas.'))}">${esc(f.content)}</textarea></div>`);
       const ta = $('textarea', d), st = $('.st', d);
       ta.oninput = debounce(async () => { await api('/api/oracle', { method: 'PUT', body: { name: f.name, content: ta.value }, root: c.root }); st.textContent = t('salvo'); setTimeout(() => st.textContent = '', 1200); }, 500);

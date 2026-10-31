@@ -23,7 +23,10 @@ import (
 	"strings"
 )
 
-const oracleRel = ".infuse/oracle"
+const (
+	oracleRel   = ".infuse/oracle"
+	evidenceRel = ".infuse/evidence" // the executor's verdicts and evidence: written only by the executor
+)
 
 type Guard struct {
 	Root      string
@@ -31,7 +34,7 @@ type Guard struct {
 }
 
 func newGuard(root string, protected []string) *Guard {
-	return &Guard{Root: root, Protected: append([]string{oracleRel + "/**", oracleRel}, protected...)}
+	return &Guard{Root: root, Protected: append([]string{oracleRel + "/**", oracleRel, evidenceRel + "/**", evidenceRel}, protected...)}
 }
 
 // protects reports whether p (absolute, or relative to cwd) is agent-proof. A symlink counts as its target.
@@ -60,7 +63,7 @@ func (g *Guard) protects(cwd, p string) (string, bool) {
 func (g *Guard) protectsAbs(abs string) (string, bool) {
 	rel := relTo(g.Root, abs)
 	// the oracle is protected wherever it is: the project's, a worktree's, or reached from outside the root
-	if slash := "/" + strings.Trim(filepath.ToSlash(abs), "/"); strings.Contains(slash+"/", "/"+oracleRel+"/") {
+	if slash := "/" + strings.Trim(filepath.ToSlash(abs), "/"); strings.Contains(slash+"/", "/"+oracleRel+"/") || strings.Contains(slash+"/", "/"+evidenceRel+"/") {
 		if rel == "" || strings.HasPrefix(rel, "..") {
 			rel = filepath.ToSlash(abs)
 		}

@@ -72,6 +72,55 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		}
 		sendJSON(w, 200, map[string]any{"ok": true})
 		return true
+	// ---------------------------------------------------------------- the oracle's executor
+	case path == "/api/oracle/spec" && r.Method == http.MethodGet:
+		spec, err := LoadOracleSpec(root)
+		if err != nil {
+			sendJSON(w, 200, map[string]any{"error": err.Error(), "spec": OracleSpec{Checks: []OracleCheck{}}})
+			return true
+		}
+		if spec.Checks == nil {
+			spec.Checks = []OracleCheck{}
+		}
+		sendJSON(w, 200, map[string]any{"spec": spec})
+		return true
+	case path == "/api/oracle/spec" && r.Method == http.MethodPut:
+		var spec OracleSpec
+		b, _ := jsonMarshal(body["spec"])
+		if err := jsonUnmarshal(b, &spec); err != nil {
+			sendJSON(w, 400, map[string]any{"error": err.Error()})
+			return true
+		}
+		_ = os.MkdirAll(filepath.Dir(oracleSpecFile(root)), 0o755)
+		if err := writeJSON(oracleSpecFile(root), spec); err != nil {
+			sendJSON(w, 500, map[string]any{"error": err.Error()})
+			return true
+		}
+		Journal(root, JournalEntry{Kind: "oracle", Path: ".infuse/oracle/checks.json", Detail: "critérios editados pelo usuário"})
+		sendJSON(w, 200, map[string]any{"ok": true})
+		return true
+	case path == "/api/oracle/run":
+		// "Pronto?": only the user's window calls this (API token); no agent tool can.
+		work := dir
+		v, err := RunOracle(r.Context(), root, work, str("session"))
+		if err != nil {
+			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error(), "verdict": v})
+			return true
+		}
+		sendJSON(w, 200, map[string]any{"ok": true, "verdict": v})
+		return true
+	case path == "/api/oracle/verdicts":
+		sendJSON(w, 200, ListVerdicts(root, 20))
+		return true
+	case path == "/api/oracle/evidence":
+		run, name := filepath.Base(q["run"]), filepath.Base(q["file"])
+		b, err := os.ReadFile(filepath.Join(evidenceDir(root), run, name))
+		if err != nil {
+			sendJSON(w, 404, map[string]any{"error": "evidência não encontrada"})
+			return true
+		}
+		sendJSON(w, 200, map[string]any{"name": name, "content": string(b)})
+		return true
 	case path == "/api/apps/command":
 		// the shell command that starts a CLI app, for the terminal pane
 		for _, a := range DetectApps() {

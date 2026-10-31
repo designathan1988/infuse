@@ -30,6 +30,8 @@ const I = {
   folder: '<svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   branch: '<svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8M18 10c0 4-6 3-12 6"/></svg>',
   copy: '<svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+  archive: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/></svg>',
+  trash: '<svg class="i" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V4h6v3"/></svg>',
   pc: '<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
 };
 
@@ -44,13 +46,15 @@ function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } }
 const native = !!window.infuse;
 // The API token arrives in the URL fragment (never sent over the network); it is kept for this tab only.
-const API_TOKEN = (() => { const m = location.hash.match(/token=([\w-]+)/); try { if (m) { sessionStorage.setItem('infuseToken', m[1]); history.replaceState(null, '', location.pathname); } return m ? m[1] : (sessionStorage.getItem('infuseToken') || ''); } catch { return m ? m[1] : ''; } })();
+let API_TOKEN = '';
+function readToken() { const m = location.hash.match(/token=([A-Za-z0-9_-]+)/); try { if (m) { sessionStorage.setItem('infuseToken', m[1]); history.replaceState(null, '', location.pathname); } API_TOKEN = m ? m[1] : (sessionStorage.getItem('infuseToken') || API_TOKEN); } catch { if (m) API_TOKEN = m[1]; } return API_TOKEN; }
+readToken(); addEventListener('hashchange', readToken);
 
 async function api(url, opts = {}) {
   const root = opts.root ?? curRoot();
   if (root && !/[?&]root=/.test(url)) url += (url.includes('?') ? '&' : '?') + 'root=' + encodeURIComponent(root);
   if (opts.dir && !/[?&]dir=/.test(url)) url += '&dir=' + encodeURIComponent(opts.dir);
-  const r = await fetch(url, { method: opts.method || (opts.body ? 'POST' : 'GET'), headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const r = await fetch(url, { method: opts.method || (opts.body ? 'POST' : 'GET'), headers: { 'content-type': 'application/json', 'X-Infuse': API_TOKEN || readToken() }, body: opts.body ? JSON.stringify(opts.body) : undefined });
   return r.json().catch(() => ({}));
 }
 const nat = async (method, ...p) => {
@@ -151,9 +155,9 @@ function renderSidebar() {
   const openIds = S.views.map(v => v.sid);
   const row = s => {
     const L = S.live[s.id]; const st = L?.snap?.state || s.state;
-    const r = h(`<div class="srow${openIds[S.focus] === s.id ? ' on' : ''}${openIds.includes(s.id) && openIds[S.focus] !== s.id ? ' split' : ''}" draggable="true"><span class="st ${stateClass(st)}"></span><span class="t">${esc(L?.snap?.title || s.title || t('Nova sessão'))}</span><span class="w">${ago(s.updated)}</span><button class="ib more" title="Mais">${I.more}</button></div>`);
+    const r = h(`<div class="srow${openIds[S.focus] === s.id ? ' on' : ''}${openIds.includes(s.id) && openIds[S.focus] !== s.id ? ' split' : ''}" draggable="true"><span class="st ${stateClass(st)}"></span><span class="t">${esc(L?.snap?.title || s.title || t('Nova sessão'))}</span><span class="w">${ago(s.updated)}</span><button class="ib more act" data-act="${archivedMode ? 'delete' : 'archive'}" title="${esc(t(archivedMode ? 'Excluir' : 'Arquivar'))}">${archivedMode ? I.trash : I.archive}</button><button class="ib more" title="Mais">${I.more}</button></div>`);
     r.title = (s.branch ? s.branch + ' · ' : '') + s.root;
-    r.onclick = e => { if (e.target.closest('.more')) return sessionRowMenu(s, e.target.closest('.more')); if (archivedMode) return; if (e.altKey) openInSplit(s.root, s.id); else openSession(s.root, s.id); };
+    r.onclick = e => { const act = e.target.closest('[data-act]'); if (act) { e.stopPropagation(); return act.dataset.act === 'delete' ? deleteSession(s) : archiveSession(s); } if (e.target.closest('.more')) return sessionRowMenu(s, e.target.closest('.more')); if (archivedMode) return; if (e.altKey) openInSplit(s.root, s.id); else openSession(s.root, s.id); };
     r.oncontextmenu = e => { e.preventDefault(); sessionRowMenu(s, null, e); };
     r.ondragstart = e => e.dataTransfer.setData('text/infuse-session', JSON.stringify({ root: s.root, id: s.id }));
     return r;
@@ -183,7 +187,12 @@ function renderSidebar() {
     }
   } else list.forEach(s => el.appendChild(row(s)));
   if (!S.projects.length && !list.length) el.appendChild(h(`<div class="empty">${t('Nenhuma sessão ainda.')}<br>${t('Clique em Nova sessão e escolha a pasta do projeto.')}</div>`));
-  if (archivedMode) el.prepend(h(`<div class="srow" style="color:var(--accent)" onclick="S.sb.show='';lsSet('sb',S.sb);renderSidebar()">← ${t('Voltar às sessões')}</div>`));
+  if (archivedMode) {
+    const bar = h(`<div class="row" style="padding:2px 4px 6px"><button class="btn sm back">← ${t('Voltar às sessões')}</button><span class="grow"></span>${list.length ? `<button class="btn sm danger delall">${t('Excluir todas')}</button>` : ''}</div>`);
+    $('.back', bar).onclick = () => { S.sb.show = ''; lsSet('sb', S.sb); renderSidebar(); };
+    if ($('.delall', bar)) $('.delall', bar).onclick = async () => { if (!confirm(t('Excluir todas as sessões arquivadas e seus checkpoints? Isto não pode ser desfeito.'))) return; for (const x of list) await api(`/api/sessions/${x.id}`, { method: 'DELETE', root: x.root }); S.archived = await api('/api/sessions/all?archived=1', { root: '' }); renderSidebar(); toast('Sessões excluídas'); };
+    el.prepend(bar);
+  }
 }
 $('#search').oninput = renderSidebar;
 $('#btnGroup').onclick = e => menu(e.currentTarget, [
@@ -807,7 +816,10 @@ function renderRail(v) {
   <div class="card ctxcard" style="cursor:pointer"><div class="ch">${t('Contexto')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(S.settings.contextLimit || 200000)} tokens · ${money(L.snap.cost)}</div></div>
   <div class="card"><div class="ch">${t('Ambiente')}</div><div class="kv"><span>${t('Onde')}</span><span>${t('Este computador')}</span></div><div class="kv"><span>${t('Pasta')}</span><span title="${esc(L.snap.workRoot)}">${esc(baseName(L.snap.workRoot || L.root))}</span></div>${L.snap.branch ? `<div class="kv"><span>${t('Branch')}</span><span class="mono">${esc(L.snap.branch)}</span></div>` : ''}${L.snap.worktree ? `<div class="kv"><span>${t('Worktree')}</span><span>${t('isolado')}</span></div>` : ''}<div class="kv"><span>${t('Modelo')}</span><span class="mono">${esc(L.snap.model || '')}</span></div></div>
   ${tasks.length ? `<div class="card" style="cursor:pointer" data-open="tasks"><div class="ch">${t('Tarefas')}<span class="r">${tasks.filter(x => x.status === 'done').length}/${tasks.length}</span></div>${tasks.slice(0, 5).map(x => `<div style="font-size:12px;color:${x.status === 'done' ? 'var(--text3)' : 'var(--text)'}">${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text)}</div>`).join('')}</div>` : ''}
-  <div class="card" style="cursor:pointer" data-open="oracle"><div class="ch">${t('Pronto')}<span class="r faint">${t('critérios do oráculo')}</span></div><div class="faint">${t('Definidos por você; o agente lê e não altera.')}</div></div>`;
+  <div class="card"><div class="ch">${t('Pronto')}<span class="r">${L.verdict ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[L.verdict.verdict] || 'warn'}">${esc(t(L.verdict.verdict))}</span>` : `<span class="faint">${t('não verificado')}</span>`}</span></div>
+    <div class="faint" style="margin-bottom:6px">${L.verdict ? esc(L.verdict.summary) : t('Só a execução dos critérios decide; a palavra do agente não conta.')}</div>
+    <div class="row"><button class="btn sm line oraclego">${t('Pronto?')}</button><button class="btn sm" data-open="oracle">${t('Critérios')}</button></div></div>`;
+  $('.oraclego', el).onclick = () => { togglePane('oracle', true); setTimeout(() => { const out = $('.pane[data-id="oracle"] .verdict'); if (out) runOracleUI({ root: L.root, dir: L.snap.workRoot || L.root }, out); }, 400); };
   $$('[data-f]', el).forEach(x => x.onclick = () => { togglePane('changes', true); setTimeout(() => paneCall('changes', 'select', x.dataset.f), 50); });
   $('.ctxcard', el).onclick = () => contextDialog(v);
   $$('[data-open]', el).forEach(x => x.onclick = () => togglePane(x.dataset.open, true));
