@@ -62,14 +62,13 @@ func TestAgentCannotWriteMemoryFolderDirectly(t *testing.T) {
 }
 
 func TestCompactionKeepsUserWordsVerbatim(t *testing.T) {
-	msgs := []Message{
-		{Role: "user", Content: []Block{{Type: "text", Text: "[Contexto compactado — resumo]\n\nresumo\n\n## Pedidos do usuário, literais\n> primeiro pedido\n> em duas linhas"}}},
-		{Role: "assistant", Content: []Block{{Type: "text", Text: "ok"}}},
-		{Role: "user", Content: []Block{{Type: "text", Text: "NÃO use npm, use pnpm"}}},
-		{Role: "user", Content: []Block{{Type: "tool_result", Content: "saída"}}},
-	}
+	msgs := append(compactionHead("resumo", []string{"primeiro pedido\nem duas linhas"}),
+		Message{Role: "user", Content: []Block{{Type: "text", Text: "NÃO use npm, use pnpm"}}},
+		Message{Role: "user", Content: []Block{{Type: "tool_result", Content: "saída"}}},
+		Message{Role: "user", Kind: "infuse_note", Content: []Block{{Type: "text", Text: "a note of infuse's"}}},
+	)
 	v := verbatimRequests(msgs)
-	if v != "> primeiro pedido\n> em duas linhas\n\n> NÃO use npm, use pnpm" {
+	if strings.Join(v, "|") != "primeiro pedido\nem duas linhas|NÃO use npm, use pnpm" {
 		t.Fatalf("%q", v)
 	}
 }

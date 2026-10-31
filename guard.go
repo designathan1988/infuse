@@ -17,7 +17,6 @@ package main
 // Every attempt goes to the journal as "blocked" and to the lessons.
 
 import (
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -121,10 +120,11 @@ func resolveSymlinks(abs string) string {
 	return abs
 }
 
-func (g *Guard) block(rel, detail string) error {
-	Journal(g.Root, JournalEntry{Kind: "blocked", Path: rel, Detail: detail})
-	Lesson(g.Root, "protected-path-write", detail+": "+rel)
-	return fmt.Errorf("protected path, read-only for the agent: %s (%s). The oracle and the protected paths are set by the user and cannot be changed by the agent", rel, detail)
+// block records a refused write to a protected path; the error carries the message (msgOf).
+func (g *Guard) block(rel string, detail Msg) error {
+	Journal(g.Root, JournalEntry{Kind: "blocked", Path: rel, Detail: detail.String()})
+	Lesson(g.Root, "protected-path-write", detail.String()+": "+rel)
+	return errMsg(M("guard.protected", "file", rel, "detail", detail))
 }
 
 // reRedir: output redirections and the read-write open `<>` (group 3 is the target).
@@ -152,12 +152,24 @@ type shellSeg struct {
 }
 
 // GuardCommand inspects a shell command before it runs. It returns the (possibly rewritten) command,
-// notes for the model, or an error when the command must not run at all.
+// notes for the model (English), or an error when the command must not run at all (the error carries
+// its message: msgOf). GuardCommandMsgs gives the notes as messages.
 func (g *Guard) GuardCommand(cmd, cwd string) (string, []string, error) {
+	out, notes, err := g.guard(cmd, cwd, false)
+	var lines []string
+	for _, n := range notes {
+		lines = append(lines, n.String())
+	}
+	return out, lines, err
+}
+
+// GuardCommandMsgs is GuardCommand with the notes as messages, for a caller that records them with the
+// call (so the user reads them in their language).
+func (g *Guard) GuardCommandMsgs(cmd, cwd string) (string, []Msg, error) {
 	return g.guard(cmd, cwd, false)
 }
 
-func (g *Guard) guard(cmd, cwd string, nested bool) (string, []string, error) {
+func (g *Guard) guard(cmd, cwd string, nested bool) (string, []Msg, error) {
 	// mask heredoc bodies (same length, newlines kept): offsets stay valid and document text is inert
 	masked := []byte(cmd)
 	hds := FindHeredocs(cmd)
@@ -169,7 +181,7 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []string, error) {
 		}
 	}
 	segs := splitSegments(string(masked))
-	var notes []string
+	var notes []Msg
 	type edit struct {
 		start, end int
 		with       string
@@ -185,7 +197,7 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []string, error) {
 			if h.OpStart >= sg.start && h.OpStart < sg.end {
 				if intent := DetectFileWrite(strings.TrimSpace(cmd[sg.start:h.OpEnd])); intent != nil {
 					if rel, ok := g.protects(dir, intent.Path); ok {
-						return "", nil, g.block(rel, "heredoc into a protected path refused")
+						return "", nil, g.block(rel, M("guard.heredoc"))
 					}
 				}
 			}
@@ -199,7 +211,7 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []string, error) {
 				for _, p := range segs[pipeStart : i+1] {
 					for _, f := range shellFields(p.text) {
 						if rel, ok := g.protects(dir, f); ok {
-							return "", nil, g.block(rel, "xargs with a destructive command on a protected path refused")
+							return "", nil, g.block(rel, M("guard.xargs"))
 						}
 					}
 				}
@@ -210,10 +222,10 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []string, error) {
 			target := sg.text[loc[6]:loc[7]]
 			if rel, ok := g.protects(dir, target); ok {
 				if nested {
-					return "", nil, g.block(rel, "redirection in a nested shell into a protected path refused")
+					return "", nil, g.block(rel, M("guard.nested_redir"))
 				}
-				notes = append(notes, "[infuse] redirection into a protected path neutralized: "+rel)
-				_ = g.block(rel, "redirection neutralized")
+				notes = append(notes, M("guard.redirected", "file", rel))
+				_ = g.block(rel, M("guard.redir_blocked"))
 				edits = append(edits, edit{sg.start + loc[6], sg.start + loc[7], "/dev/null"})
 			}
 		}
@@ -265,11 +277,11 @@ func (g *Guard) checkSimple(fields []string, dir, text string) error {
 		return nil
 	}
 	head, args := baseCmd(fields[0]), fields[1:]
-	refuse := func(why string) error {
+	refuse := func(why Msg) error {
 		for _, a := range args {
 			for _, cand := range strings.Split(strings.TrimPrefix(a, "of="), "=") {
 				if rel, ok := g.protects(dir, cand); ok {
-					return g.block(rel, why+": "+truncate(strings.TrimSpace(text), 120))
+					return g.block(rel, M("guard.with_command", "why", why, "command", truncate(strings.TrimSpace(text), 120)))
 				}
 			}
 		}
@@ -281,13 +293,13 @@ func (g *Guard) checkSimple(fields []string, dir, text string) error {
 	}
 	switch {
 	case writingCommands[head], scriptingCommands[head]:
-		return refuse("command on a protected path refused")
+		return refuse(M("guard.command"))
 	case head == "sed" && hasFlag(args, "-i"):
-		return refuse("sed -i on a protected path refused")
+		return refuse(M("guard.sed"))
 	case head == "find" && findWrites(args):
-		return refuse("find that changes a protected path refused")
+		return refuse(M("guard.find"))
 	case head == "git" && len(args) > 0 && gitWriting[args[0]]:
-		return refuse("git " + args[0] + " on a protected path refused")
+		return refuse(M("guard.git", "sub", args[0]))
 	}
 	return nil
 }

@@ -15,7 +15,7 @@ func (stubbornProvider) Name() string { return "stubborn" }
 func (p stubbornProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
 	last := req.Messages[len(req.Messages)-1]
 	for _, b := range last.Content {
-		if p.listen && b.Type == "text" && strings.Contains(b.Text, "mude a abordagem") {
+		if p.listen && b.Type == "text" && b.Text == M("breaker.first", "why", M("breaker.same", "tool", "Read")).String() {
 			return ModelResult{Content: []Block{{Type: "text", Text: "Mudei a abordagem."}}, StopReason: "end_turn"}, nil
 		}
 	}
@@ -54,7 +54,7 @@ func TestBreakerSendsTheAgentBackOnce(t *testing.T) {
 		t.Fatalf("a warned agent that changed approach ended in %s: %s", s.State, s.lastError)
 	}
 	b, _ := json.Marshal(s.Messages)
-	if !strings.Contains(string(b), "mude a abordagem") || !strings.Contains(string(b), "Mudei a abordagem") {
+	if !strings.Contains(string(b), "change the approach") || !strings.Contains(string(b), "Mudei a abordagem") {
 		t.Fatalf("no warning in the conversation: %s", b)
 	}
 	if got := repairTranscript(s.Messages); len(got) != len(s.Messages) {
@@ -64,7 +64,7 @@ func TestBreakerSendsTheAgentBackOnce(t *testing.T) {
 
 func TestBreakerEndsTheTurnWhenTheAgentInsists(t *testing.T) {
 	s := runStubborn(t, false)
-	if s.State != "error" || !strings.Contains(s.lastError, "circuit breaker") {
+	if s.State != "error" || s.lastError != M("breaker.same", "tool", "Read").Render(s.uiLang()) {
 		t.Fatalf("state %s: %s", s.State, s.lastError)
 	}
 }

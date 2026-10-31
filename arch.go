@@ -21,7 +21,6 @@ package main
 //   JSON Schema 2020-12: https://json-schema.org/draft/2020-12
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -168,54 +167,54 @@ func treeShape(work, ext string) (bool, []string) {
 
 func (r *ArchRules) on(rule string) bool { return !contains(r.Disabled, rule) }
 
-// archCheck returns why a write breaks the project's architecture ("" when it does not).
+// archCheck returns why a write breaks the project's architecture (empty when it does not).
 // rel is relative to the project; before is "" for a new file.
-func archCheck(root, work, rel, before, after string) string {
+func archCheck(root, work, rel, before, after string) Msg {
 	r := loadArchRules(root)
 	ext := strings.ToLower(filepath.Ext(rel))
 	isNew := before == ""
-	checks := []func() string{
-		func() string { return archPlacement(r, work, rel, ext, isNew) },
-		func() string { return archFunctions(r, rel, ext, before, after) },
-		func() string { return archTables(r, ext, before, after) },
-		func() string { return archStyles(r, work, rel, ext, before, after) },
-		func() string { return archState(r, rel, ext, before, after) },
-		func() string { return archConstants(r, work, rel, ext, before, after) },
-		func() string { return archDuplicates(r, work, rel, ext, before, after) },
-		func() string { return archCycles(r, work, rel, ext, before, after) },
-		func() string { return archJSON(r, work, rel, ext, after) },
+	checks := []func() Msg{
+		func() Msg { return archPlacement(r, work, rel, ext, isNew) },
+		func() Msg { return archFunctions(r, rel, ext, before, after) },
+		func() Msg { return archTables(r, ext, before, after) },
+		func() Msg { return archStyles(r, work, rel, ext, before, after) },
+		func() Msg { return archState(r, rel, ext, before, after) },
+		func() Msg { return archConstants(r, work, rel, ext, before, after) },
+		func() Msg { return archDuplicates(r, work, rel, ext, before, after) },
+		func() Msg { return archCycles(r, work, rel, ext, before, after) },
+		func() Msg { return archJSON(r, work, rel, ext, after) },
 	}
 	for _, c := range checks {
-		if why := c(); why != "" {
+		if why := c(); !why.Empty() {
 			return why
 		}
 	}
-	return ""
+	return Msg{}
 }
 
 // archPlacement: a new file goes inside the structure the project has, not loose at the root or in a
 // folder invented for it.
-func archPlacement(r *ArchRules, work, rel, ext string, isNew bool) string {
+func archPlacement(r *ArchRules, work, rel, ext string, isNew bool) Msg {
 	if !isNew || !r.on("placement") {
-		return ""
+		return Msg{}
 	}
 	parts := strings.Split(rel, "/")
 	if len(parts) == 1 { // at the root: loose only when the project already keeps its code in folders
 		if !codeExts[ext] || contains(r.RootExts, ext) {
-			return ""
+			return Msg{}
 		}
 		rootHas, dirs := treeShape(work, ext)
 		if rootHas || len(dirs) == 0 {
-			return "" // the root already holds this kind of code, or the project has no folders of code yet
+			return Msg{} // the root already holds this kind of code, or the project has no folders of code yet
 		}
-		return fmt.Sprintf("a loose code file at the root (%s), in a project that organizes its code in folders. Put it in the folder of its responsibility: %s.", rel, strings.Join(dirs, ", "))
+		return M("arch.loose_root", "file", rel, "dirs", strings.Join(dirs, ", "))
 	}
 	top := parts[0]
 	if contains(r.TopDirs, top) || wellKnownDirs[top] || strings.HasPrefix(top, ".") {
-		return ""
+		return Msg{}
 	}
 	if _, err := os.Stat(filepath.Join(work, top)); err == nil {
-		return "" // a folder that exists (made by the user or the project)
+		return Msg{} // a folder that exists (made by the user or the project)
 	}
-	return fmt.Sprintf("a new folder at the root (%s/) with no place in the project's structure. Use one of the existing folders (%s) or a well-known role name (src, lib, test, docs, scripts, assets…).", top, strings.Join(r.TopDirs, ", "))
+	return M("arch.new_folder", "dir", top, "dirs", strings.Join(r.TopDirs, ", "))
 }

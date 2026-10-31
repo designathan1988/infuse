@@ -134,11 +134,8 @@ func (s *Session) compactFallback() {
 	}
 	older := s.Messages[:keepFrom]
 	var b strings.Builder
-	b.WriteString("[Contexto compactado — o resumo automático falhou; o infuse reduziu a conversa sem resumir]\n\n")
-	if v := verbatimRequests(older); v != "" {
-		b.WriteString("## Pedidos do usuário, literais\n" + v + "\n\n")
-	}
-	b.WriteString("## Ferramentas usadas antes deste ponto (primeiras linhas do resultado)\n")
+	b.WriteString("[Context compacted — the automatic summary failed; infuse shortened the conversation without summarizing]\n\n")
+	b.WriteString("## Tools used before this point (first lines of each result)\n")
 	names := map[string]string{}
 	for _, m := range older {
 		for _, bl := range m.Content {
@@ -155,7 +152,7 @@ func (s *Session) compactFallback() {
 		}
 	}
 	keep := append([]Message{}, s.Messages[keepFrom:]...)
-	s.Messages = append([]Message{{Role: "user", Content: []Block{{Type: "text", Text: truncate(b.String(), 60000)}}, TS: time.Now().UnixMilli()}, {Role: "assistant", Content: []Block{{Type: "text", Text: "Entendido, continuo a partir desse estado."}}}}, keep...)
+	s.Messages = append(compactionHead(truncate(b.String(), 60000), verbatimRequests(older)), keep...)
 	s.TurnStarts = []int{0}
 	s.Compactions++
 }
@@ -169,7 +166,7 @@ func (s *Session) compactResilient(ctx context.Context, p Provider) {
 	if err := s.compact(ctx, p); err != nil && ctx.Err() == nil {
 		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "compactação por resumo falhou: " + firstLine(err.Error())})
 		s.compactFallback()
-		s.emit("compacted", map[string]any{"summary": "(redução sem resumo: o provedor falhou ao resumir)"})
+		s.emit("compacted", map[string]any{"summary": M("compact.no_summary").Render(s.uiLang())})
 	}
 	s.mu.Lock()
 	compacted := s.Compactions > before
@@ -186,7 +183,7 @@ func (s *Session) shrinkLargestResults() {
 	for i := range s.Messages {
 		for j, b := range s.Messages[i].Content {
 			if b.Type == "tool_result" && len(b.Content) > 16000 {
-				s.Messages[i].Content[j].Content = b.Content[:6000] + fmt.Sprintf("\n[... %d characters removed to fit the context ...]\n", len(b.Content)-12000) + b.Content[len(b.Content)-6000:]
+				s.Messages[i].Content[j].Content = b.Content[:6000] + "\n" + M("compact.cut", "count", len(b.Content)-12000).String() + "\n" + b.Content[len(b.Content)-6000:]
 			}
 		}
 	}

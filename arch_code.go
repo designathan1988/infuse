@@ -4,7 +4,6 @@ package main
 // branches that should be a table, global state outside the store, constants defined twice.
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -160,9 +159,9 @@ func functionMetrics(code, ext string) []funcMetric {
 
 // archFunctions: a function may not become a god function — too long, too many branches, too deep.
 // A function that already was keeps its size, but may not get worse.
-func archFunctions(r *ArchRules, rel, ext, before, after string) string {
+func archFunctions(r *ArchRules, rel, ext, before, after string) Msg {
 	if !r.on("functions") {
-		return ""
+		return Msg{}
 	}
 	old := map[string]funcMetric{}
 	for _, f := range functionMetrics(before, ext) {
@@ -173,14 +172,14 @@ func archFunctions(r *ArchRules, rel, ext, before, after string) string {
 		bad := func(v, ov, lim int) bool { return v > lim && (!had || v > ov) }
 		switch {
 		case bad(f.lines, o.lines, r.FuncLines):
-			return fmt.Sprintf("the function %s (%s:%d) would have %d lines (limit %d). A function does one thing: extract the steps into functions whose names say what they do.", f.name, rel, f.line, f.lines, r.FuncLines)
+			return M("arch.func_lines", "func", f.name, "file", rel, "line", f.line, "lines", f.lines, "limit", r.FuncLines)
 		case bad(f.cyc, o.cyc, r.Cyclomatic):
-			return fmt.Sprintf("the function %s (%s:%d) would have complexity %d (limit %d: paths through if/for/case/&&/||). Split the decisions into smaller functions, or replace chains of conditions with a data table.", f.name, rel, f.line, f.cyc, r.Cyclomatic)
+			return M("arch.func_complexity", "func", f.name, "file", rel, "line", f.line, "value", f.cyc, "limit", r.Cyclomatic)
 		case bad(f.nest, o.nest, r.Nesting):
-			return fmt.Sprintf("the function %s (%s:%d) would have %d levels of nesting (limit %d). Use early returns and extract the inner blocks.", f.name, rel, f.line, f.nest, r.Nesting)
+			return M("arch.func_nesting", "func", f.name, "file", rel, "line", f.line, "levels", f.nest, "limit", r.Nesting)
 		}
 	}
-	return ""
+	return Msg{}
 }
 
 var (
@@ -211,14 +210,14 @@ func longestLiteralChain(code string) int {
 }
 
 // archTables: many literal branches are data, not logic (Code Complete ch. 18, table-driven methods).
-func archTables(r *ArchRules, ext, before, after string) string {
+func archTables(r *ArchRules, ext, before, after string) Msg {
 	if !r.on("tables") || !codeExts[ext] || ext == ".css" || ext == ".html" {
-		return ""
+		return Msg{}
 	}
 	if n := longestLiteralChain(after); n >= r.TableArms && n > longestLiteralChain(before) {
-		return fmt.Sprintf("%d branches in a row that only map one literal value to another (switch/case or if/else if). That is a table: declare a map or data object (key → value) and look it up — one place for the data, one line of logic.", n)
+		return M("arch.table", "count", n)
 	}
-	return ""
+	return Msg{}
 }
 
 var (
@@ -228,23 +227,23 @@ var (
 
 // archState: one store; state is not scattered in globals (Redux style guide: one store, no mutation
 // outside it).
-func archState(r *ArchRules, rel, ext, before, after string) string {
+func archState(r *ArchRules, rel, ext, before, after string) Msg {
 	if !r.on("state") || !jsLikeExts[ext] {
-		return ""
+		return Msg{}
 	}
 	if reStoreCreate.MatchString(after) && !reStoreCreate.MatchString(before) && len(r.StoreFiles) > 0 && !contains(r.StoreFiles, rel) {
-		return fmt.Sprintf("this file creates a new store, but the project already has its store in %s. One source of truth for state: add the new state there (as a slice or module of it).", strings.Join(r.StoreFiles, ", "))
+		return M("arch.new_store", "stores", strings.Join(r.StoreFiles, ", "))
 	}
 	if contains(r.StoreFiles, rel) {
-		return ""
+		return Msg{}
 	}
 	if n := len(reGlobalWrite.FindAllString(stripCode(after, ext), -1)); n > len(reGlobalWrite.FindAllString(stripCode(before, ext), -1)) {
 		if len(r.StoreFiles) == 0 {
-			return "loose global state (window.x = …, globalThis.x = … or export let). State lives in a state module and changes only through it; the other modules read it and request changes."
+			return M("arch.global_state")
 		}
-		return fmt.Sprintf("loose global state (window.x = …, globalThis.x = … or export let). State lives in the project's store (%s) and changes only through it; the other modules read it and request changes.", strings.Join(r.StoreFiles, ", "))
+		return M("arch.global_state_store", "stores", strings.Join(r.StoreFiles, ", "))
 	}
-	return ""
+	return Msg{}
 }
 
 var (
@@ -272,20 +271,20 @@ func constNames(code, ext string) map[string]bool {
 
 // archConstants: a constant has one home. Defining again a name another file already defines makes two
 // sources of truth that drift apart.
-func archConstants(r *ArchRules, work, rel, ext, before, after string) string {
+func archConstants(r *ArchRules, work, rel, ext, before, after string) Msg {
 	if !r.on("constants") {
-		return ""
+		return Msg{}
 	}
 	added := constNames(after, ext)
 	for n := range constNames(before, ext) {
 		delete(added, n)
 	}
 	if len(added) == 0 {
-		return ""
+		return Msg{}
 	}
-	found := ""
+	var found Msg
 	walkProjectFiles(work, func(orel, abs string, size int64) {
-		if found != "" || orel == rel || size > 300<<10 || sameFamily(ext, strings.ToLower(filepath.Ext(orel))) == false {
+		if !found.Empty() || orel == rel || size > 300<<10 || sameFamily(ext, strings.ToLower(filepath.Ext(orel))) == false {
 			return
 		}
 		b, err := os.ReadFile(abs)
@@ -294,7 +293,7 @@ func archConstants(r *ArchRules, work, rel, ext, before, after string) string {
 		}
 		for n := range constNames(string(b), ext) {
 			if added[n] {
-				found = fmt.Sprintf("the constant %s is already defined in %s. Single source of truth: import it from there instead of defining another one (if the values must differ, the names must differ too).", n, orel)
+				found = M("arch.constant", "name", n, "file", orel)
 				return
 			}
 		}

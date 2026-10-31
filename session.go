@@ -427,7 +427,7 @@ func (s *Session) Revert(toTurn int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.State != "idle" && s.State != "error" {
-		return errors.New("pare o agente antes de reverter")
+		return errors.New(M("session.stop_first_revert").Render(s.uiLang()))
 	}
 	for t := s.Turn; t >= toTurn; t-- {
 		files := s.Checkpoints[t]
@@ -512,13 +512,15 @@ func bashPrefix(tool string, input json.RawMessage) string {
 }
 
 func (s *Session) askPermission(ctx context.Context, tool Tool, input json.RawMessage) bool {
-	return s.askPermissionWhy(ctx, tool, input, "")
+	return s.askPermissionWhy(ctx, tool, input, "", Msg{})
 }
 
-func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.RawMessage, reason string) bool {
+// askPermissionWhy asks the user about a call a sentinel caught: reason is shown in the user's language;
+// key identifies the sentinel, so "don't ask again" silences that sentinel for the session.
+func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.RawMessage, key string, reason Msg) bool {
 	s.askMu.Lock()
 	defer s.askMu.Unlock()
-	req := &permRequest{ID: fmt.Sprintf("p%d", time.Now().UnixNano()), Tool: tool.Spec().Name, Input: input, Category: tool.Category(), Reason: reason, reply: make(chan string, 1)}
+	req := &permRequest{ID: fmt.Sprintf("p%d", time.Now().UnixNano()), Tool: tool.Spec().Name, Input: input, Category: tool.Category(), Reason: reason.Render(s.uiLang()), reply: make(chan string, 1)}
 	s.mu.Lock()
 	s.pendingPerm = req
 	s.mu.Unlock()
@@ -527,9 +529,9 @@ func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.Ra
 	defer func() { s.mu.Lock(); s.pendingPerm = nil; s.mu.Unlock() }()
 	select {
 	case d := <-req.reply:
-		if d == "always" && reason != "" { // "don't ask again" silences this sentinel for the session, not the tool
+		if d == "always" && key != "" { // "don't ask again" silences this sentinel for the session, not the tool
 			s.mu.Lock()
-			s.allowAlways["sentinel:"+reason] = true
+			s.allowAlways["sentinel:"+key] = true
 			s.mu.Unlock()
 		} else if d == "always" {
 			s.mu.Lock()
@@ -609,7 +611,7 @@ func userBlocks(text string, atts []Attachment, imgs []InlineImage) []Block {
 		if len(b) > 400_000 {
 			b = b[:400_000]
 		}
-		blocks = append(blocks, Block{Type: "text", Text: fmt.Sprintf("<arquivo anexado path=%q>\n%s\n</arquivo>", a.Path, string(b))})
+		blocks = append(blocks, Block{Type: "text", Text: fmt.Sprintf("<attached-file path=%q>\n%s\n</attached-file>", a.Path, string(b))})
 	}
 	for _, im := range imgs {
 		if im.Data != "" {
@@ -624,11 +626,11 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 	busy := s.State != "idle" && s.State != "error"
 	s.mu.Unlock()
 	if busy {
-		return errors.New("o agente está ocupado")
+		return errors.New(M("session.busy").Render(s.uiLang()))
 	}
 	hook := s.runHooks(context.Background(), "UserPromptSubmit", "", map[string]any{"prompt": text})
 	if hook.Block {
-		return errors.New("bloqueado por um hook: " + hook.Message)
+		return errors.New(hook.blockMsg().Render(s.uiLang()))
 	}
 	s.mu.Lock()
 	s.settings = EffectiveSettings(s.Root)
@@ -641,7 +643,7 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 	s.TurnStarts = append(s.TurnStarts, len(s.Messages))
 	blocks := userBlocks(text, atts, imgs)
 	if hook.Message != "" { // context a UserPromptSubmit hook adds to the message
-		blocks = append(blocks, Block{Type: "text", Text: "<contexto-de-hook>\n" + hook.Message + "\n</contexto-de-hook>"})
+		blocks = append(blocks, Block{Type: "text", Text: "<hook-context>\n" + hook.Message + "\n</hook-context>"})
 	}
 	s.Messages = append(s.Messages, Message{Role: "user", Content: blocks, TS: time.Now().UnixMilli()})
 	if s.Turn == 1 && (s.Title == "" || s.Title == "Nova sessão") {
@@ -680,7 +682,7 @@ func (s *Session) run(ctx context.Context) {
 		s.save()
 	}()
 	if s.providerID() == "" {
-		s.fail(errors.New("nenhum provedor conectado: abra Configurações > Provedores e conecte um"))
+		s.failMsg(M("session.no_provider"))
 		return
 	}
 	provider, err := providerFor(s.settings, s.providerID())
@@ -702,13 +704,10 @@ func (s *Session) run(ctx context.Context) {
 	contextRetries := 0                  // compactions in a row because the context did not fit
 	for iter := 0; iter < 5000; iter++ { // a safety ceiling only: the watchdog decides when work stalled
 		if note, stop := s.stalled(&watch, iter); !stop.Empty() {
-			s.fail(errors.New(stop.Render(s.uiLang())))
+			s.failMsg(stop)
 			return
 		} else if !note.Empty() {
-			s.mu.Lock()
-			s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{s.textBlock(note)}, TS: time.Now().UnixMilli()})
-			s.mu.Unlock()
-			s.emitMsg("gate", note)
+			s.addNote("infuse_note", note)
 		}
 		if ctx.Err() != nil {
 			s.finish("cancelado")
@@ -741,7 +740,7 @@ func (s *Session) run(ctx context.Context) {
 			}
 			if errors.Is(err, errContextTooLong) { // the provider measured more than estimated: compact and go on
 				if contextRetries++; contextRetries > 3 {
-					s.fail(fmt.Errorf("the conversation does not fit the model's context even after compacting: %w", err))
+					s.failMsg(M("session.context_overflow", "error", err.Error()))
 					return
 				}
 				s.compactResilient(ctx, provider)
@@ -788,34 +787,34 @@ func (s *Session) run(ctx context.Context) {
 		s.save()
 		if lim := s.settings.DailyLimitUSD; lim > 0 { // the day's total across every session, from the ledger
 			if spent := todaySpend(); spent > lim {
-				s.fail(fmt.Errorf("limite de gasto diário atingido: US$ %.2f de US$ %.2f (Configurações > Modelos e custos)", spent, lim))
+				s.failMsg(M("session.daily_limit", "spent", fmt.Sprintf("%.2f", spent), "limit", fmt.Sprintf("%.2f", lim)))
 				return
 			}
 		}
 		if cut {
-			s.mu.Lock()
-			s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{s.textBlock(cutNote)}, TS: time.Now().UnixMilli()})
-			s.mu.Unlock()
-			s.emitMsg("gate", cutNote)
+			s.addNote("infuse_note", cutNote)
 			continue
 		}
 		if res.StopReason != "tool_use" {
-			if why := s.turnObligation(ctx); why != "" { // the protocol decides when the turn may end
+			if why := s.turnObligation(ctx); !why.Empty() { // the protocol decides when the turn may end
 				s.mu.Lock()
 				s.gate.obligationAsks++
-				if strings.Contains(why, "sem Report") {
+				if why.ID == "gate.no_report" {
 					s.gate.reportAsks++
 				}
-				s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: why}}, TS: time.Now().UnixMilli()})
 				s.mu.Unlock()
-				s.emit("gate", map[string]any{"message": why})
+				kind := "infuse_note"
+				if why.ID == "turn.review" {
+					kind = "review"
+				}
+				s.addNote(kind, why)
 				continue
 			}
 			if stopHooks < 3 { // a Stop hook can send the agent back to work, with its reason
 				if o := s.runHooks(ctx, "Stop", "", map[string]any{"stop_hook_active": stopHooks > 0}); o.Block {
 					stopHooks++
 					s.mu.Lock()
-					s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: "[hook Stop] " + o.Message}}, TS: time.Now().UnixMilli()})
+					s.Messages = append(s.Messages, Message{Role: "user", Kind: "hook", Content: []Block{s.textBlockLocked(M("hook.stop", "message", o.Message))}, TS: time.Now().UnixMilli()})
 					s.mu.Unlock()
 					s.emit("hook", map[string]any{"event": "Stop", "message": o.Message})
 					continue
@@ -832,7 +831,7 @@ func (s *Session) run(ctx context.Context) {
 			}
 			if r, ok := pre[b.ID]; ok {
 				results = append(results, r)
-				s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": r.Content, "isError": r.IsError, "ms": r.Ms})
+				s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": r.Content, "display": r.Display, "isError": r.IsError, "ms": r.Ms})
 				if err := breaker.record(b.Name, b.Input, r.IsError); err != nil {
 					tripped = err
 				}
@@ -842,11 +841,12 @@ func (s *Session) run(ctx context.Context) {
 			out, isErr := s.safeRunTool(ctx, rules, b)
 			out = redactSecrets(out) // credentials never reach the model, the transcript or the UI
 			ms := time.Since(toolStart).Milliseconds()
-			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms, Display: displayFor(s.uiLang(), out, s.takeCallMsgs(b.ID))})
+			display := displayFor(s.uiLang(), out, s.takeCallMsgs(b.ID))
+			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms, Display: display})
 			s.mu.Lock()
 			s.inflight = append([]Block{}, results...)
 			s.mu.Unlock()
-			s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": out, "isError": isErr, "ms": ms})
+			s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": out, "display": display, "isError": isErr, "ms": ms})
 			if err := breaker.record(b.Name, b.Input, isErr); err != nil {
 				tripped = err
 			}
@@ -855,15 +855,18 @@ func (s *Session) run(ctx context.Context) {
 			}
 		}
 		if ctx.Err() != nil || tripped != nil {
+			why := M("session.cancelled")
+			if tripped != nil {
+				if why = msgOf(tripped); why.Empty() {
+					why = M("text.verbatim", "text", tripped.Error())
+				}
+			}
 			s.mu.Lock()
 			// keep the conversation consistent: every tool_use gets a result
-			why := "cancelado pelo usuário"
-			if tripped != nil {
-				why = tripped.Error()
-			}
 			for _, b := range res.Content {
 				if b.Type == "tool_use" && !hasResult(results, b.ID) {
-					results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: why, IsError: true})
+					r := s.textBlockLocked(why)
+					results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: r.Text, Display: r.Display, IsError: true})
 				}
 			}
 			s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
@@ -872,33 +875,33 @@ func (s *Session) run(ctx context.Context) {
 			if tripped != nil && breakerTrips == 1 && ctx.Err() == nil { // the second time: research outside the project first
 				breakerTrips++
 				breaker = loopBreaker{}
-				note := "[infuse] " + tripped.Error() + ", for the second time. Before any other change or command, research outside the project: WebSearch with the exact error, WebFetch on the official documentation of what is failing. Then state the cause in the plan."
+				note := M("breaker.second", "why", why)
 				tripped = nil
 				s.mu.Lock()
 				s.gate.fails, s.gate.needWeb = 2, true // the research gate now accepts only outside research
 				s.gate.diagnosed, s.gate.redoWhy = false, M("redo.breaker")
 				last := &s.Messages[len(s.Messages)-1]
-				last.Content = append(last.Content, Block{Type: "text", Text: note})
+				last.Content = append(last.Content, s.textBlockLocked(note))
 				s.mu.Unlock()
-				s.emit("gate", map[string]any{"message": note})
+				s.emitMsg("gate", note)
 				continue
 			}
 			if tripped != nil && breakerTrips == 0 && ctx.Err() == nil {
 				// the first time, the agent is sent back with an order to change approach; only insisting ends the turn
 				breakerTrips++
 				breaker = loopBreaker{}
-				note := "[infuse] " + tripped.Error() + ". Repetir a mesma ação não vai dar outro resultado. Leia a mensagem de bloqueio ou de erro acima e mude a abordagem: outra forma de fazer a alteração, outro arquivo, dividir o que está grande, ou pesquisar a causa. Se repetir de novo, o turno termina."
+				note := M("breaker.first", "why", why)
 				tripped = nil
 				s.mu.Lock() // in the same message as the results: the roles keep alternating
 				last := &s.Messages[len(s.Messages)-1]
-				last.Content = append(last.Content, Block{Type: "text", Text: note})
+				last.Content = append(last.Content, s.textBlockLocked(note))
 				s.mu.Unlock()
-				s.emit("gate", map[string]any{"message": note})
+				s.emitMsg("gate", note)
 				continue
 			}
 			if tripped != nil {
 				Lesson(s.Root, "loop-errático", tripped.Error())
-				s.fail(tripped)
+				s.failMsg(why)
 				return
 			}
 			s.finish("cancelado")
@@ -912,7 +915,26 @@ func (s *Session) run(ctx context.Context) {
 		s.mu.Unlock()
 		s.save()
 	}
-	s.fail(errors.New("limite de iterações do turno atingido"))
+	s.failMsg(M("session.iteration_limit"))
+}
+
+// addNote adds a note of infuse's to the conversation (English for the model, the user's language on
+// screen) and tells the user.
+func (s *Session) addNote(kind string, m Msg) {
+	s.mu.Lock()
+	s.Messages = append(s.Messages, Message{Role: "user", Kind: kind, Content: []Block{s.textBlockLocked(m)}, TS: time.Now().UnixMilli()})
+	s.mu.Unlock()
+	s.emitMsg("gate", m)
+}
+
+// failMsg ends the turn with an error the user reads in their language.
+func (s *Session) failMsg(m Msg) { s.fail(errors.New(m.Render(s.uiLang()))) }
+
+// refuse is a gate's refusal of a call: journaled, shown to the user, recorded with the call.
+func (s *Session) refuse(callID, command string, m Msg) (string, bool) {
+	Journal(s.Root, JournalEntry{Kind: "gate", Command: command, Detail: firstLine(m.Render(s.uiLang()))})
+	s.emitMsg("gate", m)
+	return s.say(callID, m), true
 }
 
 func hasResult(results []Block, id string) bool {
@@ -951,79 +973,72 @@ func (s *Session) readsOutside(input json.RawMessage) bool {
 func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string, bool) {
 	tool, ok := s.lookupTool(b.Name)
 	if !ok {
-		return "ferramenta desconhecida: " + b.Name, true
+		return s.say(b.ID, M("session.unknown_tool", "tool", b.Name)), true
 	}
 	var toolInput any
 	_ = json.Unmarshal(b.Input, &toolInput)
 	if o := s.runHooks(ctx, "PreToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput}); o.Block {
-		return "bloqueado por um hook: " + o.Message, true
+		return s.say(b.ID, o.blockMsg()), true
 	}
 	if inv, _ := isResearch(b.Name, b.Input); inv && b.Name != "Read" || b.Name == "Read" && isSourceRead(b.Input) {
 		s.noteResearch(b.Name, b.Input)
 	}
 	if c := tool.Category(); (c == "write" || c == "exec") && !(b.Name == "Bash" && helpCommand(bashCommand(b.Input))) {
-		if why := s.requiredReading(); why != "" { // the documents the instructions point to, read in full
-			s.emit("gate", map[string]any{"message": why})
-			return why, true
+		if why := s.requiredReading(); !why.Empty() { // the documents the instructions point to, read in full
+			return s.refuse(b.ID, "", why)
 		}
 	}
 	if m := s.diagnosisGate(b.Name, tool.Category(), b.Input); !m.Empty() { // the cause, from the project's knowledge, before acting
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(m.Render("pt-BR"))})
-		s.emitMsg("gate", m)
-		return s.say(b.ID, m), true
+		return s.refuse(b.ID, "", m)
 	}
 	if tool.Category() == "write" {
 		s.noteFileStateBefore(toolPath(b.Input))
 	}
 	if tool.Category() == "write" { // the protocol: plan, docs before use, conventions, size
-		if why := s.protocolCheckWrite(b.Name, b.Input); why != "" {
-			Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})
-			s.emit("gate", map[string]any{"message": why})
-			return why, true
+		if why := s.protocolCheckWrite(b.Name, b.Input); !why.Empty() {
+			return s.refuse(b.ID, "", why)
 		}
 	}
 	if b.Name == "Bash" { // docs before commands: options the agent has not read about are refused
 		var in struct{ Command string }
 		_ = json.Unmarshal(b.Input, &in)
-		if why := s.commandDocCheck(in.Command); why != "" {
-			Journal(s.Root, JournalEntry{Kind: "gate", Command: in.Command, Detail: firstLine(why)})
-			s.emit("gate", map[string]any{"message": why})
-			return why, true
+		if why := s.commandDocCheck(in.Command); !why.Empty() {
+			return s.refuse(b.ID, in.Command, why)
 		}
 	} else if tool.Category() == "write" {
 		if open := s.docs.unfinished(); len(open) > 0 {
-			why := "[infuse] Alteração recusada: há documentação lida só em parte. Leia até o fim antes de agir (WebFetch com offset):\n- " + strings.Join(open, "\n- ")
-			s.emit("gate", map[string]any{"message": why})
-			return why, true
+			return s.refuse(b.ID, "", M("docs.write_partial", "pages", open))
 		}
 	}
-	if why := s.gateCheck(b.Name, tool.Category(), b.Input); why != "" { // research before another attempt
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})
-		s.emit("gate", map[string]any{"message": why})
-		return why, true
+	if why := s.gateCheck(b.Name, tool.Category(), b.Input); !why.Empty() { // research before another attempt
+		return s.refuse(b.ID, "", why)
 	}
-	var shortcutWarn []string
+	var shortcutWarn []Msg
 	if tool.Category() == "write" && s.mode() != "plan" {
 		if p, before, after, ok := editedContent(s.workRoot(), s.Cwd, b.Name, b.Input); ok {
 			ask, warn := detectShortcuts(p, before, after)
 			shortcutWarn = warn
 			if len(ask) > 0 {
-				why := "atalho que enfraquece os testes: " + strings.Join(ask, ", ")
+				why := M("shortcut.weakens_tests", "items", ask)
+				key := "shortcut"
+				for _, a := range ask {
+					key += ":" + a.ID
+				}
 				s.mu.Lock()
-				silenced := s.allowAlways["sentinel:"+why]
+				silenced := s.allowAlways["sentinel:"+key]
 				s.mu.Unlock()
 				if !silenced {
-					Journal(s.Root, JournalEntry{Kind: "sentinel", Path: p, Detail: why})
-					if !s.askPermissionWhy(ctx, tool, b.Input, why) {
-						Lesson(s.Root, "atalho-em-teste", why+" em "+p)
-						return "o usuário recusou: " + why + ". Resolva o problema no código, sem enfraquecer o teste.", true
+					Journal(s.Root, JournalEntry{Kind: "sentinel", Path: p, Detail: why.Render(s.uiLang())})
+					if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
+						Lesson(s.Root, "atalho-em-teste", why.String()+" in "+p)
+						return s.say(b.ID, M("shortcut.user_refused", "why", why)), true
 					}
 				}
 			}
 		}
 	}
 	out, isErr := s.runToolChecked(ctx, rules, tool, b)
-	s.gateRecord(b.Name, tool.Category(), out, isErr)
+	s.gateRecord(b.ID, b.Name, tool.Category(), out, isErr)
 	if b.Name == "Bash" {
 		s.recordRun(bashCommand(b.Input), !isErr)
 	} else if tool.Category() == "write" && !isErr {
@@ -1039,14 +1054,14 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 		}
 	}
 	if len(shortcutWarn) > 0 && !isErr {
-		Lesson(s.Root, "atalho", strings.Join(shortcutWarn, ", "))
-		out += "\n[atalho] Esta edição introduziu: " + strings.Join(shortcutWarn, ", ") + ". Isso esconde problemas em vez de resolvê-los; trate o erro de verdade ou explique por que é necessário."
+		Lesson(s.Root, "atalho", strings.Join(msgStrings(shortcutWarn), ", "))
+		out += "\n" + s.say(b.ID, M("shortcut.introduced", "items", shortcutWarn))
 	}
 	if n := s.procNotes(); n != "" {
 		out += "\n" + n
 	}
 	if o := s.runHooks(ctx, "PostToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput, "tool_response": out}); o.Message != "" {
-		out += "\n[hook] " + o.Message
+		out += "\n" + s.say(b.ID, M("hook.post", "message", o.Message))
 	}
 	return out, isErr
 }
@@ -1067,9 +1082,10 @@ func (s *Session) runToolChecked(ctx context.Context, rules *RuleSet, tool Tool,
 			s.mu.Unlock()
 			if !silenced {
 				Journal(s.Root, JournalEntry{Kind: "sentinel", Detail: why})
-				if !s.askPermissionWhy(ctx, tool, b.Input, why) {
+				// the sentinel's reason (sentinel.go) is still text: it is shown as it is
+				if !s.askPermissionWhy(ctx, tool, b.Input, why, M("text.verbatim", "text", why)) {
 					Lesson(s.Root, "teste-alterado", why)
-					return "o usuário recusou: " + why, true
+					return s.say(b.ID, M("perm.user_refused", "why", why)), true
 				}
 				decision = "allow"
 			}
@@ -1078,12 +1094,12 @@ func (s *Session) runToolChecked(ctx context.Context, rules *RuleSet, tool Tool,
 	switch decision {
 	case "deny":
 		if s.mode() == "plan" {
-			return "modo plano: escrita e execução estão desativadas; proponha o plano ao usuário", true
+			return s.say(b.ID, M("perm.plan_mode")), true
 		}
-		return "permissão negada pelas configurações do usuário", true
+		return s.say(b.ID, M("perm.denied_settings")), true
 	case "ask":
 		if !s.askPermission(ctx, tool, b.Input) {
-			return "o usuário negou esta ação", true
+			return s.say(b.ID, M("perm.user_denied")), true
 		}
 	}
 	s.setState("tool")
@@ -1154,7 +1170,7 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 	// write over the exchange that is kept (a shared backing array lost the agent's tool calls once)
 	keep := append([]Message{}, msgs[len(msgs)-2:]...)
 	older := append([]Message{}, msgs[:len(msgs)-2]...)
-	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: "Resuma a conversa acima para continuar o trabalho sem perder nada essencial: objetivo, decisões tomadas, arquivos criados ou alterados (com caminhos), o que foi tentado e rejeitado, erros encontrados, estado atual e próximos passos. Seja específico e conciso."}}})
+	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: compactRequest + " Be specific and concise."}}})
 	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: repairTranscript(older), MaxTokens: 4000}, func(StreamEvent) {})
 	if err != nil {
 		return err
@@ -1165,11 +1181,8 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 			summary += b.Text
 		}
 	}
-	if v := verbatimRequests(older[:len(older)-1]); v != "" {
-		summary += "\n\n## Pedidos do usuário, literais\n" + v
-	}
 	s.mu.Lock()
-	s.Messages = append([]Message{{Role: "user", Content: []Block{{Type: "text", Text: "[Contexto compactado — resumo do trabalho até aqui]\n\n" + summary}}}, {Role: "assistant", Content: []Block{{Type: "text", Text: "Entendido, continuo a partir desse estado."}}}}, keep...)
+	s.Messages = append(compactionHead("[Context compacted — summary of the work so far]\n\n"+summary, verbatimRequests(older[:len(older)-1])), keep...)
 	s.TurnStarts = []int{0}
 	s.Compactions++
 	s.Cost += s.settings.costOf(s.fastModel(), res.Usage)
@@ -1178,27 +1191,44 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 	return nil
 }
 
+// compactRequest is what the model is asked when the conversation is summarized.
+const compactRequest = "Summarize the conversation above so the work can continue without losing anything essential: the goal, the decisions made, the files created or changed (with paths), what was tried and rejected, the errors found, the current state and the next steps."
+
+// compactionHead is the start of a compacted conversation: the summary, then the user's own requests,
+// each verbatim in its own block (the next compaction takes them back from there), then the agent's
+// acknowledgement. Both messages are marked as the compaction, never read from their text.
+func compactionHead(summary string, requests []string) []Message {
+	blocks := []Block{{Type: "text", Text: summary}}
+	if len(requests) > 0 {
+		blocks = append(blocks, Block{Type: "text", Text: "## The user's requests, verbatim (oldest first; each block below is one request, word for word)"})
+		for _, r := range requests {
+			blocks = append(blocks, Block{Type: "text", Text: r})
+		}
+	}
+	return []Message{
+		{Role: "user", Kind: "compaction", Content: blocks, TS: time.Now().UnixMilli()},
+		{Role: "assistant", Kind: "compaction", Content: []Block{{Type: "text", Text: "Understood; I continue from that state."}}},
+	}
+}
+
 // verbatimRequests returns what the user typed in msgs, word for word, newest kept whole when the
 // budget runs out: a summary may lose a nuance; these islands keep the user's own wording.
-func verbatimRequests(msgs []Message) string {
+func verbatimRequests(msgs []Message) []string {
 	var reqs []string
 	for _, m := range msgs {
-		if m.Role != "user" {
+		if m.Role == "user" && m.Kind == "compaction" { // islands kept by an earlier compaction
+			for i, b := range m.Content {
+				if i >= 2 && b.Type == "text" {
+					reqs = append(reqs, b.Text)
+				}
+			}
+			continue
+		}
+		if !isUserRequest(m) {
 			continue
 		}
 		for _, b := range m.Content {
-			if b.Type == "text" && strings.HasPrefix(b.Text, "[Contexto compactado") { // islands kept by an earlier compaction
-				const head = "## Pedidos do usuário, literais\n"
-				if k := strings.Index(b.Text, head); k >= 0 {
-					for _, chunk := range strings.Split(b.Text[k+len(head):], "\n\n") {
-						if strings.HasPrefix(chunk, "> ") {
-							reqs = append(reqs, strings.ReplaceAll(strings.TrimPrefix(chunk, "> "), "\n> ", "\n"))
-						}
-					}
-				}
-				break
-			}
-			if b.Type == "text" && strings.TrimSpace(b.Text) != "" && !strings.HasPrefix(b.Text, "[") && !strings.HasPrefix(b.Text, "<") {
+			if b.Type == "text" && strings.TrimSpace(b.Text) != "" {
 				reqs = append(reqs, strings.TrimSpace(b.Text))
 				break
 			}
@@ -1210,20 +1240,18 @@ func verbatimRequests(msgs []Message) string {
 	for i := len(reqs) - 1; i >= 0; i-- {
 		r := reqs[i]
 		if used+len(r) > budget {
-			if used == 0 {
-				r = r[:budget] + " […]"
-			} else {
-				out = append(out, fmt.Sprintf("(%d pedido(s) mais antigo(s) omitido(s))", i+1))
-				break
+			if used > 0 {
+				break // the oldest requests do not fit: the summary covers them
 			}
+			r = r[:budget] + " […]"
 		}
 		used += len(r)
-		out = append(out, "> "+strings.ReplaceAll(r, "\n", "\n> "))
+		out = append(out, r)
 	}
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
 	}
-	return strings.Join(out, "\n\n")
+	return out
 }
 
 // ---------------------------------------------------------------- rewind variants, summaries, side chat
@@ -1234,11 +1262,11 @@ func (s *Session) RewindTo(toTurn int, code, conversation bool) (string, error) 
 	s.mu.Lock()
 	if s.State != "idle" && s.State != "error" {
 		s.mu.Unlock()
-		return "", errors.New("pare o agente antes de voltar")
+		return "", errors.New(M("session.stop_first_rewind").Render(s.uiLang()))
 	}
 	if toTurn < 1 || toTurn > s.Turn {
 		s.mu.Unlock()
-		return "", errors.New("turno inexistente")
+		return "", errors.New(M("session.no_turn").Render(s.uiLang()))
 	}
 	prompt := ""
 	if toTurn-1 < len(s.TurnStarts) {
@@ -1299,11 +1327,11 @@ func (s *Session) SummarizeUpTo(ctx context.Context, upTo int, hint string) erro
 	s.mu.Lock()
 	if s.State != "idle" && s.State != "error" {
 		s.mu.Unlock()
-		return errors.New("pare o agente antes de resumir")
+		return errors.New(M("session.stop_first_summary").Render(s.uiLang()))
 	}
 	if upTo < 2 || upTo-1 >= len(s.TurnStarts) {
 		s.mu.Unlock()
-		return errors.New("nada para resumir antes deste turno")
+		return errors.New(M("session.nothing_to_summarize").Render(s.uiLang()))
 	}
 	cut := s.TurnStarts[upTo-1]
 	older := append([]Message{}, s.Messages[:cut]...)
@@ -1312,9 +1340,9 @@ func (s *Session) SummarizeUpTo(ctx context.Context, upTo int, hint string) erro
 	if err != nil {
 		return err
 	}
-	ask := "Resuma a conversa acima para continuar o trabalho sem perder nada essencial: objetivo, decisões, arquivos criados ou alterados (com caminhos), o que foi tentado e rejeitado, erros, estado atual e próximos passos."
+	ask := compactRequest
 	if strings.TrimSpace(hint) != "" {
-		ask += "\nFoco pedido pelo usuário: " + hint
+		ask += "\nFocus the user asked for: " + hint
 	}
 	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: ask}}})
 	model := s.fastModel()
@@ -1329,7 +1357,7 @@ func (s *Session) SummarizeUpTo(ctx context.Context, upTo int, hint string) erro
 		}
 	}
 	s.mu.Lock()
-	head := []Message{{Role: "user", Content: []Block{{Type: "text", Text: "[Conversa resumida]\n\n" + summary}}}, {Role: "assistant", Content: []Block{{Type: "text", Text: "Entendido, continuo a partir desse estado."}}}}
+	head := compactionHead("[Conversation summarized]\n\n"+summary, nil)
 	rest := s.Messages[cut:]
 	shift := cut - len(head)
 	var starts []int
@@ -1369,10 +1397,10 @@ func (s *Session) SideQuestion(ctx context.Context, question string) (string, er
 		msgs = msgs[:len(msgs)-1]
 	}
 	if len(msgs) > 0 && msgs[len(msgs)-1].Role == "user" {
-		msgs = append(msgs, Message{Role: "assistant", Content: []Block{{Type: "text", Text: "(continuando)"}}})
+		msgs = append(msgs, Message{Role: "assistant", Content: []Block{{Type: "text", Text: "(continuing)"}}})
 	}
-	msgs = append(msgs, Message{Role: "user", Content: []Block{{Type: "text", Text: "[Pergunta paralela do usuário — responda direto, sem usar ferramentas; isto não entra no histórico]\n" + question}}})
-	res, err := p.Stream(ctx, ModelRequest{Model: s.Model, System: "Você responde perguntas rápidas sobre a sessão de trabalho em andamento.", Messages: msgs, MaxTokens: 2000}, func(StreamEvent) {})
+	msgs = append(msgs, Message{Role: "user", Content: []Block{{Type: "text", Text: "[A side question from the user — answer directly, without tools; this does not enter the history]\n" + question}}})
+	res, err := p.Stream(ctx, ModelRequest{Model: s.Model, System: "You answer quick questions about the work session in progress. " + responseLanguageRule(s.settings.Language), Messages: msgs, MaxTokens: 2000}, func(StreamEvent) {})
 	if err != nil {
 		return "", err
 	}
@@ -1437,10 +1465,13 @@ func (s *Session) SuggestNext(ctx context.Context) (string, error) {
 	msgs := s.copyMessages()
 	var lines []string
 	for i := len(msgs) - 1; i >= 0 && len(lines) < 6; i-- {
-		if t := strings.TrimSpace(msgText(msgs[i])); t != "" && !strings.HasPrefix(t, "[") {
-			who := "Agente"
+		if msgs[i].Kind != "" || msgs[i].Role == "user" && !isUserRequest(msgs[i]) {
+			continue // infuse's notes and tool results are not the conversation between the two
+		}
+		if t := strings.TrimSpace(msgText(msgs[i])); t != "" {
+			who := "Agent"
 			if msgs[i].Role == "user" {
-				who = "Usuário"
+				who = "User"
 			}
 			if len(t) > 1200 {
 				t = t[:1200] + "…"
@@ -1451,8 +1482,8 @@ func (s *Session) SuggestNext(ctx context.Context) (string, error) {
 	if len(lines) == 0 {
 		return "", nil
 	}
-	ask := "Conversa recente entre um usuário e um agente de programação:\n\n" + strings.Join(lines, "\n\n") +
-		"\n\nEscreva a próxima mensagem mais provável do usuário, curta (até 12 palavras), no idioma dele. Responda só com a mensagem, sem aspas. Se não houver um próximo passo claro, responda com um traço (-)."
+	ask := "A recent conversation between a user and a coding agent:\n\n" + strings.Join(lines, "\n\n") +
+		"\n\nWrite the user's most likely next message, short (up to 12 words), in the user's language. Answer with the message only, without quotes. If there is no clear next step, answer with a dash (-)."
 	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: []Message{{Role: "user", Content: []Block{{Type: "text", Text: ask}}}}, MaxTokens: 60}, func(StreamEvent) {})
 	if err != nil {
 		return "", err

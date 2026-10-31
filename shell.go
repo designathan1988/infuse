@@ -43,9 +43,13 @@ func RunShell(args []string) int {
 	}()
 
 	rules := LoadRules(root)
-	guarded, guardNotes, gerr := newGuard(root, EffectiveSettings(root).ProtectedPaths).GuardCommand(original, cwd)
+	guarded, guardNotes, gerr := newGuard(root, EffectiveSettings(root).ProtectedPaths).GuardCommandMsgs(original, cwd)
 	if gerr != nil {
-		fmt.Fprintln(os.Stderr, "[infuse] "+gerr.Error())
+		var why any = gerr.Error()
+		if m := msgOf(gerr); !m.Empty() {
+			why = m
+		}
+		fmt.Fprintln(os.Stderr, M("shell.refused", "why", why).String())
 		return 1
 	}
 	original = guarded
@@ -55,7 +59,7 @@ func RunShell(args []string) int {
 	} else {
 		tr = TransformCommand(original, cwd)
 	}
-	command, ruleLines := ApplyCommandRules(root, rules, tr.Command)
+	command, ruleLines := ApplyCommandRulesMsgs(root, rules, tr.Command)
 
 	detail := ""
 	if len(tr.Actions) > 0 {
@@ -84,7 +88,7 @@ func RunShell(args []string) int {
 	if _, alive := watcherAlive(root); !alive {
 		WriteMap(root, BuildMap(root)) // no watcher here: keep the map honest ourselves
 	}
-	trailer := buildTrailer(root, cwd, original, tr.Actions, started, rules, append(guardNotes, ruleLines...))
+	trailer := joinMsgLines(trailerMsgs(root, cwd, original, tr.Actions, started, rules, append(guardNotes, ruleLines...)))
 	if trailer != "" {
 		_, _ = io.WriteString(os.Stdout, "\n"+trailer+"\n")
 	}
@@ -110,14 +114,32 @@ func exitCode(err error) int {
 	return 127
 }
 
+// buildTrailer is what infuse appends to a command's output, in English (trailerMsgs gives the
+// messages); ruleLines are lines already written.
 func buildTrailer(root, cwd, original string, actions []TransformAction, started int64, rules *RuleSet, ruleLines []string) string {
-	lines := append([]string{}, ruleLines...)
+	var notes []Msg
+	for _, l := range ruleLines {
+		notes = append(notes, M("text.verbatim", "text", l))
+	}
+	return joinMsgLines(trailerMsgs(root, cwd, original, actions, started, rules, notes))
+}
+
+// joinMsgLines is the English of messages, one per line.
+func joinMsgLines(ms []Msg) string {
+	return strings.Join(msgStrings(ms), "\n")
+}
+
+// trailerMsgs is what infuse appends to a command's output: notes (the guard's, the rules'), what was
+// written and who depends on it, the map of a listed folder. A caller with a session records each one
+// with the call, so the user reads them in their language.
+func trailerMsgs(root, cwd, original string, actions []TransformAction, started int64, rules *RuleSet, notes []Msg) []Msg {
+	lines := append([]Msg{}, notes...)
 	for _, a := range actions {
 		switch a.Kind {
 		case ActHeredocToFile:
-			lines = append(lines, "[infuse] "+a.Detail)
+			lines = append(lines, M("shell.action", "detail", a.Detail))
 		case ActLesson:
-			lines = append(lines, fmt.Sprintf("[infuse] vice %s: %s", a.Vice, a.Detail))
+			lines = append(lines, M("shell.vice", "vice", a.Vice, "detail", a.Detail))
 		}
 	}
 
@@ -146,13 +168,13 @@ func buildTrailer(root, cwd, original string, actions []TransformAction, started
 		if len(shown) > 20 {
 			shown, more = shown[:20], "…"
 		}
-		lines = append(lines, "[infuse] written during this command: "+strings.Join(shown, ", ")+more)
+		lines = append(lines, M("shell.written", "files", strings.Join(shown, ", ")+more))
 		if m != nil {
 			for i, w := range order {
 				if i >= 8 {
 					break
 				}
-				if d := DescribeDependents(m, w); d != "" {
+				if d := DependentsMsg(m, w); !d.Empty() {
 					lines = append(lines, d)
 				}
 			}
@@ -161,7 +183,7 @@ func buildTrailer(root, cwd, original string, actions []TransformAction, started
 		for _, w := range order {
 			abs = append(abs, filepath.Join(root, filepath.FromSlash(w)))
 		}
-		lines = append(lines, ApplyWriteRules(root, rules, abs)...)
+		lines = append(lines, ApplyWriteRulesMsgs(root, rules, abs)...)
 	}
 
 	if listed, ok := listedDirectory(original); ok && m != nil {
@@ -176,12 +198,12 @@ func buildTrailer(root, cwd, original string, actions []TransformAction, started
 				rel = "."
 			}
 			if d := DescribeDir(m, rel); d != "" {
-				lines = append(lines, d)
+				lines = append(lines, M("text.verbatim", "text", d)) // the map's listing is data, the same in every language
 			}
-			lines = append(lines, ApplyListRules(root, rules, rel)...)
+			lines = append(lines, ApplyListRulesMsgs(root, rules, rel)...)
 		}
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 var (
