@@ -87,6 +87,7 @@ type Session struct {
 	lastError   string
 	mapTimer    *time.Timer
 	settings    Settings
+	inflight    []Block // results of the current reply's tool calls, before they join the transcript
 }
 
 var (
@@ -669,6 +670,9 @@ func (s *Session) run(ctx context.Context) {
 			out = redactSecrets(out) // credentials never reach the model, the transcript or the UI
 			ms := time.Since(toolStart).Milliseconds()
 			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms})
+			s.mu.Lock()
+			s.inflight = append([]Block{}, results...)
+			s.mu.Unlock()
 			s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": out, "isError": isErr, "ms": ms})
 			if err := breaker.record(b.Name, b.Input, isErr); err != nil {
 				tripped = err
@@ -690,6 +694,7 @@ func (s *Session) run(ctx context.Context) {
 				}
 			}
 			s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
+			s.inflight = nil
 			s.mu.Unlock()
 			if tripped != nil {
 				Lesson(s.Root, "loop-errático", tripped.Error())
@@ -701,6 +706,7 @@ func (s *Session) run(ctx context.Context) {
 		}
 		s.mu.Lock()
 		s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
+		s.inflight = nil
 		s.mu.Unlock()
 		s.save()
 	}

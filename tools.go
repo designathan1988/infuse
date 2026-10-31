@@ -607,7 +607,8 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 type TaskItem struct {
 	ID     string `json:"id"`
 	Text   string `json:"text"`
-	Status string `json:"status"` // pending | in_progress | done
+	Status string `json:"status"`          // pending | in_progress | done
+	Proof  string `json:"proof,omitempty"` // how the task will be shown to work (a command, a page, a file)
 }
 
 type todoTool struct{}
@@ -615,7 +616,7 @@ type todoTool struct{}
 func (todoTool) Category() string { return "ui" }
 func (todoTool) Spec() ToolSpec {
 	return ToolSpec{Name: "TodoWrite", Description: "Mantém a lista de tarefas visível ao usuário. Envie a lista completa a cada atualização. Status: pending, in_progress, done.",
-		InputSchema: schema(`{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","done"]}},"required":["id","text","status"]}}},"required":["tasks"]}`)}
+		InputSchema: schema(`{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","done"]},"proof":{"type":"string","description":"como esta tarefa será comprovada: o comando, a página ou o arquivo que mostra que funciona"}},"required":["id","text","status"]}}},"required":["tasks"]}`)}
 }
 
 func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
