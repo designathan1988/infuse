@@ -7,9 +7,9 @@ package desktop
 
 import (
 	"encoding/json"
+	"fmt"
 	"infuse/internal/config"
 	"infuse/internal/core"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,7 +55,7 @@ type Bridge struct {
 
 // DropResult splits dropped paths the way the window uses them: folders become projects, files attachments.
 type DropResult struct {
-	Projects    []string     `json:"projects"`
+	Projects    []string          `json:"projects"`
 	Attachments []core.Attachment `json:"attachments"`
 }
 

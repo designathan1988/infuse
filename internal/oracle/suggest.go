@@ -19,8 +19,8 @@ import (
 type CheckSuggestion struct {
 	Title    string      `json:"title"` // what must be true, in plain words (in the user's language)
 	Why      string      `json:"why"`
-	TitleMsg core.Msg         `json:"titleMsg"` // the same, as messages of the catalog
-	WhyMsg   core.Msg         `json:"whyMsg"`
+	TitleMsg core.Msg    `json:"titleMsg"` // the same, as messages of the catalog
+	WhyMsg   core.Msg    `json:"whyMsg"`
 	Check    OracleCheck `json:"check"`
 	Setup    string      `json:"setup,omitempty"` // preparation the check needs in the snapshot (install dependencies)
 }

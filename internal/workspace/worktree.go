@@ -6,9 +6,9 @@ package workspace
 
 import (
 	"errors"
+	"fmt"
 	"infuse/internal/config"
 	"infuse/internal/core"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"

@@ -8,8 +8,8 @@ package workspace
 
 import (
 	"crypto/sha1"
-	"infuse/internal/core"
 	"encoding/hex"
+	"infuse/internal/core"
 	"io/fs"
 	"os"
 	"path/filepath"

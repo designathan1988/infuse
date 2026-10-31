@@ -7,9 +7,9 @@ package desktop
 
 import (
 	"fmt"
-	"os"
 	"infuse/internal/core"
 	"infuse/internal/platform/process"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"

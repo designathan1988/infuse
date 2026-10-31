@@ -1,9 +1,9 @@
 package desktop
 
 import (
-	"infuse/internal/core"
-	"infuse/internal/config"
 	"encoding/json"
+	"infuse/internal/config"
+	"infuse/internal/core"
 	"os"
 	"path/filepath"
 	"testing"
@@ -139,7 +139,7 @@ func TestIconPNG(t *testing.T) {
 }
 
 func loadProjects() []config.ProjectEntry { return config.LoadProjects() }
-func RememberProject(root string) { config.RememberProject(root) }
-func iconPNG(n int) []byte { return IconPNG(n) }
+func RememberProject(root string)         { config.RememberProject(root) }
+func iconPNG(n int) []byte                { return IconPNG(n) }
 
 type Attachment = core.Attachment

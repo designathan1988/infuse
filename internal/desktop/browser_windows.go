@@ -9,8 +9,8 @@ package desktop
 
 import (
 	"encoding/json"
-	"infuse/internal/core"
 	"errors"
+	"infuse/internal/core"
 	"path/filepath"
 	"time"
 	"unsafe"

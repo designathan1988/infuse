@@ -5,13 +5,13 @@ package workspace
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"infuse/internal/config"
 	"infuse/internal/core"
 	"infuse/internal/journal"
 	"infuse/internal/platform/process"
-	"errors"
-	"fmt"
 	"os"
-	"infuse/internal/config"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -179,8 +179,6 @@ func WriteUserFile(root, rel, content string, mtime int64, force bool) (int64, e
 
 // errConflict: the file changed on disk since the pane loaded it (answered as a conflict, not as text).
 var errConflict = core.ErrMsg(core.M("file.changed_on_disk"))
-
-
 
 // FailedCILogs returns the log of the latest failed CI run of the current branch (cut to what matters).
 func FailedCILogs(dir string) (string, error) {
