@@ -109,8 +109,61 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		}
 		sendJSON(w, 200, map[string]any{"ok": true, "verdict": v})
 		return true
+	// ---------------------------------------------------------------- MCP connectors
+	case path == "/api/mcp" && r.Method == http.MethodGet:
+		sendJSON(w, 200, mcpFor(root).status())
+		return true
+	case strings.HasPrefix(path, "/api/mcp/"):
+		scope, name := str("scope"), str("name")
+		if scope != "global" {
+			scope = "project"
+		}
+		m := mcpFor(root)
+		var err error
+		switch strings.TrimPrefix(path, "/api/mcp/") {
+		case "add": // a server from a preset or written by the user
+			var cfg mcpServerConfig
+			b, _ := jsonMarshal(body["config"])
+			if err = jsonUnmarshal(b, &cfg); err == nil {
+				if strings.TrimSpace(name) == "" || (cfg.Command == "" && cfg.URL == "") {
+					err = errors.New("informe o nome e o comando (ou o endereço) do servidor")
+				} else {
+					err = editMCP(root, scope, func(sv map[string]mcpServerConfig) { sv[name] = cfg })
+				}
+			}
+			if err == nil && boolean("approve") { // added by the user from the app: approved in the same click
+				err = approveMCP(root, scope, name, cfg)
+			}
+		case "approve":
+			cfg, ok := loadMCPFile(mcpFilePath(root, scope)).Servers[name]
+			if !ok {
+				err = errors.New("servidor não encontrado")
+			} else {
+				err = approveMCP(root, scope, name, cfg)
+			}
+		case "toggle":
+			err = editMCP(root, scope, func(sv map[string]mcpServerConfig) {
+				if c, ok := sv[name]; ok {
+					c.Disabled = boolean("disabled")
+					sv[name] = c
+				}
+			})
+		case "remove":
+			err = editMCP(root, scope, func(sv map[string]mcpServerConfig) { delete(sv, name) })
+		case "restart":
+		default:
+			sendJSON(w, 404, map[string]any{"error": "ação desconhecida"})
+			return true
+		}
+		if err != nil {
+			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+			return true
+		}
+		m.restart(r.Context(), scope, name)
+		sendJSON(w, 200, map[string]any{"ok": true, "servers": m.status()})
+		return true
 	// ---------------------------------------------------------------- structured memory (the user's curation)
-	case path == "/api/memory" && r.Method == http.MethodGet:
+	case path == "/api/memory/items" && r.Method == http.MethodGet:
 		out := map[string]any{"project": loadMemory(projectMemoryFile(root)), "global": loadMemory(globalMemoryFile()), "session": []MemoryItem{}}
 		if id := q["session"]; id != "" {
 			if s, err := loadSession(root, id); err == nil {
@@ -121,7 +174,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		}
 		sendJSON(w, 200, out)
 		return true
-	case path == "/api/memory/save":
+	case path == "/api/memory/items/save":
 		var items []MemoryItem
 		b, _ := jsonMarshal(body["items"])
 		if err := jsonUnmarshal(b, &items); err != nil {

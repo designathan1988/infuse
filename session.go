@@ -596,7 +596,8 @@ func (s *Session) run(ctx context.Context) {
 		return
 	}
 	rules := LoadRules(s.Root)
-	var breaker loopBreaker // stops a turn that keeps repeating the same failure
+	mcpFor(s.Root).ensure(ctx) // approved connectors start before the first request
+	var breaker loopBreaker    // stops a turn that keeps repeating the same failure
 	var tripped error
 	for iter := 0; iter < 200; iter++ {
 		if ctx.Err() != nil {
@@ -615,7 +616,7 @@ func (s *Session) run(ctx context.Context) {
 		if budget > 0 && maxTok <= budget+1024 {
 			maxTok = budget + 8000
 		}
-		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules), Messages: s.copyMessages(), Tools: toolSpecs(), MaxTokens: maxTok, Thinking: budget}
+		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules), Messages: s.copyMessages(), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
 		started := time.Now()
 		var thinkFrom, thinkTo time.Time // how long the model spent in its reasoning, from the stream
 		res, err := provider.Stream(ctx, req, func(ev StreamEvent) {
@@ -773,7 +774,7 @@ func (s *Session) readsOutside(input json.RawMessage) bool {
 }
 
 func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string, bool) {
-	tool, ok := toolRegistry[b.Name]
+	tool, ok := s.lookupTool(b.Name)
 	if !ok {
 		return "ferramenta desconhecida: " + b.Name, true
 	}

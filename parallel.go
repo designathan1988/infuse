@@ -15,7 +15,7 @@ func (s *Session) runReadsInParallel(ctx context.Context, rules *RuleSet, conten
 		if b.Type != "tool_use" {
 			continue
 		}
-		t, ok := toolRegistry[b.Name]
+		t, ok := s.lookupTool(b.Name)
 		if !ok || t.Category() != "read" || s.permissionFor(t, b.Input) != "allow" || (s.mode() != "bypass" && s.readsOutside(b.Input)) {
 			continue
 		}

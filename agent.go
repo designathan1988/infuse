@@ -53,9 +53,17 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 		kind = "general"
 	}
 	rules := LoadRules(s.Root)
+	mcpFor(s.Root).ensure(ctx)
+	allowed := func(name string) bool {
+		if subagentAllows(kind, name) {
+			return true
+		}
+		t, ok := s.lookupTool(name) // read-only connector tools serve the read-only kinds too
+		return ok && strings.HasPrefix(name, "mcp__") && (kind == "general" || t.Category() == "read")
+	}
 	var specs []ToolSpec
-	for _, sp := range toolSpecs() {
-		if subagentAllows(kind, sp.Name) {
+	for _, sp := range s.toolSpecs() {
+		if allowed(sp.Name) {
 			specs = append(specs, sp)
 		}
 	}
@@ -91,7 +99,7 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 			}
 			var out string
 			var isErr bool
-			if !subagentAllows(kind, b.Name) {
+			if !allowed(b.Name) {
 				out, isErr = "ferramenta indisponível para este subagente: "+b.Name, true
 			} else {
 				out, isErr = s.runTool(ctx, rules, b)

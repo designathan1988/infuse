@@ -463,8 +463,8 @@ function mountMemory(pb, extra, c) {
   const sid = c.L?.id || '';
   let data = { session: [], project: [], global: [] }, scope = lsGet('memScope', 'project'), newType = 'correcao', helpOpen = lsGet('memHelp', true);
   if (scope === 'session' && !sid) scope = 'project';
-  const save = debounce(sc => api('/api/memory/save', { body: { scope: sc, session: sid, items: data[sc] }, root: c.root }), 300);
-  const load = async () => { const r = await api('/api/memory' + (sid ? '?session=' + encodeURIComponent(sid) : ''), { root: c.root }); data = { session: r.session || [], project: r.project || [], global: r.global || [] }; draw(); };
+  const save = debounce(sc => api('/api/memory/items/save', { body: { scope: sc, session: sid, items: data[sc] }, root: c.root }), 300);
+  const load = async () => { const r = await api('/api/memory/items' + (sid ? '?session=' + encodeURIComponent(sid) : ''), { root: c.root }); data = { session: r.session || [], project: r.project || [], global: r.global || [] }; draw(); };
   const add = (type, text) => { text = text.trim(); if (!text) return; data[scope].unshift({ id: 'm' + Date.now() + Math.floor(Math.random() * 1000), type, text, origin: 'usuario', priority: type === 'correcao' ? 2 : 1, created: Date.now() }); save(scope); draw(); };
   const draw = () => {
     const items = data[scope] || [];

@@ -226,6 +226,12 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .mitem{display:grid;grid-template-columns:auto 1fr auto auto;gap:4px 6px;align-items:start;padding:8px 2px;border-bottom:1px solid var(--border)} .mitem .mtext{font-size:13px;line-height:1.45;resize:none;background:transparent;padding:2px 4px;border-radius:5px;overflow:hidden;min-height:22px} .mitem .mtext:focus{background:var(--s2)}
 .mitem .mmeta{grid-column:2/5;font-size:11px;padding-left:4px} .mitem .ib{width:24px;height:24px} .mitem .del{opacity:0} .mitem:hover .del{opacity:1}
 .mitem .star{color:var(--text3);font-size:14px} .mitem.p2 .star,.mitem.p3 .star{color:var(--warn)} .mitem .star sup{font-size:9px}
+.mcplist{display:flex;flex-direction:column;gap:10px;margin-bottom:18px} .mcpcard{border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px}
+.mcpcard .row{gap:8px} .mcptarget{margin:4px 0 0 16px;font-size:11.5px;word-break:break-all} .mdot{width:8px;height:8px;border-radius:50%;background:var(--border2);flex:none} .mdot.ok{background:var(--ok)} .mdot.warn{background:var(--warn)} .mdot.bad{background:var(--bad)}
+.mcpappr{display:flex;gap:10px;align-items:center;margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:12.5px} .mcpappr span{flex:1}
+.mtool{padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px} .mtool .tag{margin-left:6px}
+.mcpgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px} .mcppre{border:1px dashed var(--border2);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;font-size:12.5px;line-height:1.45} .mcppre .mono{font-size:11px;word-break:break-all} .mcppre .row{margin-top:6px;gap:6px} .mcppre.on{border-style:solid;opacity:.75}
+.mcpcustom{margin-top:14px;border:1px solid var(--border);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:13px} .mcpcustom .cs{padding-left:0}
 textarea.doc{min-height:150px}
 textarea.doc{width:100%;min-height:240px;font-family:var(--mono);font-size:12.5px;line-height:1.55;background:var(--s2);border-radius:8px;padding:10px 12px;resize:vertical}
 .rule{display:grid;grid-template-columns:18px 84px 1fr 96px 1fr 22px;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)} .rule input,.rule select{width:100%;font-size:12px;padding:2px 4px;border-radius:4px} .rule input:focus,.rule select:focus{background:var(--s2)}
