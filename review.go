@@ -6,6 +6,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -177,3 +178,35 @@ var errConflict = errors.New("o arquivo mudou no disco")
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
 func jsonMarshalImpl(v any) ([]byte, error) { return json.Marshal(v) }
+
+// FailedCILogs returns the log of the latest failed CI run of the current branch (cut to what matters).
+func FailedCILogs(dir string) (string, error) {
+	branch := strings.TrimSpace(gitOutput(dir, "branch", "--show-current"))
+	if branch == "" {
+		return "", errors.New("não há branch atual")
+	}
+	list, err := ghRun(dir, "run", "list", "--branch", branch, "--limit", "10", "--json", "databaseId,conclusion,name,headSha")
+	if err != nil {
+		return "", errors.New(strings.TrimSpace(list))
+	}
+	var runs []struct {
+		ID         int64  `json:"databaseId"`
+		Conclusion string `json:"conclusion"`
+		Name       string `json:"name"`
+		HeadSha    string `json:"headSha"`
+	}
+	_ = json.Unmarshal([]byte(list), &runs)
+	for _, r := range runs {
+		if r.Conclusion == "failure" || r.Conclusion == "timed_out" || r.Conclusion == "startup_failure" {
+			logs, err := ghRun(dir, "run", "view", fmt.Sprint(r.ID), "--log-failed")
+			if err != nil && logs == "" {
+				return "", err
+			}
+			if len(logs) > 24000 { // the end of a failed log carries the error
+				logs = "[…]\n" + logs[len(logs)-24000:]
+			}
+			return fmt.Sprintf("Workflow: %s (run %d, commit %.8s)\n\n%s", r.Name, r.ID, r.HeadSha, logs), nil
+		}
+	}
+	return "", errors.New("nenhuma execução de CI com falha neste branch")
+}

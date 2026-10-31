@@ -545,6 +545,8 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 			out, err = CreatePR(dir)
 		case "merge-auto":
 			out, err = ghRun(dir, "pr", "merge", "--auto", "--squash")
+		case "failed-logs": // the failing CI run of this branch, for the agent to fix
+			out, err = FailedCILogs(dir)
 		default:
 			err = errors.New("ação desconhecida")
 		}

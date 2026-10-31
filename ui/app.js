@@ -903,19 +903,41 @@ function renderRail(v) {
   $$('[data-open]', el).forEach(x => x.onclick = () => togglePane(x.dataset.open, true));
   renderPR(v, $('.prline', el));
 }
+// Auto-fix: the failing CI run's log goes to the agent (by click, or on its own when turned on).
+async function fixCI(v, L, pr) {
+  const r = await api('/api/pr', { body: { action: 'failed-logs' }, root: L.root, dir: L.snap.workRoot || L.root });
+  if (!r.ok) return toast(r.error || r.output || t('Não foi possível ler o log do CI'));
+  const P = $('.prompt', v.el); P.value = `${t('O CI do PR')} #${pr.number} ${t('falhou. Leia o log abaixo, encontre a causa, corrija, rode localmente o que falhou e faça o commit. Não altere testes para passar.')}\n\n\`\`\`\n${r.output}\n\`\`\``; send(v);
+}
+setInterval(async () => { // checks PRs of sessions with auto-fix on, every 2 minutes
+  for (const v of S.views) {
+    const L = v.sid && S.live[v.sid]; if (!L) continue;
+    if (L.autofix === undefined) L.autofix = lsGet('autofix:' + L.id, false);
+    if (!L.autofix || busy(L)) continue;
+    L.prAt = 0; await renderPR(v, $('.prline', v.el) || document.createElement('div'));
+    const pr = L.pr?.pr; if (!pr) continue;
+    const failed = (pr.statusCheckRollup || []).filter(c => /FAIL|ERROR/i.test(c.conclusion || c.state || ''));
+    const sig = pr.number + ':' + failed.map(c => c.name + c.completedAt).join('|');
+    if (failed.length && L.autofixSig !== sig) { L.autofixSig = sig; toast(t('CI falhou: enviando o log ao agente')); fixCI(v, L, pr); }
+  }
+}, 120000);
 async function renderPR(v, el) {
   const L = S.live[v.sid]; if (!L || !L.changes?.isGit || !el) return;
   if (!L.pr || Date.now() - L.prAt > 60000) { L.pr = await api('/api/pr', { root: L.root, dir: L.snap.workRoot || L.root }); L.prAt = Date.now(); }
   const pr = L.pr?.pr;
-  if (!L.pr?.gh) { el.innerHTML = ''; return; }
+  if (!L.pr?.gh) { // without the GitHub CLI: say so and offer to install it, instead of hiding PRs
+    el.innerHTML = `<div class="row" style="margin-top:6px;font-size:12px"><span class="faint grow">${t('Pull requests precisam do GitHub CLI (gh).')}</span><button class="btn sm" data-gh="install">${t('Instalar')}</button></div>`;
+    $('[data-gh]', el).onclick = () => { togglePane('terminal', true); setTimeout(() => paneCall('terminal', 'openAt', L.snap.workRoot || L.root, 'winget install --id GitHub.cli -e && gh auth login', 'GitHub CLI'), 300); };
+    return;
+  }
   if (!pr) { el.innerHTML = `<div class="row" style="margin-top:6px"><button class="btn sm line" data-pr="create">${t('Criar PR')}</button></div>`; }
   else {
-    const checks = pr.statusCheckRollup || []; const fail = checks.filter(c => /FAIL|ERROR/i.test(c.conclusion || c.state || '')).length, pend = checks.filter(c => !(c.conclusion || '') && !/SUCCESS/.test(c.state || '')).length;
+    var checks = pr.statusCheckRollup || []; var fail = checks.filter(c => /FAIL|ERROR/i.test(c.conclusion || c.state || '')).length, pend = checks.filter(c => !(c.conclusion || '') && !/SUCCESS/.test(c.state || '')).length;
     el.innerHTML = `<div class="row" style="margin-top:8px;font-size:12px"><a href="${esc(pr.url)}" target="_blank">#${pr.number}</a><span class="trunc grow">${esc(pr.title)}</span><span class="tag ${fail ? 'bad' : pend ? 'warn' : 'ok'}">${fail ? t('CI falhou') : pend ? t('CI rodando') : t('CI ok')}</span><button class="ib" data-pr="menu" style="width:22px;height:22px">${I.more}</button></div>`;
   }
   $$('[data-pr]', el).forEach(b => b.onclick = async e => {
     if (b.dataset.pr === 'create') { b.disabled = true; const r = await api('/api/pr', { body: { action: 'create' }, root: L.root, dir: L.snap.workRoot || L.root }); toast(r.ok ? 'PR criado' : (r.error || r.output)); L.prAt = 0; renderRail(v); }
-    else menu(b, [{ label: 'Abrir no GitHub', f: () => window.open(pr.url, '_blank') }, { label: 'Mesclar quando pronto', sub: 'Ativa o auto-merge (squash) no GitHub', f: async () => { const r = await api('/api/pr', { body: { action: 'merge-auto' }, root: L.root, dir: L.snap.workRoot || L.root }); toast(r.ok ? 'Auto-merge ativado' : (r.error || r.output)); } }]);
+    else menu(b, [{ label: 'Abrir no GitHub', f: () => { togglePane('browser', true); setTimeout(() => paneCall('browser', 'go', pr.url), 300); } }, fail ? { label: 'Corrigir o CI agora', sub: 'O agente lê o log da falha e corrige', f: () => fixCI(v, L, pr) } : null, { label: L.autofix ? 'Desligar correção automática do CI' : 'Corrigir o CI automaticamente', sub: 'Quando o CI falhar e a sessão estiver parada, o agente recebe o log e corrige', check: !!L.autofix, f: () => { L.autofix = !L.autofix; lsSet('autofix:' + L.id, L.autofix); toast(t(L.autofix ? 'Correção automática do CI ligada' : 'Correção automática do CI desligada')); } }, { label: 'Mesclar quando pronto', sub: 'Ativa o auto-merge (squash) no GitHub', f: async () => { const r = await api('/api/pr', { body: { action: 'merge-auto' }, root: L.root, dir: L.snap.workRoot || L.root }); toast(r.ok ? 'Auto-merge ativado' : (r.error || r.output)); } }]);
   });
 }
 function renderChangesBadge(v) {
