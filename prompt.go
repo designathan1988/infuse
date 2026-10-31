@@ -17,78 +17,78 @@ import (
 func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	var b strings.Builder
 	b.WriteString(responseLanguageRule(s.uiLang()) + "\n\n")
-	b.WriteString("Você é o agente de engenharia de software do infuse Studio, trabalhando diretamente no projeto do usuário com as ferramentas disponíveis.\n\n")
-	b.WriteString("Princípios de trabalho:\n")
-	b.WriteString("- Compreenda antes de agir: leia os arquivos envolvidos e o mapa do projeto; identifique dependentes antes de mudar algo.\n")
-	b.WriteString("- Construa dentro da estrutura existente do projeto. Não espalhe responsabilidades; não crie condicionais onde existe um ponto de extensão.\n")
-	b.WriteString("- Mudanças mínimas e precisas: use Edit para alterações pontuais; não reescreva arquivos funcionais sem necessidade; não remova validações ou verificações de segurança.\n")
-	b.WriteString("- Nunca modifique testes ou critérios para fazê-los passar; nunca silencie erros (catch vazio, valores padrão que escondem falhas).\n")
-	b.WriteString("- Verifique executando (build, testes, o próprio programa) e relate o resultado real. Se não conseguir atingir o objetivo, diga exatamente o que tentou, a evidência e onde parou — isso é um resultado válido.\n")
-	b.WriteString("- Consulte documentação oficial da versão instalada antes de tentativa e erro.\n")
-	b.WriteString("- Responda em português, de forma direta.\n\n")
+	b.WriteString("You are the software engineering agent of infuse Studio, working directly in the user's project with the tools available.\n\n")
+	b.WriteString("Working principles:\n")
+	b.WriteString("- Understand before acting: read the files involved and the project map; identify dependents before changing anything.\n")
+	b.WriteString("- Build within the project's existing structure. Do not scatter responsibilities; do not add conditionals where an extension point exists.\n")
+	b.WriteString("- Minimal, precise changes: use Edit for targeted changes; do not rewrite working files without need; do not remove validations or safety checks.\n")
+	b.WriteString("- Never modify tests or criteria to make them pass; never silence errors (empty catch blocks, default values that hide failures).\n")
+	b.WriteString("- Verify by running (build, tests, the program itself) and report the real result. If you cannot reach the goal, say exactly what you tried, the evidence and where you stopped — that is a valid result.\n")
+	b.WriteString("- Consult the official documentation of the installed version before trial and error.\n")
+	b.WriteString("- Answer directly.\n\n")
 
-	b.WriteString("Protocolo do infuse (aplicado pelo infuse a cada ação; uma ação fora dele é recusada com o motivo):\n")
-	b.WriteString("1. Antes de alterar arquivos: registre o plano com TodoWrite, cada tarefa aberta com proof.\n")
-	b.WriteString("2. Antes de escrever código que usa uma biblioteca ou API externa: consulte a documentação oficial da versão em uso neste turno (WebSearch, WebFetch, documentação fixada, código do pacote).\n")
-	b.WriteString("3. O código segue as convenções do projeto e o limite de tamanho de arquivo.\n")
-	b.WriteString("4. Duas falhas seguidas exigem investigação antes de nova tentativa.\n")
-	b.WriteString("5. O turno só termina com o plano concluído (done ou blocked), o verificador do projeto sem erros nos arquivos alterados, um Report conferido e os achados da revisão independente tratados.\n\n")
-	fmt.Fprintf(&b, "Ambiente: %s/%s · data %s · diretório do projeto: %s · diretório atual: %s\n", runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"), s.Root, s.Cwd)
+	b.WriteString("infuse protocol (enforced by infuse on every action; an action outside it is refused with the reason):\n")
+	b.WriteString("1. Before changing files: record the plan with TodoWrite, each open task with a proof.\n")
+	b.WriteString("2. Before writing code that uses an external library or API: consult the official documentation of the version in use during this turn (WebSearch, WebFetch, pinned documentation, the package's code).\n")
+	b.WriteString("3. The code follows the project's conventions and the file size limit.\n")
+	b.WriteString("4. Two failures in a row require investigation before another attempt.\n")
+	b.WriteString("5. The turn only ends with the plan completed (done or blocked), the project's checker reporting no errors in the changed files, a checked Report, and the findings of the independent review addressed.\n\n")
+	fmt.Fprintf(&b, "Environment: %s/%s · date %s · project directory: %s · current directory: %s\n", runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"), s.Root, s.Cwd)
 	if branch := gitOutput(s.Root, "rev-parse", "--abbrev-ref", "HEAD"); branch != "" {
 		fmt.Fprintf(&b, "Git: branch %s", branch)
 		if st := gitOutput(s.Root, "status", "--porcelain"); st != "" {
-			fmt.Fprintf(&b, " · %d arquivo(s) com alterações", len(strings.Split(strings.TrimSpace(st), "\n")))
+			fmt.Fprintf(&b, " · %d file(s) with changes", len(strings.Split(strings.TrimSpace(st), "\n")))
 		}
 		b.WriteString("\n")
 	}
 	if s.mode() == "plan" {
-		b.WriteString("MODO PLANO: você pode ler e investigar, mas escrita e execução estão desativadas. Produza um plano para aprovação.\n")
+		b.WriteString("PLAN MODE: you may read and investigate, but writing and execution are disabled. Produce a plan for approval.\n")
 	}
 
 	// The project's knowledge — the grounds of the filter.
 	if m := LoadOrBuildMap(s.Root); m != nil {
-		b.WriteString("\n## Mapa do projeto (gerado do código)\n")
+		b.WriteString("\n## Project map (generated from the code)\n")
 		b.WriteString(DescribeDir(m, ".") + "\n")
 		if len(m.Hotspots) > 0 {
-			b.WriteString("Arquivos grandes demais (evite acrescentar responsabilidades a eles):\n")
+			b.WriteString("Files that are too large (avoid adding responsibilities to them):\n")
 			for i, h := range m.Hotspots {
 				if i >= 8 {
 					break
 				}
-				fmt.Fprintf(&b, "- %s (%d linhas)\n", h.Path, h.Lines)
+				fmt.Fprintf(&b, "- %s (%d lines)\n", h.Path, h.Lines)
 			}
 		}
-		b.WriteString("Use LS em qualquer pasta para ver o mapa dela; ao escrever um arquivo você recebe quem depende dele.\n")
+		b.WriteString("Use LS on any folder to see its map; when you write a file you are told what depends on it.\n")
 	}
 	if oracle := readOracle(s.Root); oracle != "" {
-		b.WriteString("\n## Critérios de pronto (definidos pelo usuário; somente leitura — você não pode alterá-los)\n" + oracle + "\n")
+		b.WriteString("\n## Definition of done (set by the user; read-only — you cannot change it)\n" + oracle + "\n")
 	}
 	if lines := alwaysRuleTexts(s.Root, rules); len(lines) > 0 {
-		b.WriteString("\n## Regras do projeto\n" + strings.Join(lines, "\n") + "\n")
+		b.WriteString("\n## Project rules\n" + strings.Join(lines, "\n") + "\n")
 	}
 	if l := lessonsSummary(s.Root); l != "" {
-		b.WriteString("\n## Vícios já observados neste projeto (não repita)\n" + l + "\n")
+		b.WriteString("\n## Bad habits already seen in this project (do not repeat them)\n" + l + "\n")
 	}
 	if lock := instructionsPrompt(s.Root); lock != "" {
 		b.WriteString(lock + "\n")
 	}
 	if inst := loadInstructions(s.Root); inst != "" {
-		b.WriteString("\n## Instruções do usuário e do projeto\n" + inst + "\n")
+		b.WriteString("\n## User and project instructions\n" + inst + "\n")
 	}
 	if mem := readIfExists(filepath.Join(s.Root, infuseDirName, "memory.md")); mem != "" {
-		b.WriteString("\n## Memória do projeto\n" + mem + "\n")
+		b.WriteString("\n## Project memory\n" + mem + "\n")
 	}
 	if c := conventionsPrompt(s.Root); c != "" {
-		b.WriteString("\n## Convenções do projeto (siga ao escrever código; .infuse/conventions.md)\n" + c + "\n")
+		b.WriteString("\n## Project conventions (follow them when writing code; .infuse/conventions.md)\n" + c + "\n")
 	}
 	if d := docsPrompt(s.Root); d != "" {
-		b.WriteString("\n## Documentação fixada pelo usuário (leia com Read antes de usar estas bibliotecas)\n" + d)
+		b.WriteString("\n## Documentation pinned by the user (read it with Read before using these libraries)\n" + d)
 	}
 	if sk := skillsPrompt(s.Root); sk != "" {
-		b.WriteString("\n## Skills disponíveis (carregue com a ferramenta Skill quando a tarefa corresponder)\n" + sk)
+		b.WriteString("\n## Available skills (load one with the Skill tool when the task matches it)\n" + sk)
 	}
 	if items := memoryPrompt(s); items != "" {
-		b.WriteString("\n## Memória estruturada (mais importante primeiro; registre e remova com a ferramenta Memory)\n" + items)
+		b.WriteString("\n## Structured memory (most important first; record and remove items with the Memory tool)\n" + items)
 	}
 	return b.String()
 }
@@ -166,7 +166,7 @@ func lessonsSummary(root string) string {
 		if i >= 10 {
 			break
 		}
-		parts = append(parts, fmt.Sprintf("- %s (%d vez(es))", e.k, e.v))
+		parts = append(parts, fmt.Sprintf("- %s (%d time(s))", e.k, e.v))
 	}
 	return strings.Join(parts, "\n")
 }

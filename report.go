@@ -52,13 +52,13 @@ func (s *Session) turnSources() []string {
 			src := ""
 			switch {
 			case b.Name == "WebSearch":
-				src = "pesquisa: " + in.Query
+				src = fmt.Sprintf("search: %s", in.Query)
 			case b.Name == "WebFetch":
 				src = in.URL
 			case b.Name == "Browser" && in.Action == "navigate":
 				src = in.URL
 			case b.Name == "Read" && strings.Contains(filepath.ToSlash(in.Path), ".infuse/docs/"):
-				src = "documentação fixada: " + filepath.Base(in.Path)
+				src = fmt.Sprintf("pinned documentation: %s", filepath.Base(in.Path))
 			}
 			if src != "" && !seen[src] {
 				seen[src] = true
@@ -91,7 +91,7 @@ func (s *Session) verifyClaim(c *ReportClaim) {
 	case "command":
 		ref := squash(c.Ref)
 		if ref == "" {
-			c.Status, c.Evidence = "sem-evidencia", "nenhum comando indicado"
+			c.Status, c.Evidence = "sem-evidencia", "no command given"
 			return
 		}
 		results := map[string]Block{}
@@ -123,11 +123,11 @@ func (s *Session) verifyClaim(c *ReportClaim) {
 		}
 		switch {
 		case found:
-			c.Status, c.Evidence = "confirmado", "executado neste turno sem erro"
+			c.Status, c.Evidence = "confirmado", "run in this turn without error"
 		case failed != "":
-			c.Status, c.Evidence = "nao-confirmado", "executado neste turno, mas falhou: "+failed
+			c.Status, c.Evidence = "nao-confirmado", fmt.Sprintf("run in this turn, but it failed: %s", failed)
 		default:
-			c.Status, c.Evidence = "nao-confirmado", "nenhuma execução deste comando neste turno"
+			c.Status, c.Evidence = "nao-confirmado", "this command was not run in this turn"
 		}
 	case "file":
 		rel := filepath.ToSlash(strings.TrimPrefix(filepath.Clean(c.Ref), filepath.Clean(root)+string(filepath.Separator)))
@@ -135,16 +135,16 @@ func (s *Session) verifyClaim(c *ReportClaim) {
 		_, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
 		switch {
 		case written[rel] && err == nil:
-			c.Status, c.Evidence = "confirmado", "alterado neste turno"
+			c.Status, c.Evidence = "confirmado", "changed in this turn"
 		case written[rel]:
-			c.Status, c.Evidence = "confirmado", "removido neste turno"
+			c.Status, c.Evidence = "confirmado", "removed in this turn"
 		case err == nil:
-			c.Status, c.Evidence = "parcial", "o arquivo existe, mas não foi alterado neste turno"
+			c.Status, c.Evidence = "parcial", "the file exists, but it was not changed in this turn"
 		default:
-			c.Status, c.Evidence = "nao-confirmado", "o arquivo não existe"
+			c.Status, c.Evidence = "nao-confirmado", "the file does not exist"
 		}
 	default:
-		c.Kind, c.Status, c.Evidence = "other", "sem-evidencia", "afirmação sem evidência verificável"
+		c.Kind, c.Status, c.Evidence = "other", "sem-evidencia", "a claim with no verifiable evidence"
 	}
 }
 
@@ -165,7 +165,7 @@ type reportTool struct{}
 
 func (reportTool) Category() string { return "ui" }
 func (reportTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Report", Description: "Ao terminar um trabalho, relate o que foi feito como afirmações, cada uma com a evidência em que se apoia: kind=command com ref = o comando que você executou (build, testes), kind=file com ref = o arquivo alterado, ou kind=other. O infuse confere cada afirmação com o que de fato aconteceu no turno e mostra o resultado ao usuário. Inclua em next o próximo passo sugerido, se houver.",
+	return ToolSpec{Name: "Report", Description: "When you finish a piece of work, report what was done as claims, each with the evidence it relies on: kind=command with ref = the command you ran (build, tests), kind=file with ref = the file changed, or kind=other. infuse checks each claim against what actually happened in the turn and shows the result to the user. Put the suggested next step in next, if there is one.",
 		InputSchema: schema(`{"type":"object","properties":{"summary":{"type":"string"},"claims":{"type":"array","items":{"type":"object","properties":{"text":{"type":"string"},"kind":{"type":"string","enum":["command","file","other"]},"ref":{"type":"string"}},"required":["text","kind"]}},"next":{"type":"string"}},"required":["summary","claims"]}`)}
 }
 
@@ -188,12 +188,14 @@ func (reportTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 	}
 	r.Sources = s.turnSources()
 	s.emit("report", r)
-	out := "Relatório conferido pelo infuse:\n" + b.String()
+	// The claim status codes ([confirmado], [nao-confirmado], …) and the "Fontes consultadas neste turno:"
+	// header are read back by the interface (ui/app.js reportCard); they stay as they are until it changes.
+	out := "Report checked by infuse (status codes: confirmado = confirmed, parcial = partial, nao-confirmado = not confirmed, sem-evidencia = no evidence):\n" + b.String()
 	if len(r.Sources) > 0 {
 		out += "Fontes consultadas neste turno:\n- " + strings.Join(r.Sources, "\n- ") + "\n"
 	}
 	if bad > 0 {
-		out += fmt.Sprintf("%d afirmação(ões) não confirmada(s) pela execução: corrija o trabalho ou a afirmação; o usuário vê esta conferência.", bad)
+		out += fmt.Sprintf("%d claim(s) not confirmed by execution: fix the work or the claim; the user sees this check.", bad)
 	}
 	return out, false
 }
@@ -202,7 +204,7 @@ type contractTool struct{}
 
 func (contractTool) Category() string { return "ui" }
 func (contractTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Contract", Description: "Antes de um trabalho com mais de um passo, transforme o pedido em critérios verificáveis (o que precisa ser verdade ao final, cada um conferível por um comando, um arquivo ou o uso do programa) e peça a confirmação do usuário. Critérios confirmados entram na memória da sessão com prioridade máxima.",
+	return ToolSpec{Name: "Contract", Description: "Before a piece of work with more than one step, turn the request into verifiable criteria (what must be true at the end, each one checkable by a command, a file or using the program) and ask the user to confirm them. Confirmed criteria go into the session memory with the highest priority.",
 		InputSchema: schema(`{"type":"object","properties":{"goal":{"type":"string"},"criteria":{"type":"array","items":{"type":"string"}}},"required":["goal","criteria"]}`)}
 }
 
@@ -213,7 +215,7 @@ func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	}
 	_ = json.Unmarshal(input, &in)
 	if len(in.Criteria) == 0 {
-		return "informe ao menos um critério", true
+		return "give at least one criterion", true
 	}
 	var q strings.Builder
 	fmt.Fprintf(&q, "Objetivo: %s\n\nVou considerar pronto quando:\n", in.Goal)
@@ -223,10 +225,10 @@ func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	q.WriteString("\nConfirma? (ou escreva o que ajustar)")
 	ans, ok := tc.S.askUser(ctx, q.String(), []string{"Confirmar"})
 	if !ok {
-		return "o usuário não respondeu", true
+		return "the user did not answer", true
 	}
 	if strings.TrimSpace(ans) != "Confirmar" {
-		return "O usuário pediu ajustes nos critérios: " + ans + "\nReformule e chame Contract de novo.", false
+		return fmt.Sprintf("The user asked for changes to the criteria: %s\nRewrite them and call Contract again.", ans), false
 	}
 	for _, c := range in.Criteria {
 		it := MemoryItem{Type: "criterio", Text: c, Priority: 3, Origin: "usuario", Session: tc.S.ID}
@@ -235,7 +237,7 @@ func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 		}
 	}
 	tc.S.emit("memory", map[string]any{"action": "contract"})
-	return "Critérios confirmados pelo usuário e guardados na memória da sessão. Trabalhe até cumpri-los e relate com Report, com evidência de cada um.", false
+	return "Criteria confirmed by the user and stored in the session memory. Work until they are met and report with Report, with evidence for each one.", false
 }
 
 func init() {

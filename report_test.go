@@ -40,12 +40,12 @@ func TestReportClaimsCheckedAgainstTheTurn(t *testing.T) {
 	}
 	for _, want := range []string{
 		"[confirmado] testes passam",
-		"[nao-confirmado] build ok — executado neste turno, mas falhou: exit 1",
-		"[nao-confirmado] lint ok — nenhuma execução",
-		"[confirmado] criei a.js — alterado neste turno",
+		"[nao-confirmado] build ok — run in this turn, but it failed: exit 1",
+		"[nao-confirmado] lint ok — this command was not run",
+		"[confirmado] criei a.js — changed in this turn",
 		"[parcial] mexi em old.js",
 		"[sem-evidencia] ficou mais rápido",
-		"2 afirmação(ões) não confirmada(s)",
+		"2 claim(s) not confirmed",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in\n%s", want, out)

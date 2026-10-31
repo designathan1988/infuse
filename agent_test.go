@@ -17,7 +17,7 @@ func TestSubagentToolsAreLimitedAndGuarded(t *testing.T) {
 
 	// explore: only read tools; the mock tries to Write and gets refused by the kind
 	out, err := s.RunSubagent(context.Background(), "explore", "x", "escreva no oráculo")
-	if err != nil || !strings.Contains(out, "indisponível para este subagente") {
+	if err != nil || !strings.Contains(out, "unavailable for this subagent") {
 		t.Fatalf("%v %s", err, out)
 	}
 	// general: Write is allowed by the kind, but the guard still protects the oracle
@@ -45,7 +45,7 @@ func TestReviewMaterialHasRequestPlanCriteriaAndDiff(t *testing.T) {
 	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "crie novo.js exportando 1"}}}}
 	s.Tasks = []TaskItem{{ID: "1", Text: "criar novo.js", Status: "done", Proof: "node -e require('./novo.js')"}}
 	m := s.reviewMaterial("")
-	for _, want := range []string{"crie novo.js exportando 1", "criar novo.js", "comprovação: node -e", "novo.js (arquivo novo)", "module.exports = 1;"} {
+	for _, want := range []string{"crie novo.js exportando 1", "criar novo.js", "proof: node -e", "novo.js (new file)", "module.exports = 1;"} {
 		if !strings.Contains(m, want) {
 			t.Fatalf("missing %q in\n%s", want, m)
 		}

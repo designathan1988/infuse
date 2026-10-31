@@ -29,7 +29,7 @@ func TestProtocolDecidesNotTheModel(t *testing.T) {
 		t.Fatalf("write without a plan: %s", out)
 	}
 	// a plan whose open task has no proof is refused
-	if out, isErr := run(Block{Type: "tool_use", ID: "2", Name: "TodoWrite", Input: json.RawMessage(`{"tasks":[{"id":"1","text":"criar soma","status":"pending"}]}`)}); !isErr || !strings.Contains(out, "precisa de proof") {
+	if out, isErr := run(Block{Type: "tool_use", ID: "2", Name: "TodoWrite", Input: json.RawMessage(`{"tasks":[{"id":"1","text":"criar soma","status":"pending"}]}`)}); !isErr || !strings.Contains(out, "needs a proof") {
 		t.Fatalf("plan without proof accepted: %s", out)
 	}
 	if out, isErr := run(Block{Type: "tool_use", ID: "3", Name: "TodoWrite", Input: json.RawMessage(`{"tasks":[{"id":"1","text":"criar soma","status":"in_progress","proof":"node --test"}]}`)}); isErr {

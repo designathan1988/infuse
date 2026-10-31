@@ -44,7 +44,7 @@ func TestMissionRunsUntilCriteriaPassOrBudget(t *testing.T) {
 	// the agent was sent back with the failing criterion
 	found := false
 	for _, msg := range s.Messages {
-		if t := msgText(msg); len(t) > 0 && strings.Contains(t, "[Missão — turno 2 de 2") && strings.Contains(t, "arquivo:") {
+		if t := msgText(msg); len(t) > 0 && strings.Contains(t, "[Missão — turn 2 of 2") && strings.Contains(t, "arquivo:") {
 			found = true
 		}
 	}

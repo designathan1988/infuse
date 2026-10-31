@@ -22,7 +22,7 @@ func TestMultiEditAllOrNothing(t *testing.T) {
 	}
 	s.markRead(p)
 	out, isErr := tool.Run(context.Background(), tc, json.RawMessage(`{"path":"a.js","edits":[{"old_string":"a = 1","new_string":"a = 10"},{"old_string":"nao-existe","new_string":"x"}]}`))
-	if !isErr || !strings.Contains(out, "edição 2") {
+	if !isErr || !strings.Contains(out, "edit 2") {
 		t.Fatal(out)
 	}
 	if b, _ := os.ReadFile(p); string(b) != "const a = 1;\nconst b = 2;\n" {
@@ -45,7 +45,7 @@ func TestReadImageAttachesIt(t *testing.T) {
 	s := newSession(root)
 	_ = os.WriteFile(filepath.Join(root, "tela.png"), []byte("\x89PNG\r\n\x1a\nfake"), 0o644)
 	out, isErr := readTool{}.Run(context.Background(), &ToolContext{S: s, Root: root, Cwd: root}, json.RawMessage(`{"path":"tela.png"}`))
-	if isErr || !strings.Contains(out, "anexada") || len(s.pendingImages) != 1 || s.pendingImages[0].MediaType != "image/png" {
+	if isErr || !strings.Contains(out, "attached") || len(s.pendingImages) != 1 || s.pendingImages[0].MediaType != "image/png" {
 		t.Fatalf("%v %s %+v", isErr, out, s.pendingImages)
 	}
 }

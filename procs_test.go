@@ -38,17 +38,17 @@ func TestBackgroundProcesses(t *testing.T) {
 	}
 	// the agent is told it ended, once, on its next tool result
 	out, _ = run("Glob", `{"pattern":"*"}`)
-	if !strings.Contains(out, "p1") || !strings.Contains(out, "terminou") {
+	if !strings.Contains(out, "p1") || !strings.Contains(out, "finished on its own") {
 		t.Fatalf("end not announced: %s", out)
 	}
-	if out, _ = run("Glob", `{"pattern":"*"}`); strings.Contains(out, "terminou") {
+	if out, _ = run("Glob", `{"pattern":"*"}`); strings.Contains(out, "finished on its own") {
 		t.Fatal("announced twice")
 	}
 	// only the new output, then nothing new
 	if out, _ = run("BashOutput", `{"id":"p1"}`); !strings.Contains(out, "fim") || strings.Contains(out, "pronto") || !strings.Contains(out, "exited") {
 		t.Fatalf("new output: %s", out)
 	}
-	if out, _ = run("BashOutput", `{"id":"p1"}`); !strings.Contains(out, "nenhuma saída nova") {
+	if out, _ = run("BashOutput", `{"id":"p1"}`); !strings.Contains(out, "no new output") {
 		t.Fatal(out)
 	}
 	// stopping ends the whole tree: the shell and the program it started
