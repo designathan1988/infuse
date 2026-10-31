@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/store"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,6 +33,7 @@ type askRequest struct {
 }
 
 type SessionData struct {
+	store.Versioned
 	ID          string                   `json:"id"`
 	Root        string                   `json:"root"`
 	Title       string                   `json:"title"`
@@ -143,8 +145,12 @@ func loadSession(root, id string) (*Session, error) {
 	}
 	sessionsMu.Unlock()
 	var d SessionData
-	if err := readJSON(filepath.Join(sessionsDir(root), id+".json"), &d); err != nil {
+	p := filepath.Join(sessionsDir(root), id+".json")
+	if err := readJSON(p, &d); err != nil {
 		return nil, err
+	}
+	if changed, _ := d.Upgrade(nil); changed {
+		_ = writeJSON(p, d)
 	}
 	if d.Checkpoints == nil {
 		d.Checkpoints = map[int][]CheckpointFile{}
@@ -202,6 +208,7 @@ func listSessions(root string) []SessionData {
 		}
 		var d SessionData
 		if readJSON(p, &d) == nil {
+			_, _ = d.Upgrade(nil)
 			d.Messages = nil
 			d.Checkpoints = nil
 			d.Memory = nil
@@ -220,6 +227,7 @@ func listSessions(root string) []SessionData {
 
 func (s *Session) save() {
 	s.Updated = time.Now().UnixMilli()
+	s.SchemaVersion = store.Version
 	_ = writeJSON(filepath.Join(sessionsDir(s.Root), s.ID+".json"), s.SessionData)
 }
 

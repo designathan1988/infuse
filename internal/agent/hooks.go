@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/store"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +40,7 @@ type hookGroup struct {
 }
 
 type hooksFile struct {
+	store.Versioned
 	Hooks map[string][]hookGroup `json:"hooks"`
 }
 
@@ -100,6 +102,7 @@ func LoadHooks(root string) []HookEntry {
 		if readJSON(src[0], &f) != nil {
 			continue
 		}
+		_, _ = f.Upgrade(nil)
 		for _, ev := range hookEvents {
 			for _, g := range f.Hooks[ev] {
 				for _, h := range g.Hooks {
@@ -123,11 +126,13 @@ func addHook(root, scope, event, matcher, command string) error {
 	}
 	var f hooksFile
 	_ = readJSON(p, &f)
+	_, _ = f.Upgrade(nil)
 	if f.Hooks == nil {
 		f.Hooks = map[string][]hookGroup{}
 	}
 	f.Hooks[event] = append(f.Hooks[event], hookGroup{Matcher: matcher, Hooks: []hookCommand{{Type: "command", Command: command}}})
 	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	f.SchemaVersion = store.Version
 	return writeJSON(p, f)
 }
 

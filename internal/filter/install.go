@@ -8,8 +8,8 @@ package filter
 
 import (
 	"encoding/json"
-	"infuse/internal/core"
 	"fmt"
+	"infuse/internal/core"
 	"io"
 	"os"
 	"path/filepath"
@@ -72,7 +72,7 @@ func Install() InstallResult {
 	}
 	// Example rules the first time, so the panel has something to show and edit.
 	if !core.Exists(GlobalRulesFile()) {
-		_ = core.WriteJSON(GlobalRulesFile(), ExampleRules)
+		_ = SaveRulesFile(GlobalRulesFile(), ExampleRules)
 	}
 	return res
 }

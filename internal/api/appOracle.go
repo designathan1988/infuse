@@ -38,7 +38,7 @@ func appOracle(w http.ResponseWriter, r *http.Request, q map[string]string, body
 			return true
 		}
 		_ = os.MkdirAll(filepath.Dir(oracle.SpecFile(root)), 0o755)
-		if err := core.WriteJSON(oracle.SpecFile(root), spec); err != nil {
+		if err := oracle.SaveSpec(root, spec); err != nil {
 			sendJSON(w, 500, map[string]any{"error": err.Error()})
 			return true
 		}

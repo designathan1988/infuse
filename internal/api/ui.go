@@ -219,15 +219,14 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 			if rf.Disable == nil {
 				rf.Disable = []string{}
 			}
-			if err := core.WriteJSON(file, rf); err != nil {
+			if err := filter.SaveRulesFile(file, rf); err != nil {
 				sendJSON(w, 500, map[string]any{"error": err.Error()})
 				return
 			}
 			sendJSON(w, 200, map[string]any{"ok": true, "file": file})
 			return
 		}
-		rf := filter.RulesFile{Rules: []filter.Rule{}, Disable: []string{}}
-		_ = core.ReadJSON(file, &rf)
+		rf, _ := filter.LoadRulesFile(file)
 		sendJSON(w, 200, map[string]any{"file": file, "exists": core.Exists(file), "rules": rf.Rules, "disable": rf.Disable})
 	case "/api/rules/test":
 		// Dry run: what the filter would do with this command under the current rules. Nothing is executed.

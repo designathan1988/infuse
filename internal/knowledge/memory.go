@@ -6,8 +6,9 @@ package knowledge
 // priority first, so they survive compaction.
 
 import (
-	"infuse/internal/core"
 	"fmt"
+	"infuse/internal/core"
+	"infuse/internal/store"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -48,19 +49,18 @@ func ProjectMemoryFile(root string) string {
 func GlobalMemoryFile() string { return filepath.Join(core.InfuseHome(), "memory.json") }
 
 func LoadMemory(file string) []MemoryItem {
-	var items []MemoryItem
-	_ = core.ReadJSON(file, &items)
-	if items == nil {
-		items = []MemoryItem{}
+	list, err := store.LoadList[MemoryItem](file)
+	if err != nil || list.Items == nil {
+		return []MemoryItem{}
 	}
-	return items
+	return list.Items
 }
 
 func SaveMemory(file string, items []MemoryItem) error {
-	if err := core.WriteJSON(file, items); err != nil {
-		return err
+	if items == nil {
+		items = []MemoryItem{}
 	}
-	return nil
+	return store.SaveList(file, store.List[MemoryItem]{Items: items})
 }
 
 func NormalizeMemory(it *MemoryItem) error {

@@ -22,6 +22,7 @@ package agent
 
 import (
 	"infuse/internal/fsx"
+	"infuse/internal/store"
 	"os"
 	"path/filepath"
 	"sort"
@@ -30,6 +31,7 @@ import (
 
 // ArchRules is .infuse/architecture.json: learned from the project, adjustable by the user, never by the agent.
 type ArchRules struct {
+	store.Versioned
 	Version     int      `json:"version"`
 	TopDirs     []string `json:"topDirs"`    // folders at the root that hold the project's work
 	RootExts    []string `json:"rootExts"`   // code extensions that already live at the root
@@ -54,9 +56,11 @@ var wellKnownDirs = map[string]bool{"src": true, "lib": true, "app": true, "apps
 func loadArchRules(root string) *ArchRules {
 	var r ArchRules
 	if readJSON(archFile(root), &r) == nil && r.Version > 0 {
+		_, _ = r.Upgrade(nil)
 		return &r
 	}
 	r = learnArchitecture(root)
+	r.SchemaVersion = store.Version
 	_ = writeJSON(archFile(root), r)
 	return &r
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"infuse/internal/core"
+	"infuse/internal/store"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 // Settings is the canonical configuration. Global file: ~/.infuse/settings.json.
 // A project may override a subset in <project>/.infuse/settings.json.
 type Settings struct {
+	store.Versioned
 	Provider             string                `json:"provider"` // default connection id
 	Connections          map[string]Connection `json:"connections"`
 	Effort               string                `json:"effort"`            // default effort: low | medium | high | max
@@ -63,16 +65,16 @@ func DefaultSettings() Settings {
 		Permissions:    map[string]string{"Bash": "ask", "Write": "ask", "Edit": "ask", "WebFetch": "ask"},
 		ProtectedPaths: []string{".infuse/oracle/**"},
 		Pricing: map[string][2]float64{
-			"claude-opus":      {15, 75},
-			"claude-sonnet":    {3, 15},
-			"claude-haiku":     {1, 5},
-			"claude-fable":     {15, 75},
-			"gpt-5":            {1.25, 10},
-			"gpt-4.1":          {2, 8},
-			"gpt-4o":           {2.5, 10},
-			"o3":               {2, 8},
-			"gemini-2.5-pro":   {1.25, 10},
-			"gemini-2.5-flash": {0.3, 2.5},
+			"claude-opus":       {15, 75},
+			"claude-sonnet":     {3, 15},
+			"claude-haiku":      {1, 5},
+			"claude-fable":      {15, 75},
+			"gpt-5":             {1.25, 10},
+			"gpt-4.1":           {2, 8},
+			"gpt-4o":            {2.5, 10},
+			"o3":                {2, 8},
+			"gemini-2.5-pro":    {1.25, 10},
+			"gemini-2.5-flash":  {0.3, 2.5},
 			"deepseek-flash":    {0.3, 1.2},
 			"deepseek-v4-flash": {0.3, 1.2},
 			"deepseek-chat":     {0.3, 1.2},
@@ -94,6 +96,7 @@ func LoadSettings() Settings {
 	settingsMu.Lock()
 	defer settingsMu.Unlock()
 	s := DefaultSettings()
+	exists := core.Exists(SettingsFile())
 	_ = core.ReadJSON(SettingsFile(), &s)
 	if s.Permissions == nil {
 		s.Permissions = DefaultSettings().Permissions
@@ -128,7 +131,11 @@ func LoadSettings() Settings {
 	if s.Provider == "mock" && s.Connections["mock"].Kind == "" {
 		s.Connections["mock"] = Connection{Kind: "mock", Connected: true, Models: []string{"mock"}}
 	}
+	changed, _ := s.Upgrade(nil)
 	if MigrateLegacyKey(&s) {
+		changed = true
+	}
+	if changed && exists {
 		_ = core.WriteJSON(SettingsFile(), s)
 	}
 	return s
@@ -137,11 +144,13 @@ func LoadSettings() Settings {
 func SaveSettings(s Settings) error {
 	settingsMu.Lock()
 	defer settingsMu.Unlock()
+	s.SchemaVersion = store.Version
 	return core.WriteJSON(SettingsFile(), s)
 }
 
 // ProjectSettings: the subset a project may override.
 type ProjectSettings struct {
+	store.Versioned
 	Model          string            `json:"model,omitempty"`
 	Mode           string            `json:"mode,omitempty"`
 	Permissions    map[string]string `json:"permissions,omitempty"`
@@ -152,6 +161,7 @@ func EffectiveSettings(root string) Settings {
 	s := LoadSettings()
 	var p ProjectSettings
 	if core.ReadJSON(filepath.Join(root, core.InfuseDirName, "settings.json"), &p) == nil {
+		_, _ = p.Upgrade(nil)
 		if p.Model != "" {
 			s.Model = p.Model
 		}

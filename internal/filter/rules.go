@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"infuse/internal/core"
 	"infuse/internal/journal"
+	"infuse/internal/store"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,6 +40,7 @@ type Rule struct {
 }
 
 type RulesFile struct {
+	store.Versioned
 	Rules   []Rule   `json:"rules"`
 	Disable []string `json:"disable"`
 }
@@ -49,8 +51,32 @@ type RuleSet struct {
 	Sources  []string
 }
 
-func GlobalRulesFile() string             { return filepath.Join(core.InfuseHome(), "rules.json") }
-func ProjectRulesFile(root string) string { return filepath.Join(root, core.InfuseDirName, "rules.json") }
+func GlobalRulesFile() string { return filepath.Join(core.InfuseHome(), "rules.json") }
+func ProjectRulesFile(root string) string {
+	return filepath.Join(root, core.InfuseDirName, "rules.json")
+}
+
+// LoadRulesFile reads one rules file at the current schema version.
+func LoadRulesFile(file string) (RulesFile, error) {
+	rf := RulesFile{Rules: []Rule{}, Disable: []string{}}
+	if err := core.ReadJSON(file, &rf); err != nil {
+		return rf, err
+	}
+	_, _ = rf.Upgrade(nil)
+	if rf.Rules == nil {
+		rf.Rules = []Rule{}
+	}
+	if rf.Disable == nil {
+		rf.Disable = []string{}
+	}
+	return rf, nil
+}
+
+// SaveRulesFile writes a rules file stamped with the current schema version.
+func SaveRulesFile(file string, rf RulesFile) error {
+	rf.SchemaVersion = store.Version
+	return core.WriteJSON(file, rf)
+}
 
 func LoadRules(root string) *RuleSet {
 	set := &RuleSet{Disabled: map[string]bool{}}
@@ -58,8 +84,8 @@ func LoadRules(root string) *RuleSet {
 		if !core.Exists(file) {
 			continue
 		}
-		var rf RulesFile
-		if err := core.ReadJSON(file, &rf); err != nil {
+		rf, err := LoadRulesFile(file)
+		if err != nil {
 			set.Rules = append(set.Rules, Rule{When: "always", problem: core.M("rules.bad_json", "file", file, "error", err.Error())})
 			continue
 		}

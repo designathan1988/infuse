@@ -5,6 +5,7 @@ package scheduler
 import (
 	"errors"
 	"infuse/internal/core"
+	"infuse/internal/store"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,6 +15,7 @@ import (
 )
 
 type Task struct {
+	store.Versioned
 	Name      string    `json:"name"`
 	Prompt    string    `json:"prompt"`
 	Root      string    `json:"root"`
@@ -56,8 +58,10 @@ func List() []Task {
 	entries, _ := os.ReadDir(Dir())
 	out := []Task{}
 	for _, e := range entries {
-		var t Task
-		if strings.HasSuffix(e.Name(), ".json") && core.ReadJSON(filepath.Join(Dir(), e.Name()), &t) == nil {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		if t, err := Load(strings.TrimSuffix(e.Name(), ".json")); err == nil {
 			out = append(out, t)
 		}
 	}
@@ -67,8 +71,14 @@ func List() []Task {
 
 func Load(name string) (Task, error) {
 	var t Task
-	err := core.ReadJSON(filepath.Join(Dir(), Slug(name)+".json"), &t)
-	return t, err
+	p := filepath.Join(Dir(), Slug(name)+".json")
+	if err := core.ReadJSON(p, &t); err != nil {
+		return t, err
+	}
+	if changed, _ := t.Upgrade(nil); changed {
+		_ = core.WriteJSON(p, t)
+	}
+	return t, nil
 }
 
 func Save(t Task) (Task, error) {
@@ -95,6 +105,7 @@ func Save(t Task) (Task, error) {
 		t.AlwaysOK = []string{}
 	}
 	t.NextRun = NextRun(t, time.Now())
+	t.SchemaVersion = store.Version
 	return t, core.WriteJSON(filepath.Join(Dir(), t.Name+".json"), t)
 }
 

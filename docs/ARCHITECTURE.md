@@ -58,6 +58,12 @@ internal/
   uses snapshots plus these events; snapshots always carry the current state.
 - Writes are atomic (`core.WriteJSON`: temporary file, fsync, rename). The terminal state of a turn
   (`idle`/`error`) becomes observable only after the document is saved.
+- Every infuse-owned document carries `schemaVersion`: settings, project settings, sessions, scheduled
+  tasks, architecture rules, oracle criteria, rules files, hooks, memory, projects and the pinned-doc
+  index. `store.Versioned.Upgrade` runs the migration chain from the version found on disk (0 for
+  files written before versioning) to `store.Version`; documents in list form use an
+  `{schemaVersion, items}` envelope while still reading the legacy bare array. Files shared with other
+  tools (`.mcp.json`, `.claude/settings.json`) keep their external formats and are not stamped.
 - The browser UI is a cache: server snapshots + SSE events. It never writes shared state directly
   (pending sends live in the view, not in the transcript).
 
@@ -92,8 +98,6 @@ internal/
   them; the target is stable namespaced ids and a shared catalog, with no observer.
 - A few functions are still above the 60-line target (the turn loop, the largest route group, provider
   stream parsers, the heredoc parser); files are all under 400 lines and packages are acyclic.
-- Persisted artifacts do not carry a `schemaVersion` yet; the repositories are per domain, but
-  migrations are still ad hoc.
 
 ## Verification
 

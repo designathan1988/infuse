@@ -7,10 +7,11 @@ package agent
 
 import (
 	"context"
-	"infuse/internal/browser"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"infuse/internal/browser"
+	"infuse/internal/store"
 	"io"
 	"net/http"
 	"os"
@@ -31,17 +32,16 @@ type PinnedDoc struct {
 func docsDir(root string) string { return filepath.Join(root, infuseDirName, "docs") }
 
 func loadDocs(root string) []PinnedDoc {
-	var d []PinnedDoc
-	_ = readJSON(filepath.Join(docsDir(root), "index.json"), &d)
-	if d == nil {
-		d = []PinnedDoc{}
+	list, err := store.LoadList[PinnedDoc](filepath.Join(docsDir(root), "index.json"))
+	if err != nil || list.Items == nil {
+		return []PinnedDoc{}
 	}
-	return d
+	return list.Items
 }
 
 func saveDocs(root string, d []PinnedDoc) error {
 	_ = os.MkdirAll(docsDir(root), 0o755)
-	return writeJSON(filepath.Join(docsDir(root), "index.json"), d)
+	return store.SaveList(filepath.Join(docsDir(root), "index.json"), store.List[PinnedDoc]{Items: d})
 }
 
 var reSlug = regexp.MustCompile(`[^a-z0-9]+`)

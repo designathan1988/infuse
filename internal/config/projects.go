@@ -4,6 +4,7 @@ package config
 
 import (
 	"infuse/internal/core"
+	"infuse/internal/store"
 	"path/filepath"
 	"time"
 )
@@ -18,15 +19,16 @@ type ProjectEntry struct {
 func ProjectsFile() string { return filepath.Join(core.InfuseHome(), "projects.json") }
 
 func LoadProjects() []ProjectEntry {
-	var list []ProjectEntry
-	_ = core.ReadJSON(ProjectsFile(), &list)
-	if list == nil {
-		list = []ProjectEntry{}
+	list, err := store.LoadList[ProjectEntry](ProjectsFile())
+	if err != nil || list.Items == nil {
+		return []ProjectEntry{}
 	}
-	return list
+	return list.Items
 }
 
-func SaveProjects(list []ProjectEntry) error { return core.WriteJSON(ProjectsFile(), list) }
+func SaveProjects(list []ProjectEntry) error {
+	return store.SaveList(ProjectsFile(), store.List[ProjectEntry]{Items: list})
+}
 
 // RememberProject records projects the filter has seen, for the panel. A known project keeps the
 // position the user gave it; a new one goes first.

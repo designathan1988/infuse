@@ -17,6 +17,7 @@ package oracle
 import (
 	"errors"
 	"infuse/internal/core"
+	"infuse/internal/store"
 	"os"
 	"path/filepath"
 	"sync"
@@ -44,6 +45,7 @@ type OracleCheck struct {
 }
 
 type OracleSpec struct {
+	store.Versioned
 	Setup  string        `json:"setup,omitempty"` // runs in the snapshot before the checks
 	Checks []OracleCheck `json:"checks"`
 }
@@ -79,7 +81,17 @@ func LoadOracleSpec(root string) (OracleSpec, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
 	}
-	return s, err
+	if err != nil {
+		return s, err
+	}
+	_, _ = s.Upgrade(nil)
+	return s, nil
+}
+
+// SaveSpec writes the criteria stamped with the current schema version.
+func SaveSpec(root string, s OracleSpec) error {
+	s.SchemaVersion = store.Version
+	return core.WriteJSON(SpecFile(root), s)
 }
 
 var executorMu sync.Map // root → *sync.Mutex: one run per project at a time
