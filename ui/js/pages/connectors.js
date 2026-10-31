@@ -14,11 +14,11 @@ const MCP_PRESETS = [
 const MCP_STATE = { running: ['ok', 'conectado'], starting: ['warn', 'iniciando…'], error: ['bad', 'erro'], stopped: ['', 'parado'] };
 async function connectorsSection(el, root) {
   el.append(h(`<div class="row"><h1 class="grow">${t('ui.page.connectors.conectores.35b005')}</h1><button class="ib help" title="${esc(t('ui.page.connectors.como-funciona.9b4488'))}">?</button></div>`), h(`<p class="lead">${t('ui.page.connectors.conectores-dao-ao-agente.e3dd4c')}</p>`));
-  const help = h(`<div class="howto" style="display:none;margin-bottom:14px"><ol>
+  const help = h(`<div class="howto hidden mb14"><ol>
     <li><b>${t('ui.page.connectors.escolha-um-conector-abaixo.c29fd8')}</b> ${t('ui.page.connectors.e-clique-em-adicionar.5f22af')}</li>
     <li><b>${t('ui.page.connectors.cada-conector-e-um.c1271a')}</b> ${t('ui.page.connectors.fora-do-filtro-do.480dfd')}</li>
     <li><b>${t('ui.page.connectors.na-proxima-mensagem.f6f7e5')}</b> ${t('ui.page.connectors.o-agente-ja-ve.c4fcc3')}</li></ol></div>`);
-  el.append(help); $('.help', el).onclick = () => help.style.display = help.style.display ? '' : 'none';
+  el.append(help); $('.help', el).onclick = () => help.classList.toggle('hidden');
   const list = h('<div class="mcplist"></div>'); el.append(list);
   const act = async (path, body) => { const r = await api('/api/mcp/' + path, { body, root }); if (r.error) toast(r.error); draw(r.servers); };
   const draw = async servers => {
@@ -29,7 +29,7 @@ async function connectorsSection(el, root) {
       const card = h(`<div class="mcpcard"><div class="row"><span class="mdot ${cls}"></span><b>${esc(s.name)}</b><span class="tag">${t(s.scope === 'global' ? 'todos os projetos' : 'este projeto')}</span><span class="faint">${t(label)}${s.state === 'running' && !s.disabled ? ' · ' + s.tools.length + ' ' + t(s.tools.length === 1 ? 'ferramenta' : 'ferramentas') : ''}</span><span class="grow"></span>${s.approved ? `<span class="sw${s.disabled ? '' : ' on'} tg" title="${esc(t('ui.page.connectors.ligar-ou-desligar.2d5c2b'))}"></span>` : ''}<button class="ib more" title="${esc(t('ui.page.connectors.mais.4f728e'))}">${I.more}</button></div>
         <div class="mono faint mcptarget">${esc(s.target)}</div>
         ${!s.approved ? `<div class="mcpappr"><span>${t('ui.page.connectors.este-comando-vai-rodar.70d93f')}</span><button class="btn sm pri ap">${t('ui.page.connectors.aprovar-e-iniciar.390a90')}</button></div>` : ''}
-        ${s.error ? `<div class="errbox" style="margin-top:8px">${esc(s.error)}${s.stderr ? '\n\n' + esc(s.stderr) : ''}</div>` : ''}
+        ${s.error ? `<div class="errbox u-mt8px">${esc(s.error)}${s.stderr ? '\n\n' + esc(s.stderr) : ''}</div>` : ''}
         ${s.tools.length ? `<details class="odet"><summary>${t('ui.page.connectors.ferramentas.0cdcbe')} (${s.tools.length})</summary>${s.tools.map(x => `<div class="mtool"><span class="mono">${esc(x.name)}</span>${x.readOnly ? `<span class="tag ok">${t('ui.page.connectors.so-leitura.8d4a0f')}</span>` : ''}<div class="faint">${esc(x.description || '')}</div></div>`).join('')}</details>` : ''}</div>`);
       const ap = $('.ap', card); if (ap) ap.onclick = () => { ap.textContent = t('ui.page.connectors.iniciando.08bd81'); act('approve', { scope: s.scope, name: s.name }); };
       const tg = $('.tg', card); if (tg) tg.onclick = () => act('toggle', { scope: s.scope, name: s.name, disabled: !s.disabled });

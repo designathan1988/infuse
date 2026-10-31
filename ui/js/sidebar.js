@@ -16,7 +16,7 @@ function mountViews() {
 function buildView(v) {
   const el = h(`<section class="view">
     <div class="vbar"><span class="title" tabindex="0" title="Clique para renomear"></span><button class="ib caret" title="Menu da sessão">${I.caret}</button><span class="branch"></span><span class="sp"></span>
-      <span class="r row" style="gap:2px"><button class="chg" data-a="changes" title="Alterações (Ctrl+Shift+D)"></button>
+      <span class="r row u-gap2px"><button class="chg" data-a="changes" title="Alterações (Ctrl+Shift+D)"></button>
       <button class="ib" data-a="terminal" title="Terminal (Ctrl+\`)">${I.term}</button><button class="ib" data-a="files" title="Arquivos">${I.files}</button><button class="ib" data-a="browser" title="Navegador (Ctrl+Shift+B)">${I.globe}</button>
       <button class="ib cnt" data-a="agents" title="Agentes: os subagentes da sessão, ao vivo (Ctrl+Shift+A)">${I.agents}<i></i></button><button class="ib cnt" data-a="procs" title="Processos em segundo plano (Ctrl+Shift+P)">${I.procs}<i></i></button>
       <button class="ib" data-a="rail" title="Mostrar/ocultar detalhes da sessão">${I.rail}</button><button class="ib" data-a="more" title="Mais">${I.vmore}</button></span></div>
@@ -115,13 +115,13 @@ function renderSidebar() {
       g.ondragleave = () => g.classList.remove('drop');
       g.ondrop = e => { g.classList.remove('drop'); const from = e.dataTransfer.getData('text/infuse-project'); if (!from || from === root) return; e.preventDefault(); const l = S.projects.slice(); const i = l.findIndex(x => x.root === from), j = l.findIndex(x => x.root === root); if (i < 0 || j < 0) return; const [m] = l.splice(i, 1); l.splice(j, 0, m); api('/api/projects', { method: 'PUT', body: { projects: l }, root: '' }).then(loadSessions); };
       items.forEach(s => g.appendChild(row(s)));
-      if (!items.length) g.appendChild(h(`<div class="srow" style="color:var(--text3);font-size:12px;cursor:default">${t('ui.sidebar.nenhuma-sessao.671ab1')}</div>`));
+      if (!items.length) g.appendChild(h(`<div class="srow u-c--text3-fs12px-curdefault">${t('ui.sidebar.nenhuma-sessao.671ab1')}</div>`));
       el.appendChild(g);
     }
   } else list.forEach(s => el.appendChild(row(s)));
   if (!S.projects.length && !list.length) el.appendChild(h(`<div class="empty">${t('ui.sidebar.nenhuma-sessao-ainda.b45793')}<br>${t('ui.sidebar.clique-em-nova-sessao.2e05a2')}</div>`));
   if (archivedMode) {
-    const bar = h(`<div class="row" style="padding:2px 4px 6px"><button class="btn sm back">← ${t('ui.sidebar.voltar-as-sessoes.856f6c')}</button><span class="grow"></span>${list.length ? `<button class="btn sm danger delall">${t('ui.sidebar.excluir-todas.0e78de')}</button>` : ''}</div>`);
+    const bar = h(`<div class="row u-p2px4px6px"><button class="btn sm back">← ${t('ui.sidebar.voltar-as-sessoes.856f6c')}</button><span class="grow"></span>${list.length ? `<button class="btn sm danger delall">${t('ui.sidebar.excluir-todas.0e78de')}</button>` : ''}</div>`);
     $('.back', bar).onclick = () => { setSb('show', ''); };
     if ($('.delall', bar)) $('.delall', bar).onclick = async () => { if (!confirm(t('ui.sidebar.excluir-todas-as-sessoes.e78074'))) return; for (const x of list) await api(`/api/sessions/${x.id}`, { method: 'DELETE', root: x.root }); Server.set('archived', await api('/api/sessions/all?archived=1', { root: '' })); renderSidebar(); toast('Sessões excluídas'); };
     el.prepend(bar);
@@ -176,7 +176,7 @@ async function deleteSession(s) {
 
 // ---------------------------------------------------------------- inline editing
 function inlineEdit(el, current, apply) {
-  if (!el) return; const inp = document.createElement('input'); inp.value = current || ''; inp.className = el.className; inp.style.minWidth = '180px';
+  if (!el) return; const inp = document.createElement('input'); inp.value = current || ''; inp.className = el.className; inp.classList.add('rename-input');
   el.replaceWith(inp); inp.focus(); inp.select();
   let done = false; const fin = ok => { if (done) return; done = true; const val = inp.value.trim(); inp.replaceWith(el); if (ok && val && val !== current) apply(val); };
   inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') fin(true); if (e.key === 'Escape') fin(false); }; inp.onblur = () => fin(true); inp.onclick = e => e.stopPropagation();

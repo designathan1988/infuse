@@ -7,10 +7,18 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+)
+
+var (
+	reColour   = regexp.MustCompile(`#[0-9a-fA-F]{6,8}\b|rgba?\(|hsla?\(`)
+	reStyle    = regexp.MustCompile(`style="([^"]*)"`)
+	reCustom   = regexp.MustCompile(`^\s*--[a-zA-Z0-9_-]+\s*:`)
+	reAnyColor = regexp.MustCompile(`(?i)(?:color|background|border-color|box-shadow)\s*:[^;{}]*\b(?:red|blue|green|white|black)\b`)
 )
 
 func repoRoot(t *testing.T) string {
@@ -60,6 +68,49 @@ func TestNoGodFiles(t *testing.T) {
 		}
 		if n := len(strings.Split(strings.TrimRight(string(b), "\n"), "\n")); n > 400 {
 			t.Errorf("%s has %d lines (limit 400)", rel, n)
+		}
+	})
+}
+
+// TestNoLiteralColoursOrInlineStyles: colours live only in the token file, and no static declaration
+// is written in markup. A dynamic geometry value may travel as a CSS custom property.
+func TestNoLiteralColoursOrInlineStyles(t *testing.T) {
+	root := repoRoot(t)
+	walk(t, root, func(rel, abs string) {
+		if !strings.HasPrefix(rel, "ui/") || strings.Contains(rel, "/vendor/") {
+			return
+		}
+		b, err := os.ReadFile(abs)
+		if err != nil {
+			return
+		}
+		text := string(b)
+		isCSS := strings.HasSuffix(rel, ".css")
+		isTokens := rel == "ui/styles/tokens.css"
+		switch {
+		case isCSS && !isTokens:
+			if m := reColour.FindString(text); m != "" {
+				t.Errorf("%s: literal colour %q outside tokens.css", rel, m)
+			}
+			if m := reAnyColor.FindString(text); m != "" {
+				t.Errorf("%s: colour name %q outside tokens.css", rel, m)
+			}
+		case strings.HasSuffix(rel, ".js") || strings.HasSuffix(rel, ".html"):
+			if m := reColour.FindString(text); m != "" {
+				t.Errorf("%s: literal colour %q in interface code", rel, m)
+			}
+			for _, m := range reStyle.FindAllStringSubmatch(text, -1) {
+				decls := strings.TrimSpace(m[1])
+				if strings.Contains(decls, "${") {
+					continue // dynamic geometry through a custom property, check the declaration below
+				}
+				for _, d := range strings.Split(decls, ";") {
+					if strings.TrimSpace(d) != "" && !reCustom.MatchString(d) {
+						t.Errorf("%s: static inline style %q", rel, decls)
+						break
+					}
+				}
+			}
 		}
 	})
 }

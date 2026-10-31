@@ -50,7 +50,7 @@ function renderPanes() {
   P2.open.forEach((id, i) => {
     let p = $(`.pane[data-id="${id}"]`, host);
     if (!p) {
-      p = h(`<div class="pane" data-id="${id}"><div class="ph" draggable="true"><span class="ttl">${t(PANES[id].title)}</span><span class="extra row" style="gap:2px;min-width:0"></span><span class="sp"></span><button class="ib x" title="${esc(t('ui.pane.core.fechar-ctrl.f8b2e3'))}">${I.close}</button></div><div class="pb"></div></div>`);
+      p = h(`<div class="pane" data-id="${id}"><div class="ph" draggable="true"><span class="ttl">${t(PANES[id].title)}</span><span class="extra row u-gap2px-minw0"></span><span class="sp"></span><button class="ib x" title="${esc(t('ui.pane.core.fechar-ctrl.f8b2e3'))}">${I.close}</button></div><div class="pb"></div></div>`);
       $('.x', p).onclick = () => closePane(id);
       p.addEventListener('mousedown', () => { P2.focus = id; $$('.pane', host).forEach(x => x.classList.toggle('focus', x.dataset.id === id)); });
       const ph = $('.ph', p);
@@ -87,7 +87,7 @@ function dragSplit(e, a, b) {
 // While a divider is dragged a shield covers the window: the mouse stays with the drag even over the
 // browser's page (a stream or a native view), which would otherwise take the movements.
 function dragShield(cursor) {
-  const d = h(`<div class="dragshield" style="cursor:${cursor}"></div>`); document.body.appendChild(d); document.body.classList.add('dragging');
+  const d = h(`<div class="dragshield${cursor === 'crosshair' ? ' picking' : ''}"></div>`); document.body.appendChild(d); document.body.classList.add('dragging');
   return () => { d.remove(); document.body.classList.remove('dragging'); };
 }
 // The panes never take the conversation's room: whatever width the user set, the chat keeps at least

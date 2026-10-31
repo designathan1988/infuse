@@ -20,11 +20,11 @@ let browserSeq = 0;
 const keyMods = e => (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
 function mountBrowser(pb, extra, c) {
   const tabs = []; let cur = null; let native = !!(window.infuse && window.infuse.native); let picking = false;
-  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('ui.page.voltar.1505ad'))}">‹</button><button class="ib fwd" title="${esc(t('ui.pane.browser.avancar.81dae5'))}">›</button><button class="ib rl" title="${esc(t('ui.pane.browser.recarregar.6b6960'))}">${I.reload}</button><input class="url" placeholder="${esc(t('ui.pane.browser.endereco-ou-pesquisa-ex.70b87a'))}"><span class="spin bload" style="display:none"></span><button class="ib pick" title="${esc(t('ui.pane.browser.selecionar-um-elemento-da.d27c69'))}">⌖</button><button class="ib ext" title="${esc(t('ui.pane.browser.abrir-no-navegador-padrao.b49f1a'))}">${I.pop}</button></div><div class="frames" style="flex:1;display:flex;min-height:0;position:relative;overflow:hidden"></div>`;
-  extra.innerHTML = `<span class="row tabs" style="gap:2px;min-width:0"></span><button class="ib nt" title="${esc(t('ui.pane.browser.nova-aba.de48fd'))}">${I.plus}</button><button class="btn sm srv">${t('ui.pane.browser.servidores.ae86a5')} ${I.caret}</button>`;
+  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('ui.page.voltar.1505ad'))}">‹</button><button class="ib fwd" title="${esc(t('ui.pane.browser.avancar.81dae5'))}">›</button><button class="ib rl" title="${esc(t('ui.pane.browser.recarregar.6b6960'))}">${I.reload}</button><input class="url" placeholder="${esc(t('ui.pane.browser.endereco-ou-pesquisa-ex.70b87a'))}"><span class="spin bload hidden"></span><button class="ib pick" title="${esc(t('ui.pane.browser.selecionar-um-elemento-da.d27c69'))}">⌖</button><button class="ib ext" title="${esc(t('ui.pane.browser.abrir-no-navegador-padrao.b49f1a'))}">${I.pop}</button></div><div class="frames"></div>`;
+  extra.innerHTML = `<span class="row tabs u-gap2px-minw0"></span><button class="ib nt" title="${esc(t('ui.pane.browser.nova-aba.de48fd'))}">${I.plus}</button><button class="btn sm srv">${t('ui.pane.browser.servidores.ae86a5')} ${I.caret}</button>`;
   const frames = $('.frames', pb), url = $('.url', pb), bar = $('.tabs', extra), spin = $('.bload', pb);
   const label = tb => tb.title || (tb.url ? tb.url.replace(/^https?:\/\/(www\.)?/, '').split(/[/?#]/)[0] : t('ui.pane.browser.nova-aba.de48fd'));
-  const draw = () => { bar.innerHTML = ''; tabs.forEach(tb => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}" title="${esc(tb.url || '')}"><span class="trunc" style="max-width:120px">${esc(label(tb))}</span><span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) return closeTab(tb); show(tb); }; bar.appendChild(el); }); spin.style.display = cur?.loading ? '' : 'none'; };
+  const draw = () => { bar.innerHTML = ''; tabs.forEach(tb => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}" title="${esc(tb.url || '')}"><span class="trunc maxw120">${esc(label(tb))}</span><span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) return closeTab(tb); show(tb); }; bar.appendChild(el); }); spin.classList.toggle('hidden', !cur?.loading); };
   const onEv = ev => { const tb = tabs.find(x => x.id === ev.id); if (!tb) return; if (ev.url !== undefined) tb.url = ev.url; if (ev.title !== undefined) tb.title = ev.title; tb.loading = !!ev.loading; if (tb === cur && document.activeElement !== url) url.value = tb.url === 'about:blank' ? '' : (tb.url || ''); if (tb.url && tb.url !== 'about:blank') lsSet('browserUrl:' + c.root, tb.url); draw(); };
 
   // ---- native views (app window): kept exactly over the pane; hidden while a menu or dialog is open
@@ -82,7 +82,7 @@ function mountBrowser(pb, extra, c) {
   const timer = setInterval(() => place(), 200);
 
   const show = tb => {
-    cur = tb; tabs.forEach(x => { if (x.img) x.img.style.display = x === tb ? '' : 'none'; });
+    cur = tb; tabs.forEach(x => { if (x.img) x.img.classList.toggle('hidden', x !== tb); });
     url.value = tb.url && tb.url !== 'about:blank' ? tb.url : ''; draw(); place(true); if (native && tb.opened) infuse.call('browser', 'focus', { id: tb.id }).catch(() => { });
   };
   const add = u => { const tb = { id: 'b' + (++browserSeq) + '-' + Date.now(), url: u }; tabs.push(tb); if (!native) stream(tb); show(tb); if (u) go(u); else setTimeout(() => url.focus(), 30); return tb; };

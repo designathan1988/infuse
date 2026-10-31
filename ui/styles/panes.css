@@ -13,7 +13,7 @@
 .fli{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:5px;cursor:pointer;font-family:var(--mono);font-size:11.5px;color:var(--text2)} .fli:hover{background:var(--s2)} .fli.on{background:var(--s3);color:var(--text)} .fli .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rdiff{font-family:var(--mono);font-size:12px;line-height:1.6} .rdiff .ln{display:flex;position:relative} .rdiff .ln:hover .cadd{visibility:visible}
 .rdiff .no{width:46px;flex:none;text-align:right;padding-right:8px;color:var(--text3);user-select:none} .rdiff .tx{flex:1;white-space:pre;padding-right:12px} .rdiff .a1{background:var(--add);color:var(--add-t)} .rdiff .d1{background:var(--del);color:var(--del-t)} .rdiff .hh{color:var(--text3);background:var(--s2)}
-.rdiff .cadd{visibility:hidden;position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:4px;background:var(--accent);color:#fff;font-size:12px;line-height:16px;text-align:center;cursor:pointer;font-family:var(--sans)}
+.rdiff .cadd{visibility:hidden;position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:4px;background:var(--accent);color:var(--on-accent);font-size:12px;line-height:16px;text-align:center;cursor:pointer;font-family:var(--sans)}
 .cbox{margin:4px 12px 6px 54px;font-family:var(--sans);background:var(--surface);border-radius:8px;box-shadow:0 0 0 1px var(--border2);padding:6px} .cbox textarea{width:100%;min-height:42px;resize:vertical;font-size:12.5px}
 .cnote{margin:2px 12px 6px 54px;font-family:var(--sans);font-size:12.5px;background:var(--accent-soft);border-radius:8px;padding:6px 10px;display:flex;gap:8px;white-space:normal}
 .pfoot{border-top:1px solid var(--border);padding:8px 10px;display:flex;gap:6px;align-items:center;flex:none;background:var(--surface)} .pfoot input{flex:1;padding:5px 9px;border-radius:7px;background:var(--s2);font-size:12.5px}
@@ -27,7 +27,10 @@
 .urlbar .back,.urlbar .fwd{font-size:17px;line-height:1} .urlbar input:focus{box-shadow:0 0 0 1px var(--accent-line,var(--border2))}
 .bblock{display:flex;flex-direction:column;gap:8px;align-items:flex-start;max-width:420px;margin:40px auto;font-size:13px;line-height:1.5;color:var(--text2)} .bblock b{color:var(--text);font-size:14px}
 .sres{flex:1;overflow:auto;padding:14px 16px} .sr{padding:8px 0 10px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:2px;min-width:0} .sr a{color:var(--text);font-weight:500;font-size:13.5px;text-decoration:none} .sr a:hover{text-decoration:underline} .sr .sn{color:var(--text2);font-size:12.5px;line-height:1.45}
-.bframe{flex:1;border:0;width:100%;background:#fff}
+.bframe{flex:1;border:0;width:100%;background:var(--surface)}
+.frames{flex:1;display:flex;min-height:0;position:relative;overflow:hidden}
+.logs-input{width:100%;padding:6px 10px;border-radius:7px;background:var(--s2);margin-top:4px}
+.logs-out{white-space:pre-wrap;font-family:var(--mono);font-size:12px;background:var(--s2);border-radius:7px;padding:8px;margin-top:6px}
 .plist{padding:10px 12px;font-size:12.5px} .plist table{width:100%;border-collapse:collapse} .plist td,.plist th{text-align:left;padding:4px 6px;border-bottom:1px solid var(--border);vertical-align:top} .plist th{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
 .oracle{display:flex;flex-direction:column;gap:12px;padding-bottom:28px}
 .ohead{display:flex;gap:12px;align-items:center;color:var(--text2);font-size:12.5px;line-height:1.45}
@@ -52,7 +55,7 @@
 .odet{border-top:1px solid var(--border);padding-top:10px} .odet summary{cursor:pointer;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);list-style:none} .odet summary::before{content:'›';display:inline-block;width:12px;transition:transform .15s} .odet[open] summary::before{transform:rotate(90deg)} .odet[open] summary{margin-bottom:8px}
 .odet .mem{display:flex;flex-direction:column;gap:12px} .mintro{color:var(--text2);font-size:12.5px;line-height:1.5}
 .mex{cursor:pointer;border-radius:8px;padding:4px 6px;margin:-4px -6px} .mex:hover{background:var(--s3,var(--bg))}
-.seg{display:flex;gap:2px;background:var(--s2);border-radius:9px;padding:2px} .seg button{flex:1;padding:5px 8px;border-radius:7px;font-size:12px;color:var(--text2)} .seg button.on{background:var(--bg);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.12)} .seg button:disabled{opacity:.45}
+.seg{display:flex;gap:2px;background:var(--s2);border-radius:9px;padding:2px} .seg button{flex:1;padding:5px 8px;border-radius:7px;font-size:12px;color:var(--text2)} .seg button.on{background:var(--bg);color:var(--text);box-shadow:var(--shadow-3)} .seg button:disabled{opacity:.45}
 .madd{display:flex;gap:6px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:5px 6px 5px 8px} .madd input{flex:1;font-size:13px;padding:4px 2px;background:transparent} .madd .chip,.mitem .chip{flex:none;font-size:11.5px}
 .mitem{display:grid;grid-template-columns:auto 1fr auto auto;gap:4px 6px;align-items:start;padding:8px 2px;border-bottom:1px solid var(--border)} .mitem .mtext{font-size:13px;line-height:1.45;resize:none;background:transparent;padding:2px 4px;border-radius:5px;overflow:hidden;min-height:22px} .mitem .mtext:focus{background:var(--s2)}
 .mitem .mmeta{grid-column:2/5;font-size:11px;padding-left:4px} .mitem .ib{width:24px;height:24px} .mitem .del{opacity:0} .mitem:hover .del{opacity:1}

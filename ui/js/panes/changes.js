@@ -25,7 +25,7 @@ function mountChanges(pb, extra, c) {
     sel = p; $$('.fli', fl).forEach(x => x.classList.toggle('on', x.title === p));
     const r = await api('/api/diff?path=' + encodeURIComponent(p) + q() + '&project=' + encodeURIComponent(c.root), { root: c.dir });
     const lines = (r.diff || '').replace(/\n$/, '').split('\n'); let nNew = 0; const out = h('<div class="rdiff"></div>');
-    out.appendChild(h(`<div class="row" style="padding:6px 10px;border-bottom:1px solid var(--border);font-family:var(--sans)"><span class="mono trunc grow">${esc(p)}</span><button class="btn sm danger">${t('ui.pane.changes.descartar.c88fe9')}</button></div>`));
+    out.appendChild(h(`<div class="row u-p6px10px-bord1pxsolid--border-ff--sans"><span class="mono trunc grow">${esc(p)}</span><button class="btn sm danger">${t('ui.pane.changes.descartar.c88fe9')}</button></div>`));
     $('.btn', out).onclick = () => discard(p);
     for (const l of lines) {
       if (/^(diff |index |--- |\+\+\+ )/.test(l)) continue;
@@ -39,7 +39,7 @@ function mountChanges(pb, extra, c) {
     }
     dv.innerHTML = ''; dv.appendChild(out);
   };
-  const noteEl = cm => { const n = h(`<div class="cnote"><span class="grow">${esc(cm.text)}</span><button class="ib" style="width:20px;height:20px">${I.close}</button></div>`); $('button', n).onclick = () => { comments.splice(comments.indexOf(cm), 1); n.remove(); updC(); }; return n; };
+  const noteEl = cm => { const n = h(`<div class="cnote"><span class="grow">${esc(cm.text)}</span><button class="ib u-w20px-h20px">${I.close}</button></div>`); $('button', n).onclick = () => { comments.splice(comments.indexOf(cm), 1); n.remove(); updC(); }; return n; };
   const addComment = (row, path, line, code) => {
     const box = h(`<div class="cbox"><textarea placeholder="${esc(t('ui.pane.changes.comentario-para-o-agente.a30ab0'))}"></textarea></div>`); row.after(box); const ta = $('textarea', box); ta.focus();
     ta.onkeydown = e => { e.stopPropagation(); if (e.key === 'Escape') box.remove(); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (ta.value.trim()) { comments.push({ path, line, code, text: ta.value.trim() }); } box.remove(); sendComments(); return; } if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (ta.value.trim()) { const cm = { path, line, code, text: ta.value.trim() }; comments.push(cm); box.replaceWith(noteEl(cm)); updC(); } } };

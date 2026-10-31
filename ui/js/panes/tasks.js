@@ -4,7 +4,7 @@
 
 // ---------------------------------------------------------------- Tasks, Plan
 function mountTasks(pb) {
-  const draw = () => { const L = curL(); const ts = L?.snap?.tasks || []; pb.innerHTML = `<div class="plist">${ts.length ? `<div class="card plan" style="border:0;padding:0">${planCard(L).replace(/^<div class="card plan" data-card="plan">/, '').replace(/<\/div>$/, '')}</div>` : `<div class="empty">${t('ui.pane.tasks.o-agente-ainda-nao.89e131')}</div>`}${L?.running ? `<div class="status" style="margin-top:10px"><span class="spin"></span>${t('ui.feed.executando.0c69a4')} ${esc(L.running.name)}</div>` : ''}</div>`; };
+  const draw = () => { const L = curL(); const ts = L?.snap?.tasks || []; pb.innerHTML = `<div class="plist">${ts.length ? `<div class="card plan u-b0-p0">${planCard(L).replace(/^<div class="card plan" data-card="plan">/, '').replace(/<\/div>$/, '')}</div>` : `<div class="empty">${t('ui.pane.tasks.o-agente-ainda-nao.89e131')}</div>`}${L?.running ? `<div class="status u-mt10px"><span class="spin"></span>${t('ui.feed.executando.0c69a4')} ${esc(L.running.name)}</div>` : ''}</div>`; };
   draw(); return { refresh: draw };
 }
 // Background processes of the session: state, how long, the output as it comes, stop.

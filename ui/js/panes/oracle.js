@@ -46,7 +46,7 @@ function mountOracle(pb, extra, c) {
     if (helpOpen === null) helpOpen = !spec.checks.length;
     pb.innerHTML = `<div class="plist oracle">
       <div class="ohead"><button class="btn pri run">${t('ui.rail.pronto.1cfd95')}</button><span class="grow">${t('ui.pane.oracle.confere-o-trabalho-por.fb55e6')}</span></div>
-      <div class="howto" style="${helpOpen ? '' : 'display:none'}">
+      <div class="howto${helpOpen ? '' : ' hidden'}">
         <div class="row"><b class="grow">${t('ui.page.connectors.como-funciona.9b4488')}</b><button class="ib hx" title="${esc(t('ui.pane.oracle.fechar.5749fb'))}">${I.close}</button></div>
         <ol>
           <li><b>${t('ui.pane.oracle.diga-o-que-precisa.783226')}</b> ${t('ui.pane.oracle.quando-o-trabalho-estiver.8c7ff5')}</li>
@@ -74,7 +74,7 @@ function mountOracle(pb, extra, c) {
     $('.addc', pb).onclick = e => menu(e.currentTarget, [{ h: 'Que tipo de critério?' }, ...Object.entries(CRIT_KINDS).map(([k, x]) => ({ label: x.name, d: t('ui.pane.oracle.ex.645d99') + ' ' + x.ex, f: () => addCheck({ ...x.make(), description: t(x.title) }, true) }))], null, { alignRight: true });
     drawVerdict(c, $('.verdict', pb), last); drawChecks(); drawSugg(); drawDocs(files); loadSugg();
   };
-  const toggleHelp = open => { helpOpen = open ?? !helpOpen; lsSet('oracleHelp', helpOpen); const hb = $('.howto', pb); if (hb) hb.style.display = helpOpen ? '' : 'none'; };
+  const toggleHelp = open => { helpOpen = open ?? !helpOpen; lsSet('oracleHelp', helpOpen); const hb = $('.howto', pb); if (hb) hb.classList.toggle('hidden', !helpOpen); };
   $('.help', extra).onclick = () => toggleHelp();
   const addCheck = (k, focus) => { k.id = uid(k.description); spec.checks.push(k); save(); drawChecks(); if (focus) setTimeout(() => { const card = $$('.checks .crit', pb).pop(); (card && ($('.slot', card) || $('.ctitle', card)))?.focus(); }, 30); };
   const drawSugg = () => {
@@ -101,7 +101,7 @@ function mountOracle(pb, extra, c) {
     box.innerHTML = spec.checks.length ? '' : `<div class="oempty">${t('ui.pane.oracle.nenhum-criterio-ainda-adicione.4c1e6e')}</div>`;
     spec.checks.forEach((k, i) => {
       const r = res[k.id], kind = CRIT_KINDS[k.kind] || CRIT_KINDS.command;
-      const card = h(`<div class="crit"><div class="ch"><span class="cst ${r ? (r.passed ? 'ok' : 'bad') : ''}" title="${esc(r ? r.detail : t('ui.pane.oracle.ainda-nao-verificado.8172b9-2'))}">${r ? (r.passed ? '✓' : '✗') : '○'}</span><input class="ctitle" value="${esc(k.description || k.id)}" placeholder="${esc(t('ui.pane.oracle.nome-do-criterio.1ab8fb'))}" spellcheck="false"><span class="faint ckind">${esc(t(kind.name))}</span><button class="ib q" title="${esc(t('ui.pane.oracle.o-que-isto-faz.697de9'))}">?</button><button class="ib more" title="${esc(t('ui.page.connectors.mais.4f728e'))}">⋯</button></div><div class="cs">${sentence(k)}</div><div class="chelp faint" style="display:none">${esc(t(kind.help))}</div>${r && !r.passed ? `<div class="cres">${esc(r.detail)}</div>` : ''}</div>`);
+      const card = h(`<div class="crit"><div class="ch"><span class="cst ${r ? (r.passed ? 'ok' : 'bad') : ''}" title="${esc(r ? r.detail : t('ui.pane.oracle.ainda-nao-verificado.8172b9-2'))}">${r ? (r.passed ? '✓' : '✗') : '○'}</span><input class="ctitle" value="${esc(k.description || k.id)}" placeholder="${esc(t('ui.pane.oracle.nome-do-criterio.1ab8fb'))}" spellcheck="false"><span class="faint ckind">${esc(t(kind.name))}</span><button class="ib q" title="${esc(t('ui.pane.oracle.o-que-isto-faz.697de9'))}">?</button><button class="ib more" title="${esc(t('ui.page.connectors.mais.4f728e'))}">⋯</button></div><div class="cs">${sentence(k)}</div><div class="chelp faint hidden">${esc(t(kind.help))}</div>${r && !r.passed ? `<div class="cres">${esc(r.detail)}</div>` : ''}</div>`);
       $('.ctitle', card).oninput = e => { k.description = e.target.value; save(); };
       $$('.slot', card).forEach(inp => inp.oninput = () => {
         const f = inp.dataset.f, val = inp.value; k.expect = k.expect || {};
@@ -111,7 +111,7 @@ function mountOracle(pb, extra, c) {
         else k[f] = val.trim();
         save();
       });
-      $('.q', card).onclick = () => { const hp = $('.chelp', card); hp.style.display = hp.style.display ? '' : 'none'; };
+      $('.q', card).onclick = () => { const hp = $('.chelp', card); hp.classList.toggle('hidden'); };
       const fm = $('.fmode', card);
       if (fm) fm.onclick = e => menu(e.currentTarget, [['exists', 'existe'], ['absent', 'não existe'], ['contains', 'contém um texto']].map(([m, l]) => ({ label: l, f: () => { k.expect = m === 'absent' ? { exists: false } : m === 'contains' ? { contains: '' } : {}; save(); drawChecks(); } })));
       $('.more', card).onclick = e => menu(e.currentTarget, [
@@ -128,7 +128,7 @@ function mountOracle(pb, extra, c) {
     const docs = $('.docs', pb);
     const prose = files.filter(f => f.name !== 'checks.json');
     (prose.length ? prose : [{ name: 'pronto.md', content: '' }]).forEach(f => {
-      const d = h(`<div style="margin-bottom:10px">${prose.length > 1 ? `<div class="faint mono" style="margin-bottom:4px">${esc(f.name)}</div>` : ''}<textarea class="doc" placeholder="${esc(t('ui.pane.oracle.ex-o-login-aceita.331782'))}">${esc(f.content)}</textarea><div class="row"><button class="btn sm ex">${t('ui.page.hooks.inserir-exemplo.61c3bf')}</button><span class="faint st"></span></div></div>`);
+      const d = h(`<div class="u-mb10px">${prose.length > 1 ? `<div class="faint mono u-mb4px">${esc(f.name)}</div>` : ''}<textarea class="doc" placeholder="${esc(t('ui.pane.oracle.ex-o-login-aceita.331782'))}">${esc(f.content)}</textarea><div class="row"><button class="btn sm ex">${t('ui.page.hooks.inserir-exemplo.61c3bf')}</button><span class="faint st"></span></div></div>`);
       const ta = $('textarea', d), st = $('.st', d);
       const put = async () => { await api('/api/oracle', { method: 'PUT', body: { name: f.name, content: ta.value }, root: c.root }); st.textContent = t('ui.page.customize.salvo.7af5c9'); setTimeout(() => st.textContent = '', 1200); };
       ta.oninput = debounce(put, 500);

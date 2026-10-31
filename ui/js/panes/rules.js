@@ -14,7 +14,7 @@ function mountMemory(pb, extra, c) {
     const items = data[scope] || [];
     pb.innerHTML = `<div class="plist mem">
       <div class="mintro">${t('ui.pane.rules.o-que-o-agente.f200e5')}</div>
-      <div class="howto" style="${helpOpen ? '' : 'display:none'}"><div class="row"><b class="grow">${t('ui.page.connectors.como-funciona.9b4488')}</b><button class="ib hx" title="${esc(t('ui.pane.oracle.fechar.5749fb'))}">${I.close}</button></div>
+      <div class="howto${helpOpen ? '' : ' hidden'}"><div class="row"><b class="grow">${t('ui.page.connectors.como-funciona.9b4488')}</b><button class="ib hx" title="${esc(t('ui.pane.oracle.fechar.5749fb'))}">${I.close}</button></div>
         <ol><li>${t('ui.pane.rules.escreva-uma-frase-e.994b45')}</li>
         <li>${t('ui.pane.rules.a-estrela-marca-o.16890c')}</li>
         <li>${t('ui.pane.rules.o-agente-tambem-registra.65a6d0')}</li>

@@ -31,7 +31,7 @@ function renderComposer(v) {
   } else {
     add(h(`<span class="chip static" title="${esc(L.snap.workRoot || o.root)}">${I.folder}<span class="v">${esc(projectLabel(o.root))}</span></span>`));
   }
-  add(h('<span style="flex:1"></span>'));
+  add(h('<span class="u-flex1"></span>'));
   const brow = $('.brow', elOf(v)); $('.modechip', brow)?.remove();
   const mc = h(`<span class="chip modechip mode-${o.mode}" title="${esc(t('ui.composer.modo-de-permissao-shift.b8e6f6'))}"><span class="v">${t(modeInfo[o.mode]?.[0] || o.mode)}</span>${I.caret}</span>`);
   mc.onclick = e => modeMenu(v, e.currentTarget); brow.insertBefore(mc, $('.sp', brow));
@@ -42,7 +42,7 @@ function renderComposer(v) {
   sendBtn.classList.toggle('stop', !!(isBusy && !$('.prompt', elOf(v)).value.trim()));
   sendBtn.innerHTML = sendBtn.classList.contains('stop') ? I.stop : I.up; sendBtn.title = t(sendBtn.classList.contains('stop') ? 'Parar (Esc)' : isBusy ? 'Pôr na fila (Enter)' : 'Enviar (Enter)');
   const q = $('.queue', elOf(v)); q.innerHTML = '';
-  (L?.queue || []).forEach((m, i) => { const row = h(`<div class="qi"><span>⏎ ${esc(m.text)}</span><span class="faint">${t('ui.composer.na-fila.eabe0d')}</span><button class="ib" style="width:20px;height:20px">${I.close}</button></div>`); $('button', row).onclick = () => { Live.queue(L.id, 'remove', null, i); renderComposer(freshView(v)); }; q.appendChild(row); });
+  (L?.queue || []).forEach((m, i) => { const row = h(`<div class="qi"><span>⏎ ${esc(m.text)}</span><span class="faint">${t('ui.composer.na-fila.eabe0d')}</span><button class="ib u-w20px-h20px">${I.close}</button></div>`); $('button', row).onclick = () => { Live.queue(L.id, 'remove', null, i); renderComposer(freshView(v)); }; q.appendChild(row); });
   const ring = $('.ring', elOf(v)); const pct = L ? Math.min(100, Math.round(((L.lastIn || 0) / ctxLimit(L)) * 100)) : 0;
   const c = 2 * Math.PI * 8;
   ring.innerHTML = L ? `<svg width="18" height="18" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" stroke="var(--s3)"/><circle cx="10" cy="10" r="8" stroke="${pct > 80 ? 'var(--warn)' : 'var(--text2)'}" stroke-dasharray="${c * pct / 100} ${c}" transform="rotate(-90 10 10)"/></svg>` : '';

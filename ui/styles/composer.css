@@ -18,7 +18,7 @@
 .chip:hover{background:var(--s3);color:var(--text)} .chip .v{overflow:hidden;text-overflow:ellipsis} .chip .car{opacity:.55;font-size:10px}
 .chip.static{cursor:default} .chip.static:hover{background:none;color:var(--text2)}
 .chip.mode-acceptEdits{color:var(--ok)} .chip.mode-plan{color:var(--accent)} .chip.mode-bypass{color:var(--warn);background:var(--warn-soft)}
-.sw{width:26px;height:15px;border-radius:999px;background:var(--border2);position:relative;transition:background .12s;flex:none} .sw::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#fff;transition:left .12s} .sw.on{background:var(--text)} .sw.on::after{left:13px}
+.sw{width:26px;height:15px;border-radius:999px;background:var(--border2);position:relative;transition:background .12s;flex:none} .sw::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:var(--knob);transition:left .12s} .sw.on{background:var(--text)} .sw.on::after{left:13px}
 :root.dark .sw.on::after{background:var(--bg)}
 .hint{font-size:11px;color:var(--text3);text-align:center;padding-top:6px}
 

@@ -6,7 +6,7 @@
 .tool img.shot{display:block;max-width:100%;max-height:420px;border:1px solid var(--border);border-radius:8px;margin:4px 0 8px;cursor:zoom-in}
 .mission .mimp{margin-top:6px;padding:6px 8px;border-radius:7px;background:var(--bad-soft);font-size:12px;line-height:1.45} .maud{margin-top:5px;font-size:11.5px;color:var(--text2);border-left:2px solid var(--border2);padding-left:7px} .mstep{padding:6px 0;border-bottom:1px solid var(--border);font-size:12px} .mstep .mono{white-space:pre-wrap;font-size:11px;margin-top:2px}
 .rkb{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;resize:none;border:0;padding:0}
-.rview{position:absolute;left:0;top:0;max-width:none;max-height:none;outline:none;cursor:default;background:#fff;user-select:none;image-rendering:auto} .rview.picking{cursor:crosshair;box-shadow:inset 0 0 0 2px var(--accent)}
+.rview{position:absolute;left:0;top:0;max-width:none;max-height:none;outline:none;cursor:default;background:var(--surface);user-select:none;image-rendering:auto} .rview.picking{cursor:crosshair;box-shadow:inset 0 0 0 2px var(--accent)}
 .mbar{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11.5px;color:var(--text3);min-height:24px} .mbar.u{justify-content:flex-end}
 .mbar .acts,.afoot .acts{display:flex;gap:1px;opacity:0;transition:opacity .12s} .umsg:hover .mbar .acts,.a:hover .afoot .acts{opacity:1}
 .mbar .ib,.afoot .acts .ib{width:26px;height:26px;color:var(--text3)} .mbar .ib:hover,.afoot .acts .ib:hover{color:var(--text);background:var(--s2)} .mbar .ib.on,.afoot .acts .ib.on{color:var(--accent);opacity:1}
@@ -14,7 +14,7 @@
 .umsg.pinned>.u,.a.pinned{box-shadow:inset 3px 0 0 var(--accent)} .a.pinned{padding-left:10px;border-radius:4px}
 .flash{animation:flash 1.4s ease} @keyframes flash{0%,40%{background:var(--accent-soft)}100%{background:transparent}}
 .pins .pinli{cursor:pointer} .pins .pinli:hover .n{color:var(--text)}
-.dragshield{position:fixed;inset:0;z-index:9999;background:transparent} body.dragging{user-select:none}
+.dragshield{position:fixed;inset:0;z-index:9999;background:transparent}.dragshield.picking{cursor:crosshair} body.dragging{user-select:none}
 .livecode{font-family:var(--mono);font-size:12px;line-height:1.55;max-height:380px;overflow:auto;background:var(--s2);border-radius:8px;padding:6px 0;margin:4px 0}
 .livecode .lc{display:flex;white-space:pre} .livecode .no{flex:none;width:42px;text-align:right;padding-right:12px;color:var(--text3);user-select:none} .livecode .tx{flex:1;min-width:0}
 .livecode.old{background:var(--bad-soft)} .livecode.new{background:var(--ok-soft)} .livecode.old .tx{text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--bad) 40%,transparent)}
@@ -38,7 +38,7 @@
 .pout{margin:0;max-height:320px;overflow:auto;padding:8px 10px;border-top:1px solid var(--border);font-size:11.5px;background:var(--bg);white-space:pre-wrap;word-break:break-all}
 .agent .tt{font-size:12.5px} .agent .now{padding:0 10px 8px 28px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .agent .abody{border-top:1px solid var(--border);padding:8px 12px;font-size:12.5px} .agent .lbl{font-size:11px;margin:6px 0 2px;text-transform:uppercase;letter-spacing:.04em}
 .status.agentsgo{cursor:pointer} .status.agentsgo b{font-weight:600}
-.vbar .ib.cnt{position:relative} .vbar .ib.cnt i{position:absolute;top:1px;right:0;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--ok);color:#fff;font:600 9.5px/14px var(--sans);font-style:normal;display:none;box-sizing:border-box;text-align:center} .vbar .ib.cnt.working i{display:block}
+.vbar .ib.cnt{position:relative} .vbar .ib.cnt i{position:absolute;top:1px;right:0;min-width:14px;height:14px;padding:0 3px;border-radius:7px;background:var(--ok);color:var(--on-accent);font:600 9.5px/14px var(--sans);font-style:normal;display:none;box-sizing:border-box;text-align:center} .vbar .ib.cnt.working i{display:block}
 .vbar .ib.on{background:var(--s2);color:var(--text)}
 .agentblk>.h .tag{font-size:10.5px;padding:0 6px} .agentblk>.b{padding-top:4px}
 .atask{margin:2px 0 6px;font-size:12px;color:var(--text3)} .atask summary{cursor:pointer;user-select:none} .atask .md{margin-top:4px;padding:6px 10px;background:var(--s1);border-radius:6px;color:var(--text2);max-height:240px;overflow:auto}

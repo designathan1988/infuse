@@ -23,7 +23,7 @@ function renderChat(v) {
       if (m.kind === 'compaction') { out += `<div class="marker" title="${esc(main.slice(0, 600))}">${t('ui.chat.conversa-resumida.93e9c2')}</div>`; return; }
       const attached = texts.slice(1).map(b => (b.text.match(/path="([^"]+)"/) || [])[1]).filter(Boolean);
       const mission = missionOf(m);
-      const body = mission ? `<span class="tag warn" style="margin-right:6px">${esc(missionTag(mission))}</span>${esc(mission.turn ? main : mission.goal)}` : esc(main);
+      const body = mission ? `<span class="tag warn u-mr6px">${esc(missionTag(mission))}</span>${esc(mission.turn ? main : mission.goal)}` : esc(main);
       out += `<div class="umsg${(s.pinnedMsgs || []).includes(i) ? ' pinned' : ''}" data-mi="${i}"><div class="u sel">${body}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div>${msgBar(s, m, i, true)}</div>`;
     } else {
       if (m.kind === 'review_ack' || m.kind === 'compaction') return;
@@ -41,7 +41,7 @@ function renderChat(v) {
     if (turn && (starts.has(next) || (next === msgs.length && !['thinking', 'tool', 'waiting_permission', 'waiting_user', 'compacting'].includes(s.state)))) { out += turnSummary(s, msgs, s.turnStarts[turn - 1], i); cut('sum:' + i); }
   });
   cut('tail');
-  if (!msgs.length) parts.unshift(['empty', `<div class="empty" style="padding-top:14vh">${t('ui.chat.sessao-vazia-descreva-a.84122c')}</div>`]);
+  if (!msgs.length) parts.unshift(['empty', `<div class="empty u-pt14vh">${t('ui.chat.sessao-vazia-descreva-a.84122c')}</div>`]);
   parts.push(['live', '<div class="live"></div>']); // kept as it is: renderLive patches its inside
   if (s.pendingPermission) parts.push(['perm', permCard(s.pendingPermission)]);
   if (s.pendingQuestion) parts.push(['question', questionCard(s.pendingQuestion)]);
@@ -139,7 +139,7 @@ function planCard(L) {
   // only a running agent has a task "now"; once it stops, an unfinished task shows as stopped
   const live = busy(L), open = tasks.filter(x => x.status !== 'done' && x.status !== 'blocked').length;
   const head = !live && open ? `<span class="r warn">${t('ui.chat.parado.ca805e')} · ${done} ${t('ui.chat.de.600ccd')} ${tasks.length}</span>` : `<span class="r">${done} ${t('ui.chat.de.600ccd')} ${tasks.length}</span>`;
-  return `<div class="card plan${live ? '' : ' idle'}" data-card="plan"><div class="ch">${t('ui.sidebar.plano.d7d889')}${head}</div><div class="bar100 pbar"><i style="width:${pct}%"></i></div>
+  return `<div class="card plan${live ? '' : ' idle'}" data-card="plan"><div class="ch">${t('ui.sidebar.plano.d7d889')}${head}</div><div class="bar100 pbar"><i style="--w:${pct}%"></i></div>
     ${tasks.map(x => { const st = x.status === 'in_progress' && !live ? 'stopped' : x.status; const [ic, cls] = PLAN_ICON[st] || PLAN_ICON.pending; const just = x.status === 'done' && prev[x.id] && prev[x.id] !== 'done'; return `<div class="ptask ${st}${just ? ' just' : ''}"><span class="rst ${cls}">${ic}</span><span class="grow"><span class="tt">${esc(x.text)}</span>${x.proof ? `<span class="pf">${t('ui.chat.comprovacao.e3540f')} <code>${esc(x.proof)}</code></span>` : ''}${x.note ? `<span class="pn">${esc(t(x.note))}</span>` : ''}</span></div>`; }).join('')}</div>`;
 }
 // Every card of the right column folds with its caret; the choice is remembered.
@@ -156,27 +156,27 @@ function railFolds(v, el) {
 const MSTATE = { running: ['warn', 'em andamento'], aprovada: ['ok', 'aprovada'], orcamento: ['bad', 'orçamento esgotado'], impasse: ['bad', 'impasse'], parada: ['', 'parada'] };
 function missionCard(L) {
   const m = L.snap.mission;
-  if (!m) return `<div class="card"><div class="ch">${t('ui.chat.missao.d16ac5')}</div><div class="faint" style="margin-bottom:6px">${t('ui.chat.o-agente-trabalha-sozinho.66d3f2')}</div><button class="btn sm line mnew">${t('ui.chat.iniciar-missao.0fb7e1')}</button></div>`;
+  if (!m) return `<div class="card"><div class="ch">${t('ui.chat.missao.d16ac5')}</div><div class="faint u-mb6px">${t('ui.chat.o-agente-trabalha-sozinho.66d3f2')}</div><button class="btn sm line mnew">${t('ui.chat.iniciar-missao.0fb7e1')}</button></div>`;
   const spent = Math.max(0, (L.snap.cost || 0) - (m.startCost || 0)), turns = (m.steps || []).length + (m.state === 'running' ? 1 : 0);
   const [cls, label] = MSTATE[m.state] || ['', m.state]; const pct = Math.min(100, Math.round(spent / (m.budgetUSD || 1) * 100));
   const last = (m.steps || []).slice(-1)[0];
   return `<div class="card mission" data-card="mission"><div class="ch">${t('ui.chat.missao.d16ac5')}<span class="r"><span class="tag ${cls}">${t(label)}</span></span></div>
     <div class="faint trunc" title="${esc(m.goal)}">${esc(m.goal)}</div>
-    <div class="bar100" style="margin:6px 0 3px"><i style="width:${pct}%"></i></div><div class="faint">${t('ui.chat.turno.bf9e3d')} ${Math.min(turns, m.maxTurns)}/${m.maxTurns} · ${money(spent)} ${t('ui.chat.de.600ccd')} ${money(m.budgetUSD)}</div>
-    ${m.noPrice && m.state === 'running' ? `<div class="faint" style="margin-top:4px">${t('ui.chat.modelo-sem-preco-na.5a9acd')}</div>` : ''}
-    ${m.reason ? `<div style="margin-top:6px">${esc(m.reason)}</div>` : ''}
+    <div class="bar100 u-m6px03px"><i style="--w:${pct}%"></i></div><div class="faint">${t('ui.chat.turno.bf9e3d')} ${Math.min(turns, m.maxTurns)}/${m.maxTurns} · ${money(spent)} ${t('ui.chat.de.600ccd')} ${money(m.budgetUSD)}</div>
+    ${m.noPrice && m.state === 'running' ? `<div class="faint u-mt4px">${t('ui.chat.modelo-sem-preco-na.5a9acd')}</div>` : ''}
+    ${m.reason ? `<div class="u-mt6px">${esc(m.reason)}</div>` : ''}
     ${m.impasse ? `<div class="mimp"><b>${t('ui.chat.impasse.c3b2ae')}:</b> ${esc(m.impasse.reason)}${(m.impasse.tried || []).length ? `<div>${t('ui.chat.tentou.a2a156')}: ${m.impasse.tried.map(esc).join('; ')}</div>` : ''}${m.impasse.evidence ? `<div class="mono">${esc(m.impasse.evidence)}</div>` : ''}<div><b>${t('ui.chat.precisa-de.75e090')}:</b> ${esc(m.impasse.needs)}</div></div>` : ''}
     ${last?.auditor ? `<div class="maud" title="${esc(t('ui.chat.auditor-de-fluxo-conselho.7b61f0'))}">${esc(last.auditor)}</div>` : ''}
     ${(m.steps || []).length ? `<details class="odet"><summary>${t('ui.chat.linha-do-tempo.f82230')} (${m.steps.length})</summary>${m.steps.map(st => `<div class="mstep"><span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[st.verdict] || 'warn'}">${esc(t(st.verdict || '—'))}</span><span class="faint">${t('ui.chat.turno.bf9e3d')} ${st.turn} · ${new Date(st.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${money(st.cost)}</span><div class="mono faint">${esc(st.summary || '')}</div>${st.auditor ? `<div class="maud">${esc(st.auditor)}</div>` : ''}</div>`).join('')}</details>` : ''}
-    <div class="row" style="margin-top:6px">${m.state === 'running' ? `<button class="btn sm mstop">${t('ui.chat.parar-missao.80570c')}</button>` : `<button class="btn sm line mnew">${t('ui.chat.nova-missao.5161da')}</button>`}</div></div>`;
+    <div class="row u-mt6px">${m.state === 'running' ? `<button class="btn sm mstop">${t('ui.chat.parar-missao.80570c')}</button>` : `<button class="btn sm line mnew">${t('ui.chat.nova-missao.5161da')}</button>`}</div></div>`;
 }
 function missionDialog(v) {
   const L = v.sid && S.live[v.sid]; const P = $('.prompt', elOf(v));
-  const d = h(`<div class="dlg" style="width:min(560px,92vw)"><h3 style="margin:0 0 4px">${t('ui.chat.iniciar-missao.0fb7e1')}</h3><div class="faint" style="margin-bottom:10px">${t('ui.chat.o-agente-trabalha-sozinho.6dacb5')}</div>
-    <textarea class="doc mg" style="min-height:110px" placeholder="${esc(t('ui.chat.o-objetivo-ex-a.d8dca4'))}">${esc(P?.value || '')}</textarea>
-    <div class="cs" style="padding:8px 0 0">${t('ui.chat.gastar-no-maximo.ed47a4')} US$ <input class="slot mono mb" value="2.00"> ${t('ui.chat.e.58e6b3')} <input class="slot mono mt" value="10"> ${t('ui.chat.turnos.1e1627')}.</div>
-    <div class="mcrit faint" style="margin-top:6px"></div>
-    <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn cancel">${t('ui.chat.cancelar.62b146')}</button><button class="btn pri go">${t('ui.chat.iniciar.931e78')}</button></div></div>`);
+  const d = h(`<div class="dlg u-wmin560px92vw"><h3 class="u-m004px">${t('ui.chat.iniciar-missao.0fb7e1')}</h3><div class="faint u-mb10px">${t('ui.chat.o-agente-trabalha-sozinho.6dacb5')}</div>
+    <textarea class="doc mg u-minh110px" placeholder="${esc(t('ui.chat.o-objetivo-ex-a.d8dca4'))}">${esc(P?.value || '')}</textarea>
+    <div class="cs u-p8px00">${t('ui.chat.gastar-no-maximo.ed47a4')} US$ <input class="slot mono mb" value="2.00"> ${t('ui.chat.e.58e6b3')} <input class="slot mono mt" value="10"> ${t('ui.chat.turnos.1e1627')}.</div>
+    <div class="mcrit faint u-mt6px"></div>
+    <div class="row u-mt12px-jcflex-end"><button class="btn cancel">${t('ui.chat.cancelar.62b146')}</button><button class="btn pri go">${t('ui.chat.iniciar.931e78')}</button></div></div>`);
   const close = overlay(d);
   api('/api/oracle/spec', { root: L?.root || curRoot() }).then(r => { const n = (r.spec?.checks || []).length; $('.mcrit', d).innerHTML = n ? `✓ ${n} ${t(n === 1 ? 'critério executável definido no Pronto?' : 'critérios executáveis definidos no Pronto?')}` : `<span class="del">${t('ui.chat.nenhum-criterio-executavel-no.c95c48')}</span> <a href="#" class="defc">${t('ui.chat.definir-criterios.b44672')}</a>`; const dc = $('.defc', d); if (dc) dc.onclick = e => { e.preventDefault(); close(); togglePane('oracle', true); }; });
   $('.cancel', d).onclick = close;

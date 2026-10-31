@@ -14,15 +14,15 @@ function renderRail(v) {
   ${diagnosisCard(L)}
   ${planCard(L)}
   <div class="card" data-card="changes"><div class="ch">${t('ui.rail.alteracoes.db6cfc')}<span class="r mono">${c.isGit === false && !c.local ? t('ui.rail.sem-git.f3cb20') : `<span class="add">+${c.added || 0}</span> <span class="del">−${c.removed || 0}</span>`}</span></div>${c.local ? `<div class="segrow">${scopeSwitch()}</div>` : ''}
-    ${files.length ? files.slice(0, 8).map(f => `<div class="li${f.status === 'D' ? ' gone' : ''}" data-f="${esc(f.path)}"><span class="n" title="${esc(f.path)}">${esc(f.path)}</span>${chgTag(f)}<span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`).join('') + (files.length > 8 ? `<div class="faint" style="padding:3px 4px">+${files.length - 8} ${t('ui.rail.arquivos.0dd06b')}</div>` : '') : `<div class="faint">${t('ui.rail.nenhuma-alteracao.63c618')}</div>`}
+    ${files.length ? files.slice(0, 8).map(f => `<div class="li${f.status === 'D' ? ' gone' : ''}" data-f="${esc(f.path)}"><span class="n" title="${esc(f.path)}">${esc(f.path)}</span>${chgTag(f)}<span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`).join('') + (files.length > 8 ? `<div class="faint u-p3px4px">+${files.length - 8} ${t('ui.rail.arquivos.0dd06b')}</div>` : '') : `<div class="faint">${t('ui.rail.nenhuma-alteracao.63c618')}</div>`}
     <div class="prline"></div></div>
-  <div class="card ctxcard" data-card="context" style="cursor:pointer"><div class="ch">${t('ui.composer.contexto.4b9a77')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(ctxLimit(L))} tokens · ${money(L.snap.cost)}</div></div>
+  <div class="card ctxcard pointer" data-card="context"><div class="ch">${t('ui.composer.contexto.4b9a77')}<span class="r">${pct}%</span></div><div class="bar100"><i style="--w:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(ctxLimit(L))} tokens · ${money(L.snap.cost)}</div></div>
   <div class="card" data-card="env"><div class="ch">${t('ui.rail.ambiente.45c6f1')}</div><div class="kv"><span>${t('ui.rail.onde.e53176')}</span><span>${t('ui.rail.este-computador.2175ee')}</span></div><div class="kv"><span>${t('ui.sidebar.pasta.46139b')}</span><span title="${esc(L.snap.workRoot)}">${esc(baseName(L.snap.workRoot || L.root))}</span></div>${L.snap.branch ? `<div class="kv"><span>${t('ui.rail.branch.10d735')}</span><span class="mono">${esc(L.snap.branch)}</span></div>` : ''}${L.snap.worktree ? `<div class="kv"><span>${t('ui.composer.worktree.94449c')}</span><span>${t('ui.rail.isolado.955cdd')}</span></div>` : ''}<div class="kv"><span>${t('ui.rail.modelo.dab9c1')}</span><span class="mono">${esc(L.snap.model || '')}</span></div></div>
   ${(L.snap.pinnedMsgs || []).length ? `<div class="card pins" data-card="pins"><div class="ch">${t('ui.rail.mensagens-fixadas.eb6a13')}<span class="r">${L.snap.pinnedMsgs.length}</span></div>${L.snap.pinnedMsgs.map(i => `<div class="li pinli" data-goto="${i}"><span class="n">${esc(msgText(L.snap.messages[i] || { content: [] }).split('\n')[0].slice(0, 80) || '…')}</span></div>`).join('')}</div>` : ''}
   ${runningCard(L)}
   ${missionCard(L)}
   <div class="card" data-card="pronto"><div class="ch">${t('ui.rail.pronto.2726ba')}<span class="r">${R.verdict ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[R.verdict.verdict] || 'warn'}">${esc(t(R.verdict.verdict))}</span>` : `<span class="faint">${t('ui.rail.nao-verificado.5c9de0')}</span>`}</span></div>
-    <div class="faint" style="margin-bottom:6px">${R.verdict ? esc(R.verdict.summary) : t('ui.rail.so-a-execucao-dos.dc8982')}</div>
+    <div class="faint u-mb6px">${R.verdict ? esc(R.verdict.summary) : t('ui.rail.so-a-execucao-dos.dc8982')}</div>
     <div class="row"><button class="btn sm line oraclego">${t('ui.rail.pronto.1cfd95')}</button><button class="btn sm" data-open="oracle">${t('ui.rail.criterios.ea0e17')}</button><button class="btn sm revgo" title="${esc(t('ui.rail.um-revisor-com-contexto.d4aecd'))}">${t('ui.rail.revisar.4275a6')}</button></div></div>`;
   $('.revgo', el).onclick = () => runReview(v);
   railFolds(v, el);
@@ -64,14 +64,14 @@ async function renderPR(v, el) {
   if (!R.pr || Date.now() - R.prAt > 60000) { R.pr = await api('/api/pr', { root: L.root, dir: L.snap.workRoot || L.root }); R.prAt = Date.now(); }
   const pr = R.pr?.pr;
   if (!R.pr?.gh) { // without the GitHub CLI: say so and offer to install it, instead of hiding PRs
-    el.innerHTML = `<div class="row" style="margin-top:6px;font-size:12px"><span class="faint grow">${t('ui.rail.pull-requests-precisam-do.5b399b')}</span><button class="btn sm" data-gh="install">${t('ui.rail.instalar.f93057')}</button></div>`;
+    el.innerHTML = `<div class="row u-mt6px-fs12px"><span class="faint grow">${t('ui.rail.pull-requests-precisam-do.5b399b')}</span><button class="btn sm" data-gh="install">${t('ui.rail.instalar.f93057')}</button></div>`;
     $('[data-gh]', el).onclick = () => { togglePane('terminal', true); setTimeout(() => paneCall('terminal', 'openAt', L.snap.workRoot || L.root, 'winget install --id GitHub.cli -e && gh auth login', 'GitHub CLI'), 300); };
     return;
   }
-  if (!pr) { el.innerHTML = `<div class="row" style="margin-top:6px"><button class="btn sm line" data-pr="create">${t('ui.rail.criar-pr.6ddbaf')}</button></div>`; }
+  if (!pr) { el.innerHTML = `<div class="row u-mt6px"><button class="btn sm line" data-pr="create">${t('ui.rail.criar-pr.6ddbaf')}</button></div>`; }
   else {
     var checks = pr.statusCheckRollup || []; var fail = checks.filter(c => /FAIL|ERROR/i.test(c.conclusion || c.state || '')).length, pend = checks.filter(c => !(c.conclusion || '') && !/SUCCESS/.test(c.state || '')).length;
-    el.innerHTML = `<div class="row" style="margin-top:8px;font-size:12px"><a href="${esc(pr.url)}" target="_blank">#${pr.number}</a><span class="trunc grow">${esc(pr.title)}</span><span class="tag ${fail ? 'bad' : pend ? 'warn' : 'ok'}">${fail ? t('ui.rail.ci-falhou.e74fef') : pend ? t('ui.rail.ci-rodando.6ce084') : t('ui.rail.ci-ok.8dca54')}</span><button class="ib" data-pr="menu" style="width:22px;height:22px">${I.more}</button></div>`;
+    el.innerHTML = `<div class="row u-mt8px-fs12px"><a href="${esc(pr.url)}" target="_blank">#${pr.number}</a><span class="trunc grow">${esc(pr.title)}</span><span class="tag ${fail ? 'bad' : pend ? 'warn' : 'ok'}">${fail ? t('ui.rail.ci-falhou.e74fef') : pend ? t('ui.rail.ci-rodando.6ce084') : t('ui.rail.ci-ok.8dca54')}</span><button class="ib u-w22px-h22px" data-pr="menu">${I.more}</button></div>`;
   }
   $$('[data-pr]', el).forEach(b => b.onclick = async e => {
     if (b.dataset.pr === 'create') { b.disabled = true; const r = await api('/api/pr', { body: { action: 'create' }, root: L.root, dir: L.snap.workRoot || L.root }); toast(r.ok ? 'PR criado' : (r.error || r.output)); R.prAt = 0; renderRail(v); }

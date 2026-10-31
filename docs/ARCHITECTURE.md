@@ -94,9 +94,10 @@ internal/
   `markdown`, `composer`, `rail`, `overlays`, `boot`.
 - One file per pane (`ui/js/panes/*`) and per page (`ui/js/pages/*`); the registry in
   `panes/core.js` is loaded after the pane implementations it names.
-- `ui/styles/*` is the only place for static styles; dynamic geometry uses CSS custom properties.
-- Remaining debt: inline styles in generated markup (107) are still being moved to component classes;
-  only dynamic geometry (pane widths) should remain inline as CSS variables.
+- `ui/styles/tokens.css` is the only file with colour literals; every other rule reads tokens.
+  `ui/styles/utilities.css` holds the one-off layout classes that used to be inline declarations.
+- Dynamic geometry travels as CSS custom properties (`--w`, `--pane-width`); the architecture test
+  refuses a static `style="…"` declaration and any colour literal outside the token file.
 
 ## Known debt
 
