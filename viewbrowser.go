@@ -17,15 +17,16 @@ import (
 )
 
 type viewTab struct {
-	page   *cdpBrowser
-	mu     sync.Mutex
-	subs   map[chan []byte]struct{}
-	width  int
-	height int
-	dpr    float64
-	url    string
-	title  string
-	frame  []byte // the last frame event, for a new subscriber
+	page      *cdpBrowser
+	mu        sync.Mutex
+	subs      map[chan []byte]struct{}
+	width     int
+	height    int
+	dpr       float64
+	streaming bool
+	url       string
+	title     string
+	frame     []byte // the last frame event, for a new subscriber
 }
 
 var (
@@ -162,10 +163,16 @@ func (t *viewTab) resize(w, h int, dprs ...float64) {
 		return
 	}
 	ctx := context.Background()
-	// drawn at the screen's real density, shown at its CSS size: sharp and never stretched
+	// drawn at the screen's real density, shown at its CSS size: sharp and never stretched. The page
+	// reflows at once; the frame stream, started once with room for any screen, keeps running.
 	_, _ = t.page.call(ctx, "Emulation.setDeviceMetricsOverride", map[string]any{"width": w, "height": h, "deviceScaleFactor": dpr, "mobile": false})
-	_, _ = t.page.call(ctx, "Page.stopScreencast", nil)
-	_, _ = t.page.call(ctx, "Page.startScreencast", map[string]any{"format": "jpeg", "quality": 80, "maxWidth": int(float64(w) * dpr), "maxHeight": int(float64(h) * dpr), "everyNthFrame": 1})
+	t.mu.Lock()
+	started := t.streaming
+	t.streaming = true
+	t.mu.Unlock()
+	if !started {
+		_, _ = t.page.call(ctx, "Page.startScreencast", map[string]any{"format": "jpeg", "quality": 82, "maxWidth": 5120, "maxHeight": 2880, "everyNthFrame": 1})
+	}
 }
 
 // ---------------------------------------------------------------- HTTP

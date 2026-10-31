@@ -282,8 +282,15 @@ function mountBrowser(pb, extra, c) {
     kb.addEventListener('paste', e => { const txt = e.clipboardData?.getData('text'); if (txt) { e.preventDefault(); input(tb, { kind: 'text', text: txt }); } });
     kb.oninput = () => { if (kb.value) { input(tb, { kind: 'text', text: kb.value }); kb.value = ''; } }; // composed characters (accents, IME)
   };
-  let resizeT = null;
-  const resizeStreams = () => { if (native) return; clearTimeout(resizeT); resizeT = setTimeout(() => tabs.forEach(tb => tb.img && input(tb, { kind: 'resize', ...size() })), 60); };
+  // live resize: the page reflows while the pane is dragged — one request in flight, the latest size wins
+  let resizeBusy = false, resizeAgain = false, resizeRaf = 0;
+  const sendResize = async () => {
+    if (resizeBusy) { resizeAgain = true; return; }
+    resizeBusy = true; const sz = size();
+    await Promise.all(tabs.filter(tb => tb.img).map(tb => input(tb, { kind: 'resize', ...sz })));
+    resizeBusy = false; if (resizeAgain) { resizeAgain = false; sendResize(); }
+  };
+  const resizeStreams = () => { if (native) return; cancelAnimationFrame(resizeRaf); resizeRaf = requestAnimationFrame(sendResize); };
   const ro = new ResizeObserver(() => { place(); resizeStreams(); }); ro.observe(frames);
   const timer = setInterval(() => place(), 200);
 

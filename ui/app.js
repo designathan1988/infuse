@@ -92,7 +92,7 @@ function buildView(v) {
       <span class="r row" style="gap:2px"><button class="chg" data-a="changes" title="Alterações (Ctrl+Shift+D)"></button>
       <button class="ib" data-a="terminal" title="Terminal (Ctrl+\`)">${I.term}</button><button class="ib" data-a="files" title="Arquivos">${I.files}</button><button class="ib" data-a="browser" title="Navegador (Ctrl+Shift+B)">${I.globe}</button>
       <button class="ib" data-a="rail" title="Mostrar/ocultar detalhes da sessão">${I.rail}</button><button class="ib" data-a="more" title="Mais">${I.vmore}</button></span></div>
-    <div class="vbody"><div class="vchat"><div class="scroller"><div class="chat"></div></div>
+    <div class="vbody"><div class="vchat"><div class="toc"><div class="ticks"></div><div class="toclist"></div></div><div class="scroller"><div class="chat"></div></div><button class="jumpdown" title="Ir para o fim da conversa">${I.down || '↓'}</button>
       <div class="composer"><div class="hometitle"><b>O que vamos construir?</b><span class="hsub"></span></div><div class="queue"></div>
         <div class="box"><div class="atts"></div><textarea class="prompt" rows="1" placeholder="Peça algo… @ para arquivos, / para comandos"></textarea>
           <div class="brow"><button class="ib plusbtn" title="Anexar e mais">${I.plus}</button><span class="sp"></span><span class="ring" title="Uso do contexto"></span><button class="send" title="Enviar (Enter)">${I.up}</button></div></div>
@@ -444,7 +444,7 @@ function renderChat(v) {
   for (const m of msgs) for (const b of m.content || []) if (b.type === 'tool_result') results[b.tool_use_id] = b;
   const starts = new Set(s.turnStarts); let turn = 0; let out = '';
   msgs.forEach((m, i) => {
-    if (starts.has(i)) { turn++; out += `<div class="turnsep"><span class="l"></span><button class="btn sm" data-rw="${turn}" title="${esc(t('Restaurar código e/ou conversa a antes deste turno'))}">↶ ${t('voltar aqui')}</button></div>`; }
+    if (starts.has(i)) { turn++; out += `<div class="turnsep" data-turn="${turn}"><span class="l"></span><button class="btn sm" data-rw="${turn}" title="${esc(t('Restaurar código e/ou conversa a antes deste turno'))}">↶ ${t('voltar aqui')}</button></div>`; }
     if (m.role === 'user') {
       const texts = m.content.filter(b => b.type === 'text'), imgs = m.content.filter(b => b.type === 'image');
       if (!texts.length && !imgs.length) return;
@@ -472,9 +472,9 @@ function renderChat(v) {
   if (s.pendingQuestion) out += questionCard(s.pendingQuestion);
   if (s.error && s.state === 'error') out += `<div class="errbox">${esc(s.error)}</div>`;
   if (!msgs.length) out = `<div class="empty" style="padding-top:14vh">${t('Sessão vazia. Descreva a feature, a correção ou a dúvida.')}</div>` + out;
-  const sc = $('.scroller', v.el); const atBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120;
+  const sc = $('.scroller', v.el); if (v._jump !== v.sid) v.stick = true;
   chat.innerHTML = out; bindChat(v, chat); renderLive(v);
-  if (atBottom || v._jump !== v.sid) { sc.scrollTop = sc.scrollHeight; v._jump = v.sid; }
+  if (v.stick !== false) toBottom(v); v._jump = v.sid; renderToc(v); updateJump(v);
 }
 const fmtClock = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 function fmtDur(ms) { if (ms == null) return ''; if (ms < 1000) return ms + ' ms'; const s = ms / 1000; if (s < 60) return (s < 10 ? s.toFixed(1) : Math.round(s)) + ' s'; const m = Math.floor(s / 60); return `${m}m ${Math.round(s % 60)}s`; }
@@ -549,6 +549,49 @@ function insertPick(p) {
   P.value = (P.value.trim() ? P.value.trimEnd() + '\n\n' : '') + `[${t('Elemento selecionado em')} ${p.url}]\n${t('Seletor')}: ${p.selector}\n${t('Posição')}: ${p.rect.x},${p.rect.y} · ${p.rect.w}×${p.rect.h}${st}${p.text ? `\n${t('Texto')}: ${p.text}` : ''}\n\`\`\`html\n${p.html}\n\`\`\`\n`;
   grow(P); P.focus(); P.setSelectionRange(P.value.length, P.value.length); toast(t('Elemento adicionado à mensagem'));
 }
+// Scrolling: the conversation follows the end only while the user is there; scrolling up stops it.
+function toBottom(v) { const sc = v.el && $('.scroller', v.el); if (!sc) return; v._prog = true; sc.scrollTop = sc.scrollHeight; }
+function updateJump(v) {
+  const sc = v.el && $('.scroller', v.el), b = v.el && $('.jumpdown', v.el); if (!sc || !b) return;
+  const far = sc.scrollHeight - sc.scrollTop - sc.clientHeight > 120; const L = v.sid && S.live[v.sid];
+  b.classList.toggle('show', far); b.classList.toggle('live', far && busy(L));
+  b.style.bottom = ($('.composer', v.el)?.offsetHeight || 120) + 14 + 'px';
+}
+function bindScroll(v) {
+  const sc = $('.scroller', v.el); if (!sc || sc._bound) return; sc._bound = true;
+  sc.addEventListener('wheel', e => { if (e.deltaY < 0) v.stick = false; }, { passive: true });
+  sc.addEventListener('scroll', () => {
+    const dist = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+    if (v._prog) v._prog = false; else if (dist > 24) v.stick = false;
+    if (dist < 8) v.stick = true;
+    updateJump(v); markToc(v);
+  }, { passive: true });
+  $('.jumpdown', v.el).onclick = () => { v.stick = true; sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' }); };
+}
+// Chapters: one per turn, titled by what the user asked; hover lists them, a click goes to the exact point.
+function chapterTitle(m) {
+  let tx = msgText(m).trim();
+  if (tx.startsWith('[Missão]')) { const k = tx.indexOf('Objetivo: '); tx = (k >= 0 ? t('Missão') + ': ' + tx.slice(k + 10) : t('Missão')); }
+  else if (tx.startsWith('[Missão — ')) tx = tx.slice(1, tx.indexOf(']'));
+  return tx.split('\n')[0].slice(0, 90) || t('(sem texto)');
+}
+function renderToc(v) {
+  const L = v.sid && S.live[v.sid], toc = v.el && $('.toc', v.el); if (!toc) return; bindScroll(v);
+  const s = L?.snap; const starts = s?.turnStarts || [];
+  if (starts.length < 2) { toc.classList.add('hidden'); return; }
+  toc.classList.remove('hidden');
+  const items = starts.map((idx, k) => ({ turn: k + 1, title: chapterTitle(s.messages[idx] || { content: [] }), ts: s.messages[idx]?.ts }));
+  $('.ticks', toc).innerHTML = items.slice(-14).map(x => `<i data-t="${x.turn}"></i>`).join('');
+  $('.toclist', toc).innerHTML = `<div class="th">${t('Capítulos')}</div>` + items.map(x => `<div class="ti" data-t="${x.turn}"><span class="n">${x.turn}</span><span class="tt">${esc(x.title)}</span>${x.ts ? `<span class="tm">${fmtClock(x.ts)}</span>` : ''}</div>`).join('');
+  $$('[data-t]', toc).forEach(el => el.onclick = () => { const sep = $(`.turnsep[data-turn="${el.dataset.t}"]`, v.el); if (sep) { v.stick = false; sep.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+  markToc(v);
+}
+function markToc(v) {
+  const sc = $('.scroller', v.el), toc = $('.toc', v.el); if (!sc || !toc) return;
+  const top = sc.getBoundingClientRect().top + 40; let cur = 1;
+  for (const sep of $$('.turnsep', sc)) { if (sep.getBoundingClientRect().top <= top) cur = +sep.dataset.turn; else break; }
+  $$('[data-t]', toc).forEach(el => el.classList.toggle('on', +el.dataset.t === cur));
+}
 function turnOf(s, msgIndex) { const k = s.turnStarts.indexOf(msgIndex); return k >= 0 ? k + 1 : 0; }
 function msgText(m) { return (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim(); }
 function copyText(txt, what) { navigator.clipboard.writeText(txt).then(() => toast(t(what || 'Copiado')), () => toast('Não foi possível copiar')); }
@@ -598,7 +641,7 @@ function renderLive(v) {
   const st = L.snap?.state;
   if (st === 'thinking' || st === 'tool' || st === 'compacting') out += `<div class="status"><span class="spin"></span><span>${st === 'tool' ? t('executando ') + esc(L.running?.name || '') : st === 'compacting' ? t('compactando contexto') : t('pensando')}</span><span class="faint el" data-el="${L.id}"></span></div>`;
   el.innerHTML = out; bindChat(v, el);
-  const sc = $('.scroller', v.el); if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 200) sc.scrollTop = sc.scrollHeight;
+  if (v.stick !== false) toBottom(v); updateJump(v);
 }
 setInterval(() => { for (const el of $$('[data-el]')) { const L = S.live[el.dataset.el]; if (L?.started) el.textContent = Math.round((Date.now() - L.started) / 1000) + 's'; } }, 500);
 
