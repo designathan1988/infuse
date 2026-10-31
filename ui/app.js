@@ -520,6 +520,25 @@ function turnSummary(s, msgs, from, to) {
 function reviewBlock(text, i) {
   return `<div class="report review"><div class="rh"><b>${t('Revisão independente')}</b><span class="faint">${t('um revisor com contexto limpo leu o diff, o plano e os critérios')}</span><span class="grow"></span><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button></div><div class="md sel">${md(text)}</div><div class="rnext"><span class="grow faint">${t('O agente vê estes achados na próxima mensagem.')}</span><button class="btn sm pri" data-fixreview>${t('Pedir correções')}</button></div></div>`;
 }
+// The plan, live: each task with its state (done, now, next, blocked) and how it will be proven.
+const PLAN_ICON = { done: ['✓', 'ok'], in_progress: ['', 'now'], blocked: ['✗', 'bad'], pending: ['', ''] };
+function planCard(L) {
+  const tasks = L.snap.tasks || []; if (!tasks.length) return '';
+  const done = tasks.filter(x => x.status === 'done').length, pct = Math.round(done / tasks.length * 100);
+  const prev = L._planPrev || {}; L._planPrev = Object.fromEntries(tasks.map(x => [x.id, x.status]));
+  return `<div class="card plan" data-card="plan"><div class="ch">${t('Plano')}<span class="r">${done} ${t('de')} ${tasks.length}</span></div><div class="bar100 pbar"><i style="width:${pct}%"></i></div>
+    ${tasks.map(x => { const [ic, cls] = PLAN_ICON[x.status] || PLAN_ICON.pending; const just = x.status === 'done' && prev[x.id] && prev[x.id] !== 'done'; return `<div class="ptask ${x.status}${just ? ' just' : ''}"><span class="rst ${cls}">${ic}</span><span class="grow"><span class="tt">${esc(x.text)}</span>${x.proof ? `<span class="pf">${t('comprovação:')} <code>${esc(x.proof)}</code></span>` : ''}</span></div>`; }).join('')}</div>`;
+}
+// Every card of the right column folds with its caret; the choice is remembered.
+function railFolds(v, el) {
+  const folds = lsGet('railFolds', {});
+  $$('.card[data-card]', el).forEach(card => {
+    const key = card.dataset.card, ch = $('.ch', card); if (!ch || $('.fold', ch)) return;
+    ch.insertAdjacentHTML('afterbegin', `<span class="fold" title="${esc(t('Recolher ou expandir'))}">›</span>`);
+    card.classList.toggle('folded', !!folds[key]);
+    ch.addEventListener('click', e => { if (e.target.closest('button, a, .tag')) return; e.stopPropagation(); folds[key] = !folds[key]; lsSet('railFolds', folds); card.classList.toggle('folded', !!folds[key]); });
+  });
+}
 // Missions: the agent keeps working until the Done? criteria pass, within a budget.
 const MSTATE = { running: ['warn', 'em andamento'], aprovada: ['ok', 'aprovada'], orcamento: ['bad', 'orçamento esgotado'], impasse: ['bad', 'impasse'], parada: ['', 'parada'] };
 function missionCard(L) {
@@ -528,7 +547,7 @@ function missionCard(L) {
   const spent = Math.max(0, (L.snap.cost || 0) - (m.startCost || 0)), turns = (m.steps || []).length + (m.state === 'running' ? 1 : 0);
   const [cls, label] = MSTATE[m.state] || ['', m.state]; const pct = Math.min(100, Math.round(spent / (m.budgetUSD || 1) * 100));
   const last = (m.steps || []).slice(-1)[0];
-  return `<div class="card mission"><div class="ch">${t('Missão')}<span class="r"><span class="tag ${cls}">${t(label)}</span></span></div>
+  return `<div class="card mission" data-card="mission"><div class="ch">${t('Missão')}<span class="r"><span class="tag ${cls}">${t(label)}</span></span></div>
     <div class="faint trunc" title="${esc(m.goal)}">${esc(m.goal)}</div>
     <div class="bar100" style="margin:6px 0 3px"><i style="width:${pct}%"></i></div><div class="faint">${t('turno')} ${Math.min(turns, m.maxTurns)}/${m.maxTurns} · ${money(spent)} ${t('de')} ${money(m.budgetUSD)}</div>
     ${m.noPrice && m.state === 'running' ? `<div class="faint" style="margin-top:4px">${t('Modelo sem preço na tabela: o orçamento em dólares não é medido, vale o limite de turnos (Configurações › Modelos e custos).')}</div>` : ''}
@@ -1046,18 +1065,19 @@ function renderRail(v) {
   const pct = Math.min(100, Math.round(((L.lastIn || 0) / (S.settings.contextLimit || 200000)) * 100));
   const tasks = L.snap.tasks || [];
   el.innerHTML = `
-  <div class="card"><div class="ch">${t('Alterações')}<span class="r mono">${c.isGit === false && !c.local ? t('sem git') : `<span class="add">+${c.added || 0}</span> <span class="del">−${c.removed || 0}</span>`}</span></div>
+  ${planCard(L)}
+  <div class="card" data-card="changes"><div class="ch">${t('Alterações')}<span class="r mono">${c.isGit === false && !c.local ? t('sem git') : `<span class="add">+${c.added || 0}</span> <span class="del">−${c.removed || 0}</span>`}</span></div>
     ${files.length ? files.slice(0, 8).map(f => `<div class="li" data-f="${esc(f.path)}"><span class="n" title="${esc(f.path)}">${esc(f.path)}</span><span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`).join('') + (files.length > 8 ? `<div class="faint" style="padding:3px 4px">+${files.length - 8} ${t('arquivos')}</div>` : '') : `<div class="faint">${t('Nenhuma alteração')}</div>`}
     <div class="prline"></div></div>
-  <div class="card ctxcard" style="cursor:pointer"><div class="ch">${t('Contexto')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(S.settings.contextLimit || 200000)} tokens · ${money(L.snap.cost)}</div></div>
-  <div class="card"><div class="ch">${t('Ambiente')}</div><div class="kv"><span>${t('Onde')}</span><span>${t('Este computador')}</span></div><div class="kv"><span>${t('Pasta')}</span><span title="${esc(L.snap.workRoot)}">${esc(baseName(L.snap.workRoot || L.root))}</span></div>${L.snap.branch ? `<div class="kv"><span>${t('Branch')}</span><span class="mono">${esc(L.snap.branch)}</span></div>` : ''}${L.snap.worktree ? `<div class="kv"><span>${t('Worktree')}</span><span>${t('isolado')}</span></div>` : ''}<div class="kv"><span>${t('Modelo')}</span><span class="mono">${esc(L.snap.model || '')}</span></div></div>
-  ${tasks.length ? `<div class="card" style="cursor:pointer" data-open="tasks"><div class="ch">${t('Tarefas')}<span class="r">${tasks.filter(x => x.status === 'done').length}/${tasks.length}</span></div>${tasks.slice(0, 5).map(x => `<div style="font-size:12px;color:${x.status === 'done' ? 'var(--text3)' : 'var(--text)'}">${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text)}</div>`).join('')}</div>` : ''}
-  ${(L.snap.pinnedMsgs || []).length ? `<div class="card pins"><div class="ch">${t('Mensagens fixadas')}<span class="r">${L.snap.pinnedMsgs.length}</span></div>${L.snap.pinnedMsgs.map(i => `<div class="li pinli" data-goto="${i}"><span class="n">${esc(msgText(L.snap.messages[i] || { content: [] }).split('\n')[0].slice(0, 80) || '…')}</span></div>`).join('')}</div>` : ''}
+  <div class="card ctxcard" data-card="context" style="cursor:pointer"><div class="ch">${t('Contexto')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(S.settings.contextLimit || 200000)} tokens · ${money(L.snap.cost)}</div></div>
+  <div class="card" data-card="env"><div class="ch">${t('Ambiente')}</div><div class="kv"><span>${t('Onde')}</span><span>${t('Este computador')}</span></div><div class="kv"><span>${t('Pasta')}</span><span title="${esc(L.snap.workRoot)}">${esc(baseName(L.snap.workRoot || L.root))}</span></div>${L.snap.branch ? `<div class="kv"><span>${t('Branch')}</span><span class="mono">${esc(L.snap.branch)}</span></div>` : ''}${L.snap.worktree ? `<div class="kv"><span>${t('Worktree')}</span><span>${t('isolado')}</span></div>` : ''}<div class="kv"><span>${t('Modelo')}</span><span class="mono">${esc(L.snap.model || '')}</span></div></div>
+  ${(L.snap.pinnedMsgs || []).length ? `<div class="card pins" data-card="pins"><div class="ch">${t('Mensagens fixadas')}<span class="r">${L.snap.pinnedMsgs.length}</span></div>${L.snap.pinnedMsgs.map(i => `<div class="li pinli" data-goto="${i}"><span class="n">${esc(msgText(L.snap.messages[i] || { content: [] }).split('\n')[0].slice(0, 80) || '…')}</span></div>`).join('')}</div>` : ''}
   ${missionCard(L)}
-  <div class="card"><div class="ch">${t('Pronto')}<span class="r">${L.verdict ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[L.verdict.verdict] || 'warn'}">${esc(t(L.verdict.verdict))}</span>` : `<span class="faint">${t('não verificado')}</span>`}</span></div>
+  <div class="card" data-card="pronto"><div class="ch">${t('Pronto')}<span class="r">${L.verdict ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[L.verdict.verdict] || 'warn'}">${esc(t(L.verdict.verdict))}</span>` : `<span class="faint">${t('não verificado')}</span>`}</span></div>
     <div class="faint" style="margin-bottom:6px">${L.verdict ? esc(L.verdict.summary) : t('Só a execução dos critérios decide; a palavra do agente não conta.')}</div>
     <div class="row"><button class="btn sm line oraclego">${t('Pronto?')}</button><button class="btn sm" data-open="oracle">${t('Critérios')}</button><button class="btn sm revgo" title="${esc(t('Um revisor com contexto limpo lê o diff, o plano e os critérios e aponta problemas'))}">${t('Revisar')}</button></div></div>`;
   $('.revgo', el).onclick = () => runReview(v);
+  railFolds(v, el);
   $$('[data-goto]', el).forEach(x => x.onclick = () => { const m = $(`[data-mi="${x.dataset.goto}"]`, v.el); if (m) { v.stick = false; m.scrollIntoView({ behavior: 'smooth', block: 'center' }); m.classList.add('flash'); setTimeout(() => m.classList.remove('flash'), 1400); } });
   const ms = $('.mstop', el); if (ms) ms.onclick = () => api(`/api/session/${L.id}/mission`, { body: { action: 'stop' }, root: L.root });
   const mn = $('.mnew', el); if (mn) mn.onclick = () => missionDialog(v);

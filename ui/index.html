@@ -128,6 +128,14 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .livecode.old{background:var(--bad-soft)} .livecode.new{background:var(--ok-soft)} .livecode.old .tx{text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--bad) 40%,transparent)}
 .livecode .cursor{display:inline-block;width:7px;height:14px;margin-left:54px;background:var(--text2);animation:blink 1s steps(2) infinite;vertical-align:middle}
 @keyframes blink{50%{opacity:0}}
+.card.plan .pbar{margin:2px 0 8px} .card.plan .pbar i{background:var(--ok)}
+.ptask{display:flex;gap:9px;align-items:flex-start;padding:5px 0;font-size:12.5px;line-height:1.45;border-top:1px solid var(--border)} .ptask:first-of-type{border-top:0}
+.ptask .tt{display:block;color:var(--text)} .ptask.done .tt{color:var(--text3)} .ptask .pf{display:block;font-size:11.5px;color:var(--text3);margin-top:1px} .ptask .pf code{font-size:11px}
+.ptask .rst.now{border:2px solid var(--border2);border-top-color:var(--accent);background:transparent;animation:spin .9s linear infinite;box-sizing:border-box}
+.ptask:not(.done):not(.in_progress):not(.blocked) .rst{background:transparent;border:1.5px solid var(--border2);box-sizing:border-box}
+.ptask.just{animation:flash 1.4s ease}
+.card .ch .fold{display:inline-block;width:12px;margin-right:4px;color:var(--text3);transition:transform .15s;transform:rotate(90deg);cursor:pointer} .card.folded .ch .fold{transform:rotate(0)}
+.card[data-card] .ch{cursor:pointer;user-select:none} .card.folded>:not(.ch){display:none}
 .report{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:6px 0;display:flex;flex-direction:column;gap:6px;font-size:13px}
 .report .rh{display:flex;gap:8px;align-items:baseline} .report .rh .faint{font-size:11.5px}
 .rrow{display:flex;gap:8px;align-items:flex-start;line-height:1.45} .rrow code{font-size:11.5px} .rrow .rev{display:block;font-size:11.5px}

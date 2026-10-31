@@ -115,6 +115,8 @@ const EN = {
   // messages, chapters, scroll
   'hoje': 'today', 'ontem': 'yesterday', 'agora há pouco': 'just now', 'há': '', 'dias': 'days ago', 'Editar e refazer a partir daqui': 'Edit and redo from here', 'Nova sessão a partir daqui': 'New session from here', 'Fixar mensagem': 'Pin message', 'Ler em voz alta': 'Read aloud', 'Este navegador não tem leitura em voz alta': 'This browser has no read-aloud', 'Nova sessão a partir desta mensagem': 'New session from this message', 'Mensagens fixadas': 'Pinned messages',
   'Capítulos': 'Chapters', '(sem texto)': '(no text)', 'Ir para o fim da conversa': 'Go to the end of the conversation', 'Abra uma página primeiro': 'Open a page first', 'Clique num elemento da página': 'Click an element of the page', 'Nada nesse ponto': 'Nothing at that point', 'Não abriu': 'Did not open',
+  // plan, live code, rail
+  'Recolher ou expandir': 'Collapse or expand', 'O agente ainda não registrou o plano nesta sessão. O protocolo exige o plano antes de qualquer alteração.': 'The agent has not registered the plan in this session yet. The protocol requires the plan before any change.', 'Escrevendo': 'Writing', 'Editando': 'Editing', 'Preparando comando': 'Preparing command', 'editando': 'editing', 'montando o comando': 'composing the command',
 };
 let LANG = 'pt';
 function t(s) { if (LANG !== 'en' || typeof s !== 'string') return s; const k = s.trim(); return EN[k] !== undefined ? s.replace(k, EN[k]) : s; }
