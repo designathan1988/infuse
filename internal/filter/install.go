@@ -1,4 +1,4 @@
-package main
+package filter
 
 // Global, one-time installation. After this, every Claude Code session on this machine runs its
 // Bash tool through infuse — desktop app or CLI — with no launcher involved.
@@ -8,6 +8,7 @@ package main
 
 import (
 	"encoding/json"
+	"infuse/internal/core"
 	"fmt"
 	"io"
 	"os"
@@ -20,14 +21,14 @@ func shimPath() string {
 	if runtime.GOOS == "windows" {
 		name = "bash.exe"
 	}
-	return filepath.Join(InfuseHome(), "bin", name)
+	return filepath.Join(core.InfuseHome(), "bin", name)
 }
 
-func claudeSettingsPath() string { return filepath.Join(homeDir(), ".claude", "settings.json") }
+func claudeSettingsPath() string { return filepath.Join(core.HomeDir(), ".claude", "settings.json") }
 
 func readSettings() map[string]any {
 	s := map[string]any{}
-	_ = readJSON(claudeSettingsPath(), &s)
+	_ = core.ReadJSON(claudeSettingsPath(), &s)
 	return s
 }
 
@@ -56,7 +57,7 @@ type InstallResult struct {
 }
 
 func Install() InstallResult {
-	res := InstallResult{Shim: shimPath(), RealBash: FindRealBash(), SettingsFile: claudeSettingsPath(), EnvKey: envKey()}
+	res := InstallResult{Shim: shimPath(), RealBash: core.FindRealBash(), SettingsFile: claudeSettingsPath(), EnvKey: envKey()}
 	if err := copySelf(res.Shim); err != nil {
 		res.Error = "cannot install shim: " + err.Error()
 		return res
@@ -66,12 +67,12 @@ func Install() InstallResult {
 	}
 	s := readSettings()
 	settingsEnv(s)[res.EnvKey] = res.Shim
-	if err := writeJSON(res.SettingsFile, s); err != nil {
+	if err := core.WriteJSON(res.SettingsFile, s); err != nil {
 		res.Error = "cannot write Claude settings: " + err.Error()
 	}
 	// Example rules the first time, so the panel has something to show and edit.
-	if !exists(globalRulesFile()) {
-		_ = writeJSON(globalRulesFile(), exampleRules)
+	if !core.Exists(GlobalRulesFile()) {
+		_ = core.WriteJSON(GlobalRulesFile(), ExampleRules)
 	}
 	return res
 }
@@ -86,7 +87,7 @@ func Uninstall() InstallResult {
 			delete(s, "env")
 		}
 	}
-	if err := writeJSON(res.SettingsFile, s); err != nil {
+	if err := core.WriteJSON(res.SettingsFile, s); err != nil {
 		res.Error = err.Error()
 	}
 	_ = os.RemoveAll(filepath.Dir(res.Shim))
@@ -94,7 +95,7 @@ func Uninstall() InstallResult {
 }
 
 func copySelf(dst string) error {
-	src := selfPath()
+	src := core.SelfPath()
 	if sameFile(src, dst) {
 		return nil
 	}
@@ -115,7 +116,7 @@ func copySelf(dst string) error {
 		return err
 	}
 	out.Close()
-	if exists(dst) {
+	if core.Exists(dst) {
 		_ = os.Rename(dst, dst+".old")
 	}
 	if err := os.Rename(tmp, dst); err != nil {
@@ -152,14 +153,14 @@ func GetStatus() Status {
 	}
 	shim := shimPath()
 	return Status{
-		Platform: runtime.GOOS, Version: version, Home: InfuseHome(),
-		Shim: shim, ShimInstalled: exists(shim), RealBash: FindRealBash(),
+		Platform: runtime.GOOS, Version: core.Version, Home: core.InfuseHome(),
+		Shim: shim, ShimInstalled: core.Exists(shim), RealBash: core.FindRealBash(),
 		SettingsFile: claudeSettingsPath(), ClaudeEnv: env, EnvKey: envKey(),
 		Pointed: env[envKey()] == shim,
 	}
 }
 
-func printJSON(v any) {
+func PrintJSON(v any) {
 	b, _ := json.MarshalIndent(v, "", "  ")
 	fmt.Println(string(b))
 }

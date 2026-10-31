@@ -1,7 +1,8 @@
-package main
+package filter
 
 import (
 	"fmt"
+	"infuse/internal/core"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,7 +64,7 @@ func TransformCommand(cmd, cwd string) TransformResult {
 
 		switch {
 		case intent != nil && literal:
-			target := resolveIn(cwd, FromMsysPath(intent.Path))
+			target := ResolveIn(cwd, core.FromMsysPath(intent.Path))
 			_ = os.MkdirAll(filepath.Dir(target), 0o755)
 			flag := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 			if intent.Append {
@@ -86,8 +87,8 @@ func TransformCommand(cmd, cwd string) TransformResult {
 			if intent.Append {
 				redir, verb = ">>", "append to"
 			}
-			printf := fmt.Sprintf("printf '%%s' %s %s %s", doubleQuote(body), redir, shellQuote(intent.Path))
-			actions = append(actions, TransformAction{Kind: ActHeredocToFile, Path: resolveIn(cwd, FromMsysPath(intent.Path)), Bytes: len(body),
+			printf := fmt.Sprintf("printf '%%s' %s %s %s", doubleQuote(body), redir, ShellQuote(intent.Path))
+			actions = append(actions, TransformAction{Kind: ActHeredocToFile, Path: ResolveIn(cwd, core.FromMsysPath(intent.Path)), Bytes: len(body),
 				Detail: fmt.Sprintf("%s %s via printf (shell expansion kept) without heredoc", verb, intent.Path)})
 			out = out[:lineStart] + printf + "\n" + out[h.BlockEnd:]
 		case literal:
@@ -98,7 +99,7 @@ func TransformCommand(cmd, cwd string) TransformResult {
 				actions = append(actions, TransformAction{Kind: ActHeredocToStdin, Path: tmp.Name(), Bytes: len(body),
 					Detail: "heredoc body routed through " + tmp.Name()})
 				afterOp := out[h.OpEnd:lineEnd]
-				out = out[:h.OpStart] + "< " + shellQuote(toBashPath(tmp.Name())) + afterOp + "\n" + out[h.BlockEnd:]
+				out = out[:h.OpStart] + "< " + ShellQuote(core.ToBashPath(tmp.Name())) + afterOp + "\n" + out[h.BlockEnd:]
 			}
 		default:
 			actions = append(actions, TransformAction{Kind: ActHeredocToStdin, Bytes: len(body),
@@ -132,9 +133,9 @@ func doubleQuote(body string) string {
 	return b.String()
 }
 
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+func ShellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-func resolveIn(cwd, p string) string {
+func ResolveIn(cwd, p string) string {
 	if filepath.IsAbs(p) {
 		return p
 	}

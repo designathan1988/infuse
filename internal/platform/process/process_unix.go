@@ -1,26 +1,26 @@
 //go:build !windows
 
-package main
+package process
 
 import (
 	"os/exec"
 	"syscall"
 )
 
-func detach(cmd *exec.Cmd) {
+func Detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }
 
-func processAlive(pid int) bool {
+func ProcessAlive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
 
-func noConsoleWindow(cmd *exec.Cmd) {}
+func NoConsoleWindow(cmd *exec.Cmd) {}
 
-func attachParentConsole() {}
+func AttachParentConsole() {}
 
 // procGroup puts the command in its own process group, so killTree reaches what it started.
-func procGroup(cmd *exec.Cmd) {
+func ProcGroup(cmd *exec.Cmd) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
@@ -28,7 +28,7 @@ func procGroup(cmd *exec.Cmd) {
 }
 
 // killTree ends the process group.
-func killTree(cmd *exec.Cmd) {
+func KillTree(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
@@ -38,5 +38,5 @@ func killTree(cmd *exec.Cmd) {
 }
 
 // attachJob and releaseJob: the process group set by procGroup does this job on Unix.
-func attachJob(cmd *exec.Cmd)  {}
-func releaseJob(cmd *exec.Cmd) {}
+func AttachJob(cmd *exec.Cmd)  {}
+func ReleaseJob(cmd *exec.Cmd) {}

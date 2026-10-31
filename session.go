@@ -347,7 +347,7 @@ func thinkingBudget(effort string, fallback int) int {
 // ---------------------------------------------------------------- helpers used by tools
 
 func (s *Session) isProtected(abs string) bool {
-	_, ok := newGuard(s.Root, s.settings.ProtectedPaths).protects(s.Root, abs)
+	_, ok := newGuard(s.Root, s.settings.ProtectedPaths).Protects(s.Root, abs)
 	return ok
 }
 

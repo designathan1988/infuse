@@ -38,7 +38,7 @@ func FuzzGuardNeverLetsAWriteToTheOracleThrough(f *testing.F) {
 			if target == "/dev/null" || strings.ContainsAny(target, "$`*?") {
 				continue // neutralized, or decided only at run time (expansions are refused by the guard itself)
 			}
-			if rel, bad := g.protects(root, target); bad {
+			if rel, bad := g.Protects(root, target); bad {
 				t.Fatalf("redirect into a protected path (%s) survived the guard:\n in: %q\nout: %q", rel, cmd, out)
 			}
 		}

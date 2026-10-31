@@ -1,4 +1,4 @@
-package main
+package filter
 
 // Tolerant heredoc parser for shell commands emitted by coding agents.
 //

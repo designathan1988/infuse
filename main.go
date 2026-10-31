@@ -17,8 +17,6 @@ import (
 	"time"
 )
 
-const version = "0.5.0"
-
 func main() {
 	name := strings.ToLower(strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"))
 	if name == "bash" || name == "sh" {

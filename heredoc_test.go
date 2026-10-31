@@ -176,10 +176,10 @@ func TestRulesCommandReplaceAndSay(t *testing.T) {
 }
 
 func TestListedDirectory(t *testing.T) {
-	if d, ok := listedDirectory("cat > x <<EOF\nfoo\nEOF\nls src/tools"); !ok || d != "src/tools" {
+	if d, ok := ListedDirectory("cat > x <<EOF\nfoo\nEOF\nls src/tools"); !ok || d != "src/tools" {
 		t.Fatalf("got %q %v", d, ok)
 	}
-	if d, ok := listedDirectory("cd src && ls -la"); !ok || d != "src" {
+	if d, ok := ListedDirectory("cd src && ls -la"); !ok || d != "src" {
 		t.Fatalf("got %q %v", d, ok)
 	}
 }

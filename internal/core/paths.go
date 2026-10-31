@@ -129,6 +129,18 @@ func Within(root, p string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
+// SelfPath is the running executable's path, with symlinks resolved.
+func SelfPath() string {
+	p, err := os.Executable()
+	if err != nil {
+		return os.Args[0]
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	return p
+}
+
 // RelTo is the path of abs relative to root, in posix form (empty when they are the same folder).
 func RelTo(root, abs string) string {
 	r, err := filepath.Rel(root, abs)

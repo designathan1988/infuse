@@ -136,7 +136,7 @@ func alwaysRuleTexts(root string, set *RuleSet) []string {
 		if r.When != "always" {
 			continue
 		}
-		out = append(out, r.expand(root)...)
+		out = append(out, r.Expand(root)...)
 	}
 	return out
 }

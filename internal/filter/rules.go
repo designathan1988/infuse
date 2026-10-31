@@ -1,4 +1,4 @@
-package main
+package filter
 
 // User-defined rules — the part of the filter the user owns. Edited in the panel or by hand.
 //
@@ -14,6 +14,8 @@ package main
 
 import (
 	"fmt"
+	"infuse/internal/core"
+	"infuse/internal/journal"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,7 +35,7 @@ type Rule struct {
 	Disable    string  `json:"disable,omitempty"`
 	Enabled    *bool   `json:"enabled,omitempty"`
 
-	problem Msg // infuse's own note in place of a rule (a rules file that could not be read)
+	problem core.Msg // infuse's own note in place of a rule (a rules file that could not be read)
 }
 
 type RulesFile struct {
@@ -47,18 +49,18 @@ type RuleSet struct {
 	Sources  []string
 }
 
-func globalRulesFile() string             { return filepath.Join(InfuseHome(), "rules.json") }
-func projectRulesFile(root string) string { return filepath.Join(root, infuseDirName, "rules.json") }
+func GlobalRulesFile() string             { return filepath.Join(core.InfuseHome(), "rules.json") }
+func ProjectRulesFile(root string) string { return filepath.Join(root, core.InfuseDirName, "rules.json") }
 
 func LoadRules(root string) *RuleSet {
 	set := &RuleSet{Disabled: map[string]bool{}}
-	for _, file := range []string{globalRulesFile(), projectRulesFile(root)} {
-		if !exists(file) {
+	for _, file := range []string{GlobalRulesFile(), ProjectRulesFile(root)} {
+		if !core.Exists(file) {
 			continue
 		}
 		var rf RulesFile
-		if err := readJSON(file, &rf); err != nil {
-			set.Rules = append(set.Rules, Rule{When: "always", problem: M("rules.bad_json", "file", file, "error", err.Error())})
+		if err := core.ReadJSON(file, &rf); err != nil {
+			set.Rules = append(set.Rules, Rule{When: "always", problem: core.M("rules.bad_json", "file", file, "error", err.Error())})
 			continue
 		}
 		for _, r := range rf.Rules {
@@ -110,26 +112,26 @@ var reDollar = regexp.MustCompile(`\$(\d+)`)
 func jsReplacement(s string) string { return reDollar.ReplaceAllString(s, `$${$1}`) }
 
 // expand is what a rule says, in English (expandMsgs gives the messages).
-func (r Rule) expand(root string) []string {
-	return msgStrings(r.expandMsgs(root, ""))
+func (r Rule) Expand(root string) []string {
+	return MsgStrings(r.expandMsgs(root, ""))
 }
 
 // expandMsgs is what a rule says: the user's own words as written, infuse's notes as messages. file is
 // the written file a write rule matched ("" for the others).
-func (r Rule) expandMsgs(root, file string) []Msg {
-	var out []Msg
+func (r Rule) expandMsgs(root, file string) []core.Msg {
+	var out []core.Msg
 	if !r.problem.Empty() {
 		out = append(out, r.problem)
 	}
 	if r.Say != "" {
 		if file != "" {
-			out = append(out, M("rules.say_in", "file", file, "text", r.Say))
+			out = append(out, core.M("rules.say_in", "file", file, "text", r.Say))
 		} else {
-			out = append(out, M("rules.say", "text", r.Say))
+			out = append(out, core.M("rules.say", "text", r.Say))
 		}
 	}
 	if r.Infuse != "" {
-		out = append(out, M("text.verbatim", "text", r.Infuse))
+		out = append(out, core.M("text.verbatim", "text", r.Infuse))
 	}
 	if r.InfuseFile != "" {
 		p := r.InfuseFile
@@ -137,18 +139,18 @@ func (r Rule) expandMsgs(root, file string) []Msg {
 			p = filepath.Join(root, p)
 		}
 		if b, err := os.ReadFile(p); err == nil {
-			out = append(out, M("text.verbatim", "text", strings.TrimRight(string(b), " \t\r\n")))
+			out = append(out, core.M("text.verbatim", "text", strings.TrimRight(string(b), " \t\r\n")))
 		} else if file != "" {
-			out = append(out, M("rules.file_missing_in", "file", file, "rule", r.ID, "path", r.InfuseFile))
+			out = append(out, core.M("rules.file_missing_in", "file", file, "rule", r.ID, "path", r.InfuseFile))
 		} else {
-			out = append(out, M("rules.file_missing", "rule", r.ID, "path", r.InfuseFile))
+			out = append(out, core.M("rules.file_missing", "rule", r.ID, "path", r.InfuseFile))
 		}
 	}
 	return out
 }
 
 // msgStrings is the English of each message (for callers that only pass text to the model).
-func msgStrings(ms []Msg) []string {
+func MsgStrings(ms []core.Msg) []string {
 	var out []string
 	for _, m := range ms {
 		out = append(out, m.String())
@@ -159,12 +161,12 @@ func msgStrings(ms []Msg) []string {
 // ApplyCommandRules may rewrite the command; returns the trailer lines rules produce (English).
 func ApplyCommandRules(root string, set *RuleSet, command string) (string, []string) {
 	cmd, ms := ApplyCommandRulesMsgs(root, set, command)
-	return cmd, msgStrings(ms)
+	return cmd, MsgStrings(ms)
 }
 
 // ApplyCommandRulesMsgs may rewrite the command; returns the messages rules produce.
-func ApplyCommandRulesMsgs(root string, set *RuleSet, command string) (string, []Msg) {
-	var lines []Msg
+func ApplyCommandRulesMsgs(root string, set *RuleSet, command string) (string, []core.Msg) {
+	var lines []core.Msg
 	cmd := command
 	for _, r := range set.Rules {
 		if r.When != "command" && r.When != "always" {
@@ -178,7 +180,7 @@ func ApplyCommandRulesMsgs(root string, set *RuleSet, command string) (string, [
 			cmd = re.ReplaceAllString(cmd, jsReplacement(*r.Replace))
 		}
 		if r.Vice != "" {
-			Lesson(root, r.Vice, fmt.Sprintf("rule %s matched command: %s", r.ID, truncate(command, 120)))
+			journal.Lesson(root, r.Vice, fmt.Sprintf("rule %s matched command: %s", r.ID, core.Truncate(command, 120)))
 		}
 		lines = append(lines, r.expandMsgs(root, "")...)
 	}
@@ -187,12 +189,12 @@ func ApplyCommandRulesMsgs(root string, set *RuleSet, command string) (string, [
 
 // ApplyWriteRules checks the files written during a command (absolute paths); English lines.
 func ApplyWriteRules(root string, set *RuleSet, files []string) []string {
-	return msgStrings(ApplyWriteRulesMsgs(root, set, files))
+	return MsgStrings(ApplyWriteRulesMsgs(root, set, files))
 }
 
 // ApplyWriteRulesMsgs checks the files written during a command (absolute paths).
-func ApplyWriteRulesMsgs(root string, set *RuleSet, files []string) []Msg {
-	var lines []Msg
+func ApplyWriteRulesMsgs(root string, set *RuleSet, files []string) []core.Msg {
+	var lines []core.Msg
 	var writeRules []Rule
 	for _, r := range set.Rules {
 		if r.When == "write" {
@@ -218,11 +220,11 @@ func ApplyWriteRulesMsgs(root string, set *RuleSet, files []string) []Msg {
 				if next != content {
 					_ = os.WriteFile(file, []byte(next), 0o644)
 					content = next
-					lines = append(lines, M("rules.rewrote", "rule", r.ID, "file", file))
+					lines = append(lines, core.M("rules.rewrote", "rule", r.ID, "file", file))
 				}
 			}
 			if r.Vice != "" {
-				Lesson(root, r.Vice, fmt.Sprintf("rule %s matched in %s", r.ID, file))
+				journal.Lesson(root, r.Vice, fmt.Sprintf("rule %s matched in %s", r.ID, file))
 			}
 			lines = append(lines, r.expandMsgs(root, file)...)
 		}
@@ -232,12 +234,12 @@ func ApplyWriteRulesMsgs(root string, set *RuleSet, files []string) []Msg {
 
 // ApplyListRules: rules for a directory the agent listed (posix path relative to root); English lines.
 func ApplyListRules(root string, set *RuleSet, dir string) []string {
-	return msgStrings(ApplyListRulesMsgs(root, set, dir))
+	return MsgStrings(ApplyListRulesMsgs(root, set, dir))
 }
 
 // ApplyListRulesMsgs: rules for a directory the agent listed (posix path relative to root).
-func ApplyListRulesMsgs(root string, set *RuleSet, dir string) []Msg {
-	var lines []Msg
+func ApplyListRulesMsgs(root string, set *RuleSet, dir string) []core.Msg {
+	var lines []core.Msg
 	for _, r := range set.Rules {
 		if r.When != "list" {
 			continue
@@ -250,7 +252,7 @@ func ApplyListRulesMsgs(root string, set *RuleSet, dir string) []Msg {
 	return lines
 }
 
-var exampleRules = RulesFile{
+var ExampleRules = RulesFile{
 	Rules: []Rule{
 		{ID: "no-swallowed-errors", When: "write", Match: `catch\s*(\([^)]*\))?\s*\{\s*\}`, Say: "empty catch block: the error is being swallowed. Handle the error or let it propagate.", Vice: "swallowed-error"},
 		{ID: "tests-are-the-oracle", When: "command", Match: `^(npm|pnpm|yarn)\s+(run\s+)?test\b`, Infuse: "Passing tests is not the goal; the goal is the behavior the user asked for. Do not edit tests to make them pass."},

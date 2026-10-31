@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package process
 
 import (
 	"os"
@@ -13,7 +13,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func detach(cmd *exec.Cmd) {
+func Detach(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.DETACHED_PROCESS,
@@ -28,7 +28,7 @@ var (
 
 // noConsoleWindow keeps console children (bash, git) from opening a console window of their own when
 // this process has none: the binary is a GUI-subsystem program (-H windowsgui).
-func noConsoleWindow(cmd *exec.Cmd) {
+func NoConsoleWindow(cmd *exec.Cmd) {
 	if h, _, _ := procGetConsoleWindow.Call(); h != 0 {
 		return
 	}
@@ -42,7 +42,7 @@ func noConsoleWindow(cmd *exec.Cmd) {
 // attachParentConsole: a GUI-subsystem binary gets no console. When run from a terminal (CLI use, or as
 // bash.exe in an interactive shell), borrow the parent's console so output appears and children inherit
 // it. Handles already inherited (pipes from an agent's Bash tool) are left untouched.
-func attachParentConsole() {
+func AttachParentConsole() {
 	if r, _, _ := procAttachConsole.Call(^uintptr(0)); r == 0 { // ATTACH_PARENT_PROCESS
 		return
 	}
@@ -70,7 +70,7 @@ func attachParentConsole() {
 	}
 }
 
-func processAlive(pid int) bool {
+func ProcessAlive(pid int) bool {
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
 	if err != nil {
 		return false
@@ -92,10 +92,10 @@ var (
 )
 
 // procGroup is applied before Start; the job is attached right after (attachJob).
-func procGroup(cmd *exec.Cmd) {}
+func ProcGroup(cmd *exec.Cmd) {}
 
 // attachJob puts a started process in a new kill-on-close job.
-func attachJob(cmd *exec.Cmd) {
+func AttachJob(cmd *exec.Cmd) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return
@@ -122,7 +122,7 @@ func attachJob(cmd *exec.Cmd) {
 }
 
 // killTree ends a process and every process it started: its job, or taskkill /T without one.
-func killTree(cmd *exec.Cmd) {
+func KillTree(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
@@ -136,14 +136,14 @@ func killTree(cmd *exec.Cmd) {
 		return
 	}
 	k := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
-	noConsoleWindow(k)
+	NoConsoleWindow(k)
 	if k.Run() != nil {
 		_ = cmd.Process.Kill()
 	}
 }
 
 // releaseJob frees the job of a process that ended by itself (its children may live on, as in a shell).
-func releaseJob(cmd *exec.Cmd) {
+func ReleaseJob(cmd *exec.Cmd) {
 	procJobsMu.Lock()
 	job, ok := procJobs[cmd]
 	delete(procJobs, cmd)

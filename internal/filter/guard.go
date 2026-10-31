@@ -1,4 +1,4 @@
-package main
+package filter
 
 // The guard: protected paths (.infuse/oracle/** always, plus the user's list) are unreachable for the
 // agent through EVERY tool, enforced in the executor, never by text. Write/Edit are refused at the path
@@ -17,6 +17,9 @@ package main
 // Every attempt goes to the journal as "blocked" and to the lessons.
 
 import (
+	"infuse/internal/core"
+	"infuse/internal/journal"
+	"infuse/internal/lang"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -41,8 +44,8 @@ var internalRels = []string{".infuse/sessions", ".infuse/checkpoints", ".infuse/
 var agentVisibleInternal = []string{".infuse/docs/", ".infuse/conventions.md", ".infuse/map/MAP.md", ".infuse/shots/", ".infuse/recordings/", ".infuse/skills/", ".infuse/architecture.json", ".infuse/project-rules.json"}
 
 // hiddenInternal reports whether rel (relative to the project) is infuse's own file the agent may not read.
-func hiddenInternal(rel string) bool {
-	rel = strings.TrimPrefix(toPosix(rel), "./")
+func HiddenInternal(rel string) bool {
+	rel = strings.TrimPrefix(core.ToPosix(rel), "./")
 	if rel != ".infuse" && !strings.HasPrefix(rel, ".infuse/") {
 		return false
 	}
@@ -54,25 +57,37 @@ func hiddenInternal(rel string) bool {
 	return true
 }
 
-func newGuard(root string, protected []string) *Guard {
-	base := []string{oracleRel + "/**", oracleRel, evidenceRel + "/**", evidenceRel, memoryRel + "/**", memoryRel}
+// Policy is the project-specific part of the protection, supplied by the caller so the filter never
+// depends on the knowledge layer.
+type Policy struct {
+	Protected        []string // the user's protected globs
+	References       []string // paths the project's instructions call read-only
+	InstructionFiles []string // the instruction files themselves
+	Memory           []string // the project's memory paths
+}
+
+func NewGuard(root string, p Policy) *Guard {
+	base := []string{oracleRel + "/**", oracleRel, evidenceRel + "/**", evidenceRel}
+	for _, m := range p.Memory {
+		base = append(base, m+"/**", m)
+	}
 	for _, r := range internalRels {
 		base = append(base, r+"/**", r)
 	}
-	base = append(base, instructionNames...) // the project's instructions: followed, not edited
-	for _, ref := range loadProjectRules(root).Reference {
+	base = append(base, p.InstructionFiles...) // the project's instructions: followed, not edited
+	for _, ref := range p.References {
 		base = append(base, ref+"/**", ref)
 	}
-	return &Guard{Root: root, Protected: append(base, protected...)}
+	return &Guard{Root: root, Protected: append(base, p.Protected...)}
 }
 
 // protects reports whether p (absolute, or relative to cwd) is agent-proof. A symlink counts as its target.
-func (g *Guard) protects(cwd, p string) (string, bool) {
+func (g *Guard) Protects(cwd, p string) (string, bool) {
 	p = strings.Trim(p, `"'`)
 	if p == "" || p == "/dev/null" || strings.EqualFold(p, "NUL") || strings.HasPrefix(p, "-") {
 		return "", false
 	}
-	p = FromMsysPath(strings.ReplaceAll(p, `\`, "/"))
+	p = core.FromMsysPath(strings.ReplaceAll(p, `\`, "/"))
 	abs := p
 	if !filepath.IsAbs(p) {
 		abs = filepath.Join(cwd, p)
@@ -90,7 +105,7 @@ func (g *Guard) protects(cwd, p string) (string, bool) {
 }
 
 func (g *Guard) protectsAbs(abs string) (string, bool) {
-	rel := relTo(g.Root, abs)
+	rel := core.RelTo(g.Root, abs)
 	// the oracle is protected wherever it is: the project's, a worktree's, or reached from outside the root
 	if slash := "/" + strings.Trim(filepath.ToSlash(abs), "/"); strings.Contains(slash+"/", "/"+oracleRel+"/") || strings.Contains(slash+"/", "/"+evidenceRel+"/") {
 		if rel == "" || strings.HasPrefix(rel, "..") {
@@ -102,7 +117,7 @@ func (g *Guard) protectsAbs(abs string) (string, bool) {
 		return "", false
 	}
 	for _, pat := range g.Protected {
-		if globToRegex(pat).MatchString(rel) || rel == strings.TrimSuffix(pat, "/**") {
+		if lang.GlobToRegex(pat).MatchString(rel) || rel == strings.TrimSuffix(pat, "/**") {
 			return rel, true
 		}
 	}
@@ -121,14 +136,14 @@ func resolveSymlinks(abs string) string {
 }
 
 // block records a refused write to a protected path; the error carries the message (msgOf).
-func (g *Guard) block(rel string, detail Msg) error {
-	Journal(g.Root, JournalEntry{Kind: "blocked", Path: rel, Detail: detail.String()})
-	Lesson(g.Root, "protected-path-write", detail.String()+": "+rel)
-	return errMsg(M("guard.protected", "file", rel, "detail", detail))
+func (g *Guard) block(rel string, detail core.Msg) error {
+	journal.Journal(g.Root, journal.JournalEntry{Kind: "blocked", Path: rel, Detail: detail.String()})
+	journal.Lesson(g.Root, "protected-path-write", detail.String()+": "+rel)
+	return core.ErrMsg(core.M("guard.protected", "file", rel, "detail", detail))
 }
 
-// reRedir: output redirections and the read-write open `<>` (group 3 is the target).
-var reRedir = regexp.MustCompile(`(?:^|[^<>&0-9])(\d?)(>>|>\||<>|>)\s*("[^"]*"|'[^']*'|[^\s;&|<>()]+)`)
+// ReRedir: output redirections and the read-write open `<>` (group 3 is the target).
+var ReRedir = regexp.MustCompile(`(?:^|[^<>&0-9])(\d?)(>>|>\||<>|>)\s*("[^"]*"|'[^']*'|[^\s;&|<>()]+)`)
 
 // writingCommands: commands whose path arguments are created, moved, changed or deleted.
 var writingCommands = map[string]bool{
@@ -165,11 +180,11 @@ func (g *Guard) GuardCommand(cmd, cwd string) (string, []string, error) {
 
 // GuardCommandMsgs is GuardCommand with the notes as messages, for a caller that records them with the
 // call (so the user reads them in their language).
-func (g *Guard) GuardCommandMsgs(cmd, cwd string) (string, []Msg, error) {
+func (g *Guard) GuardCommandMsgs(cmd, cwd string) (string, []core.Msg, error) {
 	return g.guard(cmd, cwd, false)
 }
 
-func (g *Guard) guard(cmd, cwd string, nested bool) (string, []Msg, error) {
+func (g *Guard) guard(cmd, cwd string, nested bool) (string, []core.Msg, error) {
 	// mask heredoc bodies (same length, newlines kept): offsets stay valid and document text is inert
 	masked := []byte(cmd)
 	hds := FindHeredocs(cmd)
@@ -181,7 +196,7 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []Msg, error) {
 		}
 	}
 	segs := splitSegments(string(masked))
-	var notes []Msg
+	var notes []core.Msg
 	type edit struct {
 		start, end int
 		with       string
@@ -196,8 +211,8 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []Msg, error) {
 		for _, h := range hds {
 			if h.OpStart >= sg.start && h.OpStart < sg.end {
 				if intent := DetectFileWrite(strings.TrimSpace(cmd[sg.start:h.OpEnd])); intent != nil {
-					if rel, ok := g.protects(dir, intent.Path); ok {
-						return "", nil, g.block(rel, M("guard.heredoc"))
+					if rel, ok := g.Protects(dir, intent.Path); ok {
+						return "", nil, g.block(rel, core.M("guard.heredoc"))
 					}
 				}
 			}
@@ -210,22 +225,22 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []Msg, error) {
 			if baseCmd(fields[0]) == "xargs" && xargsWrites(fields) {
 				for _, p := range segs[pipeStart : i+1] {
 					for _, f := range shellFields(p.text) {
-						if rel, ok := g.protects(dir, f); ok {
-							return "", nil, g.block(rel, M("guard.xargs"))
+						if rel, ok := g.Protects(dir, f); ok {
+							return "", nil, g.block(rel, core.M("guard.xargs"))
 						}
 					}
 				}
 			}
 		}
 		// redirections into protected paths
-		for _, loc := range reRedir.FindAllStringSubmatchIndex(sg.text, -1) {
+		for _, loc := range ReRedir.FindAllStringSubmatchIndex(sg.text, -1) {
 			target := sg.text[loc[6]:loc[7]]
-			if rel, ok := g.protects(dir, target); ok {
+			if rel, ok := g.Protects(dir, target); ok {
 				if nested {
-					return "", nil, g.block(rel, M("guard.nested_redir"))
+					return "", nil, g.block(rel, core.M("guard.nested_redir"))
 				}
-				notes = append(notes, M("guard.redirected", "file", rel))
-				_ = g.block(rel, M("guard.redir_blocked"))
+				notes = append(notes, core.M("guard.redirected", "file", rel))
+				_ = g.block(rel, core.M("guard.redir_blocked"))
 				edits = append(edits, edit{sg.start + loc[6], sg.start + loc[7], "/dev/null"})
 			}
 		}
@@ -277,11 +292,11 @@ func (g *Guard) checkSimple(fields []string, dir, text string) error {
 		return nil
 	}
 	head, args := baseCmd(fields[0]), fields[1:]
-	refuse := func(why Msg) error {
+	refuse := func(why core.Msg) error {
 		for _, a := range args {
 			for _, cand := range strings.Split(strings.TrimPrefix(a, "of="), "=") {
-				if rel, ok := g.protects(dir, cand); ok {
-					return g.block(rel, M("guard.with_command", "why", why, "command", truncate(strings.TrimSpace(text), 120)))
+				if rel, ok := g.Protects(dir, cand); ok {
+					return g.block(rel, core.M("guard.with_command", "why", why, "command", core.Truncate(strings.TrimSpace(text), 120)))
 				}
 			}
 		}
@@ -293,13 +308,13 @@ func (g *Guard) checkSimple(fields []string, dir, text string) error {
 	}
 	switch {
 	case writingCommands[head], scriptingCommands[head]:
-		return refuse(M("guard.command"))
+		return refuse(core.M("guard.command"))
 	case head == "sed" && hasFlag(args, "-i"):
-		return refuse(M("guard.sed"))
+		return refuse(core.M("guard.sed"))
 	case head == "find" && findWrites(args):
-		return refuse(M("guard.find"))
+		return refuse(core.M("guard.find"))
 	case head == "git" && len(args) > 0 && gitWriting[args[0]]:
-		return refuse(M("guard.git", "sub", args[0]))
+		return refuse(core.M("guard.git", "sub", args[0]))
 	}
 	return nil
 }
@@ -369,9 +384,9 @@ func xargsWrites(fields []string) bool {
 }
 
 func resolveDir(cur, to string) string {
-	to = FromMsysPath(strings.ReplaceAll(strings.Trim(to, `"'`), `\`, "/"))
+	to = core.FromMsysPath(strings.ReplaceAll(strings.Trim(to, `"'`), `\`, "/"))
 	if strings.HasPrefix(to, "~") {
-		to = filepath.Join(homeDir(), to[1:])
+		to = filepath.Join(core.HomeDir(), to[1:])
 	}
 	if filepath.IsAbs(to) {
 		return filepath.Clean(to)

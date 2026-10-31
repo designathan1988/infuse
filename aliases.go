@@ -6,11 +6,17 @@ package main
 import (
 	"context"
 	"infuse/internal/config"
+	"infuse/internal/filter"
+	"regexp"
 	"infuse/internal/core"
 	"infuse/internal/journal"
+	"infuse/internal/lang"
 	"infuse/internal/llm"
 	"infuse/internal/projectmap"
+	"infuse/internal/platform/process"
 	"infuse/internal/security"
+	"os/exec"
+	"time"
 )
 
 type JournalEntry = journal.JournalEntry
@@ -81,6 +87,12 @@ func providerNames() []string { return llm.ProviderNames() }
 const infuseDirName = core.InfuseDirName
 
 type Settings = config.Settings
+type projectEntry = config.ProjectEntry
+
+func projectsFile() string                 { return config.ProjectsFile() }
+func loadProjects() []projectEntry         { return config.LoadProjects() }
+func saveProjects(list []projectEntry) error { return config.SaveProjects(list) }
+func RememberProject(root string)          { config.RememberProject(root) }
 type ProjectSettings = config.ProjectSettings
 type Connection = config.Connection
 type providerPreset = config.ProviderPreset
@@ -105,6 +117,14 @@ func UsageTotals() usageTotals                  { return config.UsageTotals() }
 func usageFile() string                         { return config.UsageFile() }
 func settingsFile() string                      { return config.SettingsFile() }
 func msgText(m Message) string                  { return core.TextOf(m) }
+func errMsg(m Msg) error                        { return core.ErrMsg(m) }
+func userError(lang string, m Msg) error        { return core.UserError(lang, m) }
+func msgOf(err error) (Msg, bool)               { return core.MsgOf(err) }
+func errArg(err error) any                      { return core.ErrArg(err) }
+func selfPath() string                          { return core.SelfPath() }
+func globToRegex(pat string) *regexp.Regexp     { return lang.GlobToRegex(pat) }
+
+var version = core.Version
 
 func homeDir() string                  { return core.HomeDir() }
 func InfuseHome() string               { return core.InfuseHome() }
@@ -148,3 +168,109 @@ func dedupe(xs []string) []string                  { return core.Dedupe(xs) }
 func contains(list []string, v string) bool        { return core.Contains(list, v) }
 func firstNonZero(a, b float64) float64            { return core.FirstNonZero(a, b) }
 func sortedKeys[M ~map[string]V, V any](m M) []string { return core.SortedKeys(m) }
+func exitCode(err error) int                         { return core.ExitCode(err) }
+func shellQuote(s string) string                     { return filter.ShellQuote(s) }
+func detach(cmd *exec.Cmd)                           { process.Detach(cmd) }
+func noConsoleWindow(cmd *exec.Cmd)                  { process.NoConsoleWindow(cmd) }
+func attachParentConsole()                           { process.AttachParentConsole() }
+func processAlive(pid int) bool                      { return process.ProcessAlive(pid) }
+func procGroup(cmd *exec.Cmd)                        { process.ProcGroup(cmd) }
+func attachJob(cmd *exec.Cmd)                        { process.AttachJob(cmd) }
+func killTree(cmd *exec.Cmd)                         { process.KillTree(cmd) }
+func releaseJob(cmd *exec.Cmd)                       { process.ReleaseJob(cmd) }
+
+type Guard = filter.Guard
+type Heredoc = filter.Heredoc
+type FileWriteIntent = filter.FileWriteIntent
+type Rule = filter.Rule
+type RulesFile = filter.RulesFile
+type RuleSet = filter.RuleSet
+type TransformResult = filter.TransformResult
+
+const (
+	ActHeredocToFile  = filter.ActHeredocToFile
+	ActHeredocToStdin = filter.ActHeredocToStdin
+	ActLesson         = filter.ActLesson
+)
+
+var ExampleRules = filter.ExampleRules
+
+type InstallResult = filter.InstallResult
+type Status = filter.Status
+
+func guardPolicy(root string, protected []string) filter.Policy {
+	return filter.Policy{
+		Protected:        protected,
+		References:       loadProjectRules(root).Reference,
+		InstructionFiles: instructionNames,
+		Memory:           []string{memoryRel},
+	}
+}
+
+func newGuard(root string, protected []string) *filter.Guard {
+	return filter.NewGuard(root, guardPolicy(root, protected))
+}
+func RunShell(args []string) int                        { return filter.RunShell(args, guardPolicy) }
+func TransformCommand(cmd, cwd string) TransformResult  { return filter.TransformCommand(cmd, cwd) }
+func FindHeredocs(cmd string) []Heredoc                 { return filter.FindHeredocs(cmd) }
+func DetectFileWrite(cmd string) *FileWriteIntent       { return filter.DetectFileWrite(cmd) }
+func CommandLineOf(cmd string, h Heredoc) (int, int, string) {
+	return filter.CommandLineOf(cmd, h)
+}
+func HiddenInternal(rel string) bool      { return filter.HiddenInternal(rel) }
+func hiddenInternal(rel string) bool      { return filter.HiddenInternal(rel) }
+func LoadRules(root string) *RuleSet      { return filter.LoadRules(root) }
+func GlobalRulesFile() string             { return filter.GlobalRulesFile() }
+func ProjectRulesFile(root string) string { return filter.ProjectRulesFile(root) }
+func ApplyCommandRules(root string, set *RuleSet, command string) (string, []string) {
+	return filter.ApplyCommandRules(root, set, command)
+}
+func ApplyCommandRulesMsgs(root string, set *RuleSet, command string) (string, []Msg) {
+	return filter.ApplyCommandRulesMsgs(root, set, command)
+}
+func ApplyWriteRules(root string, set *RuleSet, files []string) []string {
+	return filter.ApplyWriteRules(root, set, files)
+}
+func ApplyWriteRulesMsgs(root string, set *RuleSet, files []string) []Msg {
+	return filter.ApplyWriteRulesMsgs(root, set, files)
+}
+func ApplyListRules(root string, set *RuleSet, dir string) []string {
+	return filter.ApplyListRules(root, set, dir)
+}
+func ApplyListRulesMsgs(root string, set *RuleSet, dir string) []Msg {
+	return filter.ApplyListRulesMsgs(root, set, dir)
+}
+func EnsureWatcher(root string)                  { filter.EnsureWatcher(root) }
+func StopWatcher(root string) bool               { return filter.StopWatcher(root) }
+func RunWatcher(root string, idle time.Duration) { filter.RunWatcher(root, idle) }
+func watcherAlive(root string) (int, bool)       { return filter.WatcherAlive(root) }
+func FileDiagnostics(root, abs string) string    { return filter.FileDiagnostics(root, abs) }
+func fileDiagnostics(root, abs string) string    { return filter.FileDiagnostics(root, abs) }
+func BuildTrailer(root, cwd, original string, actions []filter.TransformAction, started int64, rules *RuleSet, ruleLines []string) string {
+	return filter.BuildTrailer(root, cwd, original, actions, started, rules, ruleLines)
+}
+func TrailerMsgs(root, cwd, original string, actions []filter.TransformAction, started int64, rules *RuleSet, notes []Msg) []Msg {
+	return filter.TrailerMsgs(root, cwd, original, actions, started, rules, notes)
+}
+func buildTrailer(root, cwd, original string, actions []filter.TransformAction, started int64, rules *RuleSet, ruleLines []string) string {
+	return filter.BuildTrailer(root, cwd, original, actions, started, rules, ruleLines)
+}
+func trailerMsgs(root, cwd, original string, actions []filter.TransformAction, started int64, rules *RuleSet, notes []Msg) []Msg {
+	return filter.TrailerMsgs(root, cwd, original, actions, started, rules, notes)
+}
+func ListedDirectory(cmd string) (string, bool) { return filter.ListedDirectory(cmd) }
+func MayChangeTree(cmd string) bool             { return filter.MayChangeTree(cmd) }
+
+func Install() InstallResult   { return filter.Install() }
+func Uninstall() InstallResult { return filter.Uninstall() }
+func GetStatus() Status        { return filter.GetStatus() }
+func printJSON(v any)          { filter.PrintJSON(v) }
+func msgStrings(ms []Msg) []string            { return filter.MsgStrings(ms) }
+func resolveIn(cwd, p string) string          { return filter.ResolveIn(cwd, p) }
+func ignoredPath(root, p string) bool         { return filter.IgnoredPath(root, p) }
+func projectRulesFile(root string) string     { return filter.ProjectRulesFile(root) }
+func globalRulesFile() string                 { return filter.GlobalRulesFile() }
+func listedDirectory(cmd string) (string, bool) { return filter.ListedDirectory(cmd) }
+func mayChangeTree(cmd string) bool             { return filter.MayChangeTree(cmd) }
+
+var reRedir = filter.ReRedir

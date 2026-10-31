@@ -1,4 +1,4 @@
-package main
+package filter
 
 // Instant write watcher — the always-available half of the filesystem interposition.
 // Every write by any tool (native Write/Edit, apply_patch, write_file, or a shell command) is
@@ -6,6 +6,10 @@ package main
 // started by the interposed shell on first use, stopping after a period with no writes.
 
 import (
+	"infuse/internal/core"
+	"infuse/internal/journal"
+	"infuse/internal/platform/process"
+	"infuse/internal/projectmap"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,34 +25,34 @@ type watcherState struct {
 	Started int64 `json:"started"`
 }
 
-func watcherFile(root string) string { return filepath.Join(root, infuseDirName, "watcher.json") }
+func watcherFile(root string) string { return filepath.Join(root, core.InfuseDirName, "watcher.json") }
 
-func watcherAlive(root string) (int, bool) {
+func WatcherAlive(root string) (int, bool) {
 	var st watcherState
-	if readJSON(watcherFile(root), &st) != nil || st.Pid == 0 {
+	if core.ReadJSON(watcherFile(root), &st) != nil || st.Pid == 0 {
 		return 0, false
 	}
-	return st.Pid, processAlive(st.Pid)
+	return st.Pid, process.ProcessAlive(st.Pid)
 }
 
 // EnsureWatcher starts a detached watcher for this project if none is alive.
 func EnsureWatcher(root string) {
-	if _, alive := watcherAlive(root); alive {
+	if _, alive := WatcherAlive(root); alive {
 		return
 	}
-	cmd := exec.Command(selfPath(), "watch", root)
+	cmd := exec.Command(core.SelfPath(), "watch", root)
 	cmd.Env = append(os.Environ(), "INFUSE_ROOT="+root)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
-	detach(cmd)
+	process.Detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return
 	}
-	_ = writeJSON(watcherFile(root), watcherState{Pid: cmd.Process.Pid, Started: time.Now().UnixMilli()})
+	_ = core.WriteJSON(watcherFile(root), watcherState{Pid: cmd.Process.Pid, Started: time.Now().UnixMilli()})
 	_ = cmd.Process.Release()
 }
 
 func StopWatcher(root string) bool {
-	pid, alive := watcherAlive(root)
+	pid, alive := WatcherAlive(root)
 	if !alive {
 		_ = os.Remove(watcherFile(root))
 		return false
@@ -62,13 +66,13 @@ func StopWatcher(root string) bool {
 	return true
 }
 
-func ignoredPath(root, p string) bool {
+func IgnoredPath(root, p string) bool {
 	rel, err := filepath.Rel(root, p)
 	if err != nil {
 		return true
 	}
-	for _, seg := range strings.Split(toPosix(rel), "/") {
-		if ignoredDirs[seg] || (strings.HasPrefix(seg, ".") && seg != "." && seg != "..") {
+	for _, seg := range strings.Split(core.ToPosix(rel), "/") {
+		if projectmap.IgnoredDirs[seg] || (strings.HasPrefix(seg, ".") && seg != "." && seg != "..") {
 			return true
 		}
 	}
@@ -77,9 +81,9 @@ func ignoredPath(root, p string) bool {
 
 // RunWatcher is the body of the detached process.
 func RunWatcher(root string, idle time.Duration) {
-	_ = writeJSON(watcherFile(root), watcherState{Pid: os.Getpid(), Started: time.Now().UnixMilli()})
+	_ = core.WriteJSON(watcherFile(root), watcherState{Pid: os.Getpid(), Started: time.Now().UnixMilli()})
 	defer os.Remove(watcherFile(root))
-	WriteMap(root, BuildMap(root))
+	projectmap.WriteMap(root, projectmap.BuildMap(root))
 
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -92,7 +96,7 @@ func RunWatcher(root string, idle time.Duration) {
 				return nil
 			}
 			if d.IsDir() {
-				if p != root && ignoredPath(root, p) {
+				if p != root && IgnoredPath(root, p) {
 					return filepath.SkipDir
 				}
 				_ = w.Add(p)
@@ -111,11 +115,11 @@ func RunWatcher(root string, idle time.Duration) {
 			if !ok {
 				return
 			}
-			if ignoredPath(root, ev.Name) {
+			if IgnoredPath(root, ev.Name) {
 				continue
 			}
 			rel, _ := filepath.Rel(root, ev.Name)
-			rel = toPosix(rel)
+			rel = core.ToPosix(rel)
 			switch {
 			case ev.Has(fsnotify.Create) || ev.Has(fsnotify.Write):
 				if st, err := os.Stat(ev.Name); err == nil {
@@ -127,19 +131,19 @@ func RunWatcher(root string, idle time.Duration) {
 					}
 					now := time.Now().UnixMilli()
 					if now-last[rel] > 200 {
-						Journal(root, JournalEntry{Kind: "write", Path: rel, Bytes: int(st.Size())})
+						journal.Journal(root, journal.JournalEntry{Kind: "write", Path: rel, Bytes: int(st.Size())})
 					}
 					last[rel] = now
 				}
 			case ev.Has(fsnotify.Remove) || ev.Has(fsnotify.Rename):
-				Journal(root, JournalEntry{Kind: "unlink", Path: rel})
+				journal.Journal(root, journal.JournalEntry{Kind: "unlink", Path: rel})
 			default:
 				continue
 			}
 			if refresh != nil {
 				refresh.Stop()
 			}
-			refresh = time.AfterFunc(300*time.Millisecond, func() { WriteMap(root, BuildMap(root)) })
+			refresh = time.AfterFunc(300*time.Millisecond, func() { projectmap.WriteMap(root, projectmap.BuildMap(root)) })
 			idleTimer.Reset(idle)
 		case <-w.Errors:
 		case <-idleTimer.C:

@@ -111,7 +111,7 @@ func TestListingAfterRemovalIsFresh(t *testing.T) {
 	if strings.Contains(out, "legado") || !strings.Contains(out, "src: 1 files") {
 		t.Fatalf("stale summary: %s", out)
 	}
-	if mayChangeTree("ls -la src && cat a.txt") || !mayChangeTree("mv a b && ls") {
+	if MayChangeTree("ls -la src && cat a.txt") || !MayChangeTree("mv a b && ls") {
 		t.Fatal("mayChangeTree")
 	}
 }

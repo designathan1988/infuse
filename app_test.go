@@ -192,10 +192,10 @@ func TestWorktreeAndChanges(t *testing.T) {
 	}
 	// the oracle inside a worktree is protected too
 	g := newGuard(dir, nil)
-	if _, ok := g.protects(dir, ".infuse/oracle/pronto.md"); !ok {
+	if _, ok := g.Protects(dir, ".infuse/oracle/pronto.md"); !ok {
 		t.Fatal("worktree oracle not protected")
 	}
-	if _, ok := g.protects(dir, filepath.Join(root, ".infuse", "oracle", "x.md")); !ok {
+	if _, ok := g.Protects(dir, filepath.Join(root, ".infuse", "oracle", "x.md")); !ok {
 		t.Fatal("main oracle reachable from a worktree")
 	}
 	if err := RemoveWorktree(root, dir, true); err != nil {

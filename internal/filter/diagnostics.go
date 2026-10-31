@@ -1,4 +1,4 @@
-package main
+package filter
 
 // Diagnostics after each write: the file is checked with the project's own tools (the role a language
 // server plays in an editor), and problems go back to the agent with the write's result, so a broken
@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"infuse/internal/core"
+	"infuse/internal/platform/process"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +19,7 @@ import (
 )
 
 // fileDiagnostics returns the problems found in abs ("" when it is fine or no checker applies).
-func fileDiagnostics(root, abs string) string {
+func FileDiagnostics(root, abs string) string {
 	ext := strings.ToLower(filepath.Ext(abs))
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
@@ -27,14 +29,14 @@ func fileDiagnostics(root, abs string) string {
 			return "", true // checker not installed: nothing to say
 		}
 		cmd := exec.CommandContext(ctx, exe, args...)
-		noConsoleWindow(cmd)
+		process.NoConsoleWindow(cmd)
 		cmd.Dir = dir
 		var out bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &out
 		err = cmd.Run()
 		return strings.TrimSpace(out.String()), err == nil
 	}
-	rel := filepath.ToSlash(relTo(root, abs))
+	rel := filepath.ToSlash(core.RelTo(root, abs))
 	switch ext {
 	case ".json":
 		b, err := os.ReadFile(abs)
@@ -45,11 +47,11 @@ func fileDiagnostics(root, abs string) string {
 		}
 	case ".js", ".mjs", ".cjs":
 		if out, ok := run(filepath.Dir(abs), "node", "--check", abs); !ok && out != "" {
-			return truncate(out, 1500)
+			return core.Truncate(out, 1500)
 		}
 	case ".py":
 		if out, ok := run(filepath.Dir(abs), "python", "-m", "py_compile", abs); !ok && out != "" {
-			return truncate(out, 1500)
+			return core.Truncate(out, 1500)
 		}
 	case ".go":
 		mod := findUp(filepath.Dir(abs), "go.mod")
@@ -57,10 +59,10 @@ func fileDiagnostics(root, abs string) string {
 			return ""
 		}
 		if out, ok := run(filepath.Dir(abs), "gofmt", "-e", "-l", abs); !ok && out != "" {
-			return truncate(out, 1500)
+			return core.Truncate(out, 1500)
 		}
 		if out, ok := run(filepath.Dir(abs), "go", "vet", "."); !ok && out != "" {
-			return truncate(out, 2000)
+			return core.Truncate(out, 2000)
 		}
 	case ".ts", ".tsx", ".mts", ".cts":
 		dir := findUp(filepath.Dir(abs), "tsconfig.json")
@@ -80,13 +82,13 @@ func fileDiagnostics(root, abs string) string {
 		}
 		// only the lines about this file: the rest of the project is not this edit's concern
 		var mine []string
-		base := filepath.ToSlash(relTo(dir, abs))
+		base := filepath.ToSlash(core.RelTo(dir, abs))
 		for _, l := range strings.Split(out, "\n") {
 			if strings.HasPrefix(filepath.ToSlash(l), base+"(") {
 				mine = append(mine, l)
 			}
 		}
-		return truncate(strings.Join(mine, "\n"), 2000)
+		return core.Truncate(strings.Join(mine, "\n"), 2000)
 	}
 	return ""
 }

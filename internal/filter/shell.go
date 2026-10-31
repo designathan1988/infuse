@@ -1,4 +1,4 @@
-package main
+package filter
 
 // The interposed shell. Every agent's Bash tool invokes `bash -c "<command>"` (sometimes -lc, -ec...).
 // infuse installs itself under the name bash(.exe); when invoked that way, or as `infuse shell`:
@@ -8,6 +8,11 @@ package main
 // Without `-c` (interactive/login use) it simply runs the real bash.
 
 import (
+	"infuse/internal/config"
+	"infuse/internal/core"
+	"infuse/internal/journal"
+	"infuse/internal/platform/process"
+	"infuse/internal/projectmap"
 	"fmt"
 	"io"
 	"os"
@@ -18,10 +23,10 @@ import (
 	"time"
 )
 
-func RunShell(args []string) int {
-	realBash := FindRealBash()
+func RunShell(args []string, policyFor func(root string, protected []string) Policy) int {
+	realBash := core.FindRealBash()
 	cwd, _ := os.Getwd()
-	root := FindRoot(cwd)
+	root := core.FindRoot(cwd)
 
 	cIndex := -1
 	for i, a := range args {
@@ -39,17 +44,17 @@ func RunShell(args []string) int {
 	func() {
 		defer func() { _ = recover() }() // the shell must never fail because of the watcher
 		EnsureWatcher(root)
-		RememberProject(root)
+		config.RememberProject(root)
 	}()
 
 	rules := LoadRules(root)
-	guarded, guardNotes, gerr := newGuard(root, EffectiveSettings(root).ProtectedPaths).GuardCommandMsgs(original, cwd)
+	guarded, guardNotes, gerr := NewGuard(root, policyFor(root, config.EffectiveSettings(root).ProtectedPaths)).GuardCommandMsgs(original, cwd)
 	if gerr != nil {
 		var why any = gerr.Error()
-		if m, _ := msgOf(gerr); !m.Empty() {
+		if m, _ := core.MsgOf(gerr); !m.Empty() {
 			why = m
 		}
-		fmt.Fprintln(os.Stderr, M("shell.refused", "why", why).String())
+		fmt.Fprintln(os.Stderr, core.M("shell.refused", "why", why).String())
 		return 1
 	}
 	original = guarded
@@ -65,19 +70,19 @@ func RunShell(args []string) int {
 	if len(tr.Actions) > 0 {
 		detail = fmt.Sprintf("%d transformation(s)", len(tr.Actions))
 	}
-	Journal(root, JournalEntry{Kind: "command", Command: original, Detail: detail})
+	journal.Journal(root, journal.JournalEntry{Kind: "command", Command: original, Detail: detail})
 	for _, a := range tr.Actions {
 		if a.Kind == ActLesson && a.Vice != "" {
-			Lesson(root, a.Vice, a.Detail)
+			journal.Lesson(root, a.Vice, a.Detail)
 		} else {
-			Journal(root, JournalEntry{Kind: "transform", Path: a.Path, Bytes: a.Bytes, Detail: a.Detail})
+			journal.Journal(root, journal.JournalEntry{Kind: "transform", Path: a.Path, Bytes: a.Bytes, Detail: a.Detail})
 		}
 	}
 
 	newArgs := append([]string{}, args...)
 	newArgs[cIndex+1] = command
 	cmd := exec.Command(realBash, newArgs...)
-	noConsoleWindow(cmd)
+	process.NoConsoleWindow(cmd)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -85,10 +90,10 @@ func RunShell(args []string) int {
 	err := cmd.Run()
 	code := exitCode(err)
 
-	if _, alive := watcherAlive(root); !alive {
-		WriteMap(root, BuildMap(root)) // no watcher here: keep the map honest ourselves
+	if _, alive := WatcherAlive(root); !alive {
+		projectmap.WriteMap(root, projectmap.BuildMap(root)) // no watcher here: keep the map honest ourselves
 	}
-	trailer := joinMsgLines(trailerMsgs(root, cwd, original, tr.Actions, started, rules, append(guardNotes, ruleLines...)))
+	trailer := joinMsgLines(TrailerMsgs(root, cwd, original, tr.Actions, started, rules, append(guardNotes, ruleLines...)))
 	if trailer != "" {
 		_, _ = io.WriteString(os.Stdout, "\n"+trailer+"\n")
 	}
@@ -97,7 +102,7 @@ func RunShell(args []string) int {
 
 func passthrough(realBash string, args []string) int {
 	cmd := exec.Command(realBash, args...)
-	noConsoleWindow(cmd)
+	process.NoConsoleWindow(cmd)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Env = os.Environ()
 	return exitCode(cmd.Run())
@@ -116,34 +121,34 @@ func exitCode(err error) int {
 
 // buildTrailer is what infuse appends to a command's output, in English (trailerMsgs gives the
 // messages); ruleLines are lines already written.
-func buildTrailer(root, cwd, original string, actions []TransformAction, started int64, rules *RuleSet, ruleLines []string) string {
-	var notes []Msg
+func BuildTrailer(root, cwd, original string, actions []TransformAction, started int64, rules *RuleSet, ruleLines []string) string {
+	var notes []core.Msg
 	for _, l := range ruleLines {
-		notes = append(notes, M("text.verbatim", "text", l))
+		notes = append(notes, core.M("text.verbatim", "text", l))
 	}
-	return joinMsgLines(trailerMsgs(root, cwd, original, actions, started, rules, notes))
+	return joinMsgLines(TrailerMsgs(root, cwd, original, actions, started, rules, notes))
 }
 
 // joinMsgLines is the English of messages, one per line.
-func joinMsgLines(ms []Msg) string {
-	return strings.Join(msgStrings(ms), "\n")
+func joinMsgLines(ms []core.Msg) string {
+	return strings.Join(MsgStrings(ms), "\n")
 }
 
 // trailerMsgs is what infuse appends to a command's output: notes (the guard's, the rules'), what was
 // written and who depends on it, the map of a listed folder. A caller with a session records each one
 // with the call, so the user reads them in their language.
-func trailerMsgs(root, cwd, original string, actions []TransformAction, started int64, rules *RuleSet, notes []Msg) []Msg {
-	lines := append([]Msg{}, notes...)
+func TrailerMsgs(root, cwd, original string, actions []TransformAction, started int64, rules *RuleSet, notes []core.Msg) []core.Msg {
+	lines := append([]core.Msg{}, notes...)
 	for _, a := range actions {
 		switch a.Kind {
 		case ActHeredocToFile:
-			lines = append(lines, M("shell.action", "detail", a.Detail))
+			lines = append(lines, core.M("shell.action", "detail", a.Detail))
 		case ActLesson:
-			lines = append(lines, M("shell.vice", "vice", a.Vice, "detail", a.Detail))
+			lines = append(lines, core.M("shell.vice", "vice", a.Vice, "detail", a.Detail))
 		}
 	}
 
-	m := LoadOrBuildMap(root)
+	m := projectmap.LoadOrBuildMap(root)
 	written := map[string]bool{}
 	var order []string
 	add := func(rel string) {
@@ -152,14 +157,14 @@ func trailerMsgs(root, cwd, original string, actions []TransformAction, started 
 			order = append(order, rel)
 		}
 	}
-	for _, e := range ReadJournalSince(root, started) {
+	for _, e := range journal.ReadJournalSince(root, started) {
 		if e.Kind == "write" && e.Path != "" {
 			add(e.Path)
 		}
 	}
 	for _, a := range actions {
 		if a.Kind == ActHeredocToFile && a.Path != "" {
-			add(relTo(root, a.Path))
+			add(core.RelTo(root, a.Path))
 		}
 	}
 	if len(order) > 0 {
@@ -168,13 +173,13 @@ func trailerMsgs(root, cwd, original string, actions []TransformAction, started 
 		if len(shown) > 20 {
 			shown, more = shown[:20], "…"
 		}
-		lines = append(lines, M("shell.written", "files", strings.Join(shown, ", ")+more))
+		lines = append(lines, core.M("shell.written", "files", strings.Join(shown, ", ")+more))
 		if m != nil {
 			for i, w := range order {
 				if i >= 8 {
 					break
 				}
-				if d := DependentsMsg(m, w); !d.Empty() {
+				if d := projectmap.DependentsMsg(m, w); !d.Empty() {
 					lines = append(lines, d)
 				}
 			}
@@ -186,19 +191,19 @@ func trailerMsgs(root, cwd, original string, actions []TransformAction, started 
 		lines = append(lines, ApplyWriteRulesMsgs(root, rules, abs)...)
 	}
 
-	if listed, ok := listedDirectory(original); ok && m != nil {
-		if mayChangeTree(original) { // rm, mv, a generator before the ls: describe the folder as it is now
-			m = BuildMap(root)
-			WriteMap(root, m)
+	if listed, ok := ListedDirectory(original); ok && m != nil {
+		if MayChangeTree(original) { // rm, mv, a generator before the ls: describe the folder as it is now
+			m = projectmap.BuildMap(root)
+			projectmap.WriteMap(root, m)
 		}
-		target := resolveIn(cwd, FromMsysPath(listed))
+		target := ResolveIn(cwd, core.FromMsysPath(listed))
 		if st, err := os.Stat(target); err == nil && st.IsDir() {
-			rel := relTo(root, target)
+			rel := core.RelTo(root, target)
 			if rel == "" {
 				rel = "."
 			}
-			if d := DescribeDir(m, rel); d != "" {
-				lines = append(lines, M("text.verbatim", "text", d)) // the map's listing is data, the same in every language
+			if d := projectmap.DescribeDir(m, rel); d != "" {
+				lines = append(lines, core.M("text.verbatim", "text", d)) // the map's listing is data, the same in every language
 			}
 			lines = append(lines, ApplyListRulesMsgs(root, rules, rel)...)
 		}
@@ -213,7 +218,7 @@ var (
 )
 
 // mayChangeTree reports whether a command line has a step beyond reading (it may add, move or remove files).
-func mayChangeTree(cmd string) bool {
+func MayChangeTree(cmd string) bool {
 	readOnly := map[string]bool{"ls": true, "tree": true, "dir": true, "cd": true, "pwd": true, "echo": true, "cat": true, "head": true, "tail": true, "grep": true, "rg": true, "wc": true, "find": true, "stat": true, "file": true, "du": true, "git": false}
 	for _, seg := range reSplitSeg.Split(cmd, -1) {
 		f := strings.Fields(seg)
@@ -225,7 +230,7 @@ func mayChangeTree(cmd string) bool {
 }
 
 // listedDirectory returns the directory an ls/tree command is listing.
-func listedDirectory(cmd string) (string, bool) {
+func ListedDirectory(cmd string) (string, bool) {
 	cwdPrefix := ""
 	for _, seg := range reSplitSeg.Split(cmd, -1) {
 		seg = strings.TrimSpace(seg)

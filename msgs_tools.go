@@ -4,50 +4,6 @@ package main
 // the report and the contract, missions, memory, connectors, web search, skills, the agent's browser.
 // English is what the model reads; pt-BR is what the user reads.
 
-import "errors"
-
-// msgError is an error that is a message of the catalog. Error() is the model's version (English), or
-// the user's language when the error is answered to the screen (userError). Whoever shows it can take
-// the message itself (msgOf) and write it in any language — nothing parses its text.
-type msgError struct {
-	m    Msg
-	lang string
-}
-
-func (e *msgError) Error() string {
-	if e.lang != "" {
-		return e.m.Render(e.lang)
-	}
-	return e.m.String()
-}
-
-// errMsg is an error the model reads (a tool's refusal that travels as an error).
-func errMsg(m Msg) error { return &msgError{m: m} }
-
-// userError is an error answered to the screen, already in the user's language.
-func userError(lang string, m Msg) error { return &msgError{m: m, lang: lang} }
-
-// msgOf is the message an error carries, when it is one of infuse's.
-func msgOf(err error) (Msg, bool) {
-	var me *msgError
-	if errors.As(err, &me) {
-		return me.m, true
-	}
-	return Msg{}, false
-}
-
-// errArg is an error as a message argument: infuse's own message (written in the reader's language) or
-// the error's text (an operating system's or a server's, kept as it is).
-func errArg(err error) any {
-	if err == nil {
-		return ""
-	}
-	if m, ok := msgOf(err); ok {
-		return m
-	}
-	return err.Error()
-}
-
 // SayErr is the tool output for an error: infuse's message recorded with the call, or the error's text.
 func (tc *ToolContext) SayErr(err error) string {
 	if m, ok := msgOf(err); ok {
