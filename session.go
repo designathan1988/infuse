@@ -89,8 +89,9 @@ type Session struct {
 	lastError     string
 	mapTimer      *time.Timer
 	settings      Settings
-	inflight      []Block // results of the current reply's tool calls, before they join the transcript
-	pendingImages []Block // images the agent opened with Read, sent with the next tool results
+	inflight      []Block    // results of the current reply's tool calls, before they join the transcript
+	pendingImages []Block    // images the agent opened with Read, sent with the next tool results
+	askMu         sync.Mutex // one question to the user at a time (parallel subagents may each need one)
 }
 
 var (
@@ -472,6 +473,8 @@ func (s *Session) askPermission(ctx context.Context, tool Tool, input json.RawMe
 }
 
 func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.RawMessage, reason string) bool {
+	s.askMu.Lock()
+	defer s.askMu.Unlock()
 	req := &permRequest{ID: fmt.Sprintf("p%d", time.Now().UnixNano()), Tool: tool.Spec().Name, Input: input, Category: tool.Category(), Reason: reason, reply: make(chan string, 1)}
 	s.mu.Lock()
 	s.pendingPerm = req
@@ -511,6 +514,8 @@ func (s *Session) ResolvePermission(id, decision string) bool {
 }
 
 func (s *Session) askUser(ctx context.Context, question string, options []string) (string, bool) {
+	s.askMu.Lock()
+	defer s.askMu.Unlock()
 	req := &askRequest{ID: fmt.Sprintf("q%d", time.Now().UnixNano()), Question: question, Options: options, reply: make(chan string, 1)}
 	s.mu.Lock()
 	s.pendingAsk = req

@@ -71,3 +71,22 @@ func TestReadsOfOneReplyRunTogether(t *testing.T) {
 		t.Fatal("a write ran in the parallel batch")
 	}
 }
+
+func TestExploreSubagentsRunAsATeam(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	s := newSession(root)
+	s.Provider = "mock"
+	content := []Block{
+		{Type: "tool_use", ID: "a", Name: "Agent", Input: json.RawMessage(`{"kind":"explore","prompt":"olá 1"}`)},
+		{Type: "tool_use", ID: "b", Name: "Agent", Input: json.RawMessage(`{"kind":"review","prompt":"olá 2"}`)},
+		{Type: "tool_use", ID: "c", Name: "Agent", Input: json.RawMessage(`{"kind":"general","prompt":"olá 3"}`)},
+	}
+	got := s.runReadsInParallel(context.Background(), &RuleSet{}, content)
+	if len(got) != 2 || got["a"].Content == "" || got["b"].Content == "" {
+		t.Fatalf("%+v", got)
+	}
+	if _, ok := got["c"]; ok {
+		t.Fatal("a general subagent (may write) ran in the parallel batch")
+	}
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -16,6 +17,14 @@ func (s *Session) runReadsInParallel(ctx context.Context, rules *RuleSet, conten
 			continue
 		}
 		t, ok := s.lookupTool(b.Name)
+		if ok && b.Name == "Agent" { // read-only subagents (explore, review) work side by side: an agent team
+			var in struct{ Kind string }
+			_ = json.Unmarshal(b.Input, &in)
+			if in.Kind == "explore" || in.Kind == "review" {
+				reads = append(reads, b)
+			}
+			continue
+		}
 		if !ok || t.Category() != "read" || s.permissionFor(t, b.Input) != "allow" || (s.mode() != "bypass" && s.readsOutside(b.Input)) {
 			continue
 		}

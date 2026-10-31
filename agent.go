@@ -195,7 +195,7 @@ type agentTool struct{}
 
 func (agentTool) Category() string { return "ui" }
 func (agentTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Agent", Description: "Delega uma tarefa a um subagente com contexto limpo, que devolve só a conclusão. kind=explore: pesquisa e leitura no projeto (só leitura). kind=review: revisor independente das alterações atuais (vê o diff, o plano e os critérios, não o seu raciocínio) — use antes de declarar um trabalho pronto. kind=general: tarefa delimitada com qualquer ferramenta. As ações do subagente passam pelas mesmas permissões e pelo filtro.",
+	return ToolSpec{Name: "Agent", Description: "Delega uma tarefa a um subagente com contexto limpo, que devolve só a conclusão. Vários subagentes explore/review chamados na mesma resposta trabalham ao mesmo tempo (uma equipe): divida pesquisas independentes entre eles. kind=explore: pesquisa e leitura no projeto (só leitura). kind=review: revisor independente das alterações atuais (vê o diff, o plano e os critérios, não o seu raciocínio) — use antes de declarar um trabalho pronto. kind=general: tarefa delimitada com qualquer ferramenta. As ações do subagente passam pelas mesmas permissões e pelo filtro.",
 		InputSchema: schema(`{"type":"object","properties":{"kind":{"type":"string","enum":["explore","review","general"]},"description":{"type":"string","description":"título curto"},"prompt":{"type":"string","description":"a tarefa, completa: o subagente não vê esta conversa"}},"required":["kind","prompt"]}`)}
 }
 
