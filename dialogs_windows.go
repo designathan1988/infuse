@@ -121,9 +121,12 @@ func (d winDialogs) showSTA(title string, folders bool) ([]string, error) {
 		owner = d.owner()
 	}
 	if owner == 0 {
-		// opened from the local server (the UI in a browser): own the dialog by the window in use,
-		// so it appears in front of it instead of behind
-		owner, _, _ = procGetForegroundWindow.Call()
+		// Opened from the local server (the UI in a browser). A window of another process cannot own a
+		// modal dialog (Show returns at once, cancelled), and a background process cannot take the
+		// foreground. So the dialog gets an owner of its own: a tiny transparent window brought to the
+		// front with the foreground thread's input attached, then removed when the dialog closes.
+		owner = frontOwner()
+		defer procDestroyWindow.Call(owner)
 	}
 	if hr := comCall(dialog, vtShow, owner); hr != 0 {
 		if hr == hrCancelled {
@@ -192,3 +195,36 @@ func hresultErr(step string, hr uintptr) error {
 }
 
 func osDialogs(owner func() uintptr) NativeDialogs { return winDialogs{owner: owner} }
+
+var (
+	procGetWindowThreadProcessID   = user32.NewProc("GetWindowThreadProcessId")
+	procAttachThreadInput          = user32.NewProc("AttachThreadInput")
+	procBringWindowToTop           = user32.NewProc("BringWindowToTop")
+	procSetLayeredWindowAttributes = user32.NewProc("SetLayeredWindowAttributes")
+)
+
+// frontOwner creates an invisible, topmost owner window at the centre of the screen and makes it the
+// foreground window, so the dialog it owns opens in front of everything and with the keyboard.
+func frontOwner() uintptr {
+	const wsPopup, wsExTopmost, wsExToolwindow, wsExLayered = 0x80000000, 0x8, 0x80, 0x80000
+	cls, _ := windows.UTF16PtrFromString("STATIC")
+	sw, _, _ := procGetSystemMetrics.Call(0)
+	sh, _, _ := procGetSystemMetrics.Call(1)
+	h, _, _ := procCreateWindowExW.Call(wsExTopmost|wsExToolwindow|wsExLayered, uintptr(unsafe.Pointer(cls)), 0, wsPopup,
+		sw/2, sh/3, 1, 1, 0, 0, 0, 0)
+	if h == 0 {
+		return 0
+	}
+	procSetLayeredWindowAttributes.Call(h, 0, 0, 2) // LWA_ALPHA 0: fully transparent
+	procShowWindow.Call(h, 5)                       // SW_SHOW
+	fg, _, _ := procGetForegroundWindow.Call()
+	fgThread, _, _ := procGetWindowThreadProcessID.Call(fg, 0)
+	me := uintptr(windows.GetCurrentThreadId())
+	if fgThread != 0 && fgThread != me {
+		procAttachThreadInput.Call(me, fgThread, 1)
+		defer procAttachThreadInput.Call(me, fgThread, 0)
+	}
+	procBringWindowToTop.Call(h)
+	procSetForegroundWindow.Call(h)
+	return h
+}
