@@ -151,6 +151,19 @@ func loadSession(root, id string) (*Session, error) {
 	return s, nil
 }
 
+// sessionListCache keeps the sidebar's summary of each session file, by modification time and size:
+// the list is asked for often and a session file carries the whole conversation.
+var (
+	sessionListCache   = map[string]sessionListEntry{}
+	sessionListCacheMu sync.Mutex
+)
+
+type sessionListEntry struct {
+	mod  time.Time
+	size int64
+	data SessionData
+}
+
 func listSessions(root string) []SessionData {
 	entries, _ := os.ReadDir(sessionsDir(root))
 	var out []SessionData
@@ -158,10 +171,26 @@ func listSessions(root string) []SessionData {
 		if !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
+		p := filepath.Join(sessionsDir(root), e.Name())
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		sessionListCacheMu.Lock()
+		c, ok := sessionListCache[p]
+		sessionListCacheMu.Unlock()
+		if ok && c.mod.Equal(info.ModTime()) && c.size == info.Size() {
+			out = append(out, c.data)
+			continue
+		}
 		var d SessionData
-		if readJSON(filepath.Join(sessionsDir(root), e.Name()), &d) == nil {
+		if readJSON(p, &d) == nil {
 			d.Messages = nil
 			d.Checkpoints = nil
+			d.Memory = nil
+			sessionListCacheMu.Lock()
+			sessionListCache[p] = sessionListEntry{mod: info.ModTime(), size: info.Size(), data: d}
+			sessionListCacheMu.Unlock()
 			out = append(out, d)
 		}
 	}

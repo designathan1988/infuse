@@ -28,6 +28,45 @@ type TurnReport struct {
 	Summary string        `json:"summary"`
 	Claims  []ReportClaim `json:"claims"`
 	Next    string        `json:"next,omitempty"`
+	Sources []string      `json:"sources,omitempty"` // searches and pages read in the turn (provenance)
+}
+
+// turnSources lists the web searches, pages and pinned docs the agent consulted in the current turn.
+func (s *Session) turnSources() []string {
+	s.mu.Lock()
+	start := 0
+	if s.Turn-1 < len(s.TurnStarts) && s.Turn > 0 {
+		start = s.TurnStarts[s.Turn-1]
+	}
+	msgs := append([]Message{}, s.Messages[min(start, len(s.Messages)):]...)
+	s.mu.Unlock()
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range msgs {
+		for _, b := range m.Content {
+			if b.Type != "tool_use" {
+				continue
+			}
+			var in struct{ URL, Query, Path, Action string }
+			_ = json.Unmarshal(b.Input, &in)
+			src := ""
+			switch {
+			case b.Name == "WebSearch":
+				src = "pesquisa: " + in.Query
+			case b.Name == "WebFetch":
+				src = in.URL
+			case b.Name == "Browser" && in.Action == "navigate":
+				src = in.URL
+			case b.Name == "Read" && strings.Contains(filepath.ToSlash(in.Path), ".infuse/docs/"):
+				src = "documentação fixada: " + filepath.Base(in.Path)
+			}
+			if src != "" && !seen[src] {
+				seen[src] = true
+				out = append(out, src)
+			}
+		}
+	}
+	return out
 }
 
 func squash(s string) string { return strings.Join(strings.Fields(s), " ") }
@@ -147,8 +186,12 @@ func (reportTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 			bad++
 		}
 	}
+	r.Sources = s.turnSources()
 	s.emit("report", r)
 	out := "Relatório conferido pelo infuse:\n" + b.String()
+	if len(r.Sources) > 0 {
+		out += "Fontes consultadas neste turno:\n- " + strings.Join(r.Sources, "\n- ") + "\n"
+	}
 	if bad > 0 {
 		out += fmt.Sprintf("%d afirmação(ões) não confirmada(s) pela execução: corrija o trabalho ou a afirmação; o usuário vê esta conferência.", bad)
 	}

@@ -183,3 +183,10 @@ func TestListedDirectory(t *testing.T) {
 		t.Fatalf("got %q %v", d, ok)
 	}
 }
+
+func TestHeredocUnterminatedQuotedDelimiterDoesNotPanic(t *testing.T) {
+	for _, cmd := range []string{`cat <<"000`, `cat <<'EOF`, `cat <<"`, `x <<''`} {
+		_ = FindHeredocs(cmd)
+		_, _, _ = newGuard(t.TempDir(), nil).GuardCommand(cmd, t.TempDir())
+	}
+}

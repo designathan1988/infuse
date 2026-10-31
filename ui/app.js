@@ -381,6 +381,7 @@ function onEvent(L, ev) {
     case 'error': L.snap.error = d; L.snap.pendingPermission = null; L.snap.pendingQuestion = null; re(); attention(L, 'infuse: erro', String(d)); break;
     case 'tasks': L.snap.tasks = d; vs.forEach(renderRail); paneRefresh('tasks'); break;
     case 'memory': paneRefresh('memory'); break;
+    case 'subagent': L.sub = d.state === 'done' ? null : { ...(L.sub || {}), ...d, steps: (L.sub?.steps || 0) + (d.state === 'tool' ? 1 : 0) }; vs.forEach(renderLive); break;
     case 'mission': L.snap.mission = d; vs.forEach(renderRail); break;
     case 'cwd': L.snap.cwd = d; break;
     case 'checkpoint': (L.snap.checkpoints[d.turn] = L.snap.checkpoints[d.turn] || []).push({ path: d.path }); break;
@@ -572,6 +573,7 @@ function bindChat(v, root) {
   $$('[data-copy-msg]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const m = L.snap.messages[+b.dataset.copyMsg]; copyText(msgText(m), 'Mensagem copiada'); });
   $$('[data-copy-turn]', root).forEach(b => b.onclick = e => { e.stopPropagation(); const [a, z] = b.dataset.copyTurn.split(':').map(Number); copyText(L.snap.messages.slice(a + 1, z + 1).filter(m => m.role === 'assistant').map(msgText).filter(Boolean).join('\n\n'), 'Respostas copiadas'); });
   $$('.codecopy', root).forEach(b => b.onclick = () => copyText(b.nextElementSibling.innerText, 'Código copiado'));
+  $$('[data-url]', root).forEach(a => a.onclick = e => { e.preventDefault(); togglePane('browser', true); setTimeout(() => paneCall('browser', 'go', a.dataset.url), 300); });
   $$('[data-fixreview]', root).forEach(b => b.onclick = () => { const P = $('.prompt', v.el); P.value = t('Corrija os achados da revisão independente acima. Para cada um, diga o que mudou ou por que não procede.'); send(v); });
   $$('[data-next]', root).forEach(b => b.onclick = () => { const P = $('.prompt', v.el); P.value = b.dataset.next; grow(P); P.focus(); });
   $$('[data-copy-think]', root).forEach(b => b.onclick = e => { e.stopPropagation(); copyText(b.closest('.tool').querySelector('.thinktext')?.innerText || '', 'Raciocínio copiado'); });
@@ -589,6 +591,7 @@ function renderLive(v) {
   if (L.think) out += thinkBlock(`${L.id}:live`, L.think, true);
   if (L.text) out += `<div class="a"><div class="md sel">${md(L.text)}<span class="cursor"></span></div></div>`;
   for (const [id, tl] of Object.entries(L.tools)) { let inp; try { inp = JSON.parse(tl.input); } catch { inp = { _partial: tl.input }; } out += toolBlock(id, tl.name, inp, null, L.running?.id === id); }
+  if (L.sub && busy(L)) out += `<div class="status sub"><span class="spin"></span><span>${t('subagente')} ${esc(t(L.sub.kind || ''))}${L.sub.title ? ' · ' + esc(L.sub.title) : ''} · ${L.sub.steps || 0} ${t('passos')}${L.sub.tool ? ' · ' + esc(L.sub.tool) + ' ' + esc((L.sub.summary || '').slice(0, 60)) : ''}</span></div>`;
   const st = L.snap?.state;
   if (st === 'thinking' || st === 'tool' || st === 'compacting') out += `<div class="status"><span class="spin"></span><span>${st === 'tool' ? t('executando ') + esc(L.running?.name || '') : st === 'compacting' ? t('compactando contexto') : t('pensando')}</span><span class="faint el" data-el="${L.id}"></span></div>`;
   el.innerHTML = out; bindChat(v, el);
@@ -624,7 +627,9 @@ function reportCard(inp, result) {
   const lines = String(result?.content || '').split('\n').filter(l => l.startsWith('- ['));
   const rows = (inp.claims || []).map((c, k) => { const m = (lines[k] || '').match(/^- \[([a-z-]+)\] .* — (.*)$/); const st = m ? m[1] : ''; const [ic, cls, lab] = CLAIM[st] || ['…', '', 'conferindo']; return `<div class="rrow"><span class="rst ${cls}" title="${esc(t(lab))}">${ic}</span><span class="grow"><span>${esc(c.text)}</span>${c.ref ? ` <code>${esc(c.ref)}</code>` : ''}${m ? `<span class="faint rev">${esc(m[2])}</span>` : ''}</span></div>`; }).join('');
   const bad = lines.filter(l => l.startsWith('- [nao-confirmado]')).length;
-  return `<div class="report"><div class="rh"><b>${t('Relatório')}</b><span class="faint">${t(result ? 'conferido pelo infuse com o que de fato rodou' : 'conferindo…')}</span>${bad ? `<span class="tag bad">${bad} ${t('não confirmada(s)')}</span>` : ''}</div>${inp.summary ? `<div class="md sel">${md(inp.summary)}</div>` : ''}${rows}${inp.next ? `<div class="rnext"><span class="faint">${t('Próximo passo')}</span><span class="grow">${esc(inp.next)}</span><button class="btn sm" data-next="${esc(inp.next)}">${t('Usar')}</button></div>` : ''}</div>`;
+  const srcs = (String(result?.content || '').split('Fontes consultadas neste turno:\n')[1] || '').split('\n').filter(l => l.startsWith('- ')).map(l => l.slice(2));
+  const srcHTML = srcs.length ? `<details class="odet"><summary>${t('Fontes consultadas')} (${srcs.length})</summary>${srcs.map(x => /^https?:/.test(x) ? `<div class="mono" style="font-size:11.5px"><a href="#" data-url="${esc(x)}">${esc(x)}</a></div>` : `<div class="faint" style="font-size:11.5px">${esc(x)}</div>`).join('')}</details>` : '';
+  return `<div class="report"><div class="rh"><b>${t('Relatório')}</b><span class="faint">${t(result ? 'conferido pelo infuse com o que de fato rodou' : 'conferindo…')}</span>${bad ? `<span class="tag bad">${bad} ${t('não confirmada(s)')}</span>` : ''}</div>${inp.summary ? `<div class="md sel">${md(inp.summary)}</div>` : ''}${rows}${srcHTML}${inp.next ? `<div class="rnext"><span class="faint">${t('Próximo passo')}</span><span class="grow">${esc(inp.next)}</span><button class="btn sm" data-next="${esc(inp.next)}">${t('Usar')}</button></div>` : ''}</div>`;
 }
 function toolBlock(id, name, input, result, running) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }

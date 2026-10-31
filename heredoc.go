@@ -88,7 +88,9 @@ func FindHeredocs(cmd string) []Heredoc {
 					delim.WriteByte(cmd[i])
 					i++
 				}
-				i++
+				if i < n { // the closing quote (an unterminated one ends at the end of the command)
+					i++
+				}
 			} else {
 				for i < n && !isDelimEnd(cmd[i]) {
 					if cmd[i] == '\\' {
