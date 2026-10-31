@@ -519,11 +519,5 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	return tc.Say(M("tool.unknown_action", "action", in.Action)), true
 }
 
-func firstNonZero(a, b float64) float64 {
-	if a != 0 {
-		return a
-	}
-	return b
-}
 
 func init() { registerTool(browserTool{}) }

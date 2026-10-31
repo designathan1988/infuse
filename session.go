@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 )
 
 type permRequest struct {
@@ -1599,20 +1598,3 @@ func searchSessions(q string, max int) []sessionHit {
 }
 
 // snippetAround cuts ~40 characters on each side of the match at byte k (rune-safe).
-func snippetAround(text string, k, n int) string {
-	from, to := max(0, k-40), min(len(text), k+n+40)
-	for from > 0 && !utf8.RuneStart(text[from]) {
-		from--
-	}
-	for to < len(text) && !utf8.RuneStart(text[to]) {
-		to++
-	}
-	s := strings.Join(strings.Fields(text[from:to]), " ")
-	if from > 0 {
-		s = "…" + s
-	}
-	if to < len(text) {
-		s += "…"
-	}
-	return s
-}

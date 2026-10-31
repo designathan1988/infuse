@@ -363,14 +363,3 @@ func (s *Session) noteRead(name string, input json.RawMessage, out string, isErr
 	s.docs.add(out)
 }
 
-func dedupe(xs []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, x := range xs {
-		if !seen[x] {
-			seen[x] = true
-			out = append(out, x)
-		}
-	}
-	return out
-}

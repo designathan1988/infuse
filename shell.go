@@ -250,13 +250,3 @@ func listedDirectory(cmd string) (string, bool) {
 	return "", false
 }
 
-func relTo(root, abs string) string {
-	r, err := filepath.Rel(root, abs)
-	if err != nil {
-		return toPosix(abs)
-	}
-	if r == "." {
-		return ""
-	}
-	return toPosix(r)
-}

@@ -22,15 +22,6 @@ import (
 	"time"
 )
 
-// within reports whether p is root or inside it, comparing whole path components (C:\proj-2 is not in C:\proj).
-func within(root, p string) bool {
-	if root == "" || p == "" {
-		return false
-	}
-	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(p))
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
-}
-
 // capWriter keeps the first and last `limit` bytes of a stream, so a command that prints gigabytes
 // cannot exhaust memory; what was dropped is reported in the middle.
 type capWriter struct {

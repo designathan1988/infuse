@@ -196,14 +196,6 @@ func DisconnectProvider(id string) error {
 	return SaveSettings(s)
 }
 
-func contains(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
 
 // preferredModel picks a sensible default from a provider's list: a coding/chat model, not an embedding one.
 func preferredModel(models []string) string {

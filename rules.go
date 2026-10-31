@@ -250,13 +250,6 @@ func ApplyListRulesMsgs(root string, set *RuleSet, dir string) []Msg {
 	return lines
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
-}
-
 var exampleRules = RulesFile{
 	Rules: []Rule{
 		{ID: "no-swallowed-errors", When: "write", Match: `catch\s*(\([^)]*\))?\s*\{\s*\}`, Say: "empty catch block: the error is being swallowed. Handle the error or let it propagate.", Vice: "swallowed-error"},

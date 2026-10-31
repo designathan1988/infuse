@@ -86,13 +86,6 @@ func lineDiff(a, b []string) []struct {
 	return out
 }
 
-func splitLines(s string) []string {
-	if s == "" {
-		return nil
-	}
-	s = strings.ReplaceAll(s, "\r\n", "\n")
-	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
-}
 
 // unifiedDiff renders the ops as a unified diff with three lines of context.
 func unifiedDiff(path string, a, b []string) (string, int, int) {

@@ -51,8 +51,6 @@ func loadCompiledRules(root string) *compiledRules {
 	return &c
 }
 
-func normSpace(s string) string { return strings.Join(strings.Fields(strings.ToLower(s)), " ") }
-
 const compilePrompt = `You receive the instructions of a software project (they may be written in any language). Extract ONLY what they state explicitly, in these three kinds:
 - "reference": a path (folder or file) that the instructions say not to copy, not to write to, or to use only as a reference for reading.
 - "read": a document that the instructions say to read, consult or follow.

@@ -306,13 +306,6 @@ func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResul
 	return r
 }
 
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
-}
-
 // takeSnapshot freezes the working tree. With git: a commit of everything (tracked + untracked, honoring
 // .gitignore) built through a temporary index, checked out in a detached worktree. Without git: a copy
 // of the files plus a sha256 manifest. Returns the folder to run in, its id, and a cleanup.

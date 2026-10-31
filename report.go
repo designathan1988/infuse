@@ -251,16 +251,6 @@ func (s *Session) attachToCall(callID string, data any) {
 	}
 }
 
-func firstLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = s[:i]
-	}
-	if len(s) > 160 {
-		s = s[:160] + "…"
-	}
-	return s
-}
 
 // ---------------------------------------------------------------- tools
 

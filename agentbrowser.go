@@ -838,11 +838,3 @@ var devicePresets = map[string]struct {
 	"laptop": {1366, 768, 1, false, ""},
 }
 
-func sortedKeys[M ~map[string]V, V any](m M) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
