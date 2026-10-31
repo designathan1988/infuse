@@ -16,16 +16,13 @@ var (
 	reArg     = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 )
 
-// Every interface message has both languages, and both place the same named arguments.
-func TestUICatalogIsComplete(t *testing.T) {
+// Every message has both languages, and both place the same named arguments.
+func TestCatalogIsComplete(t *testing.T) {
 	var catalog map[string]map[string]string
-	if err := json.Unmarshal(uiCatalogJSON, &catalog); err != nil {
+	if err := json.Unmarshal(catalogJSON, &catalog); err != nil {
 		t.Fatal(err)
 	}
 	for id, langs := range catalog {
-		if !strings.HasPrefix(id, "ui.") {
-			t.Errorf("%s: interface ids start with ui.", id)
-		}
 		if langs["en"] == "" || langs["pt-BR"] == "" {
 			t.Errorf("%s: missing a language", id)
 			continue
@@ -48,7 +45,7 @@ func placeholders(s string) []string {
 // Every literal translation call uses a catalog id, and every id it names exists.
 func TestUIMessagesUseCatalogIDs(t *testing.T) {
 	var catalog map[string]map[string]string
-	if err := json.Unmarshal(uiCatalogJSON, &catalog); err != nil {
+	if err := json.Unmarshal(catalogJSON, &catalog); err != nil {
 		t.Fatal(err)
 	}
 	root := filepath.Join("..", "..", "ui")
@@ -81,12 +78,12 @@ func TestUIMessagesUseCatalogIDs(t *testing.T) {
 				continue
 			}
 			if _, ok := catalog[id]; !ok {
-				t.Errorf("%s: %s is missing from ui.json", file, id)
+				t.Errorf("%s: %s is missing from catalog.json", file, id)
 			}
 		}
 		for _, m := range reDataI18.FindAllStringSubmatch(text, -1) {
 			if _, ok := catalog[m[1]]; !ok {
-				t.Errorf("%s: %s is missing from ui.json", file, m[1])
+				t.Errorf("%s: %s is missing from catalog.json", file, m[1])
 			}
 		}
 	}

@@ -28,4 +28,4 @@ jobs:
         run: |
           for f in $(find ui -name '*.js' -not -path '*/vendor/*'); do node --check "$f"; done
       - name: locale data
-        run: node -e "JSON.parse(require('fs').readFileSync('internal/core/ui.json','utf8'))"
+        run: node -e "JSON.parse(require('fs').readFileSync('internal/core/catalog.json','utf8'))"
