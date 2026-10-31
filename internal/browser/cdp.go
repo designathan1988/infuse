@@ -1,4 +1,4 @@
-package main
+package browser
 
 // A headless Chromium-family browser (Edge, Chrome, Chromium — whichever is installed) driven over the
 // DevTools protocol, for the agent's Browser tool. It never shows a window. One browser per project,
@@ -12,6 +12,8 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"infuse/internal/core"
+	"infuse/internal/platform/process"
 	"errors"
 	"fmt"
 	"io"
@@ -146,9 +148,9 @@ func (w *wsConn) readMessage() ([]byte, error) {
 
 // ---------------------------------------------------------------- CDP session
 
-type cdpBrowser struct {
+type Browser struct {
 	port     string
-	parent   *cdpBrowser // set on extra pages (tabs) of a browser
+	parent   *Browser // set on extra pages (tabs) of a browser
 	targetID string
 	onEvent  func(method string, params json.RawMessage) // events other than console (screencast, navigation)
 	profile  string
@@ -189,7 +191,7 @@ func findChromium() string {
 	return ""
 }
 
-func startCDP(profile string) (*cdpBrowser, error) {
+func startCDP(profile string) (*Browser, error) {
 	exe := findChromium()
 	if exe == "" {
 		return nil, errors.New("nenhum navegador Edge, Chrome ou Chromium encontrado neste computador")
@@ -197,7 +199,7 @@ func startCDP(profile string) (*cdpBrowser, error) {
 	_ = os.MkdirAll(profile, 0o755)
 	_ = os.Remove(filepath.Join(profile, "DevToolsActivePort"))
 	cmd := exec.Command(exe, "--headless=new", "--remote-debugging-port=0", "--user-data-dir="+profile, "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-blink-features=AutomationControlled", "--window-size=1280,800", "about:blank")
-	noConsoleWindow(cmd)
+	process.NoConsoleWindow(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -240,7 +242,7 @@ func startCDP(profile string) (*cdpBrowser, error) {
 		_ = cmd.Process.Kill()
 		return nil, err
 	}
-	b := &cdpBrowser{port: port, profile: profile, cmd: cmd, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
+	b := &Browser{port: port, profile: profile, cmd: cmd, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
 	go b.readLoop()
 	b.prepare()
 	return b, nil
@@ -248,7 +250,7 @@ func startCDP(profile string) (*cdpBrowser, error) {
 
 // prepare enables the domains infuse listens to and presents the browser as a regular one (sites block
 // or degrade "HeadlessChrome").
-func (b *cdpBrowser) prepare() {
+func (b *Browser) prepare() {
 	for _, m := range []string{"Page.enable", "Runtime.enable", "Log.enable"} {
 		_, _ = b.call(context.Background(), m, nil)
 	}
@@ -264,7 +266,7 @@ func (b *cdpBrowser) prepare() {
 }
 
 // newPage opens another page (a tab) in the same browser, with its own connection.
-func (b *cdpBrowser) newPage(url string) (*cdpBrowser, error) {
+func (b *Browser) newPage(url string) (*Browser, error) {
 	raw, err := b.call(context.Background(), "Target.createTarget", map[string]any{"url": url})
 	if err != nil {
 		return nil, err
@@ -277,13 +279,13 @@ func (b *cdpBrowser) newPage(url string) (*cdpBrowser, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &cdpBrowser{port: b.port, parent: b, targetID: t.TargetID, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
+	p := &Browser{port: b.port, parent: b, targetID: t.TargetID, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
 	go p.readLoop()
 	p.prepare()
 	return p, nil
 }
 
-func (b *cdpBrowser) readLoop() {
+func (b *Browser) readLoop() {
 	for {
 		raw, err := b.ws.readMessage()
 		if err != nil {
@@ -356,7 +358,7 @@ func (b *cdpBrowser) readLoop() {
 				} `json:"exceptionDetails"`
 			}
 			_ = json.Unmarshal(m.Params, &p)
-			b.addConsole("exceção: " + firstNonEmpty(p.Details.Exception.Description, p.Details.Text))
+			b.addConsole("exceção: " + core.FirstNonEmpty(p.Details.Exception.Description, p.Details.Text))
 		case "Log.entryAdded":
 			var p struct {
 				Entry struct{ Level, Text, URL string } `json:"entry"`
@@ -367,16 +369,16 @@ func (b *cdpBrowser) readLoop() {
 	}
 }
 
-func (b *cdpBrowser) addConsole(s string) {
+func (b *Browser) addConsole(s string) {
 	b.mu.Lock()
-	b.console = append(b.console, truncate(s, 500))
+	b.console = append(b.console, core.Truncate(s, 500))
 	if len(b.console) > 200 {
 		b.console = b.console[len(b.console)-200:]
 	}
 	b.mu.Unlock()
 }
 
-func (b *cdpBrowser) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+func (b *Browser) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	b.mu.Lock()
 	if b.closed {
 		b.mu.Unlock()
@@ -417,7 +419,15 @@ func (b *cdpBrowser) call(ctx context.Context, method string, params any) (json.
 }
 
 // eval runs JavaScript in the page and returns its value as JSON.
-func (b *cdpBrowser) eval(ctx context.Context, js string) (json.RawMessage, error) {
+// Call sends one DevTools command (the docs fetcher uses it).
+func (b *Browser) Call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	return b.call(ctx, method, params)
+}
+
+// Eval evaluates JavaScript in the page.
+func (b *Browser) Eval(ctx context.Context, js string) (json.RawMessage, error) { return b.eval(ctx, js) }
+
+func (b *Browser) eval(ctx context.Context, js string) (json.RawMessage, error) {
 	raw, err := b.call(ctx, "Runtime.evaluate", map[string]any{"expression": js, "awaitPromise": true, "returnByValue": true})
 	if err != nil {
 		return nil, err
@@ -435,12 +445,15 @@ func (b *cdpBrowser) eval(ctx context.Context, js string) (json.RawMessage, erro
 	}
 	_ = json.Unmarshal(raw, &r)
 	if r.Exception != nil {
-		return nil, errors.New(firstNonEmpty(r.Exception.Exception.Description, r.Exception.Text))
+		return nil, errors.New(core.FirstNonEmpty(r.Exception.Exception.Description, r.Exception.Text))
 	}
 	return r.Result.Value, nil
 }
 
-func (b *cdpBrowser) waitLoad(ctx context.Context) {
+// WaitLoad waits for the page load event.
+func (b *Browser) WaitLoad(ctx context.Context) { b.waitLoad(ctx) }
+
+func (b *Browser) waitLoad(ctx context.Context) {
 	for i := 0; i < 100; i++ {
 		v, err := b.eval(ctx, "document.readyState")
 		if err == nil && string(v) == `"complete"` {
@@ -450,7 +463,7 @@ func (b *cdpBrowser) waitLoad(ctx context.Context) {
 	}
 }
 
-func (b *cdpBrowser) close() {
+func (b *Browser) close() {
 	if b.parent != nil { // a tab: close its target, the browser stays
 		_, _ = b.parent.call(context.Background(), "Target.closeTarget", map[string]any{"targetId": b.targetID})
 		b.mu.Lock()
@@ -490,12 +503,12 @@ func (b *cdpBrowser) close() {
 }
 
 var (
-	cdpBrowsers   = map[string]*cdpBrowser{}
+	cdpBrowsers   = map[string]*Browser{}
 	cdpBrowsersMu sync.Mutex
 )
 
-// agentBrowser returns the project's headless browser, starting it when needed.
-func agentBrowser(root string) (*cdpBrowser, error) {
+// AgentBrowser returns the project's headless browser, starting it when needed.
+func AgentBrowser(root string) (*Browser, error) {
 	cdpBrowsersMu.Lock()
 	defer cdpBrowsersMu.Unlock()
 	if b := cdpBrowsers[root]; b != nil {
@@ -507,7 +520,7 @@ func agentBrowser(root string) (*cdpBrowser, error) {
 		}
 	}
 	sum := sha1.Sum([]byte(filepath.Clean(root)))
-	b, err := startCDP(filepath.Join(InfuseHome(), "agent-browser", fmt.Sprintf("%x", sum[:6])))
+	b, err := startCDP(filepath.Join(core.InfuseHome(), "agent-browser", fmt.Sprintf("%x", sum[:6])))
 	if err != nil {
 		return nil, err
 	}
@@ -535,8 +548,8 @@ func agentBrowser(root string) (*cdpBrowser, error) {
 	return b, nil
 }
 
-// closeAgentBrowsers is called when the app exits.
-func closeAgentBrowsers() {
+// CloseAgentBrowsers is called when the app exits.
+func CloseAgentBrowsers() {
 	cdpBrowsersMu.Lock()
 	defer cdpBrowsersMu.Unlock()
 	for k, b := range cdpBrowsers {

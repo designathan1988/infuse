@@ -1,4 +1,4 @@
-package main
+package browser
 
 // The agent's Browser tool, on the engine in agentbrowser.go: navigation, human gestures with a visible
 // cursor, Playwright-style locators and waits, high-resolution captures, recordings delivered as
@@ -7,6 +7,10 @@ package main
 
 import (
 	"bytes"
+	"infuse/internal/config"
+	"infuse/internal/core"
+	"infuse/internal/journal"
+	"infuse/internal/security"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -22,29 +26,40 @@ import (
 	"time"
 )
 
-type browserTool struct{}
+// Host is what the tool needs from the session that runs it: the project, its settings, a place to
+// attach images for the model, output clipping and the message recorder.
+type Host interface {
+	RootDir() string
+	Settings() config.Settings
+	AttachImage(core.Block)
+	Clip(string) string
+	Say(core.Msg) string
+	SayErr(error) string
+}
 
-func (browserTool) Category() string { return "net" }
-func (browserTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Browser", Description: `A real browser (without a window) that you use the way a person does: the cursor appears and moves, clicks have a pause, typing is key by key. Use it to open the app (localhost), check screens, reproduce bugs and diagnose.
+type Tool struct{}
+
+func rawSchema(s string) json.RawMessage { return json.RawMessage(s) }
+
+func (Tool) Category() string { return "net" }
+func (Tool) Spec() core.ToolSpec {
+	return core.ToolSpec{Name: "Browser", Description: `A real browser (without a window) that you use the way a person does: the cursor appears and moves, clicks have a pause, typing is key by key. Use it to open the app (localhost), check screens, reproduce bugs and diagnose.
 Locators (selector): CSS, text=Sign in, role=button[name="Sign in"], label=Email, placeholder=Search, testid=save, xpath=//...
 Actions: navigate(url) · back · reload · click(selector; button=right; count=2 for a double click) · hover(selector) · type(selector, text, submit) · press(key: Enter, Tab, Control+A, Shift+Tab…) · scroll(dy or selector) · drag(selector, to) · select(selector, value) · upload(selector, path in the project) · wait_for(selector or text, timeout ms) · text(optional selector) · dom(selector: HTML) · eval(script) ·
 screenshot(full_page, selector for just that element) — you see the image in high resolution ·
 record_start / record_stop — for something that happens over time (an animation, a transition, loading, an intermittent error): you receive the keyframes where the screen changed, each one as an image, with the timeline of actions, console errors and network failures between them, and an enlarged crop of small changes ·
 console · network(only_issues) · performance · a11y (accessibility tree) · storage (cookies and localStorage) · throttle(network: offline | 3g | 4g | none) · emulate(device: iphone | pixel | ipad | laptop | desktop) · viewport(width, height) · pdf.`,
-		InputSchema: schema(`{"type":"object","properties":{"action":{"type":"string","enum":["navigate","back","reload","click","hover","type","press","scroll","drag","select","upload","wait_for","text","dom","eval","screenshot","record_start","record_stop","console","network","performance","a11y","storage","throttle","emulate","viewport","pdf"]},"url":{"type":"string"},"selector":{"type":"string"},"to":{"type":"string","description":"drag: the target's locator"},"text":{"type":"string"},"value":{"type":"string"},"path":{"type":"string"},"submit":{"type":"boolean"},"key":{"type":"string"},"button":{"type":"string","enum":["left","right","middle"]},"count":{"type":"integer"},"dy":{"type":"number"},"script":{"type":"string"},"full_page":{"type":"boolean"},"timeout":{"type":"integer"},"max_frames":{"type":"integer"},"only_issues":{"type":"boolean"},"network":{"type":"string"},"device":{"type":"string"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["action"]}`)}
+		InputSchema: rawSchema(`{"type":"object","properties":{"action":{"type":"string","enum":["navigate","back","reload","click","hover","type","press","scroll","drag","select","upload","wait_for","text","dom","eval","screenshot","record_start","record_stop","console","network","performance","a11y","storage","throttle","emulate","viewport","pdf"]},"url":{"type":"string"},"selector":{"type":"string"},"to":{"type":"string","description":"drag: the target's locator"},"text":{"type":"string"},"value":{"type":"string"},"path":{"type":"string"},"submit":{"type":"boolean"},"key":{"type":"string"},"button":{"type":"string","enum":["left","right","middle"]},"count":{"type":"integer"},"dy":{"type":"number"},"script":{"type":"string"},"full_page":{"type":"boolean"},"timeout":{"type":"integer"},"max_frames":{"type":"integer"},"only_issues":{"type":"boolean"},"network":{"type":"string"},"device":{"type":"string"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["action"]}`)}
 }
 
 // attach hands an image to the model, at most 1600 px wide (the file on disk keeps full resolution).
-func attachImage(s *Session, jpg []byte) {
+func attachImage(h Host, jpg []byte) {
 	if im, err := jpeg.Decode(bytes.NewReader(jpg)); err == nil && im.Bounds().Dx() > 1600 {
 		var buf bytes.Buffer
 		_ = jpeg.Encode(&buf, shrink(im, 1600), &jpeg.Options{Quality: 88})
 		jpg = buf.Bytes()
 	}
-	s.mu.Lock()
-	s.pendingImages = append(s.pendingImages, Block{Type: "image", MediaType: "image/jpeg", Data: base64.StdEncoding.EncodeToString(jpg)})
-	s.mu.Unlock()
+	h.AttachImage(core.Block{Type: "image", MediaType: "image/jpeg", Data: base64.StdEncoding.EncodeToString(jpg)})
 }
 
 // shrink resizes to the given width with area averaging (text stays readable).
@@ -75,7 +90,7 @@ func shrink(src image.Image, width int) image.Image {
 	return dst
 }
 
-func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
+func (Tool) Run(ctx context.Context, h Host, input json.RawMessage) (string, bool) {
 	var in struct {
 		Action, URL, Selector, To, Text, Value, Path, Key, Button, Script, Network, Device string
 		Submit, FullPage, OnlyIssues                                                       bool
@@ -90,12 +105,11 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	if v, ok := raw["max_frames"].(float64); ok {
 		in.MaxFrames = int(v)
 	}
-	s := tc.S
-	p, err := agentPageFor(s)
+	p, err := AgentPageFor(h.RootDir(), h.Settings())
 	if err != nil {
-		return tc.SayErr(err), true
+		return h.SayErr(err), true
 	}
-	g := gesturesFor(s.settings)
+	g := gesturesFor(h.Settings())
 	wait := time.Duration(in.Timeout) * time.Millisecond
 	if wait <= 0 {
 		wait = 8 * time.Second
@@ -109,7 +123,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	// locateErr finds an element; the error says why not (no selector, not found, not visible)
 	locateErr := func(sel string) (*located, error) {
 		if sel == "" {
-			return nil, errMsg(M("browser.give_selector"))
+			return nil, core.ErrMsg(core.M("browser.give_selector"))
 		}
 		return p.locate(ctx, sel, wait)
 	}
@@ -117,22 +131,22 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	locate := func(sel string) (*located, string) {
 		l, err := locateErr(sel)
 		if err != nil {
-			return nil, tc.SayErr(err)
+			return nil, h.SayErr(err)
 		}
 		return l, ""
 	}
 	if !strings.HasPrefix(in.Action, "record_") {
-		what := firstNonEmpty(firstNonEmpty(in.Selector, in.URL), firstNonEmpty(in.Key, in.Text))
+		what := core.FirstNonEmpty(core.FirstNonEmpty(in.Selector, in.URL), core.FirstNonEmpty(in.Key, in.Text))
 		if in.Action == "scroll" && in.Selector == "" {
-			what = fmt.Sprintf("%+.0f px", firstNonZero(in.Dy, 600))
+			what = fmt.Sprintf("%+.0f px", core.FirstNonZero(in.Dy, 600))
 		}
-		p.note(M("browser.ev_action", "action", strings.TrimSpace(in.Action+" "+what)))
+		p.note(core.M("browser.ev_action", "action", strings.TrimSpace(in.Action+" "+what)))
 	}
 	switch in.Action {
 	case "navigate":
 		u := strings.TrimSpace(in.URL)
 		if u == "" {
-			return tc.Say(M("browser.give_url")), true
+			return h.Say(core.M("browser.give_url")), true
 		}
 		if !strings.Contains(u, "://") && !strings.HasPrefix(u, "about:") {
 			if strings.HasPrefix(u, "localhost") || strings.HasPrefix(u, "127.") {
@@ -141,20 +155,20 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 				u = "https://" + u
 			}
 		}
-		Journal(tc.Root, JournalEntry{Kind: "fetch", Command: u, Detail: "navegador do agente"})
+		journal.Journal(h.RootDir(), journal.JournalEntry{Kind: "fetch", Command: u, Detail: "navegador do agente"})
 		raw, err := p.b.call(ctx, "Page.navigate", map[string]any{"url": u})
 		if err != nil {
-			return tc.Say(M("browser.open_failed", "error", errArg(err))), true
+			return h.Say(core.M("browser.open_failed", "error", core.ErrArg(err))), true
 		}
 		var nav struct {
 			ErrorText string `json:"errorText"`
 		}
 		_ = json.Unmarshal(raw, &nav)
 		if nav.ErrorText != "" {
-			return tc.Say(M("browser.open_failed_url", "url", u, "error", nav.ErrorText)), true
+			return h.Say(core.M("browser.open_failed_url", "url", u, "error", nav.ErrorText)), true
 		}
 		p.b.waitLoad(ctx)
-		return tc.Say(M("browser.opened", "where", where())), false
+		return h.Say(core.M("browser.opened", "where", where())), false
 	case "back", "reload":
 		if in.Action == "back" {
 			_, _ = p.b.eval(ctx, "history.back()")
@@ -164,9 +178,9 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		sleepCtx(ctx, 400*time.Millisecond)
 		p.b.waitLoad(ctx)
 		if in.Action == "back" {
-			return tc.Say(M("browser.went_back", "where", where())), false
+			return h.Say(core.M("browser.went_back", "where", where())), false
 		}
-		return tc.Say(M("browser.reloaded", "where", where())), false
+		return h.Say(core.M("browser.reloaded", "where", where())), false
 	case "click", "hover":
 		l, why := locate(in.Selector)
 		if l == nil {
@@ -175,16 +189,16 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		if in.Action == "hover" {
 			p.moveTo(ctx, g, l.X, l.Y, 0)
 			sleepCtx(ctx, 250*time.Millisecond)
-			return tc.Say(M("browser.hover", "tag", l.Tag, "text", l.Text)), false
+			return h.Say(core.M("browser.hover", "tag", l.Tag, "text", l.Text)), false
 		}
 		if l.Disabled {
-			return tc.Say(M("browser.disabled", "tag", l.Tag, "text", l.Text)), true
+			return h.Say(core.M("browser.disabled", "tag", l.Tag, "text", l.Text)), true
 		}
 		count := max(1, in.Count)
-		p.click(ctx, g, l.X, l.Y, firstNonEmpty(in.Button, "left"), count)
+		p.click(ctx, g, l.X, l.Y, core.FirstNonEmpty(in.Button, "left"), count)
 		sleepCtx(ctx, 300*time.Millisecond)
 		p.b.waitLoad(ctx)
-		return tc.Say(M("browser.clicked", "tag", l.Tag, "text", l.Text, "where", where())), false
+		return h.Say(core.M("browser.clicked", "tag", l.Tag, "text", l.Text, "where", where())), false
 	case "type":
 		l, why := locate(in.Selector)
 		if l == nil {
@@ -198,13 +212,13 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 			sleepCtx(ctx, 300*time.Millisecond)
 			p.b.waitLoad(ctx)
 		}
-		return tc.Say(M("browser.typed", "selector", in.Selector, "where", where())), false
+		return h.Say(core.M("browser.typed", "selector", in.Selector, "where", where())), false
 	case "press":
 		if err := p.press(ctx, in.Key); err != nil {
-			return tc.SayErr(err), true
+			return h.SayErr(err), true
 		}
 		sleepCtx(ctx, 200*time.Millisecond)
-		return tc.Say(M("browser.key", "key", in.Key, "where", where())), false
+		return h.Say(core.M("browser.key", "key", in.Key, "where", where())), false
 	case "scroll":
 		if in.Selector != "" {
 			l, why := locate(in.Selector)
@@ -212,7 +226,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 				return why, true
 			}
 			p.moveTo(ctx, g, l.X, l.Y, 0)
-			return tc.Say(M("browser.scrolled_to", "tag", l.Tag, "text", l.Text)), false
+			return h.Say(core.M("browser.scrolled_to", "tag", l.Tag, "text", l.Text)), false
 		}
 		dy := in.Dy
 		if dy == 0 {
@@ -222,7 +236,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		v, _ := p.b.eval(ctx, `[Math.round(scrollY), Math.round(document.documentElement.scrollHeight - innerHeight)]`)
 		var pos [2]int
 		_ = json.Unmarshal(v, &pos)
-		return tc.Say(M("browser.scroll_pos", "pos", pos[0], "max", pos[1])), false
+		return h.Say(core.M("browser.scroll_pos", "pos", pos[0], "max", pos[1])), false
 	case "drag":
 		from, why := locate(in.Selector)
 		if from == nil {
@@ -237,7 +251,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		sleepCtx(ctx, g.press)
 		p.moveTo(ctx, g, to.X, to.Y, 1)
 		_, _ = p.b.call(ctx, "Input.dispatchMouseEvent", map[string]any{"type": "mouseReleased", "x": to.X, "y": to.Y, "button": "left", "buttons": 0, "clickCount": 1})
-		return tc.Say(M("browser.dragged", "from", from.Text, "to", to.Text)), false
+		return h.Say(core.M("browser.dragged", "from", from.Text, "to", to.Text)), false
 	case "select":
 		l, why := locate(in.Selector)
 		if l == nil {
@@ -255,15 +269,15 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		_ = json.Unmarshal(v, &sel)
 		switch sel.St {
 		case "ok":
-			return tc.Say(M("browser.selected", "option", sel.Text)), false
+			return h.Say(core.M("browser.selected", "option", sel.Text)), false
 		case "no_option":
-			return tc.Say(M("browser.no_option", "options", sel.Text)), true
+			return h.Say(core.M("browser.no_option", "options", sel.Text)), true
 		}
-		return tc.Say(M("browser.not_select")), true
+		return h.Say(core.M("browser.not_select")), true
 	case "upload":
-		abs := filepath.Join(tc.Root, filepath.FromSlash(in.Path))
-		if !within(tc.Root, abs) || !exists(abs) {
-			return tc.Say(M("browser.upload_outside", "path", in.Path)), true
+		abs := filepath.Join(h.RootDir(), filepath.FromSlash(in.Path))
+		if !core.Within(h.RootDir(), abs) || !core.Exists(abs) {
+			return h.Say(core.M("browser.upload_outside", "path", in.Path)), true
 		}
 		if l, why := locate(in.Selector); l == nil {
 			return why, true
@@ -279,20 +293,20 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		_ = json.Unmarshal(r, &obj)
 		if obj.Result.ObjectID == "" {
-			return tc.Say(M("browser.no_file_input", "selector", in.Selector)), true
+			return h.Say(core.M("browser.no_file_input", "selector", in.Selector)), true
 		}
 		if _, err := p.b.call(ctx, "DOM.setFileInputFiles", map[string]any{"files": []string{abs}, "objectId": obj.Result.ObjectID}); err != nil {
 			return err.Error(), true
 		}
-		return tc.Say(M("browser.uploaded", "path", in.Path)), false
+		return h.Say(core.M("browser.uploaded", "path", in.Path)), false
 	case "wait_for":
-		target := firstNonEmpty(in.Selector, "text="+in.Text)
+		target := core.FirstNonEmpty(in.Selector, "text="+in.Text)
 		start := time.Now()
 		l, err := locateErr(target)
 		if l == nil {
-			return tc.Say(M("browser.waited", "ms", time.Since(start).Milliseconds(), "why", errArg(err))), true
+			return h.Say(core.M("browser.waited", "ms", time.Since(start).Milliseconds(), "why", core.ErrArg(err))), true
 		}
-		return tc.Say(M("browser.appeared", "ms", time.Since(start).Milliseconds(), "tag", l.Tag, "text", l.Text)), false
+		return h.Say(core.M("browser.appeared", "ms", time.Since(start).Milliseconds(), "tag", l.Tag, "text", l.Text)), false
 	case "text", "dom":
 		js := "document.body ? document.body.innerText : ''"
 		if in.Action == "dom" {
@@ -317,13 +331,13 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		var str string
 		_ = json.Unmarshal(v, &str)
-		return tc.clip(externalContent(where(), str)), false
+		return h.Clip(security.ExternalContent(where(), str)), false
 	case "eval":
 		v, err := p.b.eval(ctx, in.Script)
 		if err != nil {
-			return tc.Say(M("browser.script_error", "error", err.Error())), true
+			return h.Say(core.M("browser.script_error", "error", err.Error())), true
 		}
-		return tc.clip(externalContent(where(), string(v))), false
+		return h.Clip(security.ExternalContent(where(), string(v))), false
 	case "screenshot":
 		params := map[string]any{"format": "jpeg", "quality": 92, "captureBeyondViewport": in.FullPage}
 		what := ""
@@ -345,32 +359,32 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		_ = json.Unmarshal(raw, &shot)
 		jpg, err := base64.StdEncoding.DecodeString(shot.Data)
 		if err != nil || len(jpg) == 0 {
-			return tc.Say(M("browser.empty_capture")), true
+			return h.Say(core.M("browser.empty_capture")), true
 		}
 		name := time.Now().Format("20060102-150405.000") + ".jpg"
-		dir := filepath.Join(s.Root, infuseDirName, "shots")
+		dir := filepath.Join(h.RootDir(), core.InfuseDirName, "shots")
 		_ = os.MkdirAll(dir, 0o755)
 		_ = os.WriteFile(filepath.Join(dir, name), jpg, 0o644)
 		cfg, _ := jpeg.DecodeConfig(bytes.NewReader(jpg))
-		attachImage(s, jpg)
+		attachImage(h, jpg)
 		if what == "" {
-			return tc.Say(M("browser.shot_screen", "w", cfg.Width, "h", cfg.Height, "where", where(), "file", name)), false
+			return h.Say(core.M("browser.shot_screen", "w", cfg.Width, "h", cfg.Height, "where", where(), "file", name)), false
 		}
-		return tc.Say(M("browser.shot_element", "what", what, "w", cfg.Width, "h", cfg.Height, "where", where(), "file", name)), false
+		return h.Say(core.M("browser.shot_element", "what", what, "w", cfg.Width, "h", cfg.Height, "where", where(), "file", name)), false
 	case "record_start":
 		p.startRecording()
-		return tc.Say(M("browser.recording")), false
+		return h.Say(core.M("browser.recording")), false
 	case "record_stop":
-		dir := filepath.Join(s.Root, infuseDirName, "recordings", time.Now().Format("20060102-150405"))
+		dir := filepath.Join(h.RootDir(), core.InfuseDirName, "recordings", time.Now().Format("20060102-150405"))
 		kfs, events, dur, total, err := p.stopRecording(dir, in.MaxFrames)
 		if err != nil {
-			return tc.SayErr(err), true
+			return h.SayErr(err), true
 		}
 		secs := func(d time.Duration) string { return fmt.Sprintf("%.2f", d.Seconds()) }
 		var b strings.Builder
-		b.WriteString(tc.Say(M("browser.rec_head", "seconds", fmt.Sprintf("%.1f", dur.Seconds()), "frames", total, "keyframes", len(kfs), "w", p.width, "h", p.height, "dir", relTo(s.Root, dir))) + "\n\n")
+		b.WriteString(h.Say(core.M("browser.rec_head", "seconds", fmt.Sprintf("%.1f", dur.Seconds()), "frames", total, "keyframes", len(kfs), "w", p.width, "h", p.height, "dir", core.RelTo(h.RootDir(), dir))) + "\n\n")
 		event := func(e recEvent) {
-			b.WriteString("    " + tc.Say(M("browser.rec_event", "t", secs(e.at), "event", e.m)) + "\n")
+			b.WriteString("    " + h.Say(core.M("browser.rec_event", "t", secs(e.at), "event", e.m)) + "\n")
 		}
 		ev := 0
 		img := 0
@@ -380,25 +394,25 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 				ev++
 			}
 			img++
-			attachImage(s, k.jpeg)
-			var line Msg
+			attachImage(h, k.jpeg)
+			var line core.Msg
 			switch {
 			case i == 0:
-				line = M("browser.rec_frame_start", "img", img, "frame", i+1, "t", secs(k.at))
+				line = core.M("browser.rec_frame_start", "img", img, "frame", i+1, "t", secs(k.at))
 			case len(k.regions) == 0:
-				line = M("browser.rec_frame_final", "img", img, "frame", i+1, "t", secs(k.at))
+				line = core.M("browser.rec_frame_final", "img", img, "frame", i+1, "t", secs(k.at))
 			default:
 				var where []string
 				for _, r := range k.regions {
 					where = append(where, fmt.Sprintf("x=%d y=%d %dx%d", r.Min.X, r.Min.Y, r.Dx(), r.Dy()))
 				}
-				line = M("browser.rec_frame_changed", "img", img, "frame", i+1, "t", secs(k.at), "pct", fmt.Sprintf("%.1f", k.changed*100), "areas", len(k.regions), "where", strings.Join(where, "; "))
+				line = core.M("browser.rec_frame_changed", "img", img, "frame", i+1, "t", secs(k.at), "pct", fmt.Sprintf("%.1f", k.changed*100), "areas", len(k.regions), "where", strings.Join(where, "; "))
 			}
-			b.WriteString(tc.Say(line) + "\n")
+			b.WriteString(h.Say(line) + "\n")
 			for ci, crop := range k.crops {
 				img++
-				attachImage(s, crop)
-				b.WriteString(tc.Say(M("browser.rec_crop", "img", img, "area", ci+1, "frame", i+1)) + "\n")
+				attachImage(h, crop)
+				b.WriteString(h.Say(core.M("browser.rec_crop", "img", img, "area", ci+1, "frame", i+1)) + "\n")
 			}
 		}
 		for ; ev < len(events); ev++ {
@@ -411,15 +425,15 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		p.b.console = nil
 		p.b.mu.Unlock()
 		if len(lines) == 0 {
-			return tc.Say(M("browser.no_console")), false
+			return h.Say(core.M("browser.no_console")), false
 		}
-		return tc.clip(externalContent(where(), strings.Join(lines, "\n"))), false
+		return h.Clip(security.ExternalContent(where(), strings.Join(lines, "\n"))), false
 	case "network":
 		lines, n := p.networkReport(in.OnlyIssues)
 		if n == 0 {
-			return tc.Say(M("browser.no_requests")), false
+			return h.Say(core.M("browser.no_requests")), false
 		}
-		return tc.Say(M("browser.requests", "count", n)) + "\n" + tc.clip(lines), false
+		return h.Say(core.M("browser.requests", "count", n)) + "\n" + h.Clip(lines), false
 	case "performance":
 		raw, _ := p.b.call(ctx, "Performance.getMetrics", nil)
 		var m struct {
@@ -439,40 +453,40 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		v, _ := p.b.eval(ctx, `JSON.stringify((() => { const n = performance.getEntriesByType('navigation')[0] || {}; const paint = Object.fromEntries(performance.getEntriesByType('paint').map(p => [p.name, Math.round(p.startTime)])); const lcp = performance.getEntriesByType('largest-contentful-paint').pop(); return { ttfb: Math.round(n.responseStart || 0), domContentLoaded: Math.round(n.domContentLoadedEventEnd || 0), load: Math.round(n.loadEventEnd || 0), ...paint, lcp: lcp ? Math.round(lcp.startTime) : null, resources: performance.getEntriesByType('resource').length }; })())`)
 		var nav string
 		_ = json.Unmarshal(v, &nav)
-		b.WriteString(tc.Say(M("browser.timings", "values", nav)))
+		b.WriteString(h.Say(core.M("browser.timings", "values", nav)))
 		return b.String(), false
 	case "a11y":
-		return tc.clip(p.axTree(ctx)), false
+		return h.Clip(p.axTree(ctx)), false
 	case "storage":
 		v, _ := p.b.eval(ctx, `JSON.stringify({ cookies: document.cookie, localStorage: Object.fromEntries(Object.entries(localStorage)), sessionStorage: Object.fromEntries(Object.entries(sessionStorage)) }, null, 1)`)
 		var str string
 		_ = json.Unmarshal(v, &str)
-		return tc.clip(externalContent(where(), redactSecrets(str))), false
+		return h.Clip(security.ExternalContent(where(), security.RedactSecrets(str))), false
 	case "throttle":
 		presets := map[string][4]float64{"offline": {1, 0, 0, 0}, "3g": {0, 300, 750 * 1024 / 8, 250 * 1024 / 8}, "4g": {0, 60, 4 * 1024 * 1024 / 8, 3 * 1024 * 1024 / 8}, "none": {0, 0, -1, -1}}
 		pr, ok := presets[in.Network]
 		if !ok {
-			return tc.Say(M("browser.network_options")), true
+			return h.Say(core.M("browser.network_options")), true
 		}
 		_, err := p.b.call(ctx, "Network.emulateNetworkConditions", map[string]any{"offline": pr[0] == 1, "latency": pr[1], "downloadThroughput": pr[2], "uploadThroughput": pr[3]})
 		if err != nil {
 			return err.Error(), true
 		}
-		return tc.Say(M("browser.network_set", "network", in.Network)), false
+		return h.Say(core.M("browser.network_set", "network", in.Network)), false
 	case "emulate":
 		if in.Device == "desktop" {
-			w, h, sc := browserViewport(s.settings)
+			w, vh, sc := browserViewport(h.Settings())
 			p.mu.Lock()
 			p.device = ""
 			p.mu.Unlock()
-			p.setMetrics(w, h, sc, false)
+			p.setMetrics(w, vh, sc, false)
 			_, _ = p.b.call(ctx, "Emulation.setTouchEmulationEnabled", map[string]any{"enabled": false})
 			p.b.prepare()
-			return tc.Say(M("browser.desktop", "w", w, "h", h, "scale", fmt.Sprintf("%.0f", sc))), false
+			return h.Say(core.M("browser.desktop", "w", w, "h", vh, "scale", fmt.Sprintf("%.0f", sc))), false
 		}
 		d, ok := devicePresets[in.Device]
 		if !ok {
-			return tc.Say(M("browser.device_options", "devices", strings.Join(sortedKeys(devicePresets), " | ")+" | desktop")), true
+			return h.Say(core.M("browser.device_options", "devices", strings.Join(core.SortedKeys(devicePresets), " | ")+" | desktop")), true
 		}
 		p.mu.Lock()
 		p.device = in.Device
@@ -484,22 +498,22 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		_, _ = p.b.call(ctx, "Page.reload", nil)
 		p.b.waitLoad(ctx)
-		emu := M("browser.emulating", "device", in.Device, "w", d.w, "h", d.h, "density", fmt.Sprintf("%.2f", d.scale))
+		emu := core.M("browser.emulating", "device", in.Device, "w", d.w, "h", d.h, "density", fmt.Sprintf("%.2f", d.scale))
 		if d.mobile {
-			emu = M("browser.emulating_touch", "device", in.Device, "w", d.w, "h", d.h, "density", fmt.Sprintf("%.2f", d.scale))
+			emu = core.M("browser.emulating_touch", "device", in.Device, "w", d.w, "h", d.h, "density", fmt.Sprintf("%.2f", d.scale))
 		}
-		res := tc.Say(emu)
+		res := h.Say(emu)
 		if v, err := p.b.eval(ctx, `innerWidth`); err == nil && d.mobile && strings.TrimSpace(string(v)) != fmt.Sprint(d.w) {
-			res += ". " + tc.Say(M("browser.viewport_warning", "width", strings.TrimSpace(string(v)), "screen", d.w))
+			res += ". " + h.Say(core.M("browser.viewport_warning", "width", strings.TrimSpace(string(v)), "screen", d.w))
 		}
 		return res, false
 	case "viewport":
 		if in.Width <= 0 || in.Height <= 0 {
-			return tc.Say(M("browser.give_size")), true
+			return h.Say(core.M("browser.give_size")), true
 		}
-		_, _, sc := browserViewport(s.settings)
+		_, _, sc := browserViewport(h.Settings())
 		p.setMetrics(in.Width, in.Height, sc, in.Width < 768)
-		return tc.Say(M("browser.viewport", "w", in.Width, "h", in.Height)), false
+		return h.Say(core.M("browser.viewport", "w", in.Width, "h", in.Height)), false
 	case "pdf":
 		raw, err := p.b.call(ctx, "Page.printToPDF", map[string]any{"printBackground": true})
 		if err != nil {
@@ -511,13 +525,11 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		_ = json.Unmarshal(raw, &r)
 		b, _ := base64.StdEncoding.DecodeString(r.Data)
 		name := time.Now().Format("20060102-150405") + ".pdf"
-		dir := filepath.Join(s.Root, infuseDirName, "shots")
+		dir := filepath.Join(h.RootDir(), core.InfuseDirName, "shots")
 		_ = os.MkdirAll(dir, 0o755)
 		_ = os.WriteFile(filepath.Join(dir, name), b, 0o644)
-		return tc.Say(M("browser.pdf", "file", name, "kb", len(b)/1024)), false
+		return h.Say(core.M("browser.pdf", "file", name, "kb", len(b)/1024)), false
 	}
-	return tc.Say(M("tool.unknown_action", "action", in.Action)), true
+	return h.Say(core.M("tool.unknown_action", "action", in.Action)), true
 }
 
-
-func init() { registerTool(browserTool{}) }

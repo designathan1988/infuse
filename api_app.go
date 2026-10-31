@@ -116,11 +116,16 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		return true
 	case path == "/api/shot": // screenshots taken by the agent's browser
 		name := filepath.Base(q["name"])
-		if !strings.HasSuffix(name, ".png") {
+		ext := strings.ToLower(filepath.Ext(name))
+		if ext != ".png" && ext != ".jpg" && ext != ".jpeg" {
 			sendJSON(w, 400, map[string]any{"error": "nome inválido"})
 			return true
 		}
-		w.Header().Set("Content-Type", "image/png")
+		if ext == ".png" {
+			w.Header().Set("Content-Type", "image/png")
+		} else {
+			w.Header().Set("Content-Type", "image/jpeg")
+		}
 		w.Header().Set("Cache-Control", "max-age=86400")
 		http.ServeFile(w, r, filepath.Join(root, infuseDirName, "shots", name))
 		return true

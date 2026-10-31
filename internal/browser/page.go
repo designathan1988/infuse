@@ -1,4 +1,4 @@
-package main
+package browser
 
 // The agent's browser, made to look and act like a person using it: a visible cursor that travels along
 // curved, accelerating paths, clicks with a pause and a ripple, typing key by key at a varying rhythm,
@@ -13,6 +13,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"infuse/internal/config"
+	"infuse/internal/core"
 	"fmt"
 	"image"
 	"image/draw"
@@ -51,9 +53,9 @@ type recFrame struct {
 	jpeg []byte
 }
 
-// agentPage is the state infuse keeps about the agent's page.
-type agentPage struct {
-	b        *cdpBrowser
+// Page is the state infuse keeps about the agent's page.
+type Page struct {
+	b        *Browser
 	mu       sync.Mutex
 	x, y     float64 // the cursor
 	net      []*netEntry
@@ -70,8 +72,8 @@ type agentPage struct {
 }
 
 var (
-	agentPages   = map[*cdpBrowser]*agentPage{}
-	agentPagesMu sync.Mutex
+	Pages   = map[*Browser]*Page{}
+	PagesMu sync.Mutex
 )
 
 // cursorJS draws the agent's cursor on every page (kept across navigations) and the click ripple.
@@ -87,18 +89,18 @@ const cursorJS = `(() => { if (window.__infuseCursor) return;
       document.documentElement.appendChild(r); requestAnimationFrame(() => { r.style.transform = 'scale(1.9)'; r.style.opacity = '0'; }); setTimeout(() => r.remove(), 600); } }; })()`
 
 // agentPageFor sets up the agent's page once: cursor, network log, viewport and density from settings.
-func agentPageFor(s *Session) (*agentPage, error) {
-	b, err := agentBrowser(s.Root)
+func AgentPageFor(root string, st config.Settings) (*Page, error) {
+	b, err := AgentBrowser(root)
 	if err != nil {
 		return nil, err
 	}
-	agentPagesMu.Lock()
-	p := agentPages[b]
+	PagesMu.Lock()
+	p := Pages[b]
 	if p == nil {
-		p = &agentPage{b: b, netByID: map[string]*netEntry{}, x: -1, y: -1}
-		agentPages[b] = p
+		p = &Page{b: b, netByID: map[string]*netEntry{}, x: -1, y: -1}
+		Pages[b] = p
 	}
-	agentPagesMu.Unlock()
+	PagesMu.Unlock()
 	ctx := context.Background()
 	b.mu.Lock()
 	fresh := b.onEvent == nil
@@ -112,7 +114,7 @@ func agentPageFor(s *Session) (*agentPage, error) {
 		_, _ = b.call(ctx, "Page.addScriptToEvaluateOnNewDocument", map[string]any{"source": cursorJS})
 		_, _ = b.eval(ctx, cursorJS)
 	}
-	w, h, scale := browserViewport(s.settings)
+	w, h, scale := browserViewport(st)
 	p.mu.Lock()
 	change := p.device == "" && (p.width != w || p.height != h || p.scale != scale)
 	p.mu.Unlock()
@@ -123,7 +125,7 @@ func agentPageFor(s *Session) (*agentPage, error) {
 }
 
 // browserViewport is the agent browser's window from settings (default 1440×900 at 2×: sharp captures).
-func browserViewport(st Settings) (int, int, float64) {
+func browserViewport(st config.Settings) (int, int, float64) {
 	w, h := 1440, 900
 	if st.BrowserViewport != "" {
 		_, _ = fmt.Sscanf(strings.ReplaceAll(st.BrowserViewport, "×", "x"), "%dx%d", &w, &h)
@@ -135,14 +137,17 @@ func browserViewport(st Settings) (int, int, float64) {
 	return max(320, w), max(240, h), math.Min(scale, 4)
 }
 
-func (p *agentPage) setMetrics(w, h int, scale float64, mobile bool) {
+// Eval evaluates JavaScript in the page (tests and diagnostics).
+func (p *Page) Eval(ctx context.Context, js string) (json.RawMessage, error) { return p.b.eval(ctx, js) }
+
+func (p *Page) setMetrics(w, h int, scale float64, mobile bool) {
 	_, _ = p.b.call(context.Background(), "Emulation.setDeviceMetricsOverride", map[string]any{"width": w, "height": h, "deviceScaleFactor": scale, "mobile": mobile})
 	p.mu.Lock()
 	p.width, p.height, p.scale = w, h, scale
 	p.mu.Unlock()
 }
 
-func (p *agentPage) event(method string, params json.RawMessage) {
+func (p *Page) event(method string, params json.RawMessage) {
 	switch method {
 	case "Network.requestWillBeSent":
 		var e struct {
@@ -189,7 +194,7 @@ func (p *agentPage) event(method string, params json.RawMessage) {
 		}
 		p.mu.Unlock()
 		if n != nil && (n.Failed != "" || n.Status >= 400) {
-			p.note(M("browser.ev_network", "method", n.Method, "url", truncate(n.URL, 120), "result", firstNonEmpty(n.Failed, fmt.Sprint(n.Status))))
+			p.note(core.M("browser.ev_network", "method", n.Method, "url", core.Truncate(n.URL, 120), "result", core.FirstNonEmpty(n.Failed, fmt.Sprint(n.Status))))
 		}
 	case "Page.screencastFrame":
 		var f struct {
@@ -217,7 +222,7 @@ func (p *agentPage) event(method string, params json.RawMessage) {
 			} `json:"exceptionDetails"`
 		}
 		_ = json.Unmarshal(params, &e)
-		p.note(M("browser.ev_exception", "text", truncate(firstLine(firstNonEmpty(e.Details.Exception.Description, e.Details.Text)), 200)))
+		p.note(core.M("browser.ev_exception", "text", core.Truncate(core.FirstLine(core.FirstNonEmpty(e.Details.Exception.Description, e.Details.Text)), 200)))
 	case "Runtime.consoleAPICalled":
 		var e struct {
 			Type string `json:"type"`
@@ -230,9 +235,9 @@ func (p *agentPage) event(method string, params json.RawMessage) {
 		if e.Type == "error" || e.Type == "warning" {
 			var parts []string
 			for _, a := range e.Args {
-				parts = append(parts, firstNonEmpty(fmt.Sprint(a.Value), a.Description))
+				parts = append(parts, core.FirstNonEmpty(fmt.Sprint(a.Value), a.Description))
 			}
-			p.note(M("browser.ev_console", "type", e.Type, "text", truncate(strings.Join(parts, " "), 200)))
+			p.note(core.M("browser.ev_console", "type", e.Type, "text", core.Truncate(strings.Join(parts, " "), 200)))
 		}
 	case "Page.frameNavigated":
 		var e struct {
@@ -243,7 +248,7 @@ func (p *agentPage) event(method string, params json.RawMessage) {
 		}
 		_ = json.Unmarshal(params, &e)
 		if e.Frame.ParentID == "" {
-			p.note(M("browser.ev_navigated", "url", truncate(e.Frame.URL, 160)))
+			p.note(core.M("browser.ev_navigated", "url", core.Truncate(e.Frame.URL, 160)))
 		}
 	case "Page.loadEventFired":
 		p.mu.Lock()
@@ -268,7 +273,7 @@ type gestureStyle struct {
 	keyMax    time.Duration
 }
 
-func gesturesFor(st Settings) gestureStyle {
+func gesturesFor(st config.Settings) gestureStyle {
 	switch st.BrowserGestures {
 	case "instant":
 		return gestureStyle{stepPx: 1e9}
@@ -289,7 +294,7 @@ func sleepCtx(ctx context.Context, d time.Duration) {
 }
 
 // moveTo travels from the cursor to (x, y) along a curved path with ease-in-out, like a hand would.
-func (p *agentPage) moveTo(ctx context.Context, g gestureStyle, x, y float64, buttons int) {
+func (p *Page) moveTo(ctx context.Context, g gestureStyle, x, y float64, buttons int) {
 	p.mu.Lock()
 	x0, y0 := p.x, p.y
 	w, h := p.width, p.height
@@ -319,7 +324,7 @@ func (p *agentPage) moveTo(ctx context.Context, g gestureStyle, x, y float64, bu
 	}
 }
 
-func (p *agentPage) mouse(ctx context.Context, typ string, x, y float64, buttons, clicks int) {
+func (p *Page) mouse(ctx context.Context, typ string, x, y float64, buttons, clicks int) {
 	params := map[string]any{"type": typ, "x": x, "y": y, "buttons": buttons}
 	if typ != "mouseMoved" {
 		params["button"] = "left"
@@ -337,7 +342,7 @@ func (p *agentPage) mouse(ctx context.Context, typ string, x, y float64, buttons
 	_, _ = p.b.eval(ctx, fmt.Sprintf("window.__infuseCursor && __infuseCursor.move(%f,%f)", x, y))
 }
 
-func (p *agentPage) click(ctx context.Context, g gestureStyle, x, y float64, button string, clicks int) {
+func (p *Page) click(ctx context.Context, g gestureStyle, x, y float64, button string, clicks int) {
 	p.moveTo(ctx, g, x, y, 0)
 	sleepCtx(ctx, g.preClick)
 	_, _ = p.b.eval(ctx, fmt.Sprintf("window.__infuseCursor && __infuseCursor.click(%f,%f)", x, y))
@@ -376,7 +381,7 @@ func keyInfo(k string) (key, code string, vk int) {
 }
 
 // press sends a key or a combination like "Control+A" or "Shift+Tab", as a browser receives it.
-func (p *agentPage) press(ctx context.Context, combo string) error {
+func (p *Page) press(ctx context.Context, combo string) error {
 	parts := strings.Split(combo, "+")
 	if strings.HasSuffix(combo, "++") { // "Control++"
 		parts = append(parts[:len(parts)-2], "+")
@@ -392,7 +397,7 @@ func (p *agentPage) press(ctx context.Context, combo string) error {
 		}
 	}
 	if keyName == "" {
-		return errMsg(M("browser.no_key", "combo", combo))
+		return core.ErrMsg(core.M("browser.no_key", "combo", combo))
 	}
 	key, code, vk := keyInfo(keyName)
 	down := map[string]any{"type": "keyDown", "key": key, "code": code, "windowsVirtualKeyCode": vk, "nativeVirtualKeyCode": vk, "modifiers": mods}
@@ -419,7 +424,7 @@ func (p *agentPage) press(ctx context.Context, combo string) error {
 }
 
 // typeText types like a person: key by key, at an uneven rhythm (accented characters as text input).
-func (p *agentPage) typeText(ctx context.Context, g gestureStyle, text string) {
+func (p *Page) typeText(ctx context.Context, g gestureStyle, text string) {
 	if g.keyMax == 0 {
 		_, _ = p.b.call(ctx, "Input.insertText", map[string]any{"text": text})
 		return
@@ -445,7 +450,7 @@ func (p *agentPage) typeText(ctx context.Context, g gestureStyle, text string) {
 }
 
 // scroll turns the wheel in steps at the cursor (or the page centre).
-func (p *agentPage) scroll(ctx context.Context, g gestureStyle, dy float64) {
+func (p *Page) scroll(ctx context.Context, g gestureStyle, dy float64) {
 	p.mu.Lock()
 	x, y := p.x, p.y
 	if x < 0 {
@@ -496,7 +501,7 @@ type located struct {
 }
 
 // locate finds an element, waiting up to timeout for it to appear and become visible.
-func (p *agentPage) locate(ctx context.Context, sel string, timeout time.Duration) (*located, error) {
+func (p *Page) locate(ctx context.Context, sel string, timeout time.Duration) (*located, error) {
 	deadline := time.Now().Add(timeout)
 	for {
 		v, err := p.b.eval(ctx, locatorJS(sel))
@@ -510,9 +515,9 @@ func (p *agentPage) locate(ctx context.Context, sel string, timeout time.Duratio
 		}
 		if time.Now().After(deadline) {
 			if l != nil {
-				return nil, errMsg(M("browser.not_visible", "selector", sel))
+				return nil, core.ErrMsg(core.M("browser.not_visible", "selector", sel))
 			}
-			return nil, errMsg(M("browser.not_found", "selector", sel))
+			return nil, core.ErrMsg(core.M("browser.not_found", "selector", sel))
 		}
 		sleepCtx(ctx, 150*time.Millisecond)
 	}
@@ -526,11 +531,11 @@ func (p *agentPage) locate(ctx context.Context, sel string, timeout time.Duratio
 
 type recEvent struct {
 	at time.Duration
-	m  Msg
+	m  core.Msg
 }
 
 // note adds an event to the recording timeline (actions, console, network failures, navigation).
-func (p *agentPage) note(m Msg) {
+func (p *Page) note(m core.Msg) {
 	p.mu.Lock()
 	if p.rec {
 		p.events = append(p.events, recEvent{time.Since(p.recStart), m})
@@ -538,7 +543,7 @@ func (p *agentPage) note(m Msg) {
 	p.mu.Unlock()
 }
 
-func (p *agentPage) startRecording() {
+func (p *Page) startRecording() {
 	p.mu.Lock()
 	p.rec, p.recStart, p.frames, p.events, p.trail = true, time.Now(), nil, nil, nil
 	w, h, sc := p.width, p.height, p.scale
@@ -629,7 +634,7 @@ func changeRegions(cells []bool) []image.Rectangle {
 }
 
 // cursorMask covers the cells the agent's cursor (and its click ripple) passed over between two frames.
-func (p *agentPage) cursorMask(from, to time.Duration, cssW, cssH int) []bool {
+func (p *Page) cursorMask(from, to time.Duration, cssW, cssH int) []bool {
 	p.mu.Lock()
 	trail := append([]cursorPoint{}, p.trail...)
 	p.mu.Unlock()
@@ -665,7 +670,7 @@ func markCursor(mask []bool, pt cursorPoint, cssW, cssH, rx, ry int) {
 }
 
 // stopRecording picks the keyframes, saves them in dir and returns them with the timeline.
-func (p *agentPage) stopRecording(dir string, maxFrames int) ([]keyframe, []recEvent, time.Duration, int, error) {
+func (p *Page) stopRecording(dir string, maxFrames int) ([]keyframe, []recEvent, time.Duration, int, error) {
 	_, _ = p.b.call(context.Background(), "Page.stopScreencast", nil)
 	p.mu.Lock()
 	frames, events := p.frames, p.events
@@ -675,7 +680,7 @@ func (p *agentPage) stopRecording(dir string, maxFrames int) ([]keyframe, []recE
 	p.mu.Unlock()
 	defer func() { p.mu.Lock(); p.trail = nil; p.mu.Unlock() }()
 	if len(frames) == 0 {
-		return nil, events, dur, 0, errMsg(M("browser.no_frames"))
+		return nil, events, dur, 0, core.ErrMsg(core.M("browser.no_frames"))
 	}
 	if maxFrames <= 0 || maxFrames > 24 {
 		maxFrames = 12
@@ -765,7 +770,7 @@ func (p *agentPage) stopRecording(dir string, maxFrames int) ([]keyframe, []recE
 
 // networkReport lists the page's requests (only the failed ones, with onlyIssues), one per line, and
 // how many it lists.
-func (p *agentPage) networkReport(onlyIssues bool) (string, int) {
+func (p *Page) networkReport(onlyIssues bool) (string, int) {
 	p.mu.Lock()
 	list := append([]*netEntry{}, p.net...)
 	p.mu.Unlock()
@@ -782,13 +787,13 @@ func (p *agentPage) networkReport(onlyIssues bool) (string, int) {
 		} else if !n.finished {
 			status += " (pending)"
 		}
-		fmt.Fprintf(&b, "%s %s %s · %s · %d ms · %.1f KB\n", n.Method, status, truncate(n.URL, 160), n.Type, n.Ms, n.Bytes/1024)
+		fmt.Fprintf(&b, "%s %s %s · %s · %d ms · %.1f KB\n", n.Method, status, core.Truncate(n.URL, 160), n.Type, n.Ms, n.Bytes/1024)
 		shown++
 	}
 	return b.String(), shown
 }
 
-func (p *agentPage) axTree(ctx context.Context) string {
+func (p *Page) axTree(ctx context.Context) string {
 	raw, err := p.b.call(ctx, "Accessibility.getFullAXTree", nil)
 	if err != nil {
 		return err.Error()
@@ -817,7 +822,7 @@ func (p *agentPage) axTree(ctx context.Context) string {
 			continue
 		}
 		named[name] = true
-		fmt.Fprintf(&b, "%s %q\n", role, truncate(n.Name.Value, 100))
+		fmt.Fprintf(&b, "%s %q\n", role, core.Truncate(n.Name.Value, 100))
 		if count++; count >= 400 {
 			b.WriteString("…\n")
 			break

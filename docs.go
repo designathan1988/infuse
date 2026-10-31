@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"infuse/internal/browser"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,11 +48,11 @@ var reSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
 // fetchPageText renders url in the headless browser (or, without one, downloads it) and returns title and text.
 func fetchPageText(ctx context.Context, root, url string) (string, string, error) {
-	if b, err := agentBrowser(root); err == nil {
-		if _, err := b.call(ctx, "Page.navigate", map[string]any{"url": url}); err == nil {
-			b.waitLoad(ctx)
+	if b, err := browser.AgentBrowser(root); err == nil {
+		if _, err := b.Call(ctx, "Page.navigate", map[string]any{"url": url}); err == nil {
+			b.WaitLoad(ctx)
 			time.Sleep(500 * time.Millisecond)
-			v, err := b.eval(ctx, `JSON.stringify({ t: document.title, x: (document.querySelector('main, article, [role=main]') || document.body).innerText })`)
+			v, err := b.Eval(ctx, `JSON.stringify({ t: document.title, x: (document.querySelector('main, article, [role=main]') || document.body).innerText })`)
 			if err == nil {
 				var s string
 				_ = json.Unmarshal(v, &s)

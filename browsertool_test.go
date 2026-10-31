@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"infuse/internal/browser"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -55,7 +56,7 @@ func TestAgentBrowserForReal(t *testing.T) {
 	run := func(in string) string {
 		t.Helper()
 		before := len(s.pendingImages)
-		res, isErr := browserTool{}.Run(context.Background(), &ToolContext{S: s, Root: root, Cwd: root}, json.RawMessage(in))
+		res, isErr := browserToolAdapter{}.Run(context.Background(), &ToolContext{S: s, Root: root, Cwd: root}, json.RawMessage(in))
 		if isErr {
 			t.Fatalf("%s → %s", in, res)
 		}
@@ -70,8 +71,8 @@ func TestAgentBrowserForReal(t *testing.T) {
 		return res
 	}
 	js := func(expr string) string {
-		p, _ := agentPageFor(s)
-		v, err := p.b.eval(context.Background(), expr)
+		p, _ := browser.AgentPageFor(root, s.settings)
+		v, err := p.Eval(context.Background(), expr)
 		if err != nil {
 			t.Fatal(err)
 		}
