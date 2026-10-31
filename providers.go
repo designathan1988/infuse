@@ -115,7 +115,7 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 		args     strings.Builder
 	}
 	calls := map[int]*call{}
-	var text strings.Builder
+	var text, reasoning strings.Builder
 	var res ModelResult
 	sc := sseScanner(resp.Body)
 	for sc.Scan() {
@@ -131,8 +131,10 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 			Choices []struct {
 				FinishReason string `json:"finish_reason"`
 				Delta        struct {
-					Content   string `json:"content"`
-					ToolCalls []struct {
+					Content          string `json:"content"`
+					ReasoningContent string `json:"reasoning_content"` // DeepSeek reasoner
+					Reasoning        string `json:"reasoning"`         // OpenRouter
+					ToolCalls        []struct {
 						Index    int    `json:"index"`
 						ID       string `json:"id"`
 						Function struct {
@@ -164,6 +166,10 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 			continue
 		}
 		d := ev.Choices[0].Delta
+		if r := d.ReasoningContent + d.Reasoning; r != "" {
+			reasoning.WriteString(r)
+			emit(StreamEvent{Kind: "thinking", Text: r})
+		}
 		if d.Content != "" {
 			text.WriteString(d.Content)
 			emit(StreamEvent{Kind: "text", Text: d.Content})
@@ -192,6 +198,9 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 	}
 	if err := sc.Err(); err != nil {
 		return res, err
+	}
+	if reasoning.Len() > 0 { // kept for the transcript; never sent back (openAIMessages skips thinking)
+		res.Content = append(res.Content, Block{Type: "thinking", Thinking: reasoning.String()})
 	}
 	if text.Len() > 0 {
 		res.Content = append(res.Content, Block{Type: "text", Text: text.String()})

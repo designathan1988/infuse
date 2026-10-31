@@ -27,6 +27,9 @@ type App struct {
 	Note  string `json:"note,omitempty"`
 }
 
+// cliPackages: the official npm packages, for "Instalar" when a CLI is missing.
+var cliPackages = map[string]string{"claude-cli": "@anthropic-ai/claude-code", "codex-cli": "@openai/codex", "gemini-cli": "@google/gemini-cli"}
+
 type startApp struct {
 	Name  string
 	AppID string
@@ -88,6 +91,12 @@ func detectApps(start []startApp) []App {
 			a.Path = findCLI("claude", home)
 		case "codex-cli":
 			a.Path = findCLI("codex", home)
+			if a.Path == "" {
+				a.Path = bundledCodex()
+				if a.Path != "" {
+					a.Note = "o CLI que vem com o app Codex"
+				}
+			}
 		case "gemini-cli":
 			a.Path = findCLI("gemini", home)
 		}

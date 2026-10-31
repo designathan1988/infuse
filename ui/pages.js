@@ -32,6 +32,7 @@ async function openSettings(section = 'general') {
     el.append(h(`<h1>${t('Geral')}</h1>`), h(`<p class="lead">${t('Tudo é aplicado ao mudar.')}</p>`));
     el.append(setRow('Idioma', 'Idioma da interface', selectEl([['pt-BR', 'Português (Brasil)'], ['en', 'English']], s.language === 'en' ? 'en' : 'pt-BR', v => save({ language: v }).then(() => location.reload()))));
     el.append(setRow('Tema', 'Claro, escuro ou seguir o sistema', selectEl([['system', 'Seguir o sistema'], ['light', 'Claro'], ['dark', 'Escuro']], s.theme || 'system', v => save({ theme: v }).then(applyTheme))));
+    el.append(setRow('Mostrar raciocínio na conversa', 'Blocos de raciocínio abertos por padrão; o caret recolhe cada um', toggleEl(s.showThinking !== false, v => save({ showThinking: v }))));
     el.append(setRow('Notificações', 'Avisar quando o agente precisar de você ou terminar, se você não estiver olhando a sessão', toggleEl(s.notify !== false, v => save({ notify: v }))));
     el.append(setRow('Ícone na bandeja', 'Mostrar o infuse na bandeja do sistema (Abrir / Sair)', toggleEl(!s.hideTray, v => save({ hideTray: !v }))));
     el.append(setRow('Fechar mantém na bandeja', 'Fechar a janela deixa as sessões rodando em segundo plano', toggleEl(!!s.closeToTray, v => save({ closeToTray: v }))));
@@ -101,7 +102,7 @@ async function openSettings(section = 'general') {
   if (section === 'apps') {
     el.append(h(`<h1>${t('Aplicativos')}</h1>`), h(`<p class="lead">${t('Outros agentes encontrados nesta máquina. CLIs abrem num terminal na pasta do projeto selecionado.')}</p>`));
     const apps = await api('/api/apps', { root: curRoot() });
-    apps.forEach(a => { const r = h(`<div class="prov"><div class="top"><span class="nm">${esc(a.name)}</span><span class="tag ${a.found ? 'ok' : ''}">${t(a.found ? 'encontrado' : 'não encontrado')}</span><span class="faint mono trunc grow">${esc(a.appId || a.path || '')}</span><button class="btn sm line" ${a.found ? '' : 'disabled'}>${t('Abrir')}</button></div></div>`); $('button', r).onclick = async () => { const res = await api('/api/apps/open', { body: { id: a.id }, root: curRoot() }); toast(res.ok ? 'Abrindo…' : res.error); }; el.append(r); });
+    apps.forEach(a => { const r = h(`<div class="prov"><div class="top"><span class="nm">${esc(a.name)}</span><span class="tag ${a.found ? 'ok' : ''}">${t(a.found ? 'encontrado' : 'não encontrado')}</span><span class="faint mono trunc grow">${esc(a.appId || a.path || '')}</span>${a.found ? `<button class="btn sm line">${t('Abrir')}</button>` : a.kind === 'cli' ? `<button class="btn sm line">${t('Instalar')}</button>` : `<button class="btn sm line" disabled>${t('Abrir')}</button>`}</div></div>`); $('button', r).onclick = async () => { if (a.kind === 'cli') return runAppInTerminal(a.id, !a.found); const res = await api('/api/apps/open', { body: { id: a.id }, root: curRoot() }); toast(res.ok ? 'Abrindo…' : res.error); }; el.append(r); });
     const eds = await api('/api/editors', { root: '' });
     el.append(h(`<h2>${t('Editores')}</h2>`), h(`<p class="lead">${eds.length ? eds.map(e => esc(e.name)).join(', ') : t('Nenhum editor encontrado no PATH.')} — ${t('usados em "Abrir em".')}</p>`));
   }

@@ -51,14 +51,14 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 #sbSearch{margin:6px 10px 4px;display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:7px;background:var(--s2)} #sbSearch input{flex:1;font-size:12.5px;min-width:0}
 #sbHead{display:flex;align-items:center;padding:8px 10px 2px 18px;font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.3px} #sbHead .ib{width:22px;height:22px;margin-left:auto;opacity:0} #sbHead:hover .ib,#sbHead .ib.on{opacity:1}
 #sessList{flex:1;overflow:auto;padding:0 8px 8px}
-.grp{margin-top:6px} .grp>.gh{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;font-size:12px;color:var(--text2);font-weight:600;cursor:pointer}
+.grp{margin-top:6px} .grp>.gh{display:flex;align-items:center;gap:6px;height:28px;padding:0 4px 0 8px;border-radius:6px;font-size:12px;color:var(--text2);font-weight:600;cursor:pointer}
 .grp>.gh:hover{color:var(--text)} .grp>.gh .chev{width:10px;font-size:9px;color:var(--text3);transition:transform .12s} .grp.closed>.gh .chev{transform:rotate(-90deg)} .grp.closed .srow{display:none}
-.grp>.gh .acts{margin-left:auto;display:none;gap:2px} .grp>.gh:hover .acts{display:flex} .grp>.gh .acts .ib{width:22px;height:22px}
+.grp>.gh .acts{margin-left:auto;display:flex;gap:2px;visibility:hidden} .grp>.gh:hover .acts{visibility:visible} .grp>.gh .acts .ib{width:20px;height:20px}
 .grp.drop>.gh{outline:1px dashed var(--accent)}
-.srow{display:flex;align-items:center;gap:8px;padding:6px 8px 6px 10px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--text2);margin:1px 0;position:relative}
+.srow{display:flex;align-items:center;gap:8px;height:32px;padding:0 6px 0 10px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--text2);margin:1px 0;position:relative}
 .srow:hover{background:var(--s3);color:var(--text)} .srow.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)} .srow.split{box-shadow:inset 2px 0 0 var(--accent)}
 .st{width:7px;height:7px;border-radius:50%;flex:none;background:transparent} .st.busy{background:var(--accent);animation:pulse 1.2s infinite} .st.wait{background:var(--warn)} .st.err{background:var(--bad)}
-.srow .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .srow .w{font-size:11px;color:var(--text3);flex:none} .srow .more{display:none;width:22px;height:22px} .srow:hover .more{display:inline-flex} .srow:hover .w{display:none}
+.srow .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .srow .w{font-size:11px;color:var(--text3);flex:none} .srow .more{display:none;width:20px;height:20px} .srow:hover .more{display:inline-flex} .srow:hover .w{display:none}
 @keyframes pulse{50%{opacity:.25}}
 #sbBottom{padding:8px 10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px}
 #sbBottom .usage{margin-left:auto;font-size:11px;color:var(--text3)}
@@ -74,7 +74,7 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .vbar .sp{flex:1} .vbar .chg{font-size:12px;font-family:var(--mono);padding:0 8px;height:28px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;color:var(--text2)} .vbar .chg:hover{background:var(--s3)}
 .vbar .branch{font-family:var(--mono);font-size:11.5px;color:var(--text3);padding:0 6px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .vbody{flex:1;display:flex;min-height:0;container-type:inline-size}
-@container (max-width: 900px){.rail{display:none}}
+@container (max-width: 900px){.vbody .rail{display:none}}
 .vchat{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
 .scroller{flex:1;overflow:auto;min-height:0}
 .chat{max-width:760px;margin:0 auto;padding:12px 28px 32px;display:flex;flex-direction:column;gap:12px}
@@ -102,6 +102,8 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .think pre{white-space:pre-wrap;font-family:var(--sans);margin:6px 0 0 12px;border-left:2px solid var(--border);padding-left:12px;max-height:260px;overflow:auto}
 .tool{font-size:12.5px;margin:1px 0}
 .tool .h{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:7px;cursor:pointer;color:var(--text2);min-height:28px} .tool .h:hover{background:var(--s2)}
+.tool .h .chev{width:10px;flex:none;color:var(--text3);font-size:13px;line-height:1;transition:transform .12s;text-align:center} .tool.open .h .chev{transform:rotate(90deg)}
+.think2 .h b{font-weight:500;color:var(--text2)} .thinktext{font-family:var(--sans)!important;font-size:12.5px!important;color:var(--text2);white-space:pre-wrap}
 .tool .h .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none} .tool .h .dot.run{background:var(--accent);animation:pulse 1s infinite} .tool .h .dot.err{background:var(--bad)} .tool .h .dot.pend{background:var(--border2)}
 .tool .h b{font-weight:600;color:var(--text)} .tool .h .s{font-family:var(--mono);font-size:12px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .tool .h .cnt{font-family:var(--mono);font-size:11.5px}
 .tool .b{display:none;margin:2px 0 6px 21px;border-left:2px solid var(--border);padding:2px 0 2px 12px} .tool.open .b{display:block}
@@ -135,7 +137,7 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:7px;font-size:12px;color:var(--text2);cursor:pointer;max-width:280px;white-space:nowrap}
 .chip:hover{background:var(--s3);color:var(--text)} .chip .v{overflow:hidden;text-overflow:ellipsis} .chip .car{opacity:.55;font-size:10px}
 .chip.static{cursor:default} .chip.static:hover{background:none;color:var(--text2)}
-.chip.mode-acceptEdits{color:var(--ok)} .chip.mode-plan{color:var(--accent)} .chip.mode-bypass{color:var(--bad)}
+.chip.mode-acceptEdits{color:var(--ok)} .chip.mode-plan{color:var(--accent)} .chip.mode-bypass{color:var(--warn);background:var(--warn-soft)}
 .sw{width:26px;height:15px;border-radius:999px;background:var(--border2);position:relative;transition:background .12s;flex:none} .sw::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#fff;transition:left .12s} .sw.on{background:var(--text)} .sw.on::after{left:13px}
 :root.dark .sw.on::after{background:var(--bg)}
 .hint{font-size:11px;color:var(--text3);text-align:center;padding-top:6px}
@@ -176,7 +178,10 @@ textarea.doc{width:100%;min-height:240px;font-family:var(--mono);font-size:12.5p
 .rule{display:grid;grid-template-columns:18px 84px 1fr 96px 1fr 22px;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)} .rule input,.rule select{width:100%;font-size:12px;padding:2px 4px;border-radius:4px} .rule input:focus,.rule select:focus{background:var(--s2)}
 
 /* ---------------- popovers, dialogs, pages */
-.menu{position:fixed;z-index:60;background:var(--surface);border-radius:10px;box-shadow:var(--pop);padding:5px;min-width:220px;max-width:460px;max-height:72vh;overflow:auto}
+.menu{position:fixed;z-index:60;background:var(--surface);border-radius:10px;box-shadow:var(--pop);min-width:220px;max-width:460px;display:flex;flex-direction:column;overflow:hidden}
+.menu .mbody{flex:1 1 auto;min-height:0;overflow:auto;padding:5px} .menu .mhead:empty,.menu .mfoot:empty{display:none}
+.menu .mhead{flex:none;padding:4px 5px 0;border-bottom:1px solid var(--border)} .menu .mfoot{flex:none;padding:5px;border-top:1px solid var(--border)}
+.mh.plain{text-transform:none;letter-spacing:0;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
 .mi{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap} .mi:hover,.mi.k{background:var(--s2)} .mi .d{color:var(--text3);font-size:12px;margin-left:auto;padding-left:16px;overflow:hidden;text-overflow:ellipsis;max-width:260px} .mi.danger{color:var(--bad)}
 .mi .ck{width:14px;flex:none} .mi.col{align-items:flex-start} .mi .two{display:flex;flex-direction:column;min-width:0} .mi .two small{color:var(--text3);font-size:11.5px;white-space:normal;max-width:300px}
 .mh{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);padding:8px 10px 3px} .ms{border-top:1px solid var(--border);margin:4px 0}

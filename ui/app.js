@@ -37,7 +37,7 @@ const S = {
   settings: {}, projects: [], sessions: [], archived: [], models: [], connections: [], editors: [],
   commands: {}, files: {}, live: {}, views: [], focus: 0, page: null,
   history: lsGet('hist', []), sb: lsGet('sb', { group: 'folder', sort: 'updated', closed: {} }),
-  viewMode: lsGet('viewMode', 'normal'), rail: lsGet('rail', true), recent: [], lang: 'pt',
+  viewMode: lsGet('viewMode', 'normal'), rail: lsGet('rail', true), recent: [], lang: 'pt', fold: {},
 };
 function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { } }
@@ -245,21 +245,32 @@ let openMenu = null;
 function closeMenu() { if (openMenu) { openMenu.remove(); openMenu = null; } }
 function menu(anchor, items, ev, opts = {}) {
   closeMenu();
-  const m = h('<div class="menu"></div>'); let n = 0;
+  // A menu is head (optional fixed title) + scrolling body + foot (items marked foot:true, always visible).
+  const m = h('<div class="menu"><div class="mhead"></div><div class="mbody"></div><div class="mfoot"></div></div>'); let n = 0;
+  const head = $('.mhead', m), body = $('.mbody', m), foot = $('.mfoot', m);
   for (const it of items) {
     if (!it) continue;
-    if (it.sep) { m.appendChild(h('<div class="ms"></div>')); continue; }
-    if (it.h) { m.appendChild(h(`<div class="mh">${esc(t(it.h))}</div>`)); continue; }
-    if (it.html) { m.appendChild(it.html); continue; }
+    const dest = it.foot ? foot : body;
+    if (it.sep) { if (!it.foot) body.appendChild(h('<div class="ms"></div>')); continue; }
+    if (it.h) { (it.head ? head : dest).appendChild(h(`<div class="mh${it.plain ? ' plain' : ''}" title="${esc(it.h)}">${esc(t(it.h))}</div>`)); continue; }
+    if (it.html) { dest.appendChild(it.html); continue; }
     n++;
     const row = h(`<div class="mi${it.danger ? ' danger' : ''}${it.sub ? ' col' : ''}">${it.check !== undefined ? `<span class="ck">${it.check ? '✓' : ''}</span>` : ''}${it.icon || ''}<span class="two"><span>${esc(t(it.label))}</span>${it.sub ? `<small>${esc(t(it.sub))}</small>` : ''}</span>${it.d ? `<span class="d">${esc(t(it.d))}</span>` : n <= 9 && opts.numbers ? `<span class="d">${n}</span>` : ''}</div>`);
     row.onclick = e => { e.stopPropagation(); if (!it.keep) closeMenu(); it.f && it.f(); };
     row.dataset.n = n;
-    m.appendChild(row);
+    dest.appendChild(row);
   }
   document.body.appendChild(m); openMenu = m;
-  let x, y;
-  if (ev) { x = ev.clientX; y = ev.clientY; } else { const r = anchor.getBoundingClientRect(); x = r.left; y = opts.above ? r.top - m.offsetHeight - 6 : r.bottom + 4; if (opts.alignRight) x = r.right - m.offsetWidth; }
+  let x, y, above = !!opts.above;
+  if (ev) { x = ev.clientX; y = ev.clientY; m.style.maxHeight = (innerHeight - 12) + 'px'; }
+  else {
+    // fit the menu in the space actually available beside the anchor; open the other way if that side is roomier
+    const r = anchor.getBoundingClientRect(); const spaceAbove = r.top - 12, spaceBelow = innerHeight - r.bottom - 12;
+    if (above && spaceAbove < Math.min(m.offsetHeight, 260) && spaceBelow > spaceAbove) above = false;
+    if (!above && spaceBelow < Math.min(m.offsetHeight, 260) && spaceAbove > spaceBelow) above = true;
+    m.style.maxHeight = Math.max(160, above ? spaceAbove : spaceBelow) + 'px';
+    x = opts.alignRight ? r.right - m.offsetWidth : r.left; y = above ? r.top - m.offsetHeight - 6 : r.bottom + 4;
+  }
   x = Math.max(6, Math.min(x, innerWidth - m.offsetWidth - 6)); y = Math.max(6, Math.min(y, innerHeight - m.offsetHeight - 6));
   m.style.left = x + 'px'; m.style.top = y + 'px';
   return m;
@@ -271,6 +282,8 @@ function sessionMenu(v, anchor) {
   const modes = [['normal', 'Normal', 'Ferramentas resumidas, texto completo'], ['thinking', 'Pensamento', 'Também mostra o raciocínio'], ['verbose', 'Detalhado', 'Cada chamada de ferramenta aberta']];
   menu(anchor, [
     { h: 'Modo de exibição' }, ...modes.map(([k, l, d]) => ({ label: l, sub: d, check: S.viewMode === k, f: () => setViewMode(k) })),
+    { label: 'Expandir tudo', f: () => foldAll(v, true) }, { label: 'Recolher tudo', f: () => foldAll(v, false) },
+    { label: S.settings.showThinking === false ? 'Mostrar raciocínio' : 'Ocultar raciocínio', f: () => { saveSetting({ showThinking: S.settings.showThinking === false }); for (const k of Object.keys(S.fold)) if (k.includes(':')) delete S.fold[k]; S.views.forEach(renderChat); } },
     { sep: 1 }, { label: 'Renomear', f: () => renameInline(v) },
     { label: 'Voltar no tempo…', d: 'Esc Esc', f: () => rewindDialog(v) },
     { label: 'Pergunta paralela', d: 'Ctrl ;', f: () => openSide(v) },
@@ -286,7 +299,8 @@ function moreMenu(v, anchor) {
     { sep: 1 }, { label: S.rail ? 'Ocultar detalhes da sessão' : 'Mostrar detalhes da sessão', f: () => { S.rail = !S.rail; lsSet('rail', S.rail); S.views.forEach(renderView); } },
   ], null, { alignRight: true });
 }
-function setViewMode(k) { S.viewMode = k; lsSet('viewMode', k); S.views.forEach(renderChat); toast(t('Exibição: ') + t({ normal: 'Normal', thinking: 'Pensamento', verbose: 'Detalhado' }[k])); }
+function foldAll(v, open) { $$('[data-fold]', v.el).forEach(x => { S.fold[x.dataset.fold] = open; x.parentNode.classList.toggle('open', open); }); }
+function setViewMode(k) { S.fold = {}; S.viewMode = k; lsSet('viewMode', k); S.views.forEach(renderChat); toast(t('Exibição: ') + t({ normal: 'Normal', thinking: 'Pensamento', verbose: 'Detalhado' }[k])); }
 
 // ---------------------------------------------------------------- live sessions (SSE)
 function connect(root, id) {
@@ -390,14 +404,13 @@ function renderChat(v) {
       out += `<div class="u sel">${esc(main)}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div>`;
     } else {
       if (m.content.length === 2 && m.content[0]?.text === 'Entendido, continuo a partir desse estado.') return;
-      out += '<div class="a">';
-      for (const b of m.content) {
-        if (b.type === 'text' && b.text) out += `<div class="md sel">${md(b.text)}</div>`;
-        else if (b.type === 'thinking' && b.thinking && S.viewMode !== 'normal') out += `<details class="think"${S.viewMode !== 'normal' ? ' open' : ''}><summary>${t('Raciocínio')}</summary><pre>${esc(b.thinking)}</pre></details>`;
-        else if (b.type === 'thinking' && b.thinking) out += `<details class="think"><summary>${t('Pensou')}</summary><pre>${esc(b.thinking)}</pre></details>`;
-        else if (b.type === 'tool_use') out += toolBlock(b.id, b.name, b.input, results[b.id], false);
+      let inner = '';
+      for (const [bi, b] of m.content.entries()) {
+        if (b.type === 'text' && b.text?.trim()) inner += `<div class="md sel">${md(b.text.trim())}</div>`;
+        else if (b.type === 'thinking' && b.thinking?.trim()) inner += thinkBlock(`${v.sid}:${i}:${bi}`, b.thinking, false);
+        else if (b.type === 'tool_use') inner += toolBlock(b.id, b.name, b.input, results[b.id], false);
       }
-      out += '</div>';
+      if (inner) out += `<div class="a">${inner}</div>`; // a message with nothing visible leaves no gap
     }
   });
   out += '<div class="live"></div>';
@@ -411,7 +424,7 @@ function renderChat(v) {
 }
 function bindChat(v, root) {
   $$('[data-rw]', root).forEach(b => b.onclick = () => rewindDialog(v, +b.dataset.rw));
-  $$('.tool .h', root).forEach(x => x.onclick = () => x.parentNode.classList.toggle('open'));
+  $$('[data-fold]', root).forEach(x => x.onclick = e => { if (e.target.closest('[data-path]')) return; const box = x.parentNode; const open = !box.classList.contains('open'); box.classList.toggle('open', open); S.fold[x.dataset.fold] = open; });
   $$('[data-path]', root).forEach(x => { x.onclick = () => openFileInPane(x.dataset.path); x.oncontextmenu = e => { e.preventDefault(); pathMenu(x.dataset.path, e); }; });
   $$('[data-perm]', root).forEach(b => b.onclick = () => decide(v, b.dataset.id, b.dataset.perm));
   $$('[data-ans]', root).forEach(b => b.onclick = () => answer(v, b.dataset.id, b.dataset.ans));
@@ -420,7 +433,7 @@ function bindChat(v, root) {
 function renderLive(v) {
   if (!v.el) return; const el = $('.live', v.el); const L = v.sid && S.live[v.sid]; if (!el || !L) return;
   let out = '';
-  if (L.think) out += `<details class="think"${S.viewMode !== 'normal' ? ' open' : ''}><summary>${t('pensando…')}</summary><pre>${esc(L.think)}</pre></details>`;
+  if (L.think) out += thinkBlock(`${L.id}:live`, L.think, true);
   if (L.text) out += `<div class="a"><div class="md sel">${md(L.text)}<span class="cursor"></span></div></div>`;
   for (const [id, tl] of Object.entries(L.tools)) { let inp; try { inp = JSON.parse(tl.input); } catch { inp = { _partial: tl.input }; } out += toolBlock(id, tl.name, inp, null, L.running?.id === id); }
   const st = L.snap?.state;
@@ -440,6 +453,18 @@ function lineCounts(name, inp) {
   if (name === 'Edit' && inp?.old_string != null) return `<span class="cnt"><span class="add">+${(inp.new_string || '').split('\n').length}</span> <span class="del">−${inp.old_string.split('\n').length}</span></span>`;
   return '';
 }
+// relPath shows a path relative to the session folder (absolute paths are long and repeat the project).
+function relPath(p) {
+  const root = (curDir() || '').replace(/[\\/]+$/, ''); if (!root || !p) return p;
+  const norm = s => s.replace(/\\/g, '/').toLowerCase(); const np = norm(p), nr = norm(root) + '/';
+  return np.startsWith(nr) ? p.replace(/\\/g, '/').slice(nr.length) : p;
+}
+// Reasoning is part of the transcript: shown open by default (Configurações or Ctrl+O hide it), with a caret.
+function thinkBlock(key, text, live) {
+  const open = S.fold[key] ?? (S.viewMode !== 'normal' || S.settings.showThinking !== false);
+  const words = text.trim().split(/\s+/).length;
+  return `<div class="tool think2${open ? ' open' : ''}"><div class="h" data-fold="${esc(key)}"><span class="chev">›</span><b>${t(live ? 'Pensando…' : 'Raciocínio')}</b><span class="s faint">${words} ${t('palavras')}</span></div><div class="b"><pre class="thinktext">${esc(text)}</pre></div></div>`;
+}
 function toolBlock(id, name, input, result, running) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
   const isPath = ['Read', 'Write', 'Edit'].includes(name) && (inp?.path || inp?.file_path);
@@ -451,9 +476,11 @@ function toolBlock(id, name, input, result, running) {
   if (name === 'TodoWrite' && Array.isArray(inp?.todos || inp?.tasks)) body += (inp.todos || inp.tasks).map(x => `<div>${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text || x.content || '')}</div>`).join('');
   if (result) { const o = String(result.content || ''); const k = o.indexOf('\n[infuse'); const main = k >= 0 ? o.slice(0, k) : o, inf = k >= 0 ? o.slice(k + 1) : ''; body += `<div class="lab">${t('resultado')}</div><pre>${esc(main.length > 20000 ? main.slice(0, 20000) + '\n…' : main)}</pre>` + (inf ? `<div class="lab">${t('infundido')}</div><pre class="inf">${esc(inf)}</pre>` : ''); }
   const dot = running ? 'run' : result ? (result.is_error ? 'err' : '') : 'pend';
-  const open = S.viewMode === 'verbose' || result?.is_error;
-  const summ = isPath ? `<span class="s"><span class="path" data-path="${esc(inp.path || inp.file_path)}">${esc(inp.path || inp.file_path)}</span></span>` : `<span class="s">${esc(toolSummary(name, inp))}</span>`;
-  return `<div class="tool${open ? ' open' : ''}"><div class="h"><span class="dot ${dot}"></span><b>${esc(t(toolLabel[name] || name))}</b>${summ}${lineCounts(name, inp)}</div><div class="b">${body}</div></div>`;
+  const open = S.fold[id] ?? (S.viewMode === 'verbose' || !!result?.is_error);
+  const fullPath = isPath ? (inp.path || inp.file_path) : '';
+  const shown = isPath ? relPath(fullPath) : '';
+  const summ = isPath ? `<span class="s"><span class="path" data-path="${esc(shown)}" title="${esc(fullPath)}">${esc(shown)}</span></span>` : `<span class="s">${esc(toolSummary(name, inp))}</span>`;
+  return `<div class="tool${open ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${esc(t(toolLabel[name] || name))}</b>${summ}${lineCounts(name, inp)}</div><div class="b">${body}</div></div>`;
 }
 const diffHTML = text => `<div class="diff">${text.split('\n').map(l => `<div class="${l.startsWith('+') && !l.startsWith('+++') ? 'a1' : l.startsWith('-') && !l.startsWith('---') ? 'd1' : /^(@@|---|\+\+\+|diff )/.test(l) ? 'hh' : ''}">${esc(l) || ' '}</div>`).join('')}</div>`;
 function permCard(p) {
@@ -461,13 +488,15 @@ function permCard(p) {
   const verb = p.category === 'exec' ? 'executar um comando' : p.category === 'write' ? 'alterar um arquivo' : p.category === 'net' ? 'acessar a web' : 'usar uma ferramenta';
   const detail = p.tool === 'Bash' ? `<pre class="cmd">${esc(inp.command || '')}</pre>` : p.tool === 'Edit' ? `<div class="mono" style="margin-top:8px">${esc(inp.path)}</div>` + diffHTML((inp.old_string || '').split('\n').map(l => '-' + l).join('\n') + '\n' + (inp.new_string || '').split('\n').map(l => '+' + l).join('\n')) : p.tool === 'Write' ? `<div class="mono" style="margin-top:8px">${esc(inp.path)}</div>` + diffHTML((inp.content || '').split('\n').slice(0, 200).map(l => '+' + l).join('\n')) : p.tool === 'WebFetch' ? `<pre class="cmd">${esc(inp.url || '')}</pre>` : `<pre class="cmd">${esc(JSON.stringify(inp, null, 2))}</pre>`;
   return `<div class="pcard"><div class="hd"><b>${esc(p.tool)}</b><span class="muted">${t('quer')} ${t(verb)}</span></div>${detail}
-  <div class="opts"><div class="opt" data-perm="allow" data-id="${p.id}">${t('Sim')}<span class="kbd">Y</span></div><div class="opt" data-perm="always" data-id="${p.id}">${t('Sim, e não perguntar de novo nesta sessão')}${p.tool === 'Bash' ? ` <span class="faint">(${esc((inp.command || '').trim().split(/\s+/).slice(0, 2).join(' '))})</span>` : ''}<span class="kbd">A</span></div><div class="opt" data-perm="deny" data-id="${p.id}">${t('Não, e dizer ao agente o que fazer diferente')}<span class="kbd">N</span></div></div></div>`;
+  <div class="opts"><div class="opt" data-perm="allow" data-id="${p.id}">${t('Sim')}<span class="kbd">Y</span></div><div class="opt" data-perm="always" data-id="${p.id}">${t('Sim, e não perguntar de novo nesta sessão')}${p.tool === 'Bash' ? ` <span class="faint">(${esc((inp.command || '').trim().split(/\s+/).slice(0, 2).join(' '))})</span>` : ''}<span class="kbd">A</span></div><div class="opt" data-perm="all" data-id="${p.id}">${t('Sim, e aceitar tudo daqui em diante')}<span class="kbd">T</span></div><div class="opt" data-perm="deny" data-id="${p.id}">${t('Não, e dizer ao agente o que fazer diferente')}<span class="kbd">N</span></div></div></div>`;
 }
 function questionCard(q) {
   return `<div class="pcard"><div class="hd"><b>${esc(q.question)}</b></div><div class="opts">${(q.options || []).map((o, i) => `<div class="opt" data-ans="${esc(o)}" data-id="${q.id}">${esc(o)}<span class="kbd">${i + 1}</span></div>`).join('')}</div>
   <div class="free"><input data-id="${q.id}" placeholder="${esc(t('ou responda com suas palavras…'))}"></div></div>`;
 }
-async function decide(v, id, d) { const L = S.live[v.sid]; await api(`/api/sessions/${v.sid}/permission`, { body: { id, decision: d }, root: L.root }); if (L.snap) L.snap.pendingPermission = null; renderChat(v); if (d === 'deny') setTimeout(() => $('.prompt', v.el).focus(), 50); }
+async function decide(v, id, d) {
+  if (d === 'all') { await setSessionOpts(v, { mode: 'bypass' }); d = 'allow'; toast(t('Modo: ') + t('Aceitar tudo')); }
+  const L = S.live[v.sid]; await api(`/api/sessions/${v.sid}/permission`, { body: { id, decision: d }, root: L.root }); if (L.snap) L.snap.pendingPermission = null; renderChat(v); if (d === 'deny') setTimeout(() => $('.prompt', v.el).focus(), 50); }
 async function answer(v, id, a) { const L = S.live[v.sid]; await api(`/api/sessions/${v.sid}/answer`, { body: { id, answer: a }, root: L.root }); if (L.snap) L.snap.pendingQuestion = null; renderChat(v); }
 
 // markdown (small, safe): code blocks, inline code (paths become links), headings, lists, quotes, tables, links
@@ -489,7 +518,7 @@ const modeInfo = {
   default: ['Perguntar', 'Pede aprovação antes de editar arquivos ou rodar comandos'],
   acceptEdits: ['Aceitar edições', 'Edita arquivos sem perguntar; comandos ainda pedem aprovação'],
   plan: ['Plano', 'Explora e propõe um plano, sem editar nada'],
-  bypass: ['Sem perguntas', 'Executa tudo sem pedir aprovação (o oráculo continua protegido)'],
+  bypass: ['Aceitar tudo', 'Edita e executa sem pedir aprovação (o oráculo continua protegido)'],
 };
 const effortInfo = { low: 'Baixo', medium: 'Médio', high: 'Alto', max: 'Máximo' };
 function vopts(v) {
@@ -513,8 +542,9 @@ function renderComposer(v) {
     add(h(`<span class="chip static" title="${esc(L.snap.workRoot || o.root)}">${I.folder}<span class="v">${esc(projectLabel(o.root))}</span></span>`));
   }
   add(h('<span style="flex:1"></span>'));
-  const mc = h(`<span class="chip mode-${o.mode}" title="${esc(t('Modo de permissão (Ctrl+Shift+M)'))}"><span class="v">${t(modeInfo[o.mode]?.[0] || o.mode)}</span>${I.caret}</span>`);
-  mc.onclick = e => modeMenu(v, e.currentTarget); add(mc);
+  const brow = $('.brow', v.el); $('.modechip', brow)?.remove();
+  const mc = h(`<span class="chip modechip mode-${o.mode}" title="${esc(t('Modo de permissão (Shift+Tab ou Ctrl+Shift+M)'))}"><span class="v">${t(modeInfo[o.mode]?.[0] || o.mode)}</span>${I.caret}</span>`);
+  mc.onclick = e => modeMenu(v, e.currentTarget); brow.insertBefore(mc, $('.sp', brow));
   const mo = h(`<span class="chip" title="${esc(t('Modelo e esforço (Ctrl+Shift+I)'))}"><span class="v">${esc(modelLabel(o))}</span><span class="faint">${t(effortInfo[o.effort] || '')}</span>${I.caret}</span>`);
   mo.onclick = e => modelMenu(v, e.currentTarget); add(mo);
   // send / stop, queue, context ring
@@ -542,11 +572,11 @@ async function pickFolder(v) {
 async function browseFolders(v, path) {
   const r = await api('/api/fs?path=' + encodeURIComponent(path), { root: '' }); lsSet('browsePath', r.path || '');
   const anchor = $('.under .chip:nth-child(2)', v.el);
-  const items = [{ h: r.path || t('Abrir pasta') }];
+  const items = [{ h: r.path || t('Abrir pasta'), head: true, plain: !!r.path }];
   if (r.path) items.push({ label: '↑ ' + (r.parent ? baseName(r.parent) || r.parent : t('unidades')), keep: 1, f: () => browseFolders(v, r.parent || '') });
   else r.roots.forEach(x => items.push({ label: x.name, d: x.path, keep: 1, f: () => browseFolders(v, x.path) }));
   (r.dirs || []).forEach(x => items.push({ label: x.name, keep: 1, f: () => browseFolders(v, x.path) }));
-  if (r.path) items.push({ sep: 1 }, { label: 'Usar esta pasta', d: baseName(r.path), f: async () => { const res = await api('/api/projects/add', { body: { root: r.path }, root: '' }); if (res.error) return toast(res.error); await loadSessions(); v.draft.root = res.root; lsSet('lastRoot', res.root); renderView(v); renderPanes(); } });
+  if (r.path) items.push({ foot: true, label: 'Usar esta pasta', d: baseName(r.path), f: async () => { const res = await api('/api/projects/add', { body: { root: r.path }, root: '' }); if (res.error) return toast(res.error); await loadSessions(); v.draft.root = res.root; lsSet('lastRoot', res.root); renderView(v); renderPanes(); } });
   menu(anchor, items, null, { above: true });
 }
 async function setSessionOpts(v, patch) {
@@ -630,7 +660,7 @@ async function slash(v, text) {
     case 'compact': if (L && L.snap.turn > 1) { const r = await api(`/api/session/${L.id}/summarize`, { body: { turn: L.snap.turn, hint: arg }, root: L.root }); toast(r.error || 'Conversa resumida'); } else toast('Nada para compactar ainda'); return true;
     case 'model': modelMenu(v, $('.under .chip:last-child', v.el)); return true;
     case 'effort': modelMenu(v, $('.under .chip:last-child', v.el), true); return true;
-    case 'mode': case 'permissions': modeMenu(v, $$('.under .chip', v.el).slice(-2)[0]); return true;
+    case 'mode': case 'permissions': modeMenu(v, $('.modechip', v.el)); return true;
     case 'plan': setSessionOpts(v, { mode: 'plan' }); if (arg) { $('.prompt', v.el).value = arg; return false; } return true;
     case 'rewind': case 'undo': case 'checkpoint': rewindDialog(v); return true;
     case 'diff': togglePane('changes', true); return true;
@@ -860,10 +890,17 @@ function pathMenu(path, ev) {
 }
 
 // ---------------------------------------------------------------- keyboard
+// Capture phase: app shortcuts win over the terminal (xterm swallows keys). Inside the terminal only the
+// app-wide chords below are taken; everything else (Ctrl+C, Ctrl+W, Ctrl+B…) goes to the shell.
+const APP_CHORDS = new Set(['ctrl+n', 'ctrl+k', 'ctrl+,', 'ctrl+/', 'ctrl+`', 'ctrl+\\', 'ctrl+;', 'ctrl+tab', 'ctrl+shift+tab', 'ctrl+shift+d', 'ctrl+shift+b', 'ctrl+shift+m', 'ctrl+shift+i', 'ctrl+shift+e', 'ctrl+shift+]', 'ctrl+shift+[', 'ctrl+alt+w']);
 addEventListener('keydown', e => {
   if (document.querySelector('.overlay')) return;
   const k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey; const v = V(); const L = curL();
-  const inField = /INPUT|TEXTAREA/.test(document.activeElement?.tagName) || document.activeElement?.closest?.('.xterm');
+  const inTerm = !!document.activeElement?.closest?.('.xterm');
+  const chord = (ctrl ? 'ctrl+' : '') + (e.altKey ? 'alt+' : '') + (e.shiftKey && ctrl ? 'shift+' : '') + (e.code === 'Backquote' ? '`' : e.code === 'BracketRight' ? ']' : e.code === 'BracketLeft' ? '[' : k);
+  if (inTerm && !APP_CHORDS.has(chord)) return;
+  if (inTerm) e.stopPropagation();
+  const inField = /INPUT|TEXTAREA/.test(document.activeElement?.tagName) || inTerm;
   if (openMenu && !AC && /^[1-9]$/.test(e.key) && !ctrl) { const it = $$('.mi', openMenu)[+e.key - 1]; if (it) { e.preventDefault(); it.click(); } return; }
   if (openMenu && e.key === 'Escape') { closeMenu(); e.preventDefault(); return; }
   if (ctrl && !e.shiftKey && k === 'k') { e.preventDefault(); palette(); return; }
@@ -881,14 +918,14 @@ addEventListener('keydown', e => {
   if (ctrl && e.key === '\\') { e.preventDefault(); closeFocusedPane(); return; }
   if (ctrl && e.key === ';') { e.preventDefault(); openSide(v); return; }
   if (ctrl && !e.shiftKey && k === 'o') { e.preventDefault(); const order = ['normal', 'thinking', 'verbose']; setViewMode(order[(order.indexOf(S.viewMode) + 1) % 3]); return; }
-  if (ctrl && e.shiftKey && k === 'm') { e.preventDefault(); modeMenu(v, $$('.under .chip', v.el).slice(-2)[0]); return; }
+  if (ctrl && e.shiftKey && k === 'm') { e.preventDefault(); modeMenu(v, $('.modechip', v.el)); return; }
   if (ctrl && e.shiftKey && k === 'i') { e.preventDefault(); modelMenu(v, $('.under .chip:last-child', v.el)); return; }
   if (ctrl && e.shiftKey && k === 'e') { e.preventDefault(); modelMenu(v, $('.under .chip:last-child', v.el), true); return; }
-  if (!inField && L?.snap?.pendingPermission && !ctrl) { const id = L.snap.pendingPermission.id; if (k === 'y') { decide(v, id, 'allow'); return; } if (k === 'a') { decide(v, id, 'always'); return; } if (k === 'n') { decide(v, id, 'deny'); return; } }
+  if (!inField && L?.snap?.pendingPermission && !ctrl) { const id = L.snap.pendingPermission.id; if (k === 'y') { decide(v, id, 'allow'); return; } if (k === 't') { decide(v, id, 'all'); return; } if (k === 'a') { decide(v, id, 'always'); return; } if (k === 'n') { decide(v, id, 'deny'); return; } }
   if (!inField && L?.snap?.pendingQuestion && /^[1-9]$/.test(e.key)) { const o = L.snap.pendingQuestion.options?.[+e.key - 1]; if (o) answer(v, L.snap.pendingQuestion.id, o); return; }
   if (e.key === 'Escape' && !inField && busy(L)) { stop(v); return; }
   if (!inField && !ctrl && e.key.length === 1 && v?.el && !S.page) { $('.prompt', v.el).focus(); }
-});
+}, true);
 
 // drag & drop: folders become projects, files attachments (native window reads real paths)
 let dragDepth = 0;

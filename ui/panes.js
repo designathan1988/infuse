@@ -53,8 +53,8 @@ function renderPanes() {
     p.classList.toggle('focus', P2.focus === id);
     const inst = P2.inst[id];
     if (!inst || inst.ctxKey !== ctxKey) {
-      if (inst?.destroy && !PANES[id].keep) inst.destroy();
-      if (!inst || !PANES[id].keep || inst.root !== curRoot()) {
+      if (inst && PANES[id].keep && inst.root === curRoot() && inst.openAt) { inst.openAt(curDir()); inst.ctxKey = ctxKey; } // same project, other worktree: a new tab there
+      else if (!inst || !PANES[id].keep || inst.root !== curRoot()) {
         if (inst?.destroy) inst.destroy();
         $('.pb', p).innerHTML = ''; $('.extra', p).innerHTML = '';
         const c = paneCtx();
@@ -145,14 +145,14 @@ function mountTerminal(pb, extra, c) {
   const drawTabs = () => { bar.innerHTML = ''; tabs.forEach((tb, i) => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}">${esc(tb.name)}<span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) return closeTab(tb); show(tb); }; bar.appendChild(el); }); };
   const show = tb => { tabs.forEach(x => x.el.style.display = x === tb ? '' : 'none'); cur = tb; drawTabs(); setTimeout(() => { tb.fit.fit(); tb.term.focus(); }, 10); };
   const closeTab = tb => { api(`/api/term/${tb.id}/close`, { body: {}, root: c.root }); tb.es?.close(); tb.term.dispose(); tb.el.remove(); tabs.splice(tabs.indexOf(tb), 1); if (cur === tb) cur = tabs[tabs.length - 1] || null; if (cur) show(cur); else drawTabs(); };
-  const open = async (cwd) => {
+  const open = async (cwd, run, name) => {
     if (!window.Terminal) { host.innerHTML = `<div class="empty">xterm.js não carregou</div>`; return; }
     const el = h('<div></div>'); host.appendChild(el);
     const term = new Terminal({ fontFamily: getComputedStyle(document.body).getPropertyValue('--mono'), fontSize: 13, cursorBlink: true, theme: theme(), allowProposedApi: true, scrollback: 5000 });
     const fit = new FitAddon.FitAddon(); term.loadAddon(fit); term.open(el); fit.fit();
-    const r = await api('/api/term/open', { body: { cwd: cwd || c.dir, cols: term.cols, rows: term.rows }, root: c.root });
+    const r = await api('/api/term/open', { body: { cwd: cwd || c.dir, cols: term.cols, rows: term.rows, run: run || '' }, root: c.root });
     if (r.error) { term.write('\r\n' + r.error + '\r\n'); return; }
-    const tb = { id: r.id, term, fit, el, name: baseName(r.cwd) || 'shell' + (tabs.length + 1) };
+    const tb = { id: r.id, term, fit, el, name: name || baseName(r.cwd) || 'shell' + (tabs.length + 1) };
     const es = new EventSource(`/api/term/${r.id}/stream?root=${encodeURIComponent(c.root)}`); tb.es = es;
     es.onmessage = e => { const bin = atob(e.data); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); term.write(bytes); };
     es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('processo encerrado')}]\x1b[0m\r\n`); es.close(); });
@@ -163,7 +163,7 @@ function mountTerminal(pb, extra, c) {
   };
   addBtn.onclick = () => open();
   open();
-  return { fit: () => cur?.fit.fit(), destroy: () => tabs.slice().forEach(closeTab), openAt: cwd => open(cwd) };
+  return { fit: () => cur?.fit.fit(), destroy: () => tabs.slice().forEach(closeTab), openAt: (cwd, run, name) => open(cwd, run, name) };
 }
 
 // ---------------------------------------------------------------- Files: tree + editor with auto save
@@ -292,4 +292,12 @@ function mountMap(pb, extra, c) {
   extra.innerHTML = `<button class="ib" title="${esc(t('Regerar'))}">${I.reload}</button>`;
   const draw = async (refresh) => { const m = await api('/api/map' + (refresh ? '?refresh=1' : ''), { root: c.dir }); const dirs = Object.entries(m.dirs || {}).sort(); pb.innerHTML = `<div class="plist"><div class="faint" style="margin-bottom:8px">${Object.keys(m.files || {}).length} ${t('arquivos')} · ${new Date(m.generatedAt).toLocaleString()}</div>${(m.hotspots || []).length ? `<div class="card" style="margin-bottom:10px"><b>${t('Arquivos grandes demais')}</b>${m.hotspots.map(x => `<div class="mono path" data-path="${esc(x.path)}">${esc(x.path)} — ${x.lines} ${t('linhas')}</div>`).join('')}</div>` : ''}<table><tr><th>${t('pasta')}</th><th>${t('arquivos')}</th><th>${t('linhas')}</th></tr>${dirs.map(([p, d]) => `<tr><td class="mono">${esc(p)}</td><td>${(d.files || []).length}</td><td>${d.lines || 0}</td></tr>`).join('')}</table></div>`; $$('[data-path]', pb).forEach(x => x.onclick = () => openFileInPane(x.dataset.path)); };
   $('button', extra).onclick = () => draw(true); draw(); return { refresh: debounce(() => draw(), 800) };
+}
+
+// Agent CLIs (Claude Code, Codex, Gemini) run in a terminal tab inside the window, in the session's folder.
+async function runAppInTerminal(id, install) {
+  const r = await api('/api/apps/command', { body: { id, install: install ? '1' : '' }, root: '' });
+  if (!r.ok) return toast(r.error);
+  showPage(null); togglePane('terminal', true);
+  setTimeout(() => paneCall('terminal', 'openAt', curDir(), r.command, r.name), 80);
 }
