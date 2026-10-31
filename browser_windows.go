@@ -41,7 +41,21 @@ type browserTab struct {
 	ch      *edge.Chromium
 	wv      unsafe.Pointer // ICoreWebView2
 	loading bool
+	picking bool // the element picker is active: the page's next message is the user's choice
 }
+
+// pickerJS highlights the element under the mouse; a click sends its selector and HTML back, Escape cancels.
+const pickerJS = `(() => { if (window.__infusePick) return; window.__infusePick = true;
+  const box = document.createElement('div'); box.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;border:2px solid #4c6fd6;background:rgba(76,111,214,.12);border-radius:3px;transition:all .05s';
+  const tag = document.createElement('div'); tag.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;background:#4c6fd6;color:#fff;font:12px system-ui;padding:2px 6px;border-radius:3px';
+  document.documentElement.append(box, tag); let cur = null;
+  const sel = el => { if (el.id) return '#' + CSS.escape(el.id); const p = []; for (let e = el; e && e.nodeType === 1 && e !== document.documentElement; e = e.parentElement) { let s = e.tagName.toLowerCase(); if (e.id) { p.unshift('#' + CSS.escape(e.id)); break; } const cls = [...e.classList].slice(0, 2).map(c => '.' + CSS.escape(c)).join(''); const sib = e.parentElement ? [...e.parentElement.children].filter(x => x.tagName === e.tagName) : []; s += cls + (sib.length > 1 ? ':nth-of-type(' + (sib.indexOf(e) + 1) + ')' : ''); p.unshift(s); } return p.join(' > '); };
+  const move = e => { cur = e.target; const r = cur.getBoundingClientRect(); Object.assign(box.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' }); tag.textContent = cur.tagName.toLowerCase() + (cur.id ? '#' + cur.id : '') + ' ' + Math.round(r.width) + '×' + Math.round(r.height); Object.assign(tag.style, { left: r.left + 'px', top: Math.max(0, r.top - 22) + 'px' }); };
+  const done = res => { removeEventListener('mousemove', move, true); removeEventListener('click', click, true); removeEventListener('keydown', key, true); box.remove(); tag.remove(); window.__infusePick = false; window.chrome.webview.postMessage(JSON.stringify({ infusePick: res })); };
+  const click = e => { e.preventDefault(); e.stopPropagation(); const el = cur || e.target; const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+    done({ url: location.href, title: document.title, selector: sel(el), html: el.outerHTML.slice(0, 4000), text: (el.innerText || '').trim().slice(0, 500), rect: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }, style: { color: cs.color, background: cs.backgroundColor, font: cs.fontSize + ' ' + cs.fontFamily.split(',')[0], margin: cs.margin, padding: cs.padding } }); };
+  const key = e => { if (e.key === 'Escape') { e.preventDefault(); done(null); } };
+  addEventListener('mousemove', move, true); addEventListener('click', click, true); addEventListener('keydown', key, true); })()`
 
 var (
 	browserTabs      = map[string]*browserTab{}  // touched on the window thread only
@@ -103,6 +117,9 @@ func (tb *browserTab) str(slot int) string {
 	windows.CoTaskMemFree(unsafe.Pointer(p))
 	return s
 }
+
+// browserPickHook sees the picker's answer (tests).
+var browserPickHook func(pick string)
 
 // browserEventHook sees every event (tests).
 var browserEventHook func(id, url, title string, loading bool)
@@ -180,6 +197,10 @@ func (w *winWindow) browserOp(op string, a BrowserArgs) (any, error) {
 		comCall(tb.wv, slotStop)
 	case "focus":
 		tb.ch.Focus()
+	case "pick":
+		tb.picking = true
+		tb.ch.Eval(pickerJS)
+		tb.ch.Focus()
 	case "close":
 		delete(browserTabs, tb.id)
 		delete(browserBySender, uintptr(tb.wv))
@@ -215,6 +236,21 @@ func (w *winWindow) newBrowserTab(id string) (*browserTab, error) {
 		_ = s.PutIsStatusBarEnabled(true)
 	}
 	tb := &browserTab{id: id, hwnd: hwnd, ch: ch}
+	ch.MessageCallback = func(msg string) { // only the picker's answer, and only while the user is picking
+		var m struct {
+			Pick json.RawMessage `json:"infusePick"`
+		}
+		if !tb.picking || json.Unmarshal([]byte(msg), &m) != nil || m.Pick == nil {
+			return
+		}
+		tb.picking = false
+		if browserPickHook != nil {
+			browserPickHook(string(m.Pick))
+		}
+		if mainWin != nil && mainWin.chromium != nil {
+			mainWin.chromium.Eval("window.infuse && infuse._emit('browserPick'," + string(m.Pick) + ")")
+		}
+	}
 	ch.NavigationCompletedCallback = func(*edge.ICoreWebView2, *edge.ICoreWebView2NavigationCompletedEventArgs) {
 		tb.loading = false
 		tb.emit()

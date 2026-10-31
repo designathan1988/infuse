@@ -42,8 +42,8 @@ func TestNativeBrowserLoadsAnySite(t *testing.T) {
 	}
 	var got []ev
 	browserEventHook = func(id, url, title string, loading bool) { got = append(got, ev{url, title, loading}) }
-	pump := func(until func() bool) bool {
-		deadline := time.Now().Add(30 * time.Second)
+	pumpFor := func(d time.Duration, until func() bool) bool {
+		deadline := time.Now().Add(d)
 		var m winMsg
 		for time.Now().Before(deadline) {
 			for {
@@ -61,6 +61,7 @@ func TestNativeBrowserLoadsAnySite(t *testing.T) {
 		}
 		return false
 	}
+	pump := func(until func() bool) bool { return pumpFor(30*time.Second, until) }
 	loaded := func(host string) func() bool {
 		return func() bool {
 			for _, e := range got {
@@ -89,6 +90,23 @@ func TestNativeBrowserLoadsAnySite(t *testing.T) {
 	_, _ = w.browserOp("back", BrowserArgs{ID: "t1"})
 	if !pump(loaded("github.com")) {
 		t.Fatalf("back did not return to github: %+v", got)
+	}
+	// element picker: a page message counts only while the user is picking
+	var picked string
+	browserPickHook = func(p string) { picked = p }
+	defer func() { browserPickHook = nil }()
+	tb := browserTabs["t1"]
+	tb.ch.Eval(`window.chrome.webview.postMessage(JSON.stringify({infusePick:{selector:"forjado"}}))`)
+	pumpFor(1500*time.Millisecond, func() bool { return false })
+	if picked != "" {
+		t.Fatal("a page message was taken as a pick without the user picking")
+	}
+	if _, err := w.browserOp("pick", BrowserArgs{ID: "t1"}); err != nil {
+		t.Fatal(err)
+	}
+	tb.ch.Eval(`setTimeout(() => { const el = document.querySelector('a, button, h1, div'); el.dispatchEvent(new MouseEvent('mousemove', {bubbles: true})); el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true})); }, 300)`)
+	if !pump(func() bool { return picked != "" }) || !strings.Contains(picked, `"selector"`) || !strings.Contains(picked, `"html"`) {
+		t.Fatalf("pick: %q", picked)
 	}
 	if _, err := w.browserOp("close", BrowserArgs{ID: "t1"}); err != nil || browserTabs["t1"] != nil {
 		t.Fatal("close", err)

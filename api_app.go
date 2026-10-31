@@ -110,6 +110,16 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		}
 		sendJSON(w, 200, map[string]any{"ok": true, "verdict": v})
 		return true
+	case path == "/api/shot": // screenshots taken by the agent's browser
+		name := filepath.Base(q["name"])
+		if !strings.HasSuffix(name, ".png") {
+			sendJSON(w, 400, map[string]any{"error": "nome inválido"})
+			return true
+		}
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "max-age=86400")
+		http.ServeFile(w, r, filepath.Join(root, infuseDirName, "shots", name))
+		return true
 	// ---------------------------------------------------------------- hooks and skills
 	case path == "/api/hooks" && r.Method == http.MethodGet:
 		out := LoadHooks(root)

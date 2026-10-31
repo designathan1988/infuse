@@ -228,7 +228,7 @@ const searchURL = q => 'https://www.google.com/search?q=' + encodeURIComponent(q
 let browserSeq = 0;
 function mountBrowser(pb, extra, c) {
   const tabs = []; let cur = null; let native = !!(window.infuse && window.infuse.native);
-  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('Voltar'))}">‹</button><button class="ib fwd" title="${esc(t('Avançar'))}">›</button><button class="ib rl" title="${esc(t('Recarregar'))}">${I.reload}</button><input class="url" placeholder="${esc(t('Endereço ou pesquisa — ex.: localhost:3000, github.com, como usar fetch'))}"><span class="spin bload" style="display:none"></span><button class="ib ext" title="${esc(t('Abrir no navegador padrão'))}">${I.pop}</button></div><div class="frames" style="flex:1;display:flex;min-height:0;position:relative"></div>`;
+  pb.innerHTML = `<div class="urlbar"><button class="ib back" title="${esc(t('Voltar'))}">‹</button><button class="ib fwd" title="${esc(t('Avançar'))}">›</button><button class="ib rl" title="${esc(t('Recarregar'))}">${I.reload}</button><input class="url" placeholder="${esc(t('Endereço ou pesquisa — ex.: localhost:3000, github.com, como usar fetch'))}"><span class="spin bload" style="display:none"></span><button class="ib pick" title="${esc(t('Selecionar um elemento da página para a mensagem (Ctrl+Shift+S)'))}">⌖</button><button class="ib ext" title="${esc(t('Abrir no navegador padrão'))}">${I.pop}</button></div><div class="frames" style="flex:1;display:flex;min-height:0;position:relative"></div>`;
   extra.innerHTML = `<span class="row tabs" style="gap:2px;min-width:0"></span><button class="ib nt" title="${esc(t('Nova aba'))}">${I.plus}</button><button class="btn sm srv">${t('Servidores')} ${I.caret}</button>`;
   const frames = $('.frames', pb), url = $('.url', pb), bar = $('.tabs', extra), spin = $('.bload', pb);
   const label = tb => tb.title || (tb.url ? tb.url.replace(/^https?:\/\/(www\.)?/, '').split(/[/?#]/)[0] : t('Nova aba'));
@@ -288,6 +288,11 @@ function mountBrowser(pb, extra, c) {
   $('.back', pb).onclick = () => nav('back'); $('.fwd', pb).onclick = () => nav('forward'); $('.rl', pb).onclick = () => nav('reload');
   $('.ext', pb).onclick = () => cur?.url && api('/api/open', { body: { url: cur.url } });
   $('.nt', extra).onclick = () => add('');
+  const pick = async () => {
+    if (!native || !cur?.opened) return toast(t('Abra uma página no navegador primeiro (na janela do app)'));
+    toast(t('Clique num elemento da página · Esc cancela')); await infuse.call('browser', 'pick', { id: cur.id }).catch(e => toast(e.message));
+  };
+  $('.pick', pb).onclick = pick;
   $('.srv', extra).onclick = async e => {
     const anchor = e.currentTarget; const list = await api('/api/devservers', { root: c.root });
     const items = list.length ? list.flatMap(s => [{ label: s.name, d: `:${s.port} · ${s.running || s.listening ? t('rodando') : t('parado')}${s.approved ? '' : ' · ' + t('não aprovado')}`, f: async () => { if (!s.running && !s.listening) { let r = await api('/api/devservers', { body: { action: 'start', name: s.name }, root: c.root }); if (r.needsApproval) { if (!confirm(t('Executar este comando de launch.json? Ele roda com as suas permissões, fora do filtro.') + '\n\n' + r.command)) return; r = await api('/api/devservers', { body: { action: 'approve', name: s.name }, root: c.root }); } if (r.error) return toast(r.error); toast(t('Iniciando ') + s.name); setTimeout(() => go(s.url), 2500); } else go(s.url); } }]) : [{ label: 'Nenhum servidor configurado', sub: 'Declare em .infuse/launch.json ou .claude/launch.json', f: () => { } }];
@@ -295,7 +300,7 @@ function mountBrowser(pb, extra, c) {
     menu(anchor, items, null, { alignRight: true });
   };
   add(lsGet('browserUrl:' + c.root, ''));
-  return { go: v => { if (!cur) add(''); go(v); }, destroy: () => { clearInterval(timer); ro.disconnect(); tabs.forEach(tb => tb.opened && infuse.call('browser', 'close', { id: tb.id }).catch(() => { })); } };
+  return { go: v => { if (!cur) add(''); go(v); }, pick, destroy: () => { clearInterval(timer); ro.disconnect(); tabs.forEach(tb => tb.opened && infuse.call('browser', 'close', { id: tb.id }).catch(() => { })); } };
 }
 
 // ---------------------------------------------------------------- Tasks, Plan

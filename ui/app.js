@@ -501,6 +501,13 @@ async function runReview(v, focus) {
   const r = await api(`/api/session/${L.id}/review`, { body: { focus: focus || '' }, root: L.root });
   if (!r.ok) { toast(r.error || t('Revisão falhou')); renderChat(v); }
 }
+// The element the user picked in the browser pane goes into the message being written.
+if (window.infuse?.on) infuse.on('browserPick', p => {
+  if (!p) return; const v = V(); if (!v?.el) return; const P = $('.prompt', v.el);
+  const st = p.style ? `\n${t('Estilo')}: ${p.style.font} · ${t('cor')} ${p.style.color} · ${t('fundo')} ${p.style.background} · margin ${p.style.margin} · padding ${p.style.padding}` : '';
+  P.value = (P.value.trim() ? P.value.trimEnd() + '\n\n' : '') + `[${t('Elemento selecionado em')} ${p.url}]\n${t('Seletor')}: ${p.selector}\n${t('Posição')}: ${p.rect.x},${p.rect.y} · ${p.rect.w}×${p.rect.h}${st}${p.text ? `\n${t('Texto')}: ${p.text}` : ''}\n\`\`\`html\n${p.html}\n\`\`\`\n`;
+  grow(P); P.focus(); P.setSelectionRange(P.value.length, P.value.length); toast(t('Elemento adicionado à mensagem'));
+});
 function turnOf(s, msgIndex) { const k = s.turnStarts.indexOf(msgIndex); return k >= 0 ? k + 1 : 0; }
 function msgText(m) { return (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim(); }
 function copyText(txt, what) { navigator.clipboard.writeText(txt).then(() => toast(t(what || 'Copiado')), () => toast('Não foi possível copiar')); }
@@ -552,10 +559,10 @@ function renderLive(v) {
 }
 setInterval(() => { for (const el of $$('[data-el]')) { const L = S.live[el.dataset.el]; if (L?.started) el.textContent = Math.round((Date.now() - L.started) / 1000) + 's'; } }, 500);
 
-const toolLabel = { Bash: 'Executou', Read: 'Leu', Write: 'Escreveu', Edit: 'Editou', Glob: 'Procurou arquivos', Grep: 'Buscou', LS: 'Listou', WebFetch: 'Buscou na web', TodoWrite: 'Atualizou tarefas', AskUserQuestion: 'Perguntou', MultiEdit: 'Editou', WebSearch: 'Pesquisou na web', Agent: 'Subagente', Memory: 'Memória', Contract: 'Critérios do pedido', Report: 'Relatório' };
+const toolLabel = { Bash: 'Executou', Read: 'Leu', Write: 'Escreveu', Edit: 'Editou', Glob: 'Procurou arquivos', Grep: 'Buscou', LS: 'Listou', WebFetch: 'Buscou na web', TodoWrite: 'Atualizou tarefas', AskUserQuestion: 'Perguntou', MultiEdit: 'Editou', WebSearch: 'Pesquisou na web', Browser: 'Navegador', Skill: 'Skill', Agent: 'Subagente', Memory: 'Memória', Contract: 'Critérios do pedido', Report: 'Relatório' };
 function toolSummary(name, inp) {
   if (!inp) return ''; if (inp._partial !== undefined) return inp._partial.slice(-90);
-  switch (name) { case 'Bash': return inp.command || ''; case 'Read': case 'Write': case 'Edit': case 'MultiEdit': return inp.path || inp.file_path || ''; case 'WebSearch': return inp.query || ''; case 'Agent': return `${inp.kind || ''} · ${inp.description || (inp.prompt || '').slice(0, 80)}`; case 'Memory': return `${inp.action || ''}${inp.text ? ' · ' + inp.text : ''}`; case 'Contract': return inp.goal || ''; case 'Glob': return inp.pattern || ''; case 'Grep': return `${inp.pattern || ''}${inp.path ? ' · ' + inp.path : ''}`; case 'LS': return inp.path || '.'; case 'WebFetch': return inp.url || ''; case 'TodoWrite': return `${(inp.todos || inp.tasks || []).length} ${t('itens')}`; case 'AskUserQuestion': return inp.question || ''; default: return JSON.stringify(inp).slice(0, 120); }
+  switch (name) { case 'Bash': return inp.command || ''; case 'Read': case 'Write': case 'Edit': case 'MultiEdit': return inp.path || inp.file_path || ''; case 'WebSearch': return inp.query || ''; case 'Browser': return [inp.action, inp.url || inp.selector || inp.key || (inp.width ? inp.width + 'x' + inp.height : '') || ''].filter(Boolean).join(' · '); case 'Skill': return inp.name || ''; case 'Agent': return `${inp.kind || ''} · ${inp.description || (inp.prompt || '').slice(0, 80)}`; case 'Memory': return `${inp.action || ''}${inp.text ? ' · ' + inp.text : ''}`; case 'Contract': return inp.goal || ''; case 'Glob': return inp.pattern || ''; case 'Grep': return `${inp.pattern || ''}${inp.path ? ' · ' + inp.path : ''}`; case 'LS': return inp.path || '.'; case 'WebFetch': return inp.url || ''; case 'TodoWrite': return `${(inp.todos || inp.tasks || []).length} ${t('itens')}`; case 'AskUserQuestion': return inp.question || ''; default: return JSON.stringify(inp).slice(0, 120); }
 }
 function lineCounts(name, inp) {
   if (name === 'Write' && inp?.content != null) return `<span class="cnt add">+${inp.content.split('\n').length}</span>`;
@@ -585,6 +592,7 @@ function reportCard(inp, result) {
 function toolBlock(id, name, input, result, running) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
   if (name === 'Report' && inp && Array.isArray(inp.claims)) return reportCard(inp, result);
+  const shot = name === 'Browser' && result && String(result.content || '').match(/\.infuse\/shots\/([\w.-]+\.png)/); // the agent's screenshot, shown in place
   const isPath = ['Read', 'Write', 'Edit', 'MultiEdit'].includes(name) && (inp?.path || inp?.file_path);
   let body = '';
   if (name === 'Bash' && inp?.command) body += `<div class="lab">${t('comando')}<button class="ib mini" data-copy-tool="in" title="${esc(t('Copiar comando'))}">${I.copy}</button></div><pre class="inp">${esc(inp.command)}</pre>`;
@@ -600,7 +608,8 @@ function toolBlock(id, name, input, result, running) {
   const shown = isPath ? relPath(fullPath) : '';
   const summ = isPath ? `<span class="s"><span class="path" data-path="${esc(shown)}" title="${esc(fullPath)}">${esc(shown)}</span></span>` : `<span class="s">${esc(toolSummary(name, inp))}</span>`;
   const mcp = name.startsWith('mcp__') ? name.slice(5).split('__') : null; // connector tools: "Conector server · tool"
-  return `<div class="tool${open ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${mcp ? `${esc(t('Conector'))} ${esc(mcp[0])}` : esc(t(toolLabel[name] || name))}</b>${mcp ? `<span class="s mono">${esc(mcp[1] || '')}</span>` : ''}${summ}${lineCounts(name, inp)}${result?.ms != null ? `<span class="tdur faint" title="${esc(t('tempo de execução'))}">${fmtDur(result.ms)}</span>` : ''}</div><div class="b">${body}</div></div>`;
+  if (shot) body = `<img class="shot" src="/api/shot?name=${encodeURIComponent(shot[1])}&root=${encodeURIComponent(curRoot())}" alt="">` + body;
+  return `<div class="tool${open || shot ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${mcp ? `${esc(t('Conector'))} ${esc(mcp[0])}` : esc(t(toolLabel[name] || name))}</b>${mcp ? `<span class="s mono">${esc(mcp[1] || '')}</span>` : ''}${summ}${lineCounts(name, inp)}${result?.ms != null ? `<span class="tdur faint" title="${esc(t('tempo de execução'))}">${fmtDur(result.ms)}</span>` : ''}</div><div class="b">${body}</div></div>`;
 }
 const diffHTML = text => `<div class="diff">${text.split('\n').map(l => `<div class="${l.startsWith('+') && !l.startsWith('+++') ? 'a1' : l.startsWith('-') && !l.startsWith('---') ? 'd1' : /^(@@|---|\+\+\+|diff )/.test(l) ? 'hh' : ''}">${esc(l) || ' '}</div>`).join('')}</div>`;
 function permCard(p) {
@@ -1020,7 +1029,7 @@ function pathMenu(path, ev) {
 // ---------------------------------------------------------------- keyboard
 // Capture phase: app shortcuts win over the terminal (xterm swallows keys). Inside the terminal only the
 // app-wide chords below are taken; everything else (Ctrl+C, Ctrl+W, Ctrl+B…) goes to the shell.
-const APP_CHORDS = new Set(['ctrl+n', 'ctrl+k', 'ctrl+,', 'ctrl+/', 'ctrl+`', 'ctrl+\\', 'ctrl+;', 'ctrl+tab', 'ctrl+shift+tab', 'ctrl+shift+d', 'ctrl+shift+b', 'ctrl+shift+m', 'ctrl+shift+i', 'ctrl+shift+e', 'ctrl+shift+]', 'ctrl+shift+[', 'ctrl+alt+w']);
+const APP_CHORDS = new Set(['ctrl+shift+s', 'ctrl+n', 'ctrl+k', 'ctrl+,', 'ctrl+/', 'ctrl+`', 'ctrl+\\', 'ctrl+;', 'ctrl+tab', 'ctrl+shift+tab', 'ctrl+shift+d', 'ctrl+shift+b', 'ctrl+shift+m', 'ctrl+shift+i', 'ctrl+shift+e', 'ctrl+shift+]', 'ctrl+shift+[', 'ctrl+alt+w']);
 addEventListener('keydown', e => {
   if (document.querySelector('.overlay')) return;
   const k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey; const v = V(); const L = curL();
@@ -1042,6 +1051,7 @@ addEventListener('keydown', e => {
   if (ctrl && e.shiftKey && (e.key === ']' || e.key === '[' || e.code === 'BracketRight' || e.code === 'BracketLeft')) { e.preventDefault(); const order = $$('#sessList .srow').map(r => r); const ids = S.sessions.map(s => s.id); const i = ids.indexOf(v?.sid); const s = S.sessions[(i + ((e.code === 'BracketRight' || e.key === ']') ? 1 : -1) + ids.length) % ids.length]; if (s) openSession(s.root, s.id); return; }
   if (ctrl && e.shiftKey && k === 'd') { e.preventDefault(); togglePane('changes'); return; }
   if (ctrl && e.shiftKey && k === 'b') { e.preventDefault(); togglePane('browser'); return; }
+  if (ctrl && e.shiftKey && k === 's') { e.preventDefault(); togglePane('browser', true); setTimeout(() => paneCall('browser', 'pick'), 100); return; }
   if (e.ctrlKey && (e.key === '`' || e.code === 'Backquote')) { e.preventDefault(); togglePane('terminal'); return; }
   if (ctrl && e.key === '\\') { e.preventDefault(); closeFocusedPane(); return; }
   if (ctrl && e.key === ';') { e.preventDefault(); openSide(v); return; }

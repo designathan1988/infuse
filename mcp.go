@@ -762,3 +762,17 @@ func editMCP(root, scope string, f func(map[string]mcpServerConfig)) error {
 	f(file.Servers)
 	return writeJSON(p, file)
 }
+
+// closeAllMCP stops every connector process (the app is exiting).
+func closeAllMCP() {
+	mcpManagersMu.Lock()
+	defer mcpManagersMu.Unlock()
+	for _, m := range mcpManagers {
+		m.mu.Lock()
+		for k, c := range m.clients {
+			c.close()
+			delete(m.clients, k)
+		}
+		m.mu.Unlock()
+	}
+}

@@ -86,6 +86,8 @@ func StartUI(window bool) {
 	// the token travels in the URL fragment, which never leaves the window (not sent in requests)
 	if window {
 		RunWindow(url + "/#token=" + token)
+		closeAgentBrowsers()
+		closeAllMCP()
 		os.Exit(0)
 	}
 	attachParentConsole()
