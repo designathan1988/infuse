@@ -249,7 +249,6 @@ func (agentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 	return out, false
 }
 
-func init() { registerTool(agentTool{}) }
 
 // IndependentReview runs the reviewer on the current changes (asked by the user) and records its
 // findings in the conversation, where the agent sees them on the next turn. The two messages say what

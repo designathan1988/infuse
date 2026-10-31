@@ -12,10 +12,10 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"infuse/internal/core"
-	"infuse/internal/platform/process"
 	"errors"
 	"fmt"
+	"infuse/internal/core"
+	"infuse/internal/platform/process"
 	"io"
 	"net"
 	"net/http"
@@ -425,7 +425,9 @@ func (b *Browser) Call(ctx context.Context, method string, params any) (json.Raw
 }
 
 // Eval evaluates JavaScript in the page.
-func (b *Browser) Eval(ctx context.Context, js string) (json.RawMessage, error) { return b.eval(ctx, js) }
+func (b *Browser) Eval(ctx context.Context, js string) (json.RawMessage, error) {
+	return b.eval(ctx, js)
+}
 
 func (b *Browser) eval(ctx context.Context, js string) (json.RawMessage, error) {
 	raw, err := b.call(ctx, "Runtime.evaluate", map[string]any{"expression": js, "awaitPromise": true, "returnByValue": true})

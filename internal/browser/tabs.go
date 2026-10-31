@@ -29,7 +29,7 @@ type Tab struct {
 
 var (
 	viewBrowsers = map[string]*Browser{} // project → browser
-	viewTabs     = map[string]*Tab{}        // project|tab → page
+	viewTabs     = map[string]*Tab{}     // project|tab → page
 	viewMu       sync.Mutex
 )
 

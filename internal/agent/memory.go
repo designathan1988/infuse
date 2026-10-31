@@ -110,4 +110,3 @@ func (s *Session) editMemory(scope string, f func([]MemoryItem) []MemoryItem) er
 	}
 }
 
-func init() { registerTool(memoryTool{}) }

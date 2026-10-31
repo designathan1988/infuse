@@ -44,4 +44,3 @@ func (skillTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 	return tc.Say(M("skill.not_found", "name", in.Name)), true
 }
 
-func init() { registerTool(skillTool{}) }

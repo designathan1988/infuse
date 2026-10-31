@@ -1,125 +1,25 @@
 package mcp
 
-// MCP connectors (Model Context Protocol). Servers are declared like in Claude Code: .mcp.json in the
-// project and ~/.infuse/mcp.json for every project, {"mcpServers": {name: {command, args, env} or
-// {type: "http", url, headers}}}. A server runs only after the user approves that exact configuration
-// (the agent can write .mcp.json; approvals live in ~/.infuse). Its tools reach the agent as
-// mcp__<server>__<tool>; calls ask permission unless the server marks the tool read-only. An MCP
-// server is a program of its own: what it does happens outside the filter, and the UI says so.
-
 import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"infuse/internal/config"
+	"fmt"
 	"infuse/internal/core"
 	"infuse/internal/platform/process"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-const mcpProtocol = "2025-06-18"
-
-// Protocol is the MCP revision this client speaks.
-const Protocol = mcpProtocol
-
-type ServerConfig struct {
-	Type     string            `json:"type,omitempty"` // stdio (default) | http | sse
-	Command  string            `json:"command,omitempty"`
-	Args     []string          `json:"args,omitempty"`
-	Env      map[string]string `json:"env,omitempty"`
-	URL      string            `json:"url,omitempty"`
-	Headers  map[string]string `json:"headers,omitempty"`
-	Disabled bool              `json:"disabled,omitempty"`
-}
-
-type File struct {
-	Servers map[string]ServerConfig `json:"mcpServers"`
-}
-
-type ToolDef struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	InputSchema json.RawMessage `json:"inputSchema"`
-	Annotations struct {
-		ReadOnly bool `json:"readOnlyHint"`
-	} `json:"annotations"`
-}
-
-func FilePath(root, scope string) string {
-	if scope == "global" {
-		return filepath.Join(core.InfuseHome(), "mcp.json")
-	}
-	return filepath.Join(root, ".mcp.json")
-}
-
-func LoadFile(p string) File {
-	var f File
-	_ = core.ReadJSON(p, &f)
-	if f.Servers == nil {
-		f.Servers = map[string]ServerConfig{}
-	}
-	return f
-}
-
-func (c ServerConfig) IsHTTP() bool {
-	return c.Type == "http" || c.Type == "sse" || (c.Command == "" && c.URL != "")
-}
-
-func (c ServerConfig) Describe() string {
-	if c.IsHTTP() {
-		return c.URL
-	}
-	return strings.TrimSpace(c.Command + " " + strings.Join(c.Args, " "))
-}
-
-// ---------------------------------------------------------------- approvals
-
-var mcpApproveMu sync.Mutex
-
-func mcpFingerprint(root, scope, name string, c ServerConfig) string {
-	c.Disabled = false
-	if scope == "global" {
-		root = ""
-	}
-	b, _ := json.Marshal([]any{filepath.Clean(root), scope, name, c})
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
-}
-
-func mcpApprovalsFile() string { return filepath.Join(core.InfuseHome(), "approved-mcp.json") }
-
-func Approved(root, scope, name string, c ServerConfig) bool {
-	mcpApproveMu.Lock()
-	defer mcpApproveMu.Unlock()
-	var m map[string]bool
-	_ = core.ReadJSON(mcpApprovalsFile(), &m)
-	return m[mcpFingerprint(root, scope, name, c)]
-}
-
-func Approve(root, scope, name string, c ServerConfig) error {
-	mcpApproveMu.Lock()
-	defer mcpApproveMu.Unlock()
-	m := map[string]bool{}
-	_ = core.ReadJSON(mcpApprovalsFile(), &m)
-	m[mcpFingerprint(root, scope, name, c)] = true
-	return core.WriteJSON(mcpApprovalsFile(), m)
-}
-
-// ---------------------------------------------------------------- client
+// MCP connectors: configuration, protocol client and per-project manager.
+// JSON-RPC client over stdio and streamable HTTP.
 
 type RPCMessage struct {
 	JSONRPC string          `json:"jsonrpc"`
@@ -144,8 +44,8 @@ type Client struct {
 	nextID      int64
 
 	mu      sync.Mutex
-	state   string // starting | running | error | stopped
-	err     core.Msg    // why it is in error (written in the reader's language when shown)
+	state   string   // starting | running | error | stopped
+	err     core.Msg // why it is in error (written in the reader's language when shown)
 	tools   []ToolDef
 	stderr  bytes.Buffer
 	pending map[int64]chan RPCMessage
@@ -484,213 +384,3 @@ func (c *Client) Close() {
 }
 
 // ---------------------------------------------------------------- per-project manager
-
-type Manager struct {
-	root    string
-	mu      sync.Mutex
-	clients map[string]*Client // scope/name
-}
-
-var (
-	Managers   = map[string]*Manager{}
-	ManagersMu sync.Mutex
-)
-
-func For(root string) *Manager {
-	ManagersMu.Lock()
-	defer ManagersMu.Unlock()
-	m := Managers[root]
-	if m == nil {
-		m = &Manager{root: root, clients: map[string]*Client{}}
-		Managers[root] = m
-	}
-	return m
-}
-
-type Entry struct {
-	Scope string
-	Name  string
-	Cfg   ServerConfig
-}
-
-// entries lists the servers of the project and the global ones (a project server overrides a global one
-// with the same name).
-func (m *Manager) Entries() []Entry {
-	var out []Entry
-	proj := LoadFile(FilePath(m.root, "project")).Servers
-	for name, c := range LoadFile(FilePath(m.root, "global")).Servers {
-		if _, over := proj[name]; !over {
-			out = append(out, Entry{"global", name, c})
-		}
-	}
-	for name, c := range proj {
-		out = append(out, Entry{"project", name, c})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
-}
-
-// ensure starts the approved, enabled servers not running yet (in parallel) and stops the ones whose
-// configuration changed or was removed.
-func (m *Manager) Ensure(ctx context.Context) {
-	want := map[string]Entry{}
-	for _, e := range m.Entries() {
-		if !e.Cfg.Disabled && Approved(m.root, e.Scope, e.Name, e.Cfg) {
-			want[e.Scope+"/"+e.Name] = e
-		}
-	}
-	var wg sync.WaitGroup
-	m.mu.Lock()
-	for key, c := range m.clients {
-		e, ok := want[key]
-		if !ok || mcpFingerprint(m.root, e.Scope, e.Name, e.Cfg) != mcpFingerprint(m.root, c.scope, c.name, c.cfg) {
-			go c.Close()
-			delete(m.clients, key)
-		}
-	}
-	for key, e := range want {
-		c := m.clients[key]
-		if c != nil {
-			c.mu.Lock()
-			st := c.state
-			c.mu.Unlock()
-			if st == "running" || st == "starting" || st == "error" {
-				continue // an error stays until the user restarts it
-			}
-		}
-		c = &Client{name: e.Name, scope: e.Scope, cfg: e.Cfg}
-		m.clients[key] = c
-		wg.Add(1)
-		go func(c *Client) {
-			defer wg.Done()
-			sctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-			defer cancel()
-			_ = c.Start(sctx, m.root)
-		}(c)
-	}
-	m.mu.Unlock()
-	wg.Wait()
-}
-
-func (m *Manager) Restart(ctx context.Context, scope, name string) {
-	m.mu.Lock()
-	if c := m.clients[scope+"/"+name]; c != nil {
-		c.Close()
-		delete(m.clients, scope+"/"+name)
-	}
-	m.mu.Unlock()
-	m.Ensure(ctx)
-}
-
-var reToolName = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
-
-func ToolName(server, tool string) string {
-	n := "mcp__" + reToolName.ReplaceAllString(server, "_") + "__" + reToolName.ReplaceAllString(tool, "_")
-	if len(n) > 64 {
-		n = n[:64]
-	}
-	return n
-}
-
-// tools returns the MCP tools of the running servers as agent tools.
-type AgentTool struct {
-	Client *Client
-	Tool   ToolDef
-}
-
-// Name is the server name.
-func (c *Client) Name() string { return c.name }
-
-func (m *Manager) Tools() []AgentTool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var out []AgentTool
-	keys := make([]string, 0, len(m.clients))
-	for k := range m.clients {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		c := m.clients[k]
-		c.mu.Lock()
-		if c.state == "running" {
-			for _, t := range c.tools {
-				out = append(out, AgentTool{Client: c, Tool: t})
-			}
-		}
-		c.mu.Unlock()
-	}
-	return out
-}
-
-// ---------------------------------------------------------------- status for the UI
-
-type Status struct {
-	Scope    string          `json:"scope"`
-	Name     string          `json:"name"`
-	Target   string          `json:"target"` // command line or URL
-	HTTP     bool            `json:"http"`
-	Approved bool            `json:"approved"`
-	Disabled bool            `json:"disabled"`
-	State    string          `json:"state"`
-	Error    string          `json:"error,omitempty"`
-	Stderr   string          `json:"stderr,omitempty"`
-	Tools    []ToolDefStatus `json:"tools"`
-	Config   ServerConfig `json:"config"`
-}
-
-type ToolDefStatus struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	ReadOnly    bool   `json:"readOnly"`
-}
-
-func (m *Manager) Status() []Status {
-	out := []Status{}
-	lang := config.RootLanguage(m.root)
-	for _, e := range m.Entries() {
-		st := Status{Scope: e.Scope, Name: e.Name, Target: e.Cfg.Describe(), HTTP: e.Cfg.IsHTTP(), Approved: Approved(m.root, e.Scope, e.Name, e.Cfg), Disabled: e.Cfg.Disabled, State: "stopped", Tools: []ToolDefStatus{}, Config: e.Cfg}
-		m.mu.Lock()
-		c := m.clients[e.Scope+"/"+e.Name]
-		m.mu.Unlock()
-		if c != nil {
-			c.mu.Lock()
-			st.State, st.Error = c.state, c.err.Render(lang)
-			for _, t := range c.tools {
-				d := t.Description
-				if len(d) > 300 {
-					d = d[:300] + "…"
-				}
-				st.Tools = append(st.Tools, ToolDefStatus{Name: t.Name, Description: d, ReadOnly: t.Annotations.ReadOnly})
-			}
-			c.mu.Unlock()
-			if st.State == "error" {
-				st.Stderr = c.StderrTail()
-			}
-		}
-		out = append(out, st)
-	}
-	return out
-}
-
-// Edit changes one scope's file (add, replace, remove or toggle a server).
-func Edit(root, scope string, f func(map[string]ServerConfig)) error {
-	p := FilePath(root, scope)
-	file := LoadFile(p)
-	f(file.Servers)
-	return core.WriteJSON(p, file)
-}
-
-// CloseAll stops every connector process (the app is exiting).
-func CloseAll() {
-	ManagersMu.Lock()
-	defer ManagersMu.Unlock()
-	for _, m := range Managers {
-		m.mu.Lock()
-		for k, c := range m.clients {
-			c.Close()
-			delete(m.clients, k)
-		}
-		m.mu.Unlock()
-	}
-}

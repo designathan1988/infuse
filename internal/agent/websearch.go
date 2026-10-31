@@ -162,7 +162,6 @@ func (webSearchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	return tc.clip(externalContent(engine+": "+in.Query, b.String())), false
 }
 
-func init() { registerTool(webSearchTool{}) }
 
 // openDefaultBrowser hands an http(s) address to the system's default browser.
 func openDefaultBrowser(u string) error {

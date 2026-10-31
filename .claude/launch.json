@@ -1,6 +1,31 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "infuse-serve", "runtimeExecutable": "build/infuse-dev.exe", "runtimeArgs": ["serve", "7470"], "port": 7470, "env": { "INFUSE_UI_DIR": "ui", "INFUSE_TOKEN": "dev-preview-only" } }
+    {
+      "name": "infuse-serve",
+      "runtimeExecutable": "build/infuse-dev.exe",
+      "runtimeArgs": [
+        "serve",
+        "7470"
+      ],
+      "port": 7470,
+      "env": {
+        "INFUSE_UI_DIR": "ui",
+        "INFUSE_TOKEN": "dev-preview-only"
+      }
+    },
+    {
+      "name": "infuse-refactor",
+      "runtimeExecutable": "build/infuse-dev2.exe",
+      "runtimeArgs": [
+        "serve",
+        "7471"
+      ],
+      "port": 7471,
+      "env": {
+        "INFUSE_UI_DIR": "ui",
+        "INFUSE_TOKEN": "dev-preview-only"
+      }
+    }
   ]
 }

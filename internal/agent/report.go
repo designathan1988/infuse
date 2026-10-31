@@ -320,7 +320,3 @@ func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	return tc.Say(M("contract.confirmed")), false
 }
 
-func init() {
-	registerTool(contractTool{})
-	registerTool(reportTool{})
-}

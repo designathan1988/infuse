@@ -7,10 +7,6 @@ package browser
 
 import (
 	"bytes"
-	"infuse/internal/config"
-	"infuse/internal/core"
-	"infuse/internal/journal"
-	"infuse/internal/security"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -19,6 +15,10 @@ import (
 	"image/color"
 	"image/jpeg"
 	_ "image/png"
+	"infuse/internal/config"
+	"infuse/internal/core"
+	"infuse/internal/journal"
+	"infuse/internal/security"
 	"math"
 	"os"
 	"path/filepath"
@@ -532,4 +532,3 @@ func (Tool) Run(ctx context.Context, h Host, input json.RawMessage) (string, boo
 	}
 	return h.Say(core.M("tool.unknown_action", "action", in.Action)), true
 }
-

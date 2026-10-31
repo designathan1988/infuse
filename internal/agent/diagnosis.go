@@ -232,4 +232,3 @@ func (s *Session) demandRediagnosis(why Msg) {
 	}
 }
 
-func init() { registerTool(diagnosisTool{}) }

@@ -320,4 +320,3 @@ func (impasseTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	return tc.Say(M("impasse.recorded")), false
 }
 
-func init() { registerTool(impasseTool{}) }

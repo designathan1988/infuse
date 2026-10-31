@@ -303,7 +303,3 @@ func (s *Session) procIDs() Msg {
 	return M("proc.list", "ids", strings.Join(ids, ", "))
 }
 
-func init() {
-	registerTool(bashOutputTool{})
-	registerTool(killShellTool{})
-}

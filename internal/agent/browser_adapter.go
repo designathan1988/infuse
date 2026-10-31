@@ -30,6 +30,5 @@ func (browserToolAdapter) Run(ctx context.Context, tc *ToolContext, input json.R
 	return browser.Tool{}.Run(ctx, tc, input)
 }
 
-func init() { registerTool(browserToolAdapter{}) }
 
 func closeAgentBrowsers() { browser.CloseAgentBrowsers() }
