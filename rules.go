@@ -218,9 +218,9 @@ func truncate(s string, n int) string {
 
 var exampleRules = RulesFile{
 	Rules: []Rule{
-		{ID: "no-swallowed-errors", When: "write", Match: `catch\s*(\([^)]*\))?\s*\{\s*\}`, Say: "bloco catch vazio: o erro está sendo engolido. Trate o erro ou deixe-o propagar.", Vice: "swallowed-error"},
-		{ID: "tests-are-the-oracle", When: "command", Match: `^(npm|pnpm|yarn)\s+(run\s+)?test\b`, Infuse: "Testes passarem não é o objetivo; o objetivo é o comportamento que o usuário pediu. Não edite testes para fazê-los passar."},
-		{ID: "no-force-push", When: "command", Match: `git\s+push\s+(-f|--force)\b`, Replace: strPtr(": force push removido pelo infuse"), Say: "force push não é feito neste projeto.", Vice: "destructive-git"},
+		{ID: "no-swallowed-errors", When: "write", Match: `catch\s*(\([^)]*\))?\s*\{\s*\}`, Say: "empty catch block: the error is being swallowed. Handle the error or let it propagate.", Vice: "swallowed-error"},
+		{ID: "tests-are-the-oracle", When: "command", Match: `^(npm|pnpm|yarn)\s+(run\s+)?test\b`, Infuse: "Passing tests is not the goal; the goal is the behavior the user asked for. Do not edit tests to make them pass."},
+		{ID: "no-force-push", When: "command", Match: `git\s+push\s+(-f|--force)\b`, Replace: strPtr(": force push removed by infuse"), Say: "force push is not done in this project.", Vice: "destructive-git"},
 	},
 	Disable: []string{},
 }

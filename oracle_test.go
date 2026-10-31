@@ -54,7 +54,7 @@ func TestOracleUnreachableByEveryTool(t *testing.T) {
 	if out, isErr := run(t, tc, "Bash", map[string]any{"command": "cat > .infuse/oracle/pronto.md <<'EOF'\nhack\nEOF\necho done"}); !isErr || strings.Contains(out, "done") {
 		t.Fatalf("heredoc: %v %q", isErr, out)
 	}
-	if out, _ := run(t, tc, "Bash", map[string]any{"command": "echo hack > .infuse/oracle/pronto.md; echo hack2 >> " + strings.ReplaceAll(oracle, `\`, "/") + "; echo ran"}); !strings.Contains(out, "ran") || !strings.Contains(out, "neutralizado") {
+	if out, _ := run(t, tc, "Bash", map[string]any{"command": "echo hack > .infuse/oracle/pronto.md; echo hack2 >> " + strings.ReplaceAll(oracle, `\`, "/") + "; echo ran"}); !strings.Contains(out, "ran") || !strings.Contains(out, "neutralized") {
 		t.Fatalf("redirect: %q", out)
 	}
 	if _, isErr := run(t, tc, "Bash", map[string]any{"command": "rm -f .infuse/oracle/pronto.md"}); !isErr {

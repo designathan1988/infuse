@@ -177,7 +177,7 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) string 
 	planned := s.gate.planned
 	s.mu.Unlock()
 	if !planned {
-		return "[infuse] Bloqueado: antes de alterar arquivos, registre o plano deste pedido com TodoWrite — cada tarefa com proof (o comando, a página ou o arquivo que comprovará que funciona). O usuário acompanha o plano ao lado, marcado conforme você conclui."
+		return "[infuse] Blocked: before changing files, record the plan for this request with TodoWrite — every task with a proof (the command, the page or the file that will show it works). The user follows the plan alongside, checked off as you complete it."
 	}
 	ext := strings.ToLower(filepath.Ext(p))
 	// 2. docs before using a library or an external API
@@ -193,19 +193,19 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) string 
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		return fmt.Sprintf("[infuse] Bloqueado: este código passa a usar %s sem que a documentação tenha sido consultada neste turno. Antes de escrever, pesquise a documentação oficial da versão em uso (WebSearch, WebFetch, a documentação fixada ou o código do pacote em node_modules/go mod) e só então escreva conforme ela.", strings.Join(missing, ", "))
+		return fmt.Sprintf("[infuse] Blocked: this code starts using %s and its documentation has not been consulted in this turn. Before writing, research the official documentation for the version in use (WebSearch, WebFetch, the pinned documentation, or the package's code in node_modules/go mod), and only then write the code as it says.", strings.Join(missing, ", "))
 	}
 	// 3. the project's conventions
 	if s.settings.EnforceConventions == nil || *s.settings.EnforceConventions {
 		if why := conventionViolation(s.Root, p, before, after); why != "" {
-			return "[infuse] Bloqueado: " + why + " Reescreva seguindo a convenção do projeto (.infuse/conventions.md)."
+			return fmt.Sprintf("[infuse] Blocked: %s Rewrite it following the project's convention (.infuse/conventions.md).", why)
 		}
 	}
 	// 4. architecture: placement, god functions, tables, styles from tokens, one store, one home per
 	// constant, no copies, no import cycles, JSON with its schema (arch*.go)
 	if s.settings.EnforceArchitecture == nil || *s.settings.EnforceArchitecture {
 		if why := archCheck(s.Root, s.workRoot(), relTo(s.workRoot(), p), before, after); why != "" {
-			return why + " Regras do projeto: .infuse/architecture.json."
+			return fmt.Sprintf("[infuse] Architecture: %s Project rules: .infuse/architecture.json.", why)
 		}
 	}
 	// 5. size
@@ -219,10 +219,10 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) string 
 			nb = 0
 		}
 		if na > limit && nb > limit && na > nb { // a file already too big may not grow
-			return fmt.Sprintf("[infuse] Bloqueado: %s já tem %d linhas, acima do limite do projeto (%d), e esta alteração o faria crescer para %d. Um arquivo grande não pode crescer. Faça assim: mova a parte que você está mudando para um arquivo novo na mesma pasta, com uma responsabilidade clara, e importe-o daqui — a alteração vai no arquivo novo. Ou faça a mudança sem aumentar este arquivo.", rel, nb, limit, na)
+			return fmt.Sprintf("[infuse] Blocked: %s already has %d lines, above the project limit (%d), and this change would grow it to %d. A large file may not grow. Do this instead: move the part you are changing into a new file in the same folder, with one clear responsibility, and import it from here — the change goes into the new file. Or make the change without growing this file.", rel, nb, limit, na)
 		}
 		if na > limit && nb <= limit {
-			return fmt.Sprintf("[infuse] Bloqueado: %s ficaria com %d linhas (limite do projeto: %d). Divida a responsabilidade em arquivos menores dentro da estrutura existente.", rel, na, limit)
+			return fmt.Sprintf("[infuse] Blocked: %s would have %d lines (project limit: %d). Split the responsibility into smaller files within the existing structure.", rel, na, limit)
 		}
 	}
 	return ""
@@ -304,8 +304,8 @@ func conventionViolation(root, path, before, after string) string {
 	const strong = 0.8
 	if r.IndentShare >= strong && r.Indent != "" {
 		if got, n := indentOf(after); got != "" && n >= 5 && got != r.Indent {
-			name := map[string]string{"tabs": "tabs", "2": "2 espaços", "4": "4 espaços"}
-			return fmt.Sprintf("o projeto indenta com %s (%.0f%% dos arquivos) e este código usa %s.", name[r.Indent], r.IndentShare*100, name[got])
+			name := map[string]string{"tabs": "tabs", "2": "2 spaces", "4": "4 spaces"}
+			return fmt.Sprintf("the project indents with %s (%.0f%% of the files) and this code uses %s.", name[r.Indent], r.IndentShare*100, name[got])
 		}
 	}
 	if jsLikeExts[ext] {
@@ -322,7 +322,10 @@ func conventionViolation(root, path, before, after string) string {
 				}
 			}
 			if r.Quotes == "single" && double > single && double >= 2 || r.Quotes == "double" && single > double && single >= 2 {
-				return fmt.Sprintf("o projeto usa aspas %s nos imports e este código usa a outra.", map[string]string{"single": "simples", "double": "duplas"}[r.Quotes])
+				return map[string]string{
+					"single": "the project uses single quotes in imports and this code uses double quotes.",
+					"double": "the project uses double quotes in imports and this code uses single quotes.",
+				}[r.Quotes]
 			}
 		}
 		if r.SemisShare >= strong && r.Semis != "" {
@@ -340,14 +343,17 @@ func conventionViolation(root, path, before, after string) string {
 			}
 			total := with + without
 			if total >= 6 && (r.Semis == "with" && without*100/total >= 70 || r.Semis == "without" && with*100/total >= 70) {
-				return fmt.Sprintf("o projeto %s ponto e vírgula no fim das instruções e este código não segue isso.", map[string]string{"with": "usa", "without": "não usa"}[r.Semis])
+				return map[string]string{
+					"with":    "the project ends statements with a semicolon and this code does not.",
+					"without": "the project does not end statements with a semicolon and this code does.",
+				}[r.Semis]
 			}
 		}
 		if r.ModShare >= strong && r.Modules != "" && ext != ".ts" && ext != ".tsx" && ext != ".mjs" && ext != ".cjs" {
 			esm := regexp.MustCompile(`(?m)^\s*(import\s.+from\s|import\s+['"]|export\s)`).MatchString(after)
 			cjs := strings.Contains(after, "require(") || strings.Contains(after, "module.exports")
 			if r.Modules == "cjs" && esm && !cjs || r.Modules == "esm" && cjs && !esm {
-				return fmt.Sprintf("o projeto usa módulos %s e este código usa o outro sistema.", map[string]string{"cjs": "CommonJS (require/module.exports)", "esm": "ESM (import/export)"}[r.Modules])
+				return fmt.Sprintf("the project uses %s modules and this code uses the other module system.", map[string]string{"cjs": "CommonJS (require/module.exports)", "esm": "ESM (import/export)"}[r.Modules])
 			}
 		}
 	}
@@ -356,7 +362,7 @@ func conventionViolation(root, path, before, after string) string {
 			base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 			base = strings.TrimSuffix(strings.TrimSuffix(base, ".test"), ".spec")
 			if got := namingStyle(base); got != "" && got != want {
-				return fmt.Sprintf("os nomes de arquivo %s do projeto são %s e %q é %s.", ext, want, filepath.Base(path), got)
+				return fmt.Sprintf("the project's %s file names are %s and %q is %s.", ext, want, filepath.Base(path), got)
 			}
 		}
 	}
@@ -409,11 +415,11 @@ func (s *Session) turnObligation(ctx context.Context) string {
 	}
 	s.mu.Unlock()
 	if asks >= 6 { // the agent keeps refusing: the turn ends, and infuse closes what was left as blocked
-		s.closeOpenTasks("o turno terminou sem a conclusão e a comprovação desta tarefa")
+		s.closeOpenTasks("o turno terminou sem a conclusão e a comprovação desta tarefa") // shown only in the plan pane
 		return ""
 	}
 	if len(open) > 0 {
-		return "[infuse] O turno não pode terminar: o plano tem tarefas abertas — " + strings.Join(open, "; ") + ". Conclua cada uma e marque com TodoWrite (done), ou marque como blocked e explique o motivo no Report."
+		return fmt.Sprintf("[infuse] The turn cannot end: the plan has open tasks — %s. Complete each one and mark it with TodoWrite (done), or mark it as blocked and explain why in the Report.", strings.Join(open, "; "))
 	}
 	if len(changed) == 0 {
 		return ""
@@ -430,7 +436,7 @@ func (s *Session) turnObligation(ctx context.Context) string {
 		}
 	}
 	if len(problems) > 0 {
-		return "[infuse] O turno não pode terminar: o verificador do projeto acusa problemas em arquivos alterados neste turno. Corrija:\n" + truncate(strings.Join(problems, "\n\n"), 4000)
+		return "[infuse] The turn cannot end: the project's checker reports problems in files changed in this turn. Fix them:\n" + truncate(strings.Join(problems, "\n\n"), 4000)
 	}
 	if why := s.missingVerification(); why != "" {
 		return why
@@ -445,9 +451,9 @@ func (s *Session) turnObligation(ctx context.Context) string {
 		s.gate.reviewed = true
 		s.mu.Unlock()
 		if !reviewed {
-			out, err := s.RunSubagent(ctx, "review", "Revisão obrigatória", s.reviewMaterial("")+"\nRevise as alterações acima. Termine com uma linha exatamente assim: VEREDITO: APROVAR ou VEREDITO: CORRIGIR.")
-			if err == nil && !regexp.MustCompile(`(?i)VEREDITO:\s*APROVAR`).MatchString(out) {
-				return "[infuse] Revisão independente obrigatória deste turno (um revisor com contexto limpo leu o pedido, o plano, os critérios e o diff). Trate cada achado: corrija, ou explique com evidência por que não procede. Depois relate de novo com Report.\n\n" + out
+			out, err := s.RunSubagent(ctx, "review", "Revisão obrigatória", s.reviewMaterial("")+"\nReview the changes above. End with a line exactly like this: VERDICT: APPROVE or VERDICT: FIX.")
+			if err == nil && !regexp.MustCompile(`(?i)(VERDICT:\s*APPROVE|VEREDITO:\s*APROVAR)`).MatchString(out) {
+				return "[infuse] Mandatory independent review of this turn (a reviewer with a clean context read the request, the plan, the criteria and the diff). Address every finding: fix it, or explain with evidence why it does not apply. Then report again with Report.\n\n" + out
 			}
 		}
 	}

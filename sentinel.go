@@ -21,7 +21,7 @@ var (
 		`|reprovou`)
 )
 
-const sentinelTestEdit = "alteração em arquivo de teste num pedido para os testes passarem"
+const sentinelTestEdit = "a change to a test file in a request to make the tests pass"
 
 // turnRequest is the text the user typed to start the current turn.
 func (s *Session) turnRequest() string {
@@ -51,9 +51,12 @@ func (s *Session) sentinel(tool Tool, input json.RawMessage) string {
 		return ""
 	}
 	req := s.turnRequest()
-	if strings.HasPrefix(req, "[Missão]") { // infuse's own mission instructions are not the user's request
-		if k := strings.Index(req, "Objetivo: "); k >= 0 {
-			req = req[k+len("Objetivo: "):]
+	if strings.HasPrefix(req, "[Missão]") || strings.HasPrefix(req, "[Mission]") { // infuse's own mission instructions are not the user's request
+		for _, goal := range []string{"Objetivo: ", "Goal: "} {
+			if k := strings.Index(req, goal); k >= 0 {
+				req = req[k+len(goal):]
+				break
+			}
 		}
 	}
 	if reMakePass.MatchString(req) {

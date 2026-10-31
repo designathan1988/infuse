@@ -47,11 +47,11 @@ func archStyles(r *ArchRules, work, rel, ext, before, after string) string {
 				was[k]--
 				continue
 			}
-			return fmt.Sprintf("cor literal %s fora dos tokens. As cores do projeto vêm de %s: use var(--…)%s. Se é uma cor nova do design, ela entra primeiro no arquivo de tokens.", c, strings.Join(r.TokenFiles, ", "), tokenHint(work, r, k))
+			return fmt.Sprintf("literal color %s outside the tokens. The project's colors come from %s: use var(--…)%s. If it is a new color in the design, it goes into the tokens file first.", c, strings.Join(r.TokenFiles, ", "), tokenHint(work, r, k))
 		}
 	}
 	if (jsLikeExts[ext] || styleLike) && len(reInlineLiteral.FindAllString(after, -1)) > len(reInlineLiteral.FindAllString(before, -1)) {
-		return "estilo inline com cor literal. A aparência vem das classes na folha de estilos e as cores dos tokens (" + strings.Join(r.TokenFiles, ", ") + "): crie ou use uma classe; estilo inline só para valores calculados em tempo de execução."
+		return fmt.Sprintf("inline style with a literal color. Appearance comes from the classes in the stylesheet and colors from the tokens (%s): create or use a class; inline style only for values computed at run time.", strings.Join(r.TokenFiles, ", "))
 	}
 	return ""
 }
@@ -76,5 +76,5 @@ func tokenHint(work string, r *ArchRules, color string) string {
 	if len(hits) > 3 {
 		hits = hits[:3]
 	}
-	return " — esta cor já existe como var(" + strings.Join(hits, "), var(") + ")"
+	return " — this color already exists as var(" + strings.Join(hits, "), var(") + ")"
 }

@@ -173,11 +173,11 @@ func archFunctions(r *ArchRules, rel, ext, before, after string) string {
 		bad := func(v, ov, lim int) bool { return v > lim && (!had || v > ov) }
 		switch {
 		case bad(f.lines, o.lines, r.FuncLines):
-			return fmt.Sprintf("a função %s (%s:%d) ficaria com %d linhas (limite %d). Uma função faz uma coisa: extraia as etapas em funções com nomes que digam o que fazem.", f.name, rel, f.line, f.lines, r.FuncLines)
+			return fmt.Sprintf("the function %s (%s:%d) would have %d lines (limit %d). A function does one thing: extract the steps into functions whose names say what they do.", f.name, rel, f.line, f.lines, r.FuncLines)
 		case bad(f.cyc, o.cyc, r.Cyclomatic):
-			return fmt.Sprintf("a função %s (%s:%d) ficaria com complexidade %d (limite %d: caminhos por if/for/case/&&/||). Separe as decisões em funções menores, ou troque cadeias de condições por uma tabela de dados.", f.name, rel, f.line, f.cyc, r.Cyclomatic)
+			return fmt.Sprintf("the function %s (%s:%d) would have complexity %d (limit %d: paths through if/for/case/&&/||). Split the decisions into smaller functions, or replace chains of conditions with a data table.", f.name, rel, f.line, f.cyc, r.Cyclomatic)
 		case bad(f.nest, o.nest, r.Nesting):
-			return fmt.Sprintf("a função %s (%s:%d) ficaria com %d níveis de aninhamento (limite %d). Use retornos antecipados e extraia os blocos internos.", f.name, rel, f.line, f.nest, r.Nesting)
+			return fmt.Sprintf("the function %s (%s:%d) would have %d levels of nesting (limit %d). Use early returns and extract the inner blocks.", f.name, rel, f.line, f.nest, r.Nesting)
 		}
 	}
 	return ""
@@ -216,7 +216,7 @@ func archTables(r *ArchRules, ext, before, after string) string {
 		return ""
 	}
 	if n := longestLiteralChain(after); n >= r.TableArms && n > longestLiteralChain(before) {
-		return fmt.Sprintf("%d ramos seguidos que só associam um valor literal a outro (switch/case ou if/else if). Isso é uma tabela: declare um mapa ou objeto de dados (chave → valor) e consulte-o — um lugar para os dados, uma linha de lógica.", n)
+		return fmt.Sprintf("%d branches in a row that only map one literal value to another (switch/case or if/else if). That is a table: declare a map or data object (key → value) and look it up — one place for the data, one line of logic.", n)
 	}
 	return ""
 }
@@ -233,17 +233,16 @@ func archState(r *ArchRules, rel, ext, before, after string) string {
 		return ""
 	}
 	if reStoreCreate.MatchString(after) && !reStoreCreate.MatchString(before) && len(r.StoreFiles) > 0 && !contains(r.StoreFiles, rel) {
-		return "este arquivo cria uma nova store, mas o projeto já tem a sua em " + strings.Join(r.StoreFiles, ", ") + ". Uma fonte de verdade para o estado: acrescente o estado novo lá (um slice ou módulo dela)."
+		return fmt.Sprintf("this file creates a new store, but the project already has its store in %s. One source of truth for state: add the new state there (as a slice or module of it).", strings.Join(r.StoreFiles, ", "))
 	}
 	if contains(r.StoreFiles, rel) {
 		return ""
 	}
 	if n := len(reGlobalWrite.FindAllString(stripCode(after, ext), -1)); n > len(reGlobalWrite.FindAllString(stripCode(before, ext), -1)) {
-		where := "um módulo de estado"
-		if len(r.StoreFiles) > 0 {
-			where = strings.Join(r.StoreFiles, ", ")
+		if len(r.StoreFiles) == 0 {
+			return "loose global state (window.x = …, globalThis.x = … or export let). State lives in a state module and changes only through it; the other modules read it and request changes."
 		}
-		return "estado global solto (window.x = …, globalThis.x = … ou export let). O estado vive em " + where + " e muda só por ele; os outros módulos leem e pedem mudanças."
+		return fmt.Sprintf("loose global state (window.x = …, globalThis.x = … or export let). State lives in the project's store (%s) and changes only through it; the other modules read it and request changes.", strings.Join(r.StoreFiles, ", "))
 	}
 	return ""
 }
@@ -295,7 +294,7 @@ func archConstants(r *ArchRules, work, rel, ext, before, after string) string {
 		}
 		for n := range constNames(string(b), ext) {
 			if added[n] {
-				found = fmt.Sprintf("a constante %s já está definida em %s. Fonte única da verdade: importe de lá em vez de definir outra (se os valores devem ser diferentes, os nomes também devem).", n, orel)
+				found = fmt.Sprintf("the constant %s is already defined in %s. Single source of truth: import it from there instead of defining another one (if the values must differ, the names must differ too).", n, orel)
 				return
 			}
 		}

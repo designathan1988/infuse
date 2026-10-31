@@ -124,7 +124,7 @@ func resolveSymlinks(abs string) string {
 func (g *Guard) block(rel, detail string) error {
 	Journal(g.Root, JournalEntry{Kind: "blocked", Path: rel, Detail: detail})
 	Lesson(g.Root, "protected-path-write", detail+": "+rel)
-	return fmt.Errorf("caminho protegido, somente leitura para o agente: %s (%s). O oráculo e os caminhos protegidos são definidos pelo usuário e não podem ser alterados pelo agente", rel, detail)
+	return fmt.Errorf("protected path, read-only for the agent: %s (%s). The oracle and the protected paths are set by the user and cannot be changed by the agent", rel, detail)
 }
 
 // reRedir: output redirections and the read-write open `<>` (group 3 is the target).
@@ -185,7 +185,7 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []string, error) {
 			if h.OpStart >= sg.start && h.OpStart < sg.end {
 				if intent := DetectFileWrite(strings.TrimSpace(cmd[sg.start:h.OpEnd])); intent != nil {
 					if rel, ok := g.protects(dir, intent.Path); ok {
-						return "", nil, g.block(rel, "heredoc para caminho protegido recusado")
+						return "", nil, g.block(rel, "heredoc into a protected path refused")
 					}
 				}
 			}
@@ -199,7 +199,7 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []string, error) {
 				for _, p := range segs[pipeStart : i+1] {
 					for _, f := range shellFields(p.text) {
 						if rel, ok := g.protects(dir, f); ok {
-							return "", nil, g.block(rel, "xargs com comando destrutivo sobre caminho protegido recusado")
+							return "", nil, g.block(rel, "xargs with a destructive command on a protected path refused")
 						}
 					}
 				}
@@ -210,10 +210,10 @@ func (g *Guard) guard(cmd, cwd string, nested bool) (string, []string, error) {
 			target := sg.text[loc[6]:loc[7]]
 			if rel, ok := g.protects(dir, target); ok {
 				if nested {
-					return "", nil, g.block(rel, "redirecionamento em shell aninhado para caminho protegido recusado")
+					return "", nil, g.block(rel, "redirection in a nested shell into a protected path refused")
 				}
-				notes = append(notes, "[infuse] redirecionamento para caminho protegido neutralizado: "+rel)
-				_ = g.block(rel, "redirecionamento neutralizado")
+				notes = append(notes, "[infuse] redirection into a protected path neutralized: "+rel)
+				_ = g.block(rel, "redirection neutralized")
 				edits = append(edits, edit{sg.start + loc[6], sg.start + loc[7], "/dev/null"})
 			}
 		}
@@ -281,13 +281,13 @@ func (g *Guard) checkSimple(fields []string, dir, text string) error {
 	}
 	switch {
 	case writingCommands[head], scriptingCommands[head]:
-		return refuse("comando sobre caminho protegido recusado")
+		return refuse("command on a protected path refused")
 	case head == "sed" && hasFlag(args, "-i"):
-		return refuse("sed -i sobre caminho protegido recusado")
+		return refuse("sed -i on a protected path refused")
 	case head == "find" && findWrites(args):
-		return refuse("find que altera caminho protegido recusado")
+		return refuse("find that changes a protected path refused")
 	case head == "git" && len(args) > 0 && gitWriting[args[0]]:
-		return refuse("git " + args[0] + " sobre caminho protegido recusado")
+		return refuse("git " + args[0] + " on a protected path refused")
 	}
 	return nil
 }

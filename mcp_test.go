@@ -86,7 +86,7 @@ func TestMCPStdioServerNeedsApprovalThenServesTools(t *testing.T) {
 		t.Fatal("a tool not marked read-only must ask")
 	}
 	out, isErr := echo.Run(context.Background(), &ToolContext{S: s, Root: root, Cwd: root}, json.RawMessage(`{"text":"oi"}`))
-	if isErr || !strings.Contains(out, "eco: oi") || !strings.Contains(out, "conteudo-externo") {
+	if isErr || !strings.Contains(out, "eco: oi") || !strings.Contains(out, "external-content") {
 		t.Fatal(out)
 	}
 	found := false

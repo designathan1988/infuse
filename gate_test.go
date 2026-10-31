@@ -27,7 +27,7 @@ func TestResearchGateStopsTrialAndError(t *testing.T) {
 	run(bashCall("1", "echo 'Error: module not found' >&2; exit 1"))
 	run(bashCall("2", "echo 'Error: module still not found' >&2; exit 1"))
 	out, isErr := run(bashCall("3", "echo terceira tentativa"))
-	if !isErr || !strings.Contains(out, "Bloqueado: 2 tentativas falharam") || !strings.Contains(out, "module still not found") {
+	if !isErr || !strings.Contains(out, "Blocked: 2 attempts failed") || !strings.Contains(out, "module still not found") {
 		t.Fatalf("third attempt without investigating was not blocked: %s", out)
 	}
 	// reading the code opens the gate
@@ -38,11 +38,11 @@ func TestResearchGateStopsTrialAndError(t *testing.T) {
 	// failing again after reading: now only research outside the project opens it
 	run(bashCall("6", "exit 1"))
 	run(bashCall("7", "exit 1"))
-	if out, _ := run(bashCall("8", "echo de novo")); !strings.Contains(out, "pesquise fora do projeto") {
+	if out, _ := run(bashCall("8", "echo de novo")); !strings.Contains(out, "research outside the project") {
 		t.Fatalf("second gate did not ask for web research: %s", out)
 	}
 	run(Block{Type: "tool_use", ID: "9", Name: "Read", Input: json.RawMessage(`{"path":"a.js"}`)})
-	if out, isErr := run(bashCall("10", "echo so leitura local")); !isErr || !strings.Contains(out, "pesquise fora do projeto") {
+	if out, isErr := run(bashCall("10", "echo so leitura local")); !isErr || !strings.Contains(out, "research outside the project") {
 		t.Fatalf("local reading opened a gate that asks for web research: %s", out)
 	}
 	if why := s.gateCheck("WebSearch", "net", json.RawMessage(`{"query":"module not found"}`)); why != "" {
@@ -93,7 +93,7 @@ func TestShortcutsInEditsAreCaught(t *testing.T) {
 	}
 	// swallowing an error in code: the edit goes through and the agent is told
 	out, isErr = s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "2", Name: "Write", Input: json.RawMessage(`{"path":"soma.js","content":"try { carrega() } catch (e) {}\n"}`)})
-	if isErr || !strings.Contains(out, "[atalho]") || !strings.Contains(out, "erro engolido") {
+	if isErr || !strings.Contains(out, "[atalho]") || !strings.Contains(out, "swallowed error") {
 		t.Fatal(out)
 	}
 	// a shortcut already in the file before the edit is not the agent's doing
@@ -113,7 +113,7 @@ func TestTurnWithChangesNeedsAReport(t *testing.T) {
 		t.Fatal("no changes, no report needed")
 	}
 	s.Checkpoints[1] = []CheckpointFile{{Path: "a.js", New: true}}
-	if why := s.missingReport(); !strings.Contains(why, "sem Report") {
+	if why := s.missingReport(); !strings.Contains(why, "without a Report") {
 		t.Fatal(why)
 	}
 	s.Messages = append(s.Messages, Message{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "r", Name: "Report", Input: json.RawMessage(`{"summary":"x","claims":[]}`)}}})

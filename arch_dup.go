@@ -126,7 +126,7 @@ func archDuplicates(r *ArchRules, work, rel, ext, before, after string) string {
 		}
 		for h, line := range added {
 			if oline, ok := f.windows[h]; ok {
-				return fmt.Sprintf("o trecho a partir da linha %d repete %d+ linhas de %s:%d. Reaproveite: extraia uma função compartilhada (ou importe a que já existe) em vez de copiar.", line, r.DupLines, orel, oline)
+				return fmt.Sprintf("the code starting at line %d repeats %d+ lines of %s:%d. Reuse it: extract a shared function (or import the one that already exists) instead of copying.", line, r.DupLines, orel, oline)
 			}
 		}
 	}
@@ -206,7 +206,7 @@ func archCycles(r *ArchRules, work, rel, ext, before, after string) string {
 					loop = append([]string{at}, loop...)
 				}
 				loop = append([]string{rel}, loop...)
-				return "importar " + start + " cria um ciclo: " + strings.Join(loop, " → ") + ". Módulos dependem numa direção só: mova o que os dois usam para um módulo de baixo (compartilhado) que nenhum deles importa de volta."
+				return fmt.Sprintf("importing %s creates a cycle: %s. Modules depend in one direction only: move what both use into a lower (shared) module that neither of them imports back.", start, strings.Join(loop, " → "))
 			}
 			for _, nx := range graph[cur] {
 				if _, ok := prev[nx]; !ok {

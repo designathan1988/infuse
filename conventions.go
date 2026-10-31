@@ -62,7 +62,7 @@ func LearnConventions(root string) string {
 				return filepath.SkipDir
 			}
 			if d.Name() == "tests" || d.Name() == "test" || d.Name() == "__tests__" {
-				tests["pasta "+d.Name()+"/"]++
+				tests["folder "+d.Name()+"/"]++
 			}
 			return nil
 		}
@@ -114,23 +114,23 @@ func LearnConventions(root string) string {
 			if lead := line[:len(line)-len(trimmed)]; strings.HasPrefix(lead, "\t") { // indentation, on indented lines only
 				fileIndent["tabs"]++
 			} else if n := len(lead); n%4 == 0 && n > 0 {
-				fileIndent["4 espaços"]++
+				fileIndent["4 spaces"]++
 			} else if n%2 == 0 && n > 0 {
-				fileIndent["2 espaços"]++
+				fileIndent["2 spaces"]++
 			}
 			if c := strings.TrimSpace(trimmed); strings.HasPrefix(c, "//") || strings.HasPrefix(c, "#") || strings.HasPrefix(c, "/*") || strings.HasPrefix(c, "*") {
 				if rePtWord.MatchString(c) {
-					lang["português"]++
+					lang["Portuguese"]++
 				} else if reEnWord.MatchString(c) {
-					lang["inglês"]++
+					lang["English"]++
 				}
 			}
 			if jsLike[ext] {
 				if strings.HasPrefix(trimmed, "import ") || strings.Contains(trimmed, "require(") {
 					if strings.Contains(trimmed, "'") {
-						quotes["aspas simples"]++
+						quotes["single quotes"]++
 					} else if strings.Contains(trimmed, `"`) {
-						quotes["aspas duplas"]++
+						quotes["double quotes"]++
 					}
 					if strings.HasPrefix(trimmed, "import ") {
 						modules["ESM (import/export)"]++
@@ -139,9 +139,9 @@ func LearnConventions(root string) string {
 					}
 				}
 				if strings.HasSuffix(trimmed, ";") {
-					semis["com ponto e vírgula"]++
+					semis["with semicolons"]++
 				} else if strings.HasSuffix(trimmed, ")") || strings.HasSuffix(trimmed, "'") || strings.HasSuffix(trimmed, `"`) {
-					semis["sem ponto e vírgula"]++
+					semis["without semicolons"]++
 				}
 			}
 		}
@@ -163,13 +163,13 @@ func LearnConventions(root string) string {
 		return k, float64(n) / float64(total)
 	}
 	if k, sh := share(indent); k != "" {
-		rules.Indent, rules.IndentShare = map[string]string{"tabs": "tabs", "2 espaços": "2", "4 espaços": "4"}[k], sh
+		rules.Indent, rules.IndentShare = map[string]string{"tabs": "tabs", "2 spaces": "2", "4 spaces": "4"}[k], sh
 	}
 	if k, sh := share(quotes); k != "" {
-		rules.Quotes, rules.QuotesShare = map[string]string{"aspas simples": "single", "aspas duplas": "double"}[k], sh
+		rules.Quotes, rules.QuotesShare = map[string]string{"single quotes": "single", "double quotes": "double"}[k], sh
 	}
 	if k, sh := share(semis); k != "" {
-		rules.Semis, rules.SemisShare = map[string]string{"com ponto e vírgula": "with", "sem ponto e vírgula": "without"}[k], sh
+		rules.Semis, rules.SemisShare = map[string]string{"with semicolons": "with", "without semicolons": "without"}[k], sh
 	}
 	if k, sh := share(modules); k != "" {
 		rules.Modules, rules.ModShare = map[string]string{"ESM (import/export)": "esm", "CommonJS (require)": "cjs"}[k], sh
@@ -182,18 +182,18 @@ func LearnConventions(root string) string {
 	_ = os.MkdirAll(filepath.Join(root, infuseDirName), 0o755)
 	_ = writeJSON(conventionRulesFile(root), rules)
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Convenções do projeto\n\nDetectadas em %d arquivos de código (contagem, não suposição). Edite à vontade: o agente lê este arquivo a cada turno.\n\n", files)
+	fmt.Fprintf(&b, "# Project conventions\n\nDetected in %d code files (counted, not assumed). Edit freely: the agent reads this file on every turn.\n\n", files)
 	line := func(label string, t tally) {
 		if k, n, total := t.top(); k != "" && total > 0 {
 			fmt.Fprintf(&b, "- %s: %s (%s)\n", label, k, pct(n, total))
 		}
 	}
-	line("Indentação", indent)
-	line("Aspas em imports", quotes)
-	line("Fim de instrução (JS/TS)", semis)
-	line("Módulos", modules)
-	line("Quebra de linha", eol)
-	line("Idioma dos comentários", lang)
+	line("Indentation", indent)
+	line("Quotes in imports", quotes)
+	line("End of statement (JS/TS)", semis)
+	line("Modules", modules)
+	line("Line endings", eol)
+	line("Comment language", lang)
 	exts := make([]string, 0, len(naming))
 	for e := range naming {
 		exts = append(exts, e)
@@ -201,7 +201,7 @@ func LearnConventions(root string) string {
 	sort.Strings(exts)
 	for _, e := range exts {
 		if k, n, total := naming[e].top(); k != "" && total >= 3 {
-			fmt.Fprintf(&b, "- Nomes de arquivo %s: %s (%s)\n", e, k, pct(n, total))
+			fmt.Fprintf(&b, "- File names %s: %s (%s)\n", e, k, pct(n, total))
 		}
 	}
 	if len(tests) > 0 {
@@ -210,11 +210,11 @@ func LearnConventions(root string) string {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		fmt.Fprintf(&b, "- Testes: %s\n", strings.Join(keys, ", "))
+		fmt.Fprintf(&b, "- Tests: %s\n", strings.Join(keys, ", "))
 	}
 	if len(lengths) > 20 {
 		sort.Ints(lengths)
-		fmt.Fprintf(&b, "- Comprimento de linha: 95%% das linhas até %d caracteres\n", lengths[len(lengths)*95/100])
+		fmt.Fprintf(&b, "- Line length: 95%% of lines up to %d characters\n", lengths[len(lengths)*95/100])
 	}
 	return b.String()
 }

@@ -74,25 +74,25 @@ func (s *Session) requiredReading() string {
 			continue
 		}
 		if seen == 0 {
-			missing = append(missing, p+" (não lido)")
+			missing = append(missing, fmt.Sprintf("%s (not read)", p))
 		} else {
-			missing = append(missing, fmt.Sprintf("%s (lidas %d de %d linhas; continue com Read offset=%d)", p, seen, total, next))
+			missing = append(missing, fmt.Sprintf("%s (read %d of %d lines; continue with Read offset=%d)", p, seen, total, next))
 		}
 	}
 	if len(missing) == 0 {
 		return ""
 	}
-	return "[infuse] Bloqueado: as instruções do projeto (" + strings.Join(r.Files, ", ") + ") apontam documentos que você ainda não leu por inteiro. Leia cada um até o fim com Read antes de alterar arquivos ou rodar comandos — é neles que o projeto diz o que já foi tentado, o que é proibido e como medir:\n- " + strings.Join(missing, "\n- ")
+	return fmt.Sprintf("[infuse] Blocked: the project's instructions (%s) point to documents you have not yet read in full. Read each one to the end with Read before changing files or running commands — they are where the project says what has already been tried, what is forbidden and how to measure:\n- %s", strings.Join(r.Files, ", "), strings.Join(missing, "\n- "))
 }
 
 // instructionWriteCheck: the instruction files are not edited; the forbidden references are not written.
 func (s *Session) instructionWriteCheck(rel, before string) string {
 	r := loadProjectRules(s.Root)
 	if isInstructionFile(rel) {
-		return "[infuse] Bloqueado: " + rel + " são as instruções do projeto. O agente segue as instruções; não as altera nem apaga. Se algo nelas precisa mudar, diga ao usuário o quê e por quê."
+		return fmt.Sprintf("[infuse] Blocked: %s is the project's instructions. The agent follows the instructions; it does not change or delete them. If something in them needs to change, tell the user what and why.", rel)
 	}
 	if ref := underReference(r, rel); ref != "" {
-		return "[infuse] Bloqueado: " + ref + " é uma referência somente leitura pelas instruções do projeto. Não se escreve nela."
+		return fmt.Sprintf("[infuse] Blocked: %s is a read-only reference according to the project's instructions. Nothing is written in it.", ref)
 	}
 	return ""
 }
@@ -191,7 +191,7 @@ func (s *Session) missingVerification() string {
 	if len(missing) == 0 {
 		return ""
 	}
-	return "[infuse] O turno não pode terminar: as instruções do projeto mandam rodar depois de alterações, e não rodou com sucesso depois da última alteração deste turno: " + strings.Join(missing, " · ") + ". Rode exatamente esses comandos (as métricas do projeto são as dele, não ferramentas próprias) e trate o que eles reprovarem."
+	return fmt.Sprintf("[infuse] The turn cannot end: the project's instructions say to run these after changes, and they did not run successfully after this turn's last change: %s. Run exactly these commands (the project's metrics are its own, not tools of yours) and deal with whatever they fail.", strings.Join(missing, " · "))
 }
 
 // noteWrite and noteInvestigation feed the loop detector.
@@ -236,9 +236,9 @@ func (s *Session) loopCheck(name, cat, path string, isAgentExplore bool) string 
 	}
 	docs := strings.Join(loadProjectRules(s.Root).Required, ", ")
 	if docs == "" {
-		docs = "a documentação do projeto"
+		return fmt.Sprintf("[infuse] Blocked: a measure-and-tweak loop — `%s` ran again after each tweak, 3 times or more in this turn, with no research into the cause. That treats effects, one at a time. Stop: read the project's documentation and the official documentation of what is involved (at least two readings), record in the plan (TodoWrite) the cause that explains all the symptoms together, and only then go back to changing things.", g.loopKey)
 	}
-	return fmt.Sprintf("[infuse] Bloqueado: ciclo de medir e ajustar — `%s` rodou de novo depois de cada ajuste, 3 vezes ou mais neste turno, sem nenhuma pesquisa da causa. Isso trata efeitos, um de cada vez. Pare: leia %s e a documentação oficial do que está envolvido (pelo menos duas leituras), registre no plano (TodoWrite) a causa que explica todos os sintomas juntos, e só então volte a alterar.", g.loopKey, docs)
+	return fmt.Sprintf("[infuse] Blocked: a measure-and-tweak loop — `%s` ran again after each tweak, 3 times or more in this turn, with no research into the cause. That treats effects, one at a time. Stop: read the required documents (%s) and the official documentation of what is involved (at least two readings), record in the plan (TodoWrite) the cause that explains all the symptoms together, and only then go back to changing things.", g.loopKey, docs)
 }
 
 // instructionsPrompt tells the agent what infuse extracted from the instructions and will enforce.
@@ -248,20 +248,20 @@ func instructionsPrompt(root string) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("## O que o infuse faz cumprir das instruções do projeto\n")
+	b.WriteString("## What infuse enforces from the project's instructions\n")
 	if len(r.Missing) > 0 {
-		b.WriteString("- " + strings.Join(r.Missing, ", ") + " foi apagado da pasta de trabalho; vale a versão do git, lida acima. Não apague instruções.\n")
+		b.WriteString("- " + strings.Join(r.Missing, ", ") + " was deleted from the working folder; the git version, read above, is the one that applies. Do not delete instructions.\n")
 	}
 	if len(r.Required) > 0 {
-		b.WriteString("- Leitura obrigatória, por inteiro, antes de alterar arquivos ou rodar comandos: " + strings.Join(r.Required, ", ") + ".\n")
+		b.WriteString("- Required reading, in full, before changing files or running commands: " + strings.Join(r.Required, ", ") + ".\n")
 	}
 	if len(r.Reference) > 0 {
-		b.WriteString("- Referência somente leitura, proibido copiar código ou escrever: " + strings.Join(r.Reference, ", ") + ".\n")
+		b.WriteString("- Read-only reference; copying code from it or writing in it is forbidden: " + strings.Join(r.Reference, ", ") + ".\n")
 	}
 	if len(r.Commands) > 0 {
-		b.WriteString("- Verificação e medição do projeto (use estas, não ferramentas próprias): " + strings.Join(r.Commands, " · ") + ".\n")
+		b.WriteString("- The project's verification and measurement (use these, not tools of your own): " + strings.Join(r.Commands, " · ") + ".\n")
 	}
-	b.WriteString("- Repetir uma medição depois de cada ajuste, sem pesquisar a causa, bloqueia o turno até você estudar a documentação.\n")
+	b.WriteString("- Repeating a measurement after each tweak, without researching the cause, blocks the turn until you study the documentation.\n")
 	return b.String()
 }
 
