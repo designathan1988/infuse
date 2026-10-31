@@ -68,6 +68,12 @@ func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	if mem := readIfExists(filepath.Join(s.Root, infuseDirName, "memory.md")); mem != "" {
 		b.WriteString("\n## Memória do projeto\n" + mem + "\n")
 	}
+	if c := conventionsPrompt(s.Root); c != "" {
+		b.WriteString("\n## Convenções do projeto (siga ao escrever código; .infuse/conventions.md)\n" + c + "\n")
+	}
+	if d := docsPrompt(s.Root); d != "" {
+		b.WriteString("\n## Documentação fixada pelo usuário (leia com Read antes de usar estas bibliotecas)\n" + d)
+	}
 	if sk := skillsPrompt(s.Root); sk != "" {
 		b.WriteString("\n## Skills disponíveis (carregue com a ferramenta Skill quando a tarefa corresponder)\n" + sk)
 	}

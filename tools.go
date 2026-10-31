@@ -101,6 +101,11 @@ func (tc *ToolContext) afterWrite(abs string) []string {
 		}
 	}
 	lines = append(lines, ApplyWriteRules(tc.Root, tc.Rules, []string{abs})...)
+	if tc.S.settings.Diagnostics == nil || *tc.S.settings.Diagnostics {
+		if d := fileDiagnostics(tc.Root, abs); d != "" {
+			lines = append(lines, "[diagnóstico] problemas encontrados pelo verificador do projeto neste arquivo:\n"+d)
+		}
+	}
 	return lines
 }
 

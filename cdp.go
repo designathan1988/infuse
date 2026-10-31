@@ -147,6 +147,7 @@ func (w *wsConn) readMessage() ([]byte, error) {
 // ---------------------------------------------------------------- CDP session
 
 type cdpBrowser struct {
+	profile string
 	cmd     *exec.Cmd
 	ws      *wsConn
 	mu      sync.Mutex
@@ -235,7 +236,7 @@ func startCDP(profile string) (*cdpBrowser, error) {
 		_ = cmd.Process.Kill()
 		return nil, err
 	}
-	b := &cdpBrowser{cmd: cmd, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
+	b := &cdpBrowser{profile: profile, cmd: cmd, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
 	go b.readLoop()
 	for _, m := range []string{"Page.enable", "Runtime.enable", "Log.enable"} {
 		_, _ = b.call(context.Background(), m, nil)
@@ -423,6 +424,15 @@ func (b *cdpBrowser) close() {
 			_ = b.cmd.Process.Kill()
 			<-done
 		}
+	}
+	// its helper processes outlive the main one for a moment; the profile's lockfile goes when they do
+	lock := filepath.Join(b.profile, "lockfile")
+	for i := 0; i < 40 && b.profile != ""; i++ {
+		if _, err := os.Stat(lock); os.IsNotExist(err) || os.Remove(lock) == nil {
+			time.Sleep(150 * time.Millisecond)
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

@@ -34,6 +34,7 @@ type Settings struct {
 	Theme          string                `json:"theme"`                       // system | light | dark
 	ShowThinking   *bool                 `json:"showThinking,omitempty"`      // reasoning blocks open by default (nil = yes)
 	PromptSuggest  *bool                 `json:"promptSuggestions,omitempty"` // gray next-message suggestion in the prompt box (nil = yes)
+	Diagnostics    *bool                 `json:"diagnostics,omitempty"`       // check each written file with the project's checker (nil = yes)
 }
 
 func defaultSettings() Settings {

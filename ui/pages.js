@@ -33,6 +33,7 @@ async function openSettings(section = 'general') {
     el.append(setRow('Idioma', 'Idioma da interface', selectEl([['pt-BR', 'Português (Brasil)'], ['en', 'English']], s.language === 'en' ? 'en' : 'pt-BR', v => save({ language: v }).then(() => location.reload()))));
     el.append(setRow('Tema', 'Claro, escuro ou seguir o sistema', selectEl([['system', 'Seguir o sistema'], ['light', 'Claro'], ['dark', 'Escuro']], s.theme || 'system', v => save({ theme: v }).then(applyTheme))));
     el.append(setRow('Mostrar raciocínio na conversa', 'Blocos de raciocínio abertos por padrão; o caret recolhe cada um', toggleEl(s.showThinking !== false, v => save({ showThinking: v }))));
+    el.append(setRow('Diagnóstico após cada edição', 'Cada arquivo que o agente escreve é conferido pelo verificador do projeto (node --check, tsc, go vet, py_compile, JSON); problemas voltam para ele na hora.', toggleEl(s.diagnostics !== false, v => save({ diagnostics: v }))));
     el.append(setRow('Sugestão da próxima mensagem', 'Depois de cada resposta, uma sugestão em cinza na caixa de mensagem; Tab ou → aceita. Usa o modelo rápido (custo mínimo).', toggleEl(s.promptSuggestions !== false, v => save({ promptSuggestions: v }))));
     el.append(setRow('Notificações', 'Avisar quando o agente precisar de você ou terminar, se você não estiver olhando a sessão', toggleEl(s.notify !== false, v => save({ notify: v }))));
     el.append(setRow('Ícone na bandeja', 'Mostrar o infuse na bandeja do sistema (Abrir / Sair)', toggleEl(!s.hideTray, v => save({ hideTray: !v }))));
@@ -279,9 +280,42 @@ async function skillsSection(el, root) {
   draw();
 }
 
+// ---------------------------------------------------------------- Customize: pinned docs, conventions
+async function docsSection(el, root) {
+  el.append(h(`<h1>${t('Documentação fixada')}</h1>`), h(`<p class="lead">${t('Páginas de documentação que o agente lê antes de usar uma biblioteca — a referência oficial da versão em uso, em vez do que o modelo lembra. O infuse abre a página num navegador sem janela, guarda o texto em .infuse/docs e avisa o agente.')}</p>`));
+  const add = h(`<div class="mcpcustom"><div class="cs">${t('Fixar a página')} <input class="slot mono du" style="min-width:36ch" placeholder="https://react.dev/reference/react/useState" spellcheck="false"> <button class="btn sm pri dadd">${t('Fixar')}</button></div></div>`);
+  const list = h('<div class="mcplist" style="margin-top:12px"></div>'), sugg = h('<div></div>');
+  el.append(add, list, sugg);
+  const pin = async (url, btn) => { if (btn) { btn.disabled = true; btn.textContent = t('baixando…'); } const r = await api('/api/docs/pin', { body: { url }, root }); if (r.error) toast(r.error); else toast(t('Documentação fixada.')); draw(); };
+  $('.dadd', add).onclick = e => { const u = $('.du', add).value.trim(); if (u) pin(u, e.currentTarget); };
+  $('.du', add).onkeydown = e => { if (e.key === 'Enter' && e.target.value.trim()) pin(e.target.value.trim(), $('.dadd', add)); };
+  const draw = async () => {
+    const r = await api('/api/docs', { root });
+    list.innerHTML = (r.docs || []).length ? '' : `<div class="oempty">${t('Nenhuma página fixada. Use uma sugestão abaixo ou cole um endereço acima.')}</div>`;
+    for (const d of r.docs || []) {
+      const card = h(`<div class="mcpcard"><div class="row"><b class="grow trunc">${esc(d.title)}</b><span class="faint">${Math.round(d.bytes / 1024)} KB · ${new Date(d.fetched).toLocaleDateString()}</span><button class="ib rf" title="${esc(t('Baixar de novo'))}">${I.reload}</button><button class="ib del" title="${esc(t('Remover'))}">${I.trash}</button></div><div class="mono faint mcptarget" style="margin-left:0">${esc(d.url)} → ${esc(d.file)}</div></div>`);
+      $('.rf', card).onclick = e => pin(d.url, null);
+      $('.del', card).onclick = async () => { await api('/api/docs/unpin', { body: { url: d.url }, root }); draw(); };
+      list.append(card);
+    }
+    const s = r.suggestions || [];
+    sugg.innerHTML = s.length ? `<h2>${t('Sugestões para este projeto')}</h2><div class="mcpgrid">${s.map((x, i) => `<div class="mcppre"><b>${esc(x.name)}</b><span class="faint">${esc(x.why)}</span><span class="mono faint">${esc(x.url)}</span><div class="row"><button class="btn sm" data-s="${i}">${I.plus} ${t('Fixar')}</button></div></div>`).join('')}</div>` : '';
+    $$('[data-s]', sugg).forEach(b => b.onclick = () => pin(s[+b.dataset.s].url, b));
+  };
+  draw();
+}
+async function conventionsSection(el, root) {
+  el.append(h(`<div class="row"><h1 class="grow">${t('Convenções do projeto')}</h1><button class="btn line rl">${I.reload} ${t('Ler o código de novo')}</button></div>`), h(`<p class="lead">${t('O estilo do projeto, contado nos próprios arquivos (indentação, aspas, módulos, nomes de arquivo, testes, idioma dos comentários). O agente segue estas regras ao escrever. Edite à vontade — salva sozinho.')}</p>`));
+  const r = await api('/api/conventions', { root });
+  const ta = h(`<textarea class="doc" style="min-height:300px">${esc(r.text || '')}</textarea>`); const st = h('<span class="faint"></span>');
+  ta.oninput = debounce(async () => { await api('/api/conventions', { body: { text: ta.value }, root }); st.textContent = t('salvo'); setTimeout(() => st.textContent = '', 1200); }, 600);
+  $('.rl', el).onclick = async () => { const x = await api('/api/conventions', { body: { relearn: true }, root }); ta.value = x.text || ''; toast(t('Convenções lidas de novo')); };
+  el.append(ta, st);
+}
+
 // ---------------------------------------------------------------- Customize: commands, instructions
 async function openCustomize(section = 'commands') {
-  const el = pageShell('customize', [['commands', 'Comandos de barra'], ['skills', 'Skills'], ['connectors', 'Conectores'], ['hooks', 'Hooks'], ['instructions', 'Instruções do projeto']], section, openCustomize);
+  const el = pageShell('customize', [['commands', 'Comandos de barra'], ['skills', 'Skills'], ['connectors', 'Conectores'], ['hooks', 'Hooks'], ['docs', 'Documentação fixada'], ['conventions', 'Convenções'], ['instructions', 'Instruções do projeto']], section, openCustomize);
   const root = curRoot() || S.projects[0]?.root || '';
   if (!root) { el.append(h(`<div class="empty">${t('Abra um projeto primeiro.')}</div>`)); return; }
   el.append(h(`<p class="faint" style="margin:0 0 6px">${esc(projectLabel(root))} · ${esc(root)}</p>`));
@@ -301,6 +335,8 @@ async function openCustomize(section = 'commands') {
   }
   if (section === 'connectors') return connectorsSection(el, root);
   if (section === 'hooks') return hooksSection(el, root);
+  if (section === 'docs') return docsSection(el, root);
+  if (section === 'conventions') return conventionsSection(el, root);
   if (section === 'skills') return skillsSection(el, root);
   if (section === 'instructions') {
     el.append(h(`<h1>${t('Instruções do projeto')}</h1>`), h(`<p class="lead">${t('Memória do projeto (.infuse/memory.md), lida pelo agente no início de cada turno. Arquivos CLAUDE.md, AGENTS.md e INFUSE.md da pasta também são lidos.')}</p>`));
