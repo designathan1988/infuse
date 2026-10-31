@@ -68,6 +68,9 @@ func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	if mem := readIfExists(filepath.Join(s.Root, infuseDirName, "memory.md")); mem != "" {
 		b.WriteString("\n## Memória do projeto\n" + mem + "\n")
 	}
+	if sk := skillsPrompt(s.Root); sk != "" {
+		b.WriteString("\n## Skills disponíveis (carregue com a ferramenta Skill quando a tarefa corresponder)\n" + sk)
+	}
 	if items := memoryPrompt(s); items != "" {
 		b.WriteString("\n## Memória estruturada (mais importante primeiro; registre e remova com a ferramenta Memory)\n" + items)
 	}

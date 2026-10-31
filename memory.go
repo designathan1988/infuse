@@ -75,7 +75,7 @@ func normalizeMemory(it *MemoryItem) error {
 		it.Priority = 1
 	}
 	if it.ID == "" {
-		it.ID = fmt.Sprintf("m%d", time.Now().UnixNano()/1e3)
+		it.ID = "m" + randomHex(6) // a clock-based id repeats on Windows (coarse timer)
 	}
 	if it.Created == 0 {
 		it.Created = time.Now().UnixMilli()

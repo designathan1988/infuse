@@ -50,7 +50,7 @@ func OpenTerminal(root, cwd string, cols, rows int) (*termSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := &termSession{ID: fmt.Sprintf("t%d", time.Now().UnixNano()), Root: root, Cwd: cwd, pty: p, subs: map[chan []byte]struct{}{}}
+	t := &termSession{ID: "t" + randomHex(6), Root: root, Cwd: cwd, pty: p, subs: map[chan []byte]struct{}{}}
 	termsMu.Lock()
 	terms[t.ID] = t
 	termsMu.Unlock()

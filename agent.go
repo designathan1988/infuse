@@ -67,7 +67,7 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 			specs = append(specs, sp)
 		}
 	}
-	id := fmt.Sprintf("a%d", time.Now().UnixNano())
+	id := "a" + randomHex(6)
 	s.emit("subagent", map[string]any{"id": id, "kind": kind, "title": title, "state": "start"})
 	msgs := []Message{{Role: "user", Content: []Block{{Type: "text", Text: task}}, TS: time.Now().UnixMilli()}}
 	var breaker loopBreaker

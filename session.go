@@ -543,10 +543,16 @@ func userBlocks(text string, atts []Attachment, imgs []InlineImage) []Block {
 
 func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error {
 	s.mu.Lock()
-	if s.State != "idle" && s.State != "error" {
-		s.mu.Unlock()
+	busy := s.State != "idle" && s.State != "error"
+	s.mu.Unlock()
+	if busy {
 		return errors.New("o agente está ocupado")
 	}
+	hook := s.runHooks(context.Background(), "UserPromptSubmit", "", map[string]any{"prompt": text})
+	if hook.Block {
+		return errors.New("bloqueado por um hook: " + hook.Message)
+	}
+	s.mu.Lock()
 	s.settings = EffectiveSettings(s.Root)
 	if s.Model == "" {
 		s.Model = s.settings.Model
@@ -554,7 +560,11 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 	s.lastError = ""
 	s.Turn++
 	s.TurnStarts = append(s.TurnStarts, len(s.Messages))
-	s.Messages = append(s.Messages, Message{Role: "user", Content: userBlocks(text, atts, imgs), TS: time.Now().UnixMilli()})
+	blocks := userBlocks(text, atts, imgs)
+	if hook.Message != "" { // context a UserPromptSubmit hook adds to the message
+		blocks = append(blocks, Block{Type: "text", Text: "<contexto-de-hook>\n" + hook.Message + "\n</contexto-de-hook>"})
+	}
+	s.Messages = append(s.Messages, Message{Role: "user", Content: blocks, TS: time.Now().UnixMilli()})
 	if s.Turn == 1 && (s.Title == "" || s.Title == "Nova sessão") {
 		s.Title = truncate(strings.SplitN(strings.TrimSpace(text), "\n", 2)[0], 60)
 	}
@@ -598,6 +608,7 @@ func (s *Session) run(ctx context.Context) {
 	rules := LoadRules(s.Root)
 	mcpFor(s.Root).ensure(ctx) // approved connectors start before the first request
 	var breaker loopBreaker    // stops a turn that keeps repeating the same failure
+	stopHooks := 0
 	var tripped error
 	for iter := 0; iter < 200; iter++ {
 		if ctx.Err() != nil {
@@ -673,6 +684,16 @@ func (s *Session) run(ctx context.Context) {
 			}
 		}
 		if res.StopReason != "tool_use" {
+			if stopHooks < 3 { // a Stop hook can send the agent back to work, with its reason
+				if o := s.runHooks(ctx, "Stop", "", map[string]any{"stop_hook_active": stopHooks > 0}); o.Block {
+					stopHooks++
+					s.mu.Lock()
+					s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: "[hook Stop] " + o.Message}}, TS: time.Now().UnixMilli()})
+					s.mu.Unlock()
+					s.emit("hook", map[string]any{"event": "Stop", "message": o.Message})
+					continue
+				}
+			}
 			s.finish("")
 			return
 		}
@@ -778,6 +799,20 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	if !ok {
 		return "ferramenta desconhecida: " + b.Name, true
 	}
+	var toolInput any
+	_ = json.Unmarshal(b.Input, &toolInput)
+	if o := s.runHooks(ctx, "PreToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput}); o.Block {
+		return "bloqueado por um hook: " + o.Message, true
+	}
+	out, isErr := s.runToolChecked(ctx, rules, tool, b)
+	if o := s.runHooks(ctx, "PostToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput, "tool_response": out}); o.Message != "" {
+		out += "\n[hook] " + o.Message
+	}
+	return out, isErr
+}
+
+// runToolChecked applies sentinels and permissions, then runs the tool.
+func (s *Session) runToolChecked(ctx context.Context, rules *RuleSet, tool Tool, b Block) (string, bool) {
 	decision := s.permissionFor(tool, b.Input)
 	// reading outside the session's folder (~/.ssh, browser profiles…) is never silent: it asks,
 	// unless the user chose to accept everything
