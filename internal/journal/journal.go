@@ -1,9 +1,13 @@
-package main
+package journal
+
+// The project journal and lesson ledger: every write and command that passed through the filter, and
+// every vice observed. Credentials never reach these files.
 
 import (
 	"bufio"
 	"encoding/json"
 	"infuse/internal/core"
+	"infuse/internal/security"
 	"os"
 	"path/filepath"
 	"time"
@@ -25,8 +29,9 @@ type LessonEntry struct {
 	Detail string `json:"detail"`
 }
 
-func infuseDir(root string) string {
-	d := filepath.Join(root, infuseDirName)
+// InfuseDir creates and returns the project's .infuse directory, seeding its .gitignore.
+func InfuseDir(root string) string {
+	d := filepath.Join(root, core.InfuseDirName)
 	if err := os.MkdirAll(d, 0o755); err == nil {
 		gi := filepath.Join(d, ".gitignore")
 		if _, err := os.Stat(gi); err != nil {
@@ -37,20 +42,18 @@ func infuseDir(root string) string {
 	return d
 }
 
-func appendLine(file string, v any) { core.AppendLine(file, v) }
-
 func Journal(root string, e JournalEntry) {
 	e.Ts = time.Now().UnixMilli()
-	e.Command, e.Detail = redactSecrets(e.Command), redactSecrets(e.Detail) // the journal never stores credentials
-	appendLine(filepath.Join(infuseDir(root), "journal.jsonl"), e)
+	e.Command, e.Detail = security.RedactSecrets(e.Command), security.RedactSecrets(e.Detail) // the journal never stores credentials
+	core.AppendLine(filepath.Join(InfuseDir(root), "journal.jsonl"), e)
 }
 
 func Lesson(root, vice, detail string) {
-	appendLine(filepath.Join(infuseDir(root), "lessons.jsonl"), LessonEntry{time.Now().UnixMilli(), vice, detail})
+	core.AppendLine(filepath.Join(InfuseDir(root), "lessons.jsonl"), LessonEntry{time.Now().UnixMilli(), vice, detail})
 }
 
 func ReadJournalSince(root string, since int64) []JournalEntry {
-	return readJournal(filepath.Join(root, infuseDirName, "journal.jsonl"), since)
+	return readJournal(filepath.Join(root, core.InfuseDirName, "journal.jsonl"), since)
 }
 
 func readJournal(file string, since int64) []JournalEntry {
@@ -70,5 +73,3 @@ func readJournal(file string, since int64) []JournalEntry {
 	}
 	return out
 }
-
-func readJSONL(file string) []map[string]any { return core.ReadJSONL(file) }

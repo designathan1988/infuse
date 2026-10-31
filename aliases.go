@@ -7,9 +7,39 @@ import (
 	"context"
 	"infuse/internal/config"
 	"infuse/internal/core"
+	"infuse/internal/journal"
 	"infuse/internal/llm"
+	"infuse/internal/projectmap"
 	"infuse/internal/security"
 )
+
+type JournalEntry = journal.JournalEntry
+type LessonEntry = journal.LessonEntry
+type ProjectMap = projectmap.ProjectMap
+type FileInfo = projectmap.FileInfo
+type DirInfo = projectmap.DirInfo
+type Hotspot = projectmap.Hotspot
+
+var ignoredDirs = projectmap.IgnoredDirs
+
+func infuseDir(root string) string          { return journal.InfuseDir(root) }
+func Journal(root string, e JournalEntry)   { journal.Journal(root, e) }
+func Lesson(root, vice, detail string)      { journal.Lesson(root, vice, detail) }
+func ReadJournalSince(root string, since int64) []JournalEntry {
+	return journal.ReadJournalSince(root, since)
+}
+func BuildMap(root string) *ProjectMap                  { return projectmap.BuildMap(root) }
+func WriteMap(root string, m *ProjectMap)               { projectmap.WriteMap(root, m) }
+func LoadMap(root string) *ProjectMap                   { return projectmap.LoadMap(root) }
+func LoadOrBuildMap(root string) *ProjectMap            { return projectmap.LoadOrBuildMap(root) }
+func DescribeDir(m *ProjectMap, relDir string) string   { return projectmap.DescribeDir(m, relDir) }
+func DescribeDependents(m *ProjectMap, relFile string) string {
+	return projectmap.DescribeDependents(m, relFile)
+}
+func DependentsMsg(m *ProjectMap, relFile string) Msg { return projectmap.DependentsMsg(m, relFile) }
+func mapFile(root string) string                       { return projectmap.MapFile(root) }
+func appendLine(file string, v any)                    { core.AppendLine(file, v) }
+func readJSONL(file string) []map[string]any           { return core.ReadJSONL(file) }
 
 type capWriter = core.CapWriter
 

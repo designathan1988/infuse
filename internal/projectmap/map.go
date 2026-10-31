@@ -1,9 +1,10 @@
-package main
+package projectmap
 
 // Project map v0: files, exports, imports, dependents, hotspots — generated from code only.
 
 import (
 	"fmt"
+	"infuse/internal/core"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -43,7 +44,7 @@ type ProjectMap struct {
 	Hotspots    []Hotspot            `json:"hotspots"`
 }
 
-var ignoredDirs = map[string]bool{"node_modules": true, ".git": true, ".infuse": true, "dist": true, "build": true, "out": true, ".next": true, "coverage": true, "__pycache__": true, ".venv": true, "venv": true, "target": true, "vendor": true, "bin": true, "obj": true}
+var IgnoredDirs = map[string]bool{"node_modules": true, ".git": true, ".infuse": true, "dist": true, "build": true, "out": true, ".next": true, "coverage": true, "__pycache__": true, ".venv": true, "venv": true, "target": true, "vendor": true, "bin": true, "obj": true}
 
 var langByExt = map[string]string{
 	".ts": "ts", ".tsx": "ts", ".mts": "ts", ".cts": "ts",
@@ -91,7 +92,7 @@ func BuildMap(root string) *ProjectMap {
 
 func walkDir(root, dir string, m *ProjectMap) int {
 	rel, _ := filepath.Rel(root, dir)
-	rel = toPosix(rel)
+	rel = core.ToPosix(rel)
 	if rel == "" {
 		rel = "."
 	}
@@ -106,7 +107,7 @@ func walkDir(root, dir string, m *ProjectMap) int {
 		name := e.Name()
 		full := filepath.Join(dir, name)
 		if e.IsDir() {
-			if ignoredDirs[name] || strings.HasPrefix(name, ".") {
+			if IgnoredDirs[name] || strings.HasPrefix(name, ".") {
 				continue
 			}
 			info.Subdirs = append(info.Subdirs, name)
@@ -127,7 +128,7 @@ func walkDir(root, dir string, m *ProjectMap) int {
 		}
 		text := string(b)
 		relFile, _ := filepath.Rel(root, full)
-		relFile = toPosix(relFile)
+		relFile = core.ToPosix(relFile)
 		lines := 0
 		if len(text) > 0 {
 			lines = strings.Count(text, "\n") + 1
@@ -234,7 +235,7 @@ func resolveImports(root string, m *ProjectMap) {
 				}
 				for _, c := range cands {
 					rel, _ := filepath.Rel(root, c)
-					rel = toPosix(rel)
+					rel = core.ToPosix(rel)
 					if _, ok := m.Files[rel]; ok {
 						f.Imports[i] = rel
 						break
@@ -254,7 +255,7 @@ func resolveImports(root string, m *ProjectMap) {
 				}
 				for _, c := range []string{base + ".py", filepath.Join(base, "__init__.py")} {
 					rel, _ := filepath.Rel(root, c)
-					rel = toPosix(rel)
+					rel = core.ToPosix(rel)
 					if _, ok := m.Files[rel]; ok {
 						f.Imports[i] = rel
 						break
@@ -333,23 +334,23 @@ func DescribeDependents(m *ProjectMap, relFile string) string {
 }
 
 // DependentsMsg: who depends on a file, as a message (empty when nobody does).
-func DependentsMsg(m *ProjectMap, relFile string) Msg {
+func DependentsMsg(m *ProjectMap, relFile string) core.Msg {
 	f, ok := m.Files[relFile]
 	if !ok || len(f.Dependents) == 0 {
-		return Msg{}
+		return core.Msg{}
 	}
 	deps := f.Dependents
 	more := ""
 	if len(deps) > 12 {
 		deps, more = deps[:12], "…"
 	}
-	return M("map.dependents", "file", relFile, "count", len(f.Dependents), "files", strings.Join(deps, ", ")+more)
+	return core.M("map.dependents", "file", relFile, "count", len(f.Dependents), "files", strings.Join(deps, ", ")+more)
 }
 
-func mapFile(root string) string { return filepath.Join(root, infuseDirName, "map", "map.json") }
+func MapFile(root string) string { return filepath.Join(root, core.InfuseDirName, "map", "map.json") }
 
 func WriteMap(root string, m *ProjectMap) {
-	_ = writeJSON(mapFile(root), m)
+	_ = core.WriteJSON(MapFile(root), m)
 	var md strings.Builder
 	fmt.Fprintf(&md, "# Project map (generated %s)\n\n", time.UnixMilli(m.GeneratedAt).Format(time.RFC3339))
 	dirs := make([]string, 0, len(m.Dirs))
@@ -366,12 +367,12 @@ func WriteMap(root string, m *ProjectMap) {
 			fmt.Fprintf(&md, "- %s: %s\n", h.Path, h.Reason)
 		}
 	}
-	_ = os.WriteFile(filepath.Join(root, infuseDirName, "map", "MAP.md"), []byte(md.String()), 0o644)
+	_ = os.WriteFile(filepath.Join(root, core.InfuseDirName, "map", "MAP.md"), []byte(md.String()), 0o644)
 }
 
 func LoadMap(root string) *ProjectMap {
 	var m ProjectMap
-	if readJSON(mapFile(root), &m) != nil {
+	if core.ReadJSON(MapFile(root), &m) != nil {
 		return nil
 	}
 	return &m
