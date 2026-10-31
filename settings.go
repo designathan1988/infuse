@@ -63,6 +63,13 @@ func defaultSettings() Settings {
 			"o3":               {2, 8},
 			"gemini-2.5-pro":   {1.25, 10},
 			"gemini-2.5-flash": {0.3, 2.5},
+			// DeepSeek, peak rates (api-docs.deepseek.com/quick_start/pricing, 2026-10): budgets count the
+			// higher price; legacy names are served and billed as deepseek-flash
+			"deepseek-flash":    {0.3, 1.2},
+			"deepseek-v4-flash": {0.3, 1.2},
+			"deepseek-chat":     {0.3, 1.2},
+			"deepseek-reasoner": {0.3, 1.2},
+			"deepseek-v4-pro":   {1.32, 3.96},
 		},
 		DailyLimitUSD: 20,
 		Language:      "pt-BR",
@@ -87,6 +94,11 @@ func LoadSettings() Settings {
 	}
 	if s.Pricing == nil {
 		s.Pricing = defaultSettings().Pricing
+	}
+	for k, v := range defaultSettings().Pricing { // prices added in later versions reach older settings files
+		if _, ok := s.Pricing[k]; !ok {
+			s.Pricing[k] = v
+		}
 	}
 	delete(s.Pricing, "claude-mythos") // never a real model; remove from older settings files
 	if s.MaxTokens <= 0 {
@@ -160,6 +172,9 @@ func (s Settings) priceFor(model string) (float64, float64) {
 	}
 	return s.Pricing[best][0], s.Pricing[best][1]
 }
+
+// hasPrice reports whether the model's price is known (an unknown price counts as zero cost).
+func (s Settings) hasPrice(model string) bool { in, out := s.priceFor(model); return in > 0 || out > 0 }
 
 func (s Settings) costOf(model string, u Usage) float64 {
 	in, out := s.priceFor(model)

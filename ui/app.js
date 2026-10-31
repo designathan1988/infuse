@@ -509,6 +509,7 @@ function missionCard(L) {
   return `<div class="card mission"><div class="ch">${t('Missão')}<span class="r"><span class="tag ${cls}">${t(label)}</span></span></div>
     <div class="faint trunc" title="${esc(m.goal)}">${esc(m.goal)}</div>
     <div class="bar100" style="margin:6px 0 3px"><i style="width:${pct}%"></i></div><div class="faint">${t('turno')} ${Math.min(turns, m.maxTurns)}/${m.maxTurns} · ${money(spent)} ${t('de')} ${money(m.budgetUSD)}</div>
+    ${m.noPrice && m.state === 'running' ? `<div class="faint" style="margin-top:4px">${t('Modelo sem preço na tabela: o orçamento em dólares não é medido, vale o limite de turnos (Configurações › Modelos e custos).')}</div>` : ''}
     ${m.reason ? `<div style="margin-top:6px">${esc(t(m.reason))}</div>` : ''}
     ${m.impasse ? `<div class="mimp"><b>${t('Impasse')}:</b> ${esc(m.impasse.reason)}${(m.impasse.tried || []).length ? `<div>${t('Tentou')}: ${m.impasse.tried.map(esc).join('; ')}</div>` : ''}${m.impasse.evidence ? `<div class="mono">${esc(m.impasse.evidence)}</div>` : ''}<div><b>${t('Precisa de')}:</b> ${esc(m.impasse.needs)}</div></div>` : ''}
     ${last?.auditor ? `<div class="maud" title="${esc(t('Auditor de fluxo: conselho do modelo rápido, não um veredito'))}">${esc(last.auditor)}</div>` : ''}

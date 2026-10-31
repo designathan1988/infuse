@@ -37,6 +37,7 @@ type Mission struct {
 	Ended      int64         `json:"ended,omitempty"`
 	Steps      []MissionStep `json:"steps"`
 	Impasse    *Impasse      `json:"impasse,omitempty"`
+	NoPrice    bool          `json:"noPrice,omitempty"` // the model has no known price: only the turn limit applies
 	lastCostAt float64
 }
 
@@ -68,7 +69,7 @@ func (s *Session) StartMission(goal string, budget float64, maxTurns int) error 
 		s.mu.Unlock()
 		return fmt.Errorf("o agente está ocupado")
 	}
-	s.Mission = &Mission{Goal: goal, BudgetUSD: budget, MaxTurns: maxTurns, StartCost: s.Cost, StartTurn: s.Turn, State: "running", Started: time.Now().UnixMilli(), Steps: []MissionStep{}, lastCostAt: s.Cost}
+	s.Mission = &Mission{Goal: goal, BudgetUSD: budget, MaxTurns: maxTurns, StartCost: s.Cost, StartTurn: s.Turn, State: "running", Started: time.Now().UnixMilli(), Steps: []MissionStep{}, lastCostAt: s.Cost, NoPrice: !s.settings.hasPrice(s.Model)}
 	s.mu.Unlock()
 	s.emit("mission", s.missionSnapshot())
 	return s.Send(missionBrief+goal, nil, nil)
