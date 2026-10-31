@@ -38,6 +38,9 @@ type Settings struct {
 	EnforceConventions *bool                 `json:"enforceConventions,omitempty"` // refuse writes that break the project's conventions (nil = yes)
 	RequireReview      *bool                 `json:"requireReview,omitempty"`      // independent review at the end of each turn with changes (nil = yes)
 	MaxFileLines       int                   `json:"maxFileLines,omitempty"`       // refuse code files longer than this (0 = 400, -1 = no limit)
+	BrowserViewport    string                `json:"browserViewport,omitempty"`    // agent browser window, e.g. 1440x900
+	BrowserScale       float64               `json:"browserScale,omitempty"`       // pixel density of its captures (0 = 2)
+	BrowserGestures    string                `json:"browserGestures,omitempty"`    // human (default) | slow | instant
 }
 
 func defaultSettings() Settings {
