@@ -88,12 +88,11 @@ func (s *Session) gateCheck(name string, cat string, input json.RawMessage) stri
 	if g.trips >= 2 {
 		g.needWeb = true
 	}
-	what := "leia o código envolvido (Read, Grep) ou consulte uma fonte (WebSearch, WebFetch, documentação fixada)"
+	format := "[infuse] Blocked: %d attempts failed in a row. Before another attempt, read the code involved (Read, Grep) or consult a source (WebSearch, WebFetch, pinned documentation); then explain the cause, and only then fix it.\nRecent errors:\n- %s"
 	if g.needWeb {
-		what = "pesquise fora do projeto: WebSearch com a mensagem de erro, WebFetch na documentação oficial da versão em uso, a documentação fixada (.infuse/docs) ou uma skill — ler os arquivos locais já não bastou"
+		format = "[infuse] Blocked: %d attempts failed in a row. Before another attempt, research outside the project: WebSearch with the error message, WebFetch on the official documentation for the version in use, the pinned documentation (.infuse/docs) or a skill — reading the local files was not enough; then explain the cause, and only then fix it.\nRecent errors:\n- %s"
 	}
-	return fmt.Sprintf("[infuse] Bloqueado: %d tentativas falharam seguidas. Antes de outra tentativa, %s; depois explique a causa e só então corrija.\nErros recentes:\n- %s",
-		g.fails, what, strings.Join(g.errors, "\n- "))
+	return fmt.Sprintf(format, g.fails, strings.Join(g.errors, "\n- "))
 }
 
 // gateRecord runs after a tool: failed commands count toward the gate.
@@ -107,7 +106,7 @@ func (s *Session) gateRecord(name, cat string, out string, isErr bool) {
 		s.gate.fails, s.gate.errors = 0, nil
 		return
 	}
-	if strings.HasPrefix(out, "[infuse] Bloqueado") {
+	if strings.HasPrefix(out, "[infuse] Blocked") || strings.HasPrefix(out, "[infuse] Bloqueado") {
 		return
 	}
 	s.gate.fails++
@@ -144,16 +143,16 @@ type shortcut struct {
 }
 
 var shortcuts = []shortcut{
-	{regexp.MustCompile(`\b(it|test|describe)\.(skip|only)\(|\bx(it|describe|test)\(|\btest\.todo\(`), "teste desligado ou isolado (.skip/.only)", true},
-	{regexp.MustCompile(`@pytest\.mark\.(skip|xfail)|\bpytest\.skip\(|\bunittest\.skip|@unittest\.skip`), "teste pulado (pytest skip/xfail)", true},
-	{regexp.MustCompile(`\bt\.Skip(f|Now)?\(`), "teste pulado (t.Skip)", true},
-	{regexp.MustCompile(`@(Disabled|Ignore)\b`), "teste desligado (@Disabled/@Ignore)", true},
-	{regexp.MustCompile(`expect\((true|1|'.*?'|".*?")\)\.(toBe|toEqual)\(\s*(true|1|'.*?'|".*?")\s*\)|assert\.(ok|equal)\(\s*true\s*\)|\bassert\s+True\b`), "asserção que não pode falhar", true},
-	{regexp.MustCompile(`@ts-(ignore|nocheck|expect-error)`), "verificação de tipos silenciada (@ts-ignore)", false},
-	{regexp.MustCompile(`eslint-disable|//\s*nolint|#\s*noqa|#\s*type:\s*ignore|#\s*pylint:\s*disable`), "verificador silenciado", false},
-	{regexp.MustCompile(`catch\s*(\([^)]*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(\{\s*\}|null|undefined)\s*\)`), "erro engolido (catch vazio)", false},
-	{regexp.MustCompile(`except(\s+[\w.,() ]+)?:\s*(\n\s*)?pass\b`), "erro engolido (except: pass)", false},
-	{regexp.MustCompile(`"test"\s*:\s*"[^"]*(\|\|\s*true|exit\s+0)[^"]*"`), "script de teste que nunca falha (|| true)", true},
+	{regexp.MustCompile(`\b(it|test|describe)\.(skip|only)\(|\bx(it|describe|test)\(|\btest\.todo\(`), "test disabled or isolated (.skip/.only)", true},
+	{regexp.MustCompile(`@pytest\.mark\.(skip|xfail)|\bpytest\.skip\(|\bunittest\.skip|@unittest\.skip`), "test skipped (pytest skip/xfail)", true},
+	{regexp.MustCompile(`\bt\.Skip(f|Now)?\(`), "test skipped (t.Skip)", true},
+	{regexp.MustCompile(`@(Disabled|Ignore)\b`), "test disabled (@Disabled/@Ignore)", true},
+	{regexp.MustCompile(`expect\((true|1|'.*?'|".*?")\)\.(toBe|toEqual)\(\s*(true|1|'.*?'|".*?")\s*\)|assert\.(ok|equal)\(\s*true\s*\)|\bassert\s+True\b`), "assertion that cannot fail", true},
+	{regexp.MustCompile(`@ts-(ignore|nocheck|expect-error)`), "type checking silenced (@ts-ignore)", false},
+	{regexp.MustCompile(`eslint-disable|//\s*nolint|#\s*noqa|#\s*type:\s*ignore|#\s*pylint:\s*disable`), "checker silenced", false},
+	{regexp.MustCompile(`catch\s*(\([^)]*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(\{\s*\}|null|undefined)\s*\)`), "swallowed error (empty catch)", false},
+	{regexp.MustCompile(`except(\s+[\w.,() ]+)?:\s*(\n\s*)?pass\b`), "swallowed error (except: pass)", false},
+	{regexp.MustCompile(`"test"\s*:\s*"[^"]*(\|\|\s*true|exit\s+0)[^"]*"`), "test script that never fails (|| true)", true},
 }
 
 // detectShortcuts lists the shortcuts that after has and before did not (newly introduced).
@@ -231,5 +230,5 @@ func (s *Session) missingReport() string {
 			}
 		}
 	}
-	return fmt.Sprintf("[infuse] Este turno alterou %d arquivo(s) e terminou sem Report. Antes de encerrar, relate com a ferramenta Report: cada afirmação com a evidência em que se apoia (o comando que você rodou, o arquivo alterado). O infuse confere cada uma com o que de fato aconteceu.", changed)
+	return fmt.Sprintf("[infuse] This turn changed %d file(s) and ended without a Report. Before finishing, report with the Report tool: every claim with the evidence it rests on (the command you ran, the file you changed). infuse checks each one against what actually happened.", changed)
 }

@@ -61,14 +61,14 @@ func TestPartlyReadPageBlocksAction(t *testing.T) {
 	s.Mode = "bypass"
 	s.docs.markPart("https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md", 0, 3)
 	why := s.commandDocCheck("go build ./...")
-	if !strings.Contains(why, "lida só em parte") || !strings.Contains(why, "offset=30000") {
+	if !strings.Contains(why, "read only in part") || !strings.Contains(why, "offset=30000") {
 		t.Fatalf("skimmed page did not block: %q", why)
 	}
 	if why := s.commandDocCheck("curl -s https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md?format=TEXT"); why != "" {
 		t.Fatalf("reading command blocked: %s", why)
 	}
 	s.gate.planned = true
-	if out, isErr := s.runTool(context.Background(), &RuleSet{}, writeCall("1", "a.js", "x\n")); !isErr || !strings.Contains(out, "lida só em parte") {
+	if out, isErr := s.runTool(context.Background(), &RuleSet{}, writeCall("1", "a.js", "x\n")); !isErr || !strings.Contains(out, "read only in part") && !strings.Contains(out, "lida só em parte") {
 		t.Fatalf("write while a page is half read: %s", out)
 	}
 	s.docs.markPart("https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md", 1, 3)
@@ -85,7 +85,7 @@ func TestPlanOfEarlierTurnHoldsAndClosesHonestly(t *testing.T) {
 	s.settings.RequireReview = &off
 	s.setTasks([]TaskItem{{ID: "1", Text: "ler a doc", Status: "in_progress", Proof: "página lida"}, {ID: "2", Text: "criar cli", Status: "pending", Proof: "node cli.js"}, {ID: "3", Text: "feito", Status: "done"}})
 	s.gate.reset() // a later turn (a mission's next round): the plan was registered before it
-	if why := s.turnObligation(context.Background()); !strings.Contains(why, "tarefas abertas") || !strings.Contains(why, "criar cli") {
+	if why := s.turnObligation(context.Background()); !strings.Contains(why, "open tasks") || !strings.Contains(why, "criar cli") {
 		t.Fatalf("an earlier turn's plan was ignored: %q", why)
 	}
 	s.gate.obligationAsks = 6 // the agent kept refusing: the turn ends, and the plan says so

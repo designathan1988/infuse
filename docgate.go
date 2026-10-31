@@ -96,7 +96,7 @@ func (d *docLedger) unfinished() []string {
 		for p.seen[next] {
 			next++
 		}
-		out = append(out, fmt.Sprintf("%s (lidas %d de %d partes; continue com offset=%d)", url, len(p.seen), p.total, next*docPageSize))
+		out = append(out, fmt.Sprintf("%s (read %d of %d parts; continue with offset=%d)", url, len(p.seen), p.total, next*docPageSize))
 	}
 	sort.Strings(out)
 	return out
@@ -232,7 +232,7 @@ func helpCommand(cmd string) bool {
 func (s *Session) commandDocCheck(cmd string) string {
 	if !helpCommand(cmd) {
 		if open := s.docs.unfinished(); len(open) > 0 {
-			return "[infuse] Comando recusado: há documentação lida só em parte. Leia até o fim antes de agir (WebFetch com offset):\n- " + strings.Join(open, "\n- ")
+			return "[infuse] Command refused: some documentation was read only in part. Read it to the end before acting (WebFetch with offset):\n- " + strings.Join(open, "\n- ")
 		}
 	}
 	userText := strings.ToLower(s.userWords())
@@ -257,7 +257,7 @@ func (s *Session) commandDocCheck(cmd string) string {
 	if len(missing) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("[infuse] Comando recusado: usa opções de %s que não aparecem em nada que você leu nesta sessão: %s.\nLeia a documentação oficial que descreve cada uma — a página inteira (WebFetch, todas as partes), a saída de `%s --help`, ou o código-fonte do programa — e só então execute. Uma opção vale quando está no texto que você de fato leu, não na memória.",
+	return fmt.Sprintf("[infuse] Command refused: it uses options of %s that appear in nothing you have read in this session: %s.\nRead the official documentation that describes each one — the whole page (WebFetch, every part), the output of `%s --help`, or the program's source code — and only then run it. An option counts when it is in text you actually read, not in your memory.",
 		strings.Join(dedupe(programs), ", "), strings.Join(dedupe(missing), ", "), programs[0])
 }
 

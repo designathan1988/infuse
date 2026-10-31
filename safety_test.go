@@ -26,7 +26,7 @@ func TestCapWriterKeepsHeadAndTail(t *testing.T) {
 		_, _ = w.Write([]byte("0123456789"))
 	}
 	s := w.String()
-	if len(s) > 200 || !strings.HasPrefix(s, "0123456789") || !strings.HasSuffix(s, "0123456789") || !strings.Contains(s, "omitidos") {
+	if len(s) > 200 || !strings.HasPrefix(s, "0123456789") || !strings.HasSuffix(s, "0123456789") || !strings.Contains(s, "omitted") {
 		t.Fatalf("%q", s)
 	}
 }

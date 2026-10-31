@@ -64,7 +64,7 @@ func TestBreakerSendsTheAgentBackOnce(t *testing.T) {
 
 func TestBreakerEndsTheTurnWhenTheAgentInsists(t *testing.T) {
 	s := runStubborn(t, false)
-	if s.State != "error" || !strings.Contains(s.lastError, "disjuntor") {
+	if s.State != "error" || !strings.Contains(s.lastError, "circuit breaker") {
 		t.Fatalf("state %s: %s", s.State, s.lastError)
 	}
 }

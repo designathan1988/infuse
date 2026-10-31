@@ -44,7 +44,7 @@ func TestSentinelAsksBeforeEditingTestsToMakeThemPass(t *testing.T) {
 		}
 	}()
 	out, isErr := s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "1", Name: "Write", Input: json.RawMessage(`{"path":"src/soma.test.js","content":"test('x', () => {})"}`)})
-	if !isErr || !strings.Contains(out, "teste") {
+	if !isErr || !strings.Contains(out, "test file") {
 		t.Fatalf("%v %s", isErr, out)
 	}
 

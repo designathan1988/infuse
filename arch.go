@@ -21,6 +21,7 @@ package main
 //   JSON Schema 2020-12: https://json-schema.org/draft/2020-12
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -63,7 +64,7 @@ func loadArchRules(root string) *ArchRules {
 // learnArchitecture reads the structure the project already has.
 func learnArchitecture(root string) ArchRules {
 	r := ArchRules{Version: 1, FuncLines: 60, Cyclomatic: 15, Nesting: 5, DupLines: 6, TableArms: 6,
-		Description: "Aprendido do projeto pelo infuse. Pastas e arquivos de tokens/estado detectados; limites das ferramentas oficiais (ESLint, golangci, jscpd, stylelint). Só o que uma alteração acrescenta é julgado."}
+		Description: "Learned from the project by infuse. Folders and token/state files detected; limits from the official tools (ESLint, golangci, jscpd, stylelint). Only what a change adds is judged."}
 	entries, _ := os.ReadDir(root)
 	exts := map[string]bool{}
 	for _, e := range entries {
@@ -186,7 +187,7 @@ func archCheck(root, work, rel, before, after string) string {
 	}
 	for _, c := range checks {
 		if why := c(); why != "" {
-			return "[infuse] Arquitetura: " + why
+			return why
 		}
 	}
 	return ""
@@ -207,7 +208,7 @@ func archPlacement(r *ArchRules, work, rel, ext string, isNew bool) string {
 		if rootHas || len(dirs) == 0 {
 			return "" // the root already holds this kind of code, or the project has no folders of code yet
 		}
-		return "arquivo de código solto na raiz (" + rel + "), num projeto que organiza o código em pastas. Coloque-o na pasta da sua responsabilidade: " + strings.Join(dirs, ", ") + "."
+		return fmt.Sprintf("a loose code file at the root (%s), in a project that organizes its code in folders. Put it in the folder of its responsibility: %s.", rel, strings.Join(dirs, ", "))
 	}
 	top := parts[0]
 	if contains(r.TopDirs, top) || wellKnownDirs[top] || strings.HasPrefix(top, ".") {
@@ -216,5 +217,5 @@ func archPlacement(r *ArchRules, work, rel, ext string, isNew bool) string {
 	if _, err := os.Stat(filepath.Join(work, top)); err == nil {
 		return "" // a folder that exists (made by the user or the project)
 	}
-	return "pasta nova na raiz (" + top + "/) sem lugar na estrutura do projeto. Use uma das pastas existentes (" + strings.Join(r.TopDirs, ", ") + ") ou um nome de papel conhecido (src, lib, test, docs, scripts, assets…)."
+	return fmt.Sprintf("a new folder at the root (%s/) with no place in the project's structure. Use one of the existing folders (%s) or a well-known role name (src, lib, test, docs, scripts, assets…).", top, strings.Join(r.TopDirs, ", "))
 }

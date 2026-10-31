@@ -189,7 +189,7 @@ func (p *agentPage) event(method string, params json.RawMessage) {
 		}
 		p.mu.Unlock()
 		if n != nil && (n.Failed != "" || n.Status >= 400) {
-			p.note(fmt.Sprintf("rede: %s %s → %s", n.Method, truncate(n.URL, 120), firstNonEmpty(n.Failed, fmt.Sprint(n.Status))))
+			p.note(fmt.Sprintf("network: %s %s → %s", n.Method, truncate(n.URL, 120), firstNonEmpty(n.Failed, fmt.Sprint(n.Status))))
 		}
 	case "Page.screencastFrame":
 		var f struct {
@@ -217,7 +217,7 @@ func (p *agentPage) event(method string, params json.RawMessage) {
 			} `json:"exceptionDetails"`
 		}
 		_ = json.Unmarshal(params, &e)
-		p.note("exceção na página: " + truncate(firstLine(firstNonEmpty(e.Details.Exception.Description, e.Details.Text)), 200))
+		p.note("page exception: " + truncate(firstLine(firstNonEmpty(e.Details.Exception.Description, e.Details.Text)), 200))
 	case "Runtime.consoleAPICalled":
 		var e struct {
 			Type string `json:"type"`
@@ -243,7 +243,7 @@ func (p *agentPage) event(method string, params json.RawMessage) {
 		}
 		_ = json.Unmarshal(params, &e)
 		if e.Frame.ParentID == "" {
-			p.note("navegou para " + truncate(e.Frame.URL, 160))
+			p.note("navigated to " + truncate(e.Frame.URL, 160))
 		}
 	case "Page.loadEventFired":
 		p.mu.Lock()
@@ -392,7 +392,7 @@ func (p *agentPage) press(ctx context.Context, combo string) error {
 		}
 	}
 	if keyName == "" {
-		return fmt.Errorf("tecla ausente em %q", combo)
+		return fmt.Errorf("no key in %q", combo)
 	}
 	key, code, vk := keyInfo(keyName)
 	down := map[string]any{"type": "keyDown", "key": key, "code": code, "windowsVirtualKeyCode": vk, "nativeVirtualKeyCode": vk, "modifiers": mods}
@@ -510,9 +510,9 @@ func (p *agentPage) locate(ctx context.Context, sel string, timeout time.Duratio
 		}
 		if time.Now().After(deadline) {
 			if l != nil {
-				return nil, fmt.Errorf("elemento %q existe mas não está visível", sel)
+				return nil, fmt.Errorf("element %q exists but is not visible", sel)
 			}
-			return nil, fmt.Errorf("elemento não encontrado: %s", sel)
+			return nil, fmt.Errorf("element not found: %s", sel)
 		}
 		sleepCtx(ctx, 150*time.Millisecond)
 	}
@@ -675,7 +675,7 @@ func (p *agentPage) stopRecording(dir string, maxFrames int) ([]keyframe, []recE
 	p.mu.Unlock()
 	defer func() { p.mu.Lock(); p.trail = nil; p.mu.Unlock() }()
 	if len(frames) == 0 {
-		return nil, events, dur, 0, fmt.Errorf("nenhum quadro capturado: a tela não mudou durante a gravação")
+		return nil, events, dur, 0, fmt.Errorf("no frames captured: the screen did not change during the recording")
 	}
 	if maxFrames <= 0 || maxFrames > 24 {
 		maxFrames = 12
@@ -776,17 +776,17 @@ func (p *agentPage) networkReport(onlyIssues bool) string {
 		}
 		status := fmt.Sprint(n.Status)
 		if n.Failed != "" {
-			status = "FALHOU " + n.Failed
+			status = "FAILED " + n.Failed
 		} else if !n.finished {
-			status += " (pendente)"
+			status += " (pending)"
 		}
 		fmt.Fprintf(&b, "%s %s %s · %s · %d ms · %.1f KB\n", n.Method, status, truncate(n.URL, 160), n.Type, n.Ms, n.Bytes/1024)
 		shown++
 	}
 	if shown == 0 {
-		return "nenhuma requisição registrada"
+		return "no requests recorded"
 	}
-	return fmt.Sprintf("%d requisições:\n%s", shown, b.String())
+	return fmt.Sprintf("%d requests:\n%s", shown, b.String())
 }
 
 func (p *agentPage) axTree(ctx context.Context) string {

@@ -24,7 +24,7 @@ func TestConventionsAreCountedFromTheCode(t *testing.T) {
 		_ = os.WriteFile(filepath.Join(root, "src", name), []byte(code), 0o644)
 	}
 	text := LearnConventions(root)
-	for _, want := range []string{"Indentação: 2 espaços", "Aspas em imports: aspas simples", "Módulos: CommonJS (require)", "Fim de instrução (JS/TS): com ponto e vírgula", "Nomes de arquivo .js: kebab-case", "Testes: *.test.js", "Idioma dos comentários: português"} {
+	for _, want := range []string{"Indentation: 2 spaces", "Quotes in imports: single quotes", "Modules: CommonJS (require)", "End of statement (JS/TS): with semicolons", "File names .js: kebab-case", "Tests: *.test.js", "Comment language: Portuguese"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in\n%s", want, text)
 		}

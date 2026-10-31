@@ -55,12 +55,12 @@ func loadCompiledRules(root string) *compiledRules {
 
 func normSpace(s string) string { return strings.Join(strings.Fields(strings.ToLower(s)), " ") }
 
-const compilePrompt = `Você recebe as instruções de um projeto de software (podem estar em qualquer idioma). Extraia SOMENTE o que elas afirmam explicitamente, nestes três tipos:
-- "reference": um caminho (pasta ou arquivo) que as instruções dizem para não copiar, não escrever ou usar só como referência de leitura.
-- "read": um documento que as instruções mandam ler, consultar ou seguir.
-- "verify": um comando que as instruções declaram para verificar, testar ou medir o trabalho; "when" é "after-change" quando deve rodar depois de alterações, "before-commit" quando antes de commit, "on-request" nos outros casos.
-Para cada regra, "quote" é um trecho copiado EXATAMENTE do texto (mesmas palavras, sem traduzir nem resumir) que contém o caminho ou o comando e a ordem. Regra sem trecho literal será descartada. Não invente nada que o texto não diga.
-Responda só com JSON: {"rules":[{"kind":"reference|read|verify","path":"…","command":"…","when":"…","quote":"…"}]}`
+const compilePrompt = `You receive the instructions of a software project (they may be written in any language). Extract ONLY what they state explicitly, in these three kinds:
+- "reference": a path (folder or file) that the instructions say not to copy, not to write to, or to use only as a reference for reading.
+- "read": a document that the instructions say to read, consult or follow.
+- "verify": a command that the instructions declare for verifying, testing or measuring the work; "when" is "after-change" when it must run after changes, "before-commit" when it must run before a commit, and "on-request" in every other case.
+For each rule, "quote" is a passage copied EXACTLY from the text, in the original language of the instructions (the same words, neither translated nor summarized), that contains the path or the command and the instruction itself. A rule without a verbatim quote will be discarded. Do not invent anything the text does not say.
+Answer with JSON only: {"rules":[{"kind":"reference|read|verify","path":"…","command":"…","when":"…","quote":"…"}]}`
 
 // compileInstructions asks the model for the rules and keeps those whose quote is in the text.
 func (s *Session) compileInstructions(ctx context.Context, p Provider, text string) (*compiledRules, error) {
@@ -76,7 +76,7 @@ func (s *Session) compileInstructions(ctx context.Context, p Provider, text stri
 		Rules []compiledRule `json:"rules"`
 	}
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, fmt.Errorf("a compilação das instruções não devolveu JSON: %w", err)
+		return nil, fmt.Errorf("compiling the instructions did not return JSON: %w", err)
 	}
 	c := &compiledRules{Hash: instructionsHash(text), Compiled: time.Now().UnixMilli(), Model: s.fastModel()}
 	norm := normSpace(text)
@@ -99,23 +99,23 @@ func (s *Session) compileInstructions(ctx context.Context, p Provider, text stri
 func verifyRule(root, normText string, r compiledRule) string {
 	q := normSpace(r.Quote)
 	if len(q) < 8 || !strings.Contains(normText, q) {
-		return "o trecho citado não está nas instruções"
+		return "the quoted passage is not in the instructions"
 	}
 	switch r.Kind {
 	case "reference", "read":
 		p := strings.Trim(strings.TrimPrefix(filepath.ToSlash(r.Path), "./"), "/")
 		if p == "" || !strings.Contains(q, normSpace(p)) {
-			return "o caminho não aparece no trecho citado"
+			return "the path does not appear in the quoted passage"
 		}
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(p))); err != nil && r.Kind == "read" {
-			return "o documento não existe no projeto"
+			return "the document does not exist in the project"
 		}
 	case "verify":
 		if r.Command == "" || !strings.Contains(q, normSpace(r.Command)) {
-			return "o comando não aparece no trecho citado"
+			return "the command does not appear in the quoted passage"
 		}
 	default:
-		return "tipo desconhecido"
+		return "unknown kind"
 	}
 	return ""
 }
@@ -131,10 +131,10 @@ func (s *Session) ensureCompiledRules(ctx context.Context, p Provider) {
 	if old != nil && old.Hash == h {
 		return
 	}
-	s.emit("gate", map[string]any{"message": "[infuse] Lendo as instruções do projeto para extrair as regras (cada uma conferida contra o texto)…"})
+	s.emit("gate", map[string]any{"message": "[infuse] Reading the project's instructions to extract the rules (each one checked against the text)…"})
 	c, err := s.compileInstructions(ctx, p, pr.text)
 	if err != nil {
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "compilação das instruções: " + err.Error()})
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "compiling the instructions: " + err.Error()})
 		return
 	}
 	if old != nil { // the user's switches survive a recompilation

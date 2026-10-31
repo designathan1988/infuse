@@ -26,13 +26,13 @@ type browserTool struct{}
 
 func (browserTool) Category() string { return "net" }
 func (browserTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Browser", Description: `Um navegador real (sem janela) que você usa como uma pessoa: o cursor aparece e se move, cliques têm pausa, a digitação é tecla a tecla. Use para abrir o app (localhost), conferir telas, reproduzir bugs e diagnosticar.
-Localizadores (selector): CSS, text=Entrar, role=button[name="Entrar"], label=E-mail, placeholder=Buscar, testid=salvar, xpath=//...
-Ações: navigate(url) · back · reload · click(selector; button=right; count=2 para duplo) · hover(selector) · type(selector, text, submit) · press(key: Enter, Tab, Control+A, Shift+Tab…) · scroll(dy ou selector) · drag(selector, to) · select(selector, value) · upload(selector, path no projeto) · wait_for(selector ou text, timeout ms) · text(selector opcional) · dom(selector: HTML) · eval(script) ·
-screenshot(full_page, selector para só o elemento) — você vê a imagem em alta resolução ·
-record_start / record_stop — para algo que acontece ao longo do tempo (animação, transição, carregamento, erro intermitente): você recebe os quadros-chave onde a tela mudou, cada um como imagem, com a linha do tempo das ações, erros de console e falhas de rede entre eles, e um recorte ampliado de mudanças pequenas ·
-console · network(only_issues) · performance · a11y (árvore de acessibilidade) · storage (cookies e localStorage) · throttle(network: offline | 3g | 4g | none) · emulate(device: iphone | pixel | ipad | laptop | desktop) · viewport(width, height) · pdf.`,
-		InputSchema: schema(`{"type":"object","properties":{"action":{"type":"string","enum":["navigate","back","reload","click","hover","type","press","scroll","drag","select","upload","wait_for","text","dom","eval","screenshot","record_start","record_stop","console","network","performance","a11y","storage","throttle","emulate","viewport","pdf"]},"url":{"type":"string"},"selector":{"type":"string"},"to":{"type":"string","description":"drag: localizador do destino"},"text":{"type":"string"},"value":{"type":"string"},"path":{"type":"string"},"submit":{"type":"boolean"},"key":{"type":"string"},"button":{"type":"string","enum":["left","right","middle"]},"count":{"type":"integer"},"dy":{"type":"number"},"script":{"type":"string"},"full_page":{"type":"boolean"},"timeout":{"type":"integer"},"max_frames":{"type":"integer"},"only_issues":{"type":"boolean"},"network":{"type":"string"},"device":{"type":"string"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["action"]}`)}
+	return ToolSpec{Name: "Browser", Description: `A real browser (without a window) that you use the way a person does: the cursor appears and moves, clicks have a pause, typing is key by key. Use it to open the app (localhost), check screens, reproduce bugs and diagnose.
+Locators (selector): CSS, text=Sign in, role=button[name="Sign in"], label=Email, placeholder=Search, testid=save, xpath=//...
+Actions: navigate(url) · back · reload · click(selector; button=right; count=2 for a double click) · hover(selector) · type(selector, text, submit) · press(key: Enter, Tab, Control+A, Shift+Tab…) · scroll(dy or selector) · drag(selector, to) · select(selector, value) · upload(selector, path in the project) · wait_for(selector or text, timeout ms) · text(optional selector) · dom(selector: HTML) · eval(script) ·
+screenshot(full_page, selector for just that element) — you see the image in high resolution ·
+record_start / record_stop — for something that happens over time (an animation, a transition, loading, an intermittent error): you receive the keyframes where the screen changed, each one as an image, with the timeline of actions, console errors and network failures between them, and an enlarged crop of small changes ·
+console · network(only_issues) · performance · a11y (accessibility tree) · storage (cookies and localStorage) · throttle(network: offline | 3g | 4g | none) · emulate(device: iphone | pixel | ipad | laptop | desktop) · viewport(width, height) · pdf.`,
+		InputSchema: schema(`{"type":"object","properties":{"action":{"type":"string","enum":["navigate","back","reload","click","hover","type","press","scroll","drag","select","upload","wait_for","text","dom","eval","screenshot","record_start","record_stop","console","network","performance","a11y","storage","throttle","emulate","viewport","pdf"]},"url":{"type":"string"},"selector":{"type":"string"},"to":{"type":"string","description":"drag: the target's locator"},"text":{"type":"string"},"value":{"type":"string"},"path":{"type":"string"},"submit":{"type":"boolean"},"key":{"type":"string"},"button":{"type":"string","enum":["left","right","middle"]},"count":{"type":"integer"},"dy":{"type":"number"},"script":{"type":"string"},"full_page":{"type":"boolean"},"timeout":{"type":"integer"},"max_frames":{"type":"integer"},"only_issues":{"type":"boolean"},"network":{"type":"string"},"device":{"type":"string"},"width":{"type":"integer"},"height":{"type":"integer"}},"required":["action"]}`)}
 }
 
 // attach hands an image to the model, at most 1600 px wide (the file on disk keeps full resolution).
@@ -108,7 +108,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	}
 	locate := func(sel string) (*located, string) {
 		if sel == "" {
-			return nil, "informe selector"
+			return nil, "give a selector"
 		}
 		l, err := p.locate(ctx, sel, wait)
 		if err != nil {
@@ -121,13 +121,13 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		if in.Action == "scroll" && in.Selector == "" {
 			what = fmt.Sprintf("%+.0f px", firstNonZero(in.Dy, 600))
 		}
-		p.note(strings.TrimSpace("ação: " + in.Action + " " + what))
+		p.note(strings.TrimSpace("action: " + in.Action + " " + what))
 	}
 	switch in.Action {
 	case "navigate":
 		u := strings.TrimSpace(in.URL)
 		if u == "" {
-			return "informe url", true
+			return "give a url", true
 		}
 		if !strings.Contains(u, "://") && !strings.HasPrefix(u, "about:") {
 			if strings.HasPrefix(u, "localhost") || strings.HasPrefix(u, "127.") {
@@ -139,17 +139,17 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		Journal(tc.Root, JournalEntry{Kind: "fetch", Command: u, Detail: "navegador do agente"})
 		raw, err := p.b.call(ctx, "Page.navigate", map[string]any{"url": u})
 		if err != nil {
-			return "não abriu: " + err.Error(), true
+			return "did not open: " + err.Error(), true
 		}
 		var nav struct {
 			ErrorText string `json:"errorText"`
 		}
 		_ = json.Unmarshal(raw, &nav)
 		if nav.ErrorText != "" {
-			return "não abriu " + u + ": " + nav.ErrorText, true
+			return fmt.Sprintf("did not open %s: %s", u, nav.ErrorText), true
 		}
 		p.b.waitLoad(ctx)
-		return "aberto: " + where(), false
+		return "opened: " + where(), false
 	case "back", "reload":
 		if in.Action == "back" {
 			_, _ = p.b.eval(ctx, "history.back()")
@@ -167,16 +167,16 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		if in.Action == "hover" {
 			p.moveTo(ctx, g, l.X, l.Y, 0)
 			sleepCtx(ctx, 250*time.Millisecond)
-			return fmt.Sprintf("cursor sobre <%s> %q", l.Tag, l.Text), false
+			return fmt.Sprintf("cursor over <%s> %q", l.Tag, l.Text), false
 		}
 		if l.Disabled {
-			return fmt.Sprintf("<%s> %q está desabilitado", l.Tag, l.Text), true
+			return fmt.Sprintf("<%s> %q is disabled", l.Tag, l.Text), true
 		}
 		count := max(1, in.Count)
 		p.click(ctx, g, l.X, l.Y, firstNonEmpty(in.Button, "left"), count)
 		sleepCtx(ctx, 300*time.Millisecond)
 		p.b.waitLoad(ctx)
-		return fmt.Sprintf("clicou em <%s> %q · agora em %s", l.Tag, l.Text, where()), false
+		return fmt.Sprintf("clicked <%s> %q · now at %s", l.Tag, l.Text, where()), false
 	case "type":
 		l, why := locate(in.Selector)
 		if l == nil {
@@ -190,13 +190,13 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 			sleepCtx(ctx, 300*time.Millisecond)
 			p.b.waitLoad(ctx)
 		}
-		return fmt.Sprintf("digitado em %s · %s", in.Selector, where()), false
+		return fmt.Sprintf("typed into %s · %s", in.Selector, where()), false
 	case "press":
 		if err := p.press(ctx, in.Key); err != nil {
 			return err.Error(), true
 		}
 		sleepCtx(ctx, 200*time.Millisecond)
-		return "tecla " + in.Key + " · " + where(), false
+		return fmt.Sprintf("key %s · %s", in.Key, where()), false
 	case "scroll":
 		if in.Selector != "" {
 			l, why := locate(in.Selector)
@@ -204,15 +204,15 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 				return why, true
 			}
 			p.moveTo(ctx, g, l.X, l.Y, 0)
-			return fmt.Sprintf("rolou até <%s> %q", l.Tag, l.Text), false
+			return fmt.Sprintf("scrolled to <%s> %q", l.Tag, l.Text), false
 		}
 		dy := in.Dy
 		if dy == 0 {
 			dy = 600
 		}
 		p.scroll(ctx, g, dy)
-		v, _ := p.b.eval(ctx, `Math.round(scrollY) + ' de ' + Math.round(document.documentElement.scrollHeight - innerHeight)`)
-		return "rolagem: " + strings.Trim(string(v), `"`), false
+		v, _ := p.b.eval(ctx, `Math.round(scrollY) + ' of ' + Math.round(document.documentElement.scrollHeight - innerHeight)`)
+		return "scroll position: " + strings.Trim(string(v), `"`), false
 	case "drag":
 		from, why := locate(in.Selector)
 		if from == nil {
@@ -227,7 +227,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		sleepCtx(ctx, g.press)
 		p.moveTo(ctx, g, to.X, to.Y, 1)
 		_, _ = p.b.call(ctx, "Input.dispatchMouseEvent", map[string]any{"type": "mouseReleased", "x": to.X, "y": to.Y, "button": "left", "buttons": 0, "clickCount": 1})
-		return fmt.Sprintf("arrastou %q para %q", from.Text, to.Text), false
+		return fmt.Sprintf("dragged %q to %q", from.Text, to.Text), false
 	case "select":
 		l, why := locate(in.Selector)
 		if l == nil {
@@ -235,16 +235,17 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		p.click(ctx, g, l.X, l.Y, "left", 1)
 		val, _ := json.Marshal(in.Value)
-		v, err := p.b.eval(ctx, fmt.Sprintf(`(() => { const el = window.__infuseEl; const s = el && el.tagName === 'SELECT' ? el : el && el.querySelector && el.querySelector('select'); if (!s) return 'não é um select'; const want = %s; const o = [...s.options].find(o => o.value === want || o.text.trim() === want); if (!o) return 'opção não encontrada: ' + [...s.options].map(o => o.text.trim()).join(' | '); s.value = o.value; s.dispatchEvent(new Event('input', {bubbles: true})); s.dispatchEvent(new Event('change', {bubbles: true})); return 'selecionado: ' + o.text.trim(); })()`, val))
+		v, err := p.b.eval(ctx, fmt.Sprintf(`(() => { const el = window.__infuseEl; const s = el && el.tagName === 'SELECT' ? el : el && el.querySelector && el.querySelector('select'); if (!s) return 'not a select'; const want = %s; const o = [...s.options].find(o => o.value === want || o.text.trim() === want); if (!o) return 'option not found: ' + [...s.options].map(o => o.text.trim()).join(' | '); s.value = o.value; s.dispatchEvent(new Event('input', {bubbles: true})); s.dispatchEvent(new Event('change', {bubbles: true})); return 'selected: ' + o.text.trim(); })()`, val))
 		if err != nil {
 			return err.Error(), true
 		}
 		_ = p.press(ctx, "Escape")
-		return strings.Trim(string(v), `"`), strings.Contains(string(v), "não")
+		res := strings.Trim(string(v), `"`)
+		return res, !strings.HasPrefix(res, "selected: ")
 	case "upload":
 		abs := filepath.Join(tc.Root, filepath.FromSlash(in.Path))
 		if !within(tc.Root, abs) || !exists(abs) {
-			return "o arquivo precisa existir dentro do projeto: " + in.Path, true
+			return "the file must exist inside the project: " + in.Path, true
 		}
 		if l, why := locate(in.Selector); l == nil {
 			return why, true
@@ -260,20 +261,20 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		_ = json.Unmarshal(r, &obj)
 		if obj.Result.ObjectID == "" {
-			return "campo de arquivo não encontrado: " + in.Selector, true
+			return "file input not found: " + in.Selector, true
 		}
 		if _, err := p.b.call(ctx, "DOM.setFileInputFiles", map[string]any{"files": []string{abs}, "objectId": obj.Result.ObjectID}); err != nil {
 			return err.Error(), true
 		}
-		return "arquivo enviado ao campo: " + in.Path, false
+		return "file attached to the input: " + in.Path, false
 	case "wait_for":
 		target := firstNonEmpty(in.Selector, "text="+in.Text)
 		start := time.Now()
 		l, why := locate(target)
 		if l == nil {
-			return fmt.Sprintf("esperou %d ms: %s", time.Since(start).Milliseconds(), why), true
+			return fmt.Sprintf("waited %d ms: %s", time.Since(start).Milliseconds(), why), true
 		}
-		return fmt.Sprintf("apareceu em %d ms: <%s> %q", time.Since(start).Milliseconds(), l.Tag, l.Text), false
+		return fmt.Sprintf("appeared after %d ms: <%s> %q", time.Since(start).Milliseconds(), l.Tag, l.Text), false
 	case "text", "dom":
 		js := "document.body ? document.body.innerText : ''"
 		if in.Action == "dom" {
@@ -302,12 +303,12 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	case "eval":
 		v, err := p.b.eval(ctx, in.Script)
 		if err != nil {
-			return "erro no script: " + err.Error(), true
+			return "script error: " + err.Error(), true
 		}
 		return clip(externalContent(where(), string(v))), false
 	case "screenshot":
 		params := map[string]any{"format": "jpeg", "quality": 92, "captureBeyondViewport": in.FullPage}
-		what := "a tela"
+		what := ""
 		if in.Selector != "" {
 			l, why := locate(in.Selector)
 			if l == nil {
@@ -326,7 +327,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		_ = json.Unmarshal(raw, &shot)
 		jpg, err := base64.StdEncoding.DecodeString(shot.Data)
 		if err != nil || len(jpg) == 0 {
-			return "captura vazia", true
+			return "empty capture", true
 		}
 		name := time.Now().Format("20060102-150405.000") + ".jpg"
 		dir := filepath.Join(s.Root, infuseDirName, "shots")
@@ -334,10 +335,13 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		_ = os.WriteFile(filepath.Join(dir, name), jpg, 0o644)
 		cfg, _ := jpeg.DecodeConfig(bytes.NewReader(jpg))
 		attachImage(s, jpg)
-		return fmt.Sprintf("captura de %s (%dx%d px) anexada para você ver · %s · .infuse/shots/%s", what, cfg.Width, cfg.Height, where(), name), false
+		if what == "" {
+			return fmt.Sprintf("capture of the screen (%dx%d px) attached for you to see · %s · .infuse/shots/%s", cfg.Width, cfg.Height, where(), name), false
+		}
+		return fmt.Sprintf("capture of the element %s (%dx%d px) attached for you to see · %s · .infuse/shots/%s", what, cfg.Width, cfg.Height, where(), name), false
 	case "record_start":
 		p.startRecording()
-		return "gravando: faça as ações e chame record_stop. Você receberá os quadros onde a tela mudou, com a linha do tempo.", false
+		return "recording: perform the actions, then call record_stop. You will receive the frames where the screen changed, with the timeline.", false
 	case "record_stop":
 		dir := filepath.Join(s.Root, infuseDirName, "recordings", time.Now().Format("20060102-150405"))
 		kfs, events, dur, total, err := p.stopRecording(dir, in.MaxFrames)
@@ -345,7 +349,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 			return err.Error(), true
 		}
 		var b strings.Builder
-		fmt.Fprintf(&b, "Gravação de %.1f s: %d quadros capturados, %d quadros-chave (onde a tela mudou), anexados em ordem. Mudanças causadas só pelo cursor do agente não contam. Coordenadas em px da página (%dx%d). Arquivos: %s\n\n", dur.Seconds(), total, len(kfs), p.width, p.height, relTo(s.Root, dir))
+		fmt.Fprintf(&b, "Recording of %.1f s: %d frames captured, %d keyframes (where the screen changed), attached in order. Changes caused only by the agent's cursor do not count. Coordinates in page px (%dx%d). Files: %s\n\n", dur.Seconds(), total, len(kfs), p.width, p.height, relTo(s.Root, dir))
 		ev := 0
 		img := 0
 		for i, k := range kfs {
@@ -355,24 +359,24 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 			}
 			img++
 			attachImage(s, k.jpeg)
-			line := fmt.Sprintf("Imagem %d · quadro %d · t=%.2fs", img, i+1, k.at.Seconds())
+			line := fmt.Sprintf("Image %d · frame %d · t=%.2fs", img, i+1, k.at.Seconds())
 			switch {
 			case i == 0:
-				line += " · início"
+				line += " · start"
 			case len(k.regions) == 0:
-				line += " · estado final (sem mudança desde o quadro anterior)"
+				line += " · final state (no change since the previous frame)"
 			default:
 				var where []string
 				for _, r := range k.regions {
 					where = append(where, fmt.Sprintf("x=%d y=%d %dx%d", r.Min.X, r.Min.Y, r.Dx(), r.Dy()))
 				}
-				line += fmt.Sprintf(" · %.1f%% da tela mudou, em %d área(s): %s", k.changed*100, len(k.regions), strings.Join(where, "; "))
+				line += fmt.Sprintf(" · %.1f%% of the screen changed, in %d area(s): %s", k.changed*100, len(k.regions), strings.Join(where, "; "))
 			}
 			b.WriteString(line + "\n")
 			for ci, crop := range k.crops {
 				img++
 				attachImage(s, crop)
-				fmt.Fprintf(&b, "Imagem %d · recorte ampliado da área %d do quadro %d\n", img, ci+1, i+1)
+				fmt.Fprintf(&b, "Image %d · enlarged crop of area %d of frame %d\n", img, ci+1, i+1)
 			}
 		}
 		for ; ev < len(events); ev++ {
@@ -385,7 +389,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		p.b.console = nil
 		p.b.mu.Unlock()
 		if len(lines) == 0 {
-			return "nenhuma mensagem no console desde a última consulta", false
+			return "no console messages since the last check", false
 		}
 		return clip(externalContent(where(), strings.Join(lines, "\n"))), false
 	case "network":
@@ -409,7 +413,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		v, _ := p.b.eval(ctx, `JSON.stringify((() => { const n = performance.getEntriesByType('navigation')[0] || {}; const paint = Object.fromEntries(performance.getEntriesByType('paint').map(p => [p.name, Math.round(p.startTime)])); const lcp = performance.getEntriesByType('largest-contentful-paint').pop(); return { ttfb: Math.round(n.responseStart || 0), domContentLoaded: Math.round(n.domContentLoadedEventEnd || 0), load: Math.round(n.loadEventEnd || 0), ...paint, lcp: lcp ? Math.round(lcp.startTime) : null, resources: performance.getEntriesByType('resource').length }; })())`)
 		var nav string
 		_ = json.Unmarshal(v, &nav)
-		b.WriteString("tempos (ms): " + nav)
+		b.WriteString("timings (ms): " + nav)
 		return b.String(), false
 	case "a11y":
 		return clip(p.axTree(ctx)), false
@@ -428,7 +432,7 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		if err != nil {
 			return err.Error(), true
 		}
-		return "rede: " + in.Network, false
+		return "network: " + in.Network, false
 	case "emulate":
 		if in.Device == "desktop" {
 			w, h, sc := s.settings.browserViewport()
@@ -454,18 +458,18 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		}
 		_, _ = p.b.call(ctx, "Page.reload", nil)
 		p.b.waitLoad(ctx)
-		res := fmt.Sprintf("emulando %s: %dx%d, densidade %.2f%s", in.Device, d.w, d.h, d.scale, map[bool]string{true: ", toque", false: ""}[d.mobile])
+		res := fmt.Sprintf(map[bool]string{true: "emulating %s: %dx%d at density %.2f (touch)", false: "emulating %s: %dx%d at density %.2f (no touch)"}[d.mobile], in.Device, d.w, d.h, d.scale)
 		if v, err := p.b.eval(ctx, `innerWidth`); err == nil && d.mobile && strings.TrimSpace(string(v)) != fmt.Sprint(d.w) {
-			res += fmt.Sprintf(". Atenção: a página é desenhada com %s px de largura e reduzida para caber em %d px — falta <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> ou algo é mais largo que a tela", strings.TrimSpace(string(v)), d.w)
+			res += fmt.Sprintf(". Warning: the page is laid out %s px wide and scaled down to fit in %d px — <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"> is missing, or something is wider than the screen", strings.TrimSpace(string(v)), d.w)
 		}
 		return res, false
 	case "viewport":
 		if in.Width <= 0 || in.Height <= 0 {
-			return "informe width e height", true
+			return "give width and height", true
 		}
 		_, _, sc := s.settings.browserViewport()
 		p.setMetrics(in.Width, in.Height, sc, in.Width < 768)
-		return fmt.Sprintf("tela de %dx%d", in.Width, in.Height), false
+		return fmt.Sprintf("screen of %dx%d", in.Width, in.Height), false
 	case "pdf":
 		raw, err := p.b.call(ctx, "Page.printToPDF", map[string]any{"printBackground": true})
 		if err != nil {
@@ -480,9 +484,9 @@ func (browserTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 		dir := filepath.Join(s.Root, infuseDirName, "shots")
 		_ = os.MkdirAll(dir, 0o755)
 		_ = os.WriteFile(filepath.Join(dir, name), b, 0o644)
-		return fmt.Sprintf("PDF salvo: .infuse/shots/%s (%d KB)", name, len(b)/1024), false
+		return fmt.Sprintf("PDF saved: .infuse/shots/%s (%d KB)", name, len(b)/1024), false
 	}
-	return "ação desconhecida: " + in.Action, true
+	return "unknown action: " + in.Action, true
 }
 
 func firstNonZero(a, b float64) float64 {

@@ -7,6 +7,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"path"
 	"path/filepath"
 	"strings"
@@ -39,10 +40,10 @@ func archJSON(r *ArchRules, work, rel, ext, after string) string {
 	if strings.HasSuffix(rel, ".schema.json") {
 		url := fileURL(abs)
 		if err := c.AddResource(url, inst); err != nil {
-			return "schema inválido em " + rel + ": " + err.Error()
+			return fmt.Sprintf("invalid schema in %s: %s", rel, err.Error())
 		}
 		if _, err := c.Compile(url); err != nil {
-			return "schema inválido em " + rel + ": " + firstLine(err.Error())
+			return fmt.Sprintf("invalid schema in %s: %s", rel, firstLine(err.Error()))
 		}
 		return ""
 	}
@@ -60,7 +61,7 @@ func archJSON(r *ArchRules, work, rel, ext, after string) string {
 			if len(r.SchemaDirs) > 0 {
 				where = r.SchemaDirs[0] + "/"
 			}
-			return "dados JSON sem contrato (" + rel + "). Escreva primeiro o schema em " + where + "<nome>.schema.json (JSON Schema 2020-12: $schema, $id, type, required, additionalProperties:false) e aponte para ele com \"$schema\" neste arquivo; os dados são validados antes de cada gravação."
+			return fmt.Sprintf("JSON data without a contract (%s). First write the schema in %s<name>.schema.json (JSON Schema 2020-12: $schema, $id, type, required, additionalProperties:false) and point to it with \"$schema\" in this file; the data is validated before every write.", rel, where)
 		}
 		return ""
 	}
@@ -75,12 +76,12 @@ func archJSON(r *ArchRules, work, rel, ext, after string) string {
 	}
 	sch, err := c.Compile(schemaURL)
 	if err != nil {
-		return "o schema apontado por " + rel + " (" + ref + ") não foi carregado: " + firstLine(err.Error())
+		return fmt.Sprintf("the schema that %s points to (%s) could not be loaded: %s", rel, ref, firstLine(err.Error()))
 	}
 	delete(obj, "$schema") // the pointer is not part of the data
 	if err := sch.Validate(inst); err != nil {
 		msg, _ := json.Marshal(err.Error())
-		return "os dados de " + rel + " não seguem o schema " + ref + ": " + strings.Trim(string(msg), `"`) + ". Corrija os dados, ou mude o schema primeiro se o contrato mudou."
+		return fmt.Sprintf("the data in %s does not follow the schema %s: %s. Fix the data, or change the schema first if the contract changed.", rel, ref, strings.Trim(string(msg), `"`))
 	}
 	return ""
 }

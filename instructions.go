@@ -137,7 +137,7 @@ func resolveInstructionImports(root, dir, text string, depth int) string {
 		if err != nil || len(b) > 300<<10 {
 			return line
 		}
-		return line + "\n<!-- importado de " + p + " -->\n" + resolveInstructionImports(root, filepath.Dir(abs), string(b), depth+1)
+		return line + "\n<!-- imported from " + p + " -->\n" + resolveInstructionImports(root, filepath.Dir(abs), string(b), depth+1)
 	})
 }
 

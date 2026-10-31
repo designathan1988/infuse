@@ -24,7 +24,7 @@ func TestProtocolDecidesNotTheModel(t *testing.T) {
 	run := func(b Block) (string, bool) { return s.runTool(context.Background(), &RuleSet{}, b) }
 
 	// 1. no plan, no write
-	if out, isErr := run(writeCall("1", "soma.js", "module.exports = (a, b) => a + b;\n")); !isErr || !strings.Contains(out, "registre o plano") {
+	if out, isErr := run(writeCall("1", "soma.js", "module.exports = (a, b) => a + b;\n")); !isErr || !strings.Contains(out, "record the plan") {
 		t.Fatalf("write without a plan: %s", out)
 	}
 	// a plan whose open task has no proof is refused
@@ -56,24 +56,24 @@ func TestProtocolDecidesNotTheModel(t *testing.T) {
 
 	// 3. size limit
 	big := strings.Repeat("const x = 1;\n", 450)
-	if out, isErr := run(writeCall("8", "grande.js", big)); !isErr || !strings.Contains(out, "limite do projeto: 400") {
+	if out, isErr := run(writeCall("8", "grande.js", big)); !isErr || !strings.Contains(out, "project limit: 400") {
 		t.Fatalf("oversized file accepted: %s", out)
 	}
 
 	// 4. the turn cannot end with the plan open
 	s.Turn, s.TurnStarts = 1, []int{0}
 	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "crie soma"}}}}
-	if why := s.turnObligation(context.Background()); !strings.Contains(why, "tarefas abertas") {
+	if why := s.turnObligation(context.Background()); !strings.Contains(why, "open tasks") {
 		t.Fatalf("turn ended with an open plan: %q", why)
 	}
 	s.setTasks([]TaskItem{{ID: "1", Text: "criar soma", Status: "done"}})
 	s.Checkpoints[1] = []CheckpointFile{{Path: "quebrado.json", New: true}}
 	_ = os.WriteFile(filepath.Join(root, "quebrado.json"), []byte(`{"a": }`), 0o644)
-	if why := s.turnObligation(context.Background()); !strings.Contains(why, "verificador do projeto") {
+	if why := s.turnObligation(context.Background()); !strings.Contains(why, "project's checker") {
 		t.Fatalf("turn ended with a broken file: %q", why)
 	}
 	_ = os.WriteFile(filepath.Join(root, "quebrado.json"), []byte(`{"a": 1}`), 0o644)
-	if why := s.turnObligation(context.Background()); !strings.Contains(why, "sem Report") {
+	if why := s.turnObligation(context.Background()); !strings.Contains(why, "without a Report") {
 		t.Fatalf("turn ended without a report: %q", why)
 	}
 }
@@ -87,7 +87,7 @@ func TestConventionsAreEnforcedOnWrites(t *testing.T) {
 	}
 	LearnConventions(root)
 	tabs := "const a = require('./a');\nfunction g() {\n\tif (a) {\n\t\treturn 1;\n\t}\n\tconst b = 2;\n\tconst c = 3;\n\treturn b + c;\n}\nmodule.exports = g;\n"
-	if why := conventionViolation(root, "src/novo-arquivo.js", "", tabs); !strings.Contains(why, "2 espaços") {
+	if why := conventionViolation(root, "src/novo-arquivo.js", "", tabs); !strings.Contains(why, "2 spaces") {
 		t.Fatalf("tabs in a 2-space project: %q", why)
 	}
 	esm := "import a from './a';\nexport function g() {\n  if (a) {\n    return 1;\n  }\n  return 2;\n}\n"
