@@ -70,8 +70,8 @@ internal/
 
 ## i18n
 
-- Go: `core.Msg` is an identifier plus named arguments; catalogs in `internal/core/msgs_*.go` carry
-  English and pt-BR. The model reads English; the user reads their configured language.
+- Go: `core.Msg` is an identifier plus named arguments; `internal/core/catalog.json` carries English
+  and pt-BR. The model reads English; the user reads their configured language.
 - UI: messages have stable ids (`ui.<area>.<slug>.<hash>`) in `internal/core/catalog.json`, embedded into
   `core` and served by `/api/i18n`; `t(id, args)` renders the current language and falls back to the
   Portuguese source only for labels that arrive as data. Static markup carries `data-i18n`,
@@ -101,10 +101,11 @@ internal/
 
 ## Known debt
 
-- i18n: UI translations are keyed by the Portuguese source sentence and a `MutationObserver` applies
-  them; the target is stable namespaced ids and a shared catalog, with no observer.
-- Every Go function body is now at most 60 lines (`TestFunctionsStaySmall` in `internal/architecture`)
-  and every frontend function is checked by `tools/check-frontend.mjs`; files stay under 400 lines.
+- None in the architecture rules: no Go function is over 60 lines (`TestFunctionsStaySmall` in
+  `internal/architecture`), no frontend function or file is (checked by `tools/check-frontend.mjs`),
+  and every rule above is enforced by a test or a CI step.
+- Compatibility route families (`/api/session/<id>` and `/api/sessions/<id>`) are kept so older pages
+  and external callers keep working; both dispatch into the same domain methods.
 
 ## Verification
 
