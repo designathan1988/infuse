@@ -121,3 +121,8 @@ func Frameable(ctx context.Context, u string) bool { return frameable(ctx, u) }
 
 func ReadIfExists(p string) string { return readIfExists(p) }
 func LoadInstructions(root string) string { return loadInstructions(root) }
+
+func (s *Session) CheckpointBeforeWrite(abs string) { s.checkpointBeforeWrite(abs) }
+
+func (s *Session) LookupTool(name string) (Tool, bool) { return s.lookupTool(name) }
+func (s *Session) ToolSpecs() []ToolSpec { return s.toolSpecs() }

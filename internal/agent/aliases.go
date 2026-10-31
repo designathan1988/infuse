@@ -59,6 +59,9 @@ type (
 	Hotspot    = projectmap.Hotspot
 
 	ConventionRules  = knowledge.ConventionRules
+	fileChange      = workspace.FileChange
+	compiledRule    = knowledge.CompiledRule
+	compiledRules   = knowledge.CompiledRules
 	ProjectRules     = knowledge.ProjectRules
 	Tally            = knowledge.Tally
 	OracleCheck      = oracle.OracleCheck
@@ -78,6 +81,7 @@ const (
 var (
 	instructionNames = knowledge.InstructionNames
 	ignoredDirs      = projectmap.IgnoredDirs
+	projectRulesSpec = knowledge.ProjectRulesSpec
 	snapSkipDirs     = workspace.SnapSkipDirs
 )
 
@@ -114,6 +118,7 @@ func noConsoleWindow(cmd *exec.Cmd)             { process.NoConsoleWindow(cmd) }
 func gitRun(root string, args ...string) (string, error) { return workspace.GitRun(root, args...) }
 
 func LoadSettings() Settings                    { return config.LoadSettings() }
+func settingsFile() string                     { return config.SettingsFile() }
 func SaveSettings(s Settings) error             { return config.SaveSettings(s) }
 func EffectiveSettings(root string) Settings    { return config.EffectiveSettings(root) }
 func recordUsage(e usageEntry)                  { config.RecordUsage(e) }
@@ -121,6 +126,7 @@ func todaySpend() float64                       { return config.TodaySpend() }
 func rootLang(root string) string               { return config.RootLanguage(root) }
 
 func newProvider(name string, cfg ProviderConfig) (Provider, error) { return llm.NewProvider(name, cfg) }
+func registerProvider(name string, mk func(cfg ProviderConfig) Provider) { llm.RegisterProvider(name, mk) }
 func ListModels(ctx context.Context, name string, cfg ProviderConfig) ([]string, error) {
 	return llm.ListModels(ctx, name, cfg)
 }
@@ -145,6 +151,12 @@ func underReference(r ProjectRules, rel string) string { return knowledge.UnderR
 var version = core.Version
 func procGroup(cmd *exec.Cmd) { process.ProcGroup(cmd) }
 func resolveIn(cwd, p string) string { return filter.ResolveIn(cwd, p) }
+func buildTrailer(root, cwd, original string, actions []filter.TransformAction, started int64, rules *RuleSet, ruleLines []string) string {
+	return filter.BuildTrailer(root, cwd, original, actions, started, rules, ruleLines)
+}
+func mayChangeTree(cmd string) bool { return filter.MayChangeTree(cmd) }
+func MayChangeTree(cmd string) bool { return filter.MayChangeTree(cmd) }
+func ListedDirectory(cmd string) (string, bool) { return filter.ListedDirectory(cmd) }
 func trailerMsgs(root, cwd, original string, actions []filter.TransformAction, started int64, rules *RuleSet, notes []Msg) []Msg {
 	return filter.TrailerMsgs(root, cwd, original, actions, started, rules, notes)
 }
@@ -219,11 +231,33 @@ func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verd
 	return oracle.RunOracle(ctx, evidenceRoot, workDir, session)
 }
 func CreateWorktree(root, name string) (string, string, error) { return workspace.CreateWorktree(root, name) }
+func RemoveWorktree(root, dir string, force bool) error { return workspace.RemoveWorktree(root, dir, force) }
+func Changes(dir string) map[string]any { return workspace.Changes(dir) }
+
+type liveSource struct{}
+
+func (liveSource) LiveSessions(root string) []workspace.LiveSession { return liveSessions(root) }
+
+func LocalChanges(root, work, session, scope string) map[string]any {
+	return workspace.LocalChanges(root, work, session, scope, liveSource{})
+}
+func LocalDiff(root, work, session, scope, p string) string {
+	return workspace.LocalDiff(root, work, session, scope, p, liveSource{})
+}
+func LocalDiscard(root, work, session, scope, p string) error {
+	return workspace.LocalDiscard(root, work, session, scope, p, liveSource{})
+}
+func WriteUserFile(root, rel, content string, mtime int64, force bool) (int64, error) {
+	return workspace.WriteUserFile(root, rel, content, mtime, force)
+}
 func redactSecrets(s string) string { return security.RedactSecrets(s) }
 func externalContent(source, text string) string { return security.ExternalContent(source, text) }
 func privateTargetMsg(raw string) (bool, Msg) { return security.PrivateTargetMsg(raw) }
 
 func mcpFor(root string) *mcp.Manager { return mcp.For(root) }
+func editMCP(root, scope string, f func(map[string]mcp.ServerConfig)) error {
+	return mcp.Edit(root, scope, f)
+}
 
 func connectionConfig(s Settings, id string) (string, ProviderConfig) {
 	p := config.PresetFor(id)
@@ -286,3 +320,8 @@ func (b *loopBreaker) record(name string, input json.RawMessage, isErr bool) err
 
 type usageEntry = config.UsageEntry
 
+
+func LearnConventions(root string) string { return knowledge.LearnConventions(root) }
+func SuggestChecks(root string) []CheckSuggestion { return oracle.SuggestChecks(root) }
+func LoadOracleSpec(root string) (OracleSpec, error) { return oracle.LoadOracleSpec(root) }
+func ListVerdicts(root string, n int) []Verdict { return oracle.ListVerdicts(root, n) }

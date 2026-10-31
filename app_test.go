@@ -87,12 +87,12 @@ func TestRewindVariants(t *testing.T) {
 	_ = os.WriteFile(file, []byte("v0"), 0o644)
 	s := newSession(root)
 	turn := func(text, content string) {
-		s.mu.Lock()
+		s.Mu.Lock()
 		s.Turn++
 		s.TurnStarts = append(s.TurnStarts, len(s.Messages))
 		s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: text}}}, Message{Role: "assistant", Content: []Block{{Type: "text", Text: "ok"}}})
-		s.mu.Unlock()
-		s.checkpointBeforeWrite(file)
+		s.Mu.Unlock()
+		s.CheckpointBeforeWrite(file)
 		_ = os.WriteFile(file, []byte(content), 0o644)
 	}
 	turn("primeiro", "v1")
