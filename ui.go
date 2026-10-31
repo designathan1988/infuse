@@ -70,7 +70,15 @@ func StartUI(window bool) {
 		w.Header().Set("content-type", "image/png")
 		_, _ = w.Write(iconPNG(64))
 	})
-	mux.HandleFunc("/api/", apiHandler)
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		// only the app itself may call the API: other sites open in a browser (CSRF) and rebound
+		// hostnames (DNS rebinding) are refused before anything runs
+		if err := sameOrigin(r.Host, r.Header.Get("Origin"), r.Method, r.Header.Get("X-Infuse")); err != nil {
+			sendJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+			return
+		}
+		apiHandler(w, r)
+	})
 	go func() { _ = http.Serve(ln, mux) }()
 	StartScheduler()
 	if window {

@@ -156,9 +156,9 @@ function mountTerminal(pb, extra, c) {
     const es = new EventSource(`/api/term/${r.id}/stream?root=${encodeURIComponent(c.root)}`); tb.es = es;
     es.onmessage = e => { const bin = atob(e.data); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); term.write(bytes); };
     es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('processo encerrado')}]\x1b[0m\r\n`); es.close(); tb.dead = true; });
-    es.onerror = () => { if (es.readyState === EventSource.CLOSED || tb.dead) return; fetch(`/api/term/${r.id}/resize?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cols: term.cols, rows: term.rows }) }).then(x => { if (x.status === 404) { es.close(); tb.dead = true; term.write(`\r\n\x1b[2m[${t('terminal encerrado')}]\x1b[0m\r\n`); } }); };
+    es.onerror = () => { if (es.readyState === EventSource.CLOSED || tb.dead) return; fetch(`/api/term/${r.id}/resize?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': '1' }, body: JSON.stringify({ cols: term.cols, rows: term.rows }) }).then(x => { if (x.status === 404) { es.close(); tb.dead = true; term.write(`\r\n\x1b[2m[${t('terminal encerrado')}]\x1b[0m\r\n`); } }); };
     let pending = '', timer = null;
-    term.onData(d => { if (tb.dead) return; pending += d; if (!timer) timer = setTimeout(() => { const data = pending; pending = ''; timer = null; fetch(`/api/term/${r.id}/input?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data }) }); }, 8); });
+    term.onData(d => { if (tb.dead) return; pending += d; if (!timer) timer = setTimeout(() => { const data = pending; pending = ''; timer = null; fetch(`/api/term/${r.id}/input?root=${encodeURIComponent(c.root)}`, { method: 'POST', headers: { 'content-type': 'application/json', 'X-Infuse': '1' }, body: JSON.stringify({ data }) }); }, 8); });
     term.onResize(({ cols, rows }) => api(`/api/term/${r.id}/resize`, { body: { cols, rows }, root: c.root }));
     tabs.push(tb); show(tb);
   };
@@ -178,7 +178,7 @@ function mountFiles(pb, extra, c) {
   ta.onscroll = () => gut.scrollTop = ta.scrollTop;
   const save = async (force) => {
     if (!curPath || !dirty) return; fstat.textContent = t('salvando…');
-    const r = await fetch(`/api/file?root=${encodeURIComponent(c.root)}&dir=${encodeURIComponent(c.dir)}`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: curPath, content: ta.value, mtime, force: !!force }) });
+    const r = await fetch(`/api/file?root=${encodeURIComponent(c.root)}&dir=${encodeURIComponent(c.dir)}`, { method: 'PUT', headers: { 'content-type': 'application/json', 'X-Infuse': '1' }, body: JSON.stringify({ path: curPath, content: ta.value, mtime, force: !!force }) });
     const j = await r.json();
     if (r.status === 409) { fstat.innerHTML = ''; const bar = h(`<span class="row"><span class="del">${t('O arquivo mudou no disco.')}</span><button class="btn sm line">${t('Sobrescrever')}</button><button class="btn sm">${t('Descartar minhas edições')}</button></span>`); fstat.appendChild(bar); $$('button', bar)[0].onclick = () => save(true); $$('button', bar)[1].onclick = () => { ta.value = j.content; mtime = j.mtime; dirty = false; gutter(); fstat.textContent = ''; }; return; }
     if (j.error) { fstat.textContent = j.error; return; }
@@ -229,7 +229,7 @@ function mountBrowser(pb, extra, c) {
   $('.nt', extra).onclick = () => add('');
   $('.srv', extra).onclick = async e => {
     const anchor = e.currentTarget; const list = await api('/api/devservers', { root: c.root });
-    const items = list.length ? list.flatMap(s => [{ label: s.name, d: `:${s.port} · ${s.running || s.listening ? t('rodando') : t('parado')}`, f: async () => { if (!s.running && !s.listening) { const r = await api('/api/devservers', { body: { action: 'start', name: s.name }, root: c.root }); if (r.error) return toast(r.error); toast(t('Iniciando ') + s.name); setTimeout(() => go(s.url), 2500); } else go(s.url); } }]) : [{ label: 'Nenhum servidor configurado', sub: 'Declare em .infuse/launch.json ou .claude/launch.json', f: () => { } }];
+    const items = list.length ? list.flatMap(s => [{ label: s.name, d: `:${s.port} · ${s.running || s.listening ? t('rodando') : t('parado')}${s.approved ? '' : ' · ' + t('não aprovado')}`, f: async () => { if (!s.running && !s.listening) { let r = await api('/api/devservers', { body: { action: 'start', name: s.name }, root: c.root }); if (r.needsApproval) { if (!confirm(t('Executar este comando de launch.json? Ele roda com as suas permissões, fora do filtro.') + '\n\n' + r.command)) return; r = await api('/api/devservers', { body: { action: 'approve', name: s.name }, root: c.root }); } if (r.error) return toast(r.error); toast(t('Iniciando ') + s.name); setTimeout(() => go(s.url), 2500); } else go(s.url); } }]) : [{ label: 'Nenhum servidor configurado', sub: 'Declare em .infuse/launch.json ou .claude/launch.json', f: () => { } }];
     if (list.some(s => s.running)) items.push({ sep: 1 }, ...list.filter(s => s.running).map(s => ({ label: t('Parar ') + s.name, f: () => api('/api/devservers', { body: { action: 'stop', name: s.name }, root: c.root }) })), { label: 'Parar todos', danger: 1, f: () => api('/api/devservers', { body: { action: 'stopall' }, root: c.root }) });
     menu(anchor, items, null, { alignRight: true });
   };

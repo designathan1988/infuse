@@ -3,7 +3,6 @@ package main
 // Integrated terminal and slash commands for the window.
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -23,7 +22,7 @@ type terminalResult struct {
 // runTerminal runs one command through the filter (heredoc transform, rules, journal) and returns what the
 // agent would have seen, plus the new working directory.
 func runTerminal(root, cwd, command string) terminalResult {
-	if cwd == "" || !strings.HasPrefix(cwd, root) {
+	if cwd == "" || !within(root, cwd) {
 		cwd = root
 	}
 	if strings.TrimSpace(command) == "" {
@@ -50,13 +49,13 @@ func runTerminal(root, cwd, command string) terminalResult {
 	noConsoleWindow(cmd)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	var buf bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &buf, &buf
+	buf := newCapWriter(1 << 20)
+	cmd.Stdout, cmd.Stderr = buf, buf
 	err := cmd.Run()
 	out := buf.String()
 	res := terminalResult{Cwd: cwd, Exit: exitCode(err), Notes: []string{}}
 	if i := strings.LastIndex(out, "__INFUSE_CWD__"); i >= 0 {
-		if nc := FromMsysPath(strings.TrimSpace(out[i+len("__INFUSE_CWD__"):])); nc != "" && strings.HasPrefix(nc, root) {
+		if nc := FromMsysPath(strings.TrimSpace(out[i+len("__INFUSE_CWD__"):])); nc != "" && within(root, nc) {
 			res.Cwd = nc
 		}
 		out = strings.TrimRight(out[:i], "\n")

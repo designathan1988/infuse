@@ -83,15 +83,26 @@ func DevServers(root string) []map[string]any {
 			}
 			log = string(b)
 		}
-		out = append(out, map[string]any{"name": c.Name, "port": c.Port, "url": c.URL, "running": running, "listening": portOpen(c.Port), "log": log})
+		out = append(out, map[string]any{"name": c.Name, "port": c.Port, "url": c.URL, "running": running, "listening": portOpen(c.Port), "log": log,
+			"command": launchCommandLine(c), "approved": launchApproved(root, c)})
 	}
 	return out
+}
+
+// errLaunchNeedsApproval: the command was never approved by the user (or changed since).
+type errLaunchNeedsApproval struct{ Command string }
+
+func (e errLaunchNeedsApproval) Error() string {
+	return "este comando de .infuse/launch.json precisa da sua aprovação antes de rodar: " + e.Command
 }
 
 func StartDevServer(root, name string) error {
 	for _, c := range launchConfigs(root) {
 		if c.Name != name {
 			continue
+		}
+		if !launchApproved(root, c) {
+			return errLaunchNeedsApproval{launchCommandLine(c)}
 		}
 		devServersMu.Lock()
 		defer devServersMu.Unlock()

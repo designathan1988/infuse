@@ -72,7 +72,7 @@ async function openSettings(section = 'general') {
     el.append(setRow('Esforço padrão', 'Raciocínio estendido em novas sessões', selectEl([['low', 'Baixo'], ['medium', 'Médio'], ['high', 'Alto'], ['max', 'Máximo']], s.effort || 'medium', v => save({ effort: v }))));
     el.append(setRow('Máximo de tokens de saída', 'Por resposta do modelo', inputEl(s.maxTokens, v => save({ maxTokens: v }), 'number')));
     el.append(setRow('Limite de contexto', 'Tokens; a conversa é compactada em 75%', inputEl(s.contextLimit, v => save({ contextLimit: v }), 'number')));
-    el.append(setRow('Limite de gasto por sessão (US$)', 'O agente para ao ultrapassar; 0 desliga', inputEl(s.dailyLimitUsd, v => save({ dailyLimitUsd: v }), 'number')));
+    el.append(setRow('Limite de gasto diário (US$)', 'Soma de todas as sessões no dia; o agente para ao ultrapassar; 0 desliga', inputEl(s.dailyLimitUsd, v => save({ dailyLimitUsd: v }), 'number')));
     const u = await api('/api/usage', { root: '' });
     el.append(h(`<h2>${t('Gasto')}</h2>`), h(`<div class="row" style="gap:36px;margin-bottom:8px"><div><div class="faint">${t('Hoje')}</div><div class="big">${money(u.today)}</div></div><div><div class="faint">${t('Este mês')}</div><div class="big">${money(u.month)}</div></div><div><div class="faint">${t('Tokens')}</div><div class="big">${ktok(u.tokens?.input)} / ${ktok(u.tokens?.output)}</div></div></div>`));
     const proj = Object.entries(u.byProject || {}).sort((a, b) => b[1] - a[1]);

@@ -48,7 +48,7 @@ async function api(url, opts = {}) {
   const root = opts.root ?? curRoot();
   if (root && !/[?&]root=/.test(url)) url += (url.includes('?') ? '&' : '?') + 'root=' + encodeURIComponent(root);
   if (opts.dir && !/[?&]dir=/.test(url)) url += '&dir=' + encodeURIComponent(opts.dir);
-  const r = await fetch(url, { method: opts.method || (opts.body ? 'POST' : 'GET'), headers: { 'content-type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  const r = await fetch(url, { method: opts.method || (opts.body ? 'POST' : 'GET'), headers: { 'content-type': 'application/json', 'X-Infuse': '1' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
   return r.json().catch(() => ({}));
 }
 const nat = async (method, ...p) => {

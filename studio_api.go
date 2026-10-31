@@ -318,7 +318,10 @@ func streamEvents(w http.ResponseWriter, r *http.Request, s *Session) {
 	defer ping.Stop()
 	for {
 		select {
-		case ev := <-ch:
+		case ev, ok := <-ch:
+			if !ok {
+				return // dropped for falling behind: the browser reconnects and gets a snapshot
+			}
 			write(ev)
 		case <-ping.C:
 			fmt.Fprint(w, ": ping\n\n")

@@ -187,6 +187,10 @@ func (s *Session) emit(t string, data any) {
 		select {
 		case ch <- ev:
 		default:
+			// a subscriber that fell behind is disconnected rather than silently skipped: its client
+			// reconnects and receives a fresh snapshot (pending permission and question included)
+			close(ch)
+			delete(s.subs, ch)
 		}
 	}
 	s.mu.Unlock()
@@ -235,6 +239,25 @@ func (s *Session) effort() string {
 		return s.Effort
 	}
 	return s.settings.Effort
+}
+
+// fastModel is the settings' fast model when the session's provider serves it, else the session's model
+// (a fast model from another provider would fail on this connection).
+func (s *Session) fastModel() string {
+	fm := s.settings.FastModel
+	if fm == "" {
+		return s.Model
+	}
+	c := s.settings.Connections[s.providerID()]
+	for _, m := range c.Models {
+		if m == fm {
+			return fm
+		}
+	}
+	if s.providerID() == s.settings.Provider && len(c.Models) == 0 {
+		return fm
+	}
+	return s.Model
 }
 
 // workRoot is where the agent's tools operate: the session's worktree, or the project.
@@ -293,7 +316,7 @@ func (s *Session) scheduleMapRefresh() {
 }
 
 func (s *Session) checkpointBeforeWrite(abs string) {
-	rel := relTo(s.Root, abs)
+	rel := relTo(s.workRoot(), abs) // relative to where the tools work: a worktree's files stay inside it
 	s.mu.Lock()
 	for _, c := range s.Checkpoints[s.Turn] {
 		if c.Path == rel {
@@ -325,7 +348,7 @@ func (s *Session) Revert(toTurn int) error {
 		files := s.Checkpoints[t]
 		for i := len(files) - 1; i >= 0; i-- {
 			c := files[i]
-			abs := filepath.Join(s.Root, filepath.FromSlash(c.Path))
+			abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
 			if c.New {
 				_ = os.Remove(abs)
 				continue
@@ -554,6 +577,8 @@ func (s *Session) run(ctx context.Context) {
 		return
 	}
 	rules := LoadRules(s.Root)
+	var breaker loopBreaker // stops a turn that keeps repeating the same failure
+	var tripped error
 	for iter := 0; iter < 200; iter++ {
 		if ctx.Err() != nil {
 			s.finish("cancelado")
@@ -601,9 +626,11 @@ func (s *Session) run(ctx context.Context) {
 		recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cache: res.Usage.CacheRead + res.Usage.CacheWrite, Cost: cost})
 		s.emit("message", map[string]any{"message": Message{Role: "assistant", Content: res.Content}, "usage": res.Usage, "totalUsage": s.Usage, "cost": s.Cost, "lastInput": res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite})
 		s.save()
-		if s.Cost > s.settings.DailyLimitUSD && s.settings.DailyLimitUSD > 0 {
-			s.fail(fmt.Errorf("limite de gasto da sessão atingido (US$ %.2f)", s.settings.DailyLimitUSD))
-			return
+		if lim := s.settings.DailyLimitUSD; lim > 0 { // the day's total across every session, from the ledger
+			if spent := todaySpend(); spent > lim {
+				s.fail(fmt.Errorf("limite de gasto diário atingido: US$ %.2f de US$ %.2f (Configurações > Modelos e custos)", spent, lim))
+				return
+			}
 		}
 		if res.StopReason != "tool_use" {
 			s.finish("")
@@ -615,22 +642,35 @@ func (s *Session) run(ctx context.Context) {
 				continue
 			}
 			out, isErr := s.runTool(ctx, rules, b)
+			out = redactSecrets(out) // credentials never reach the model, the transcript or the UI
 			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr})
 			s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": out, "isError": isErr})
-			if ctx.Err() != nil {
+			if err := breaker.record(b.Name, b.Input, isErr); err != nil {
+				tripped = err
+			}
+			if ctx.Err() != nil || tripped != nil {
 				break
 			}
 		}
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || tripped != nil {
 			s.mu.Lock()
 			// keep the conversation consistent: every tool_use gets a result
+			why := "cancelado pelo usuário"
+			if tripped != nil {
+				why = tripped.Error()
+			}
 			for _, b := range res.Content {
 				if b.Type == "tool_use" && !hasResult(results, b.ID) {
-					results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: "cancelado pelo usuário", IsError: true})
+					results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: why, IsError: true})
 				}
 			}
 			s.Messages = append(s.Messages, Message{Role: "user", Content: results})
 			s.mu.Unlock()
+			if tripped != nil {
+				Lesson(s.Root, "loop-errático", tripped.Error())
+				s.fail(tripped)
+				return
+			}
 			s.finish("cancelado")
 			return
 		}
@@ -651,12 +691,42 @@ func hasResult(results []Block, id string) bool {
 	return false
 }
 
+// readsOutside reports whether a read tool's path (path / file_path) points outside the session's folder.
+func (s *Session) readsOutside(input json.RawMessage) bool {
+	var in struct {
+		Path     string `json:"path"`
+		FilePath string `json:"file_path"`
+	}
+	_ = json.Unmarshal(input, &in)
+	p := in.Path
+	if p == "" {
+		p = in.FilePath
+	}
+	if p == "" {
+		return false
+	}
+	p = FromMsysPath(p)
+	s.mu.Lock()
+	cwd, root := s.Cwd, s.workRoot()
+	s.mu.Unlock()
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(cwd, p)
+	}
+	return !within(root, p)
+}
+
 func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string, bool) {
 	tool, ok := toolRegistry[b.Name]
 	if !ok {
 		return "ferramenta desconhecida: " + b.Name, true
 	}
-	switch s.permissionFor(tool, b.Input) {
+	decision := s.permissionFor(tool, b.Input)
+	// reading outside the session's folder (~/.ssh, browser profiles…) is never silent: it asks,
+	// unless the user chose to accept everything
+	if decision == "allow" && tool.Category() == "read" && s.mode() != "bypass" && s.readsOutside(b.Input) {
+		decision = "ask"
+	}
+	switch decision {
 	case "deny":
 		if s.mode() == "plan" {
 			return "modo plano: escrita e execução estão desativadas; proponha o plano ao usuário", true
@@ -721,7 +791,7 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 	keep := msgs[len(msgs)-2:] // the latest exchange stays verbatim
 	older := msgs[:len(msgs)-2]
 	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: "Resuma a conversa acima para continuar o trabalho sem perder nada essencial: objetivo, decisões tomadas, arquivos criados ou alterados (com caminhos), o que foi tentado e rejeitado, erros encontrados, estado atual e próximos passos. Seja específico e conciso."}}})
-	res, err := p.Stream(ctx, ModelRequest{Model: s.settings.FastModel, Messages: older, MaxTokens: 4000}, func(StreamEvent) {})
+	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: older, MaxTokens: 4000}, func(StreamEvent) {})
 	if err != nil {
 		return err
 	}
@@ -735,7 +805,7 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 	s.Messages = append([]Message{{Role: "user", Content: []Block{{Type: "text", Text: "[Contexto compactado — resumo do trabalho até aqui]\n\n" + summary}}}, {Role: "assistant", Content: []Block{{Type: "text", Text: "Entendido, continuo a partir desse estado."}}}}, keep...)
 	s.TurnStarts = []int{0}
 	s.Compactions++
-	s.Cost += s.settings.costOf(s.settings.FastModel, res.Usage)
+	s.Cost += s.settings.costOf(s.fastModel(), res.Usage)
 	s.mu.Unlock()
 	s.emit("compacted", map[string]any{"summary": summary})
 	return nil
@@ -777,7 +847,7 @@ func (s *Session) RewindTo(toTurn int, code, conversation bool) (string, error) 
 			files := s.Checkpoints[t]
 			for i := len(files) - 1; i >= 0; i-- {
 				c := files[i]
-				abs := filepath.Join(s.Root, filepath.FromSlash(c.Path))
+				abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
 				if c.New {
 					_ = os.Remove(abs)
 					continue
@@ -832,10 +902,7 @@ func (s *Session) SummarizeUpTo(ctx context.Context, upTo int, hint string) erro
 		ask += "\nFoco pedido pelo usuário: " + hint
 	}
 	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: ask}}})
-	model := s.settings.FastModel
-	if model == "" {
-		model = s.Model
-	}
+	model := s.fastModel()
 	res, err := p.Stream(ctx, ModelRequest{Model: model, Messages: older, MaxTokens: 4000}, func(StreamEvent) {})
 	if err != nil {
 		return err

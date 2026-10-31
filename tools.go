@@ -163,13 +163,13 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	noConsoleWindow(cmd)
 	cmd.Dir = tc.Cwd
 	cmd.Env = append(os.Environ(), "INFUSE_AGENT=1", "GIT_TERMINAL_PROMPT=0", "CI=1")
-	var buf bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &buf, &buf
+	buf := newCapWriter(1 << 20) // head and tail kept: unbounded output cannot exhaust memory
+	cmd.Stdout, cmd.Stderr = buf, buf
 	err := cmd.Run()
 	out := buf.String()
 	if i := strings.LastIndex(out, "__INFUSE_CWD__"); i >= 0 {
 		if nc := strings.TrimSpace(out[i+len("__INFUSE_CWD__"):]); nc != "" {
-			if abs := FromMsysPath(nc); strings.HasPrefix(abs, tc.Root) {
+			if abs := FromMsysPath(nc); within(tc.Root, abs) {
 				tc.S.setCwd(abs)
 			}
 		}
@@ -577,6 +577,11 @@ var reWs = regexp.MustCompile(`\n\s*\n+`)
 func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
 	var in struct{ URL string }
 	_ = json.Unmarshal(input, &in)
+	if bad, why := privateTarget(in.URL); bad { // no requests into this machine or the private network
+		Journal(tc.Root, JournalEntry{Kind: "blocked", Command: in.URL, Detail: "WebFetch recusado: " + why})
+		return "WebFetch recusado: " + why + ". O agente só busca endereços públicos.", true
+	}
+	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.URL, Detail: "pesquisa"})
 	req, err := http.NewRequestWithContext(ctx, "GET", in.URL, nil)
 	if err != nil {
 		return err.Error(), true
@@ -594,7 +599,7 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 		text = strings.NewReplacer("&nbsp;", " ", "&amp;", "&", "&lt;", "<", "&gt;", ">", "&quot;", `"`, "&#39;", "'").Replace(text)
 		text = reWs.ReplaceAllString(text, "\n\n")
 	}
-	return clip(fmt.Sprintf("HTTP %d\n\n%s", resp.StatusCode, strings.TrimSpace(text))), resp.StatusCode >= 400
+	return clip(externalContent(in.URL, fmt.Sprintf("HTTP %d\n\n%s", resp.StatusCode, strings.TrimSpace(text)))), resp.StatusCode >= 400
 }
 
 // ---------------------------------------------------------------- TodoWrite

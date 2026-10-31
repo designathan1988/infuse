@@ -408,8 +408,21 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 	case path == "/api/devservers":
 		var err error
 		switch str("action") {
+		case "approve": // the user approved this exact command in the window
+			for _, c := range launchConfigs(root) {
+				if c.Name == str("name") {
+					err = approveLaunch(root, c)
+				}
+			}
+			if err == nil {
+				err = StartDevServer(root, str("name"))
+			}
 		case "start":
 			err = StartDevServer(root, str("name"))
+			if na, ok := err.(errLaunchNeedsApproval); ok {
+				sendJSON(w, 200, map[string]any{"ok": false, "needsApproval": true, "command": na.Command, "error": na.Error()})
+				return true
+			}
 		case "stop":
 			StopDevServer(root, str("name"))
 		case "stopall":

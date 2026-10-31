@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -60,15 +61,55 @@ func httpError(provider string, resp *http.Response) error {
 
 func postJSON(ctx context.Context, client *http.Client, url string, headers map[string]string, body any) (*http.Response, error) {
 	b, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
-	if err != nil {
-		return nil, err
+	return doWithRetry(ctx, client, func() (*http.Request, error) {
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("content-type", "application/json")
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		return req, nil
+	})
+}
+
+// doWithRetry retries rate-limit and overload answers (429, 503, 529) and dropped connections up to
+// three times, waiting Retry-After when the provider sends it, else 1s, 2s, 4s.
+func doWithRetry(ctx context.Context, client *http.Client, newReq func() (*http.Request, error)) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		req, err := newReq()
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.Do(req)
+		if err == nil && resp.StatusCode != 429 && resp.StatusCode != 503 && resp.StatusCode != 529 {
+			return resp, nil
+		}
+		wait := time.Duration(1<<attempt) * time.Second
+		if err == nil {
+			if s, perr := strconv.Atoi(resp.Header.Get("Retry-After")); perr == nil && s > 0 && s <= 60 {
+				wait = time.Duration(s) * time.Second
+			}
+			if attempt == 3 {
+				return resp, nil // give the caller the provider's own error
+			}
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+		} else {
+			if ctx.Err() != nil {
+				return nil, err
+			}
+			lastErr = err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
 	}
-	req.Header.Set("content-type", "application/json")
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	return client.Do(req)
+	return nil, lastErr
 }
 
 func sseScanner(r io.Reader) *bufio.Scanner {

@@ -4,7 +4,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -132,12 +131,7 @@ func (p *anthropicProvider) Stream(ctx context.Context, req ModelRequest, emit f
 	if req.Thinking > 0 {
 		body["thinking"] = map[string]any{"type": "enabled", "budget_tokens": req.Thinking}
 	}
-	b, _ := json.Marshal(body)
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", p.base+"/v1/messages", bytes.NewReader(b))
-	httpReq.Header.Set("content-type", "application/json")
-	httpReq.Header.Set("x-api-key", p.key)
-	httpReq.Header.Set("anthropic-version", "2023-06-01")
-	resp, err := p.client.Do(httpReq)
+	resp, err := postJSON(ctx, p.client, p.base+"/v1/messages", map[string]string{"x-api-key": p.key, "anthropic-version": "2023-06-01"}, body)
 	if err != nil {
 		return ModelResult{}, err
 	}

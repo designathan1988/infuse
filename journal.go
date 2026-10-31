@@ -48,6 +48,7 @@ func appendLine(file string, v any) {
 
 func Journal(root string, e JournalEntry) {
 	e.Ts = time.Now().UnixMilli()
+	e.Command, e.Detail = redactSecrets(e.Command), redactSecrets(e.Detail) // the journal never stores credentials
 	appendLine(filepath.Join(infuseDir(root), "journal.jsonl"), e)
 }
 
