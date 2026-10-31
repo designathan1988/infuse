@@ -51,13 +51,6 @@ type Bridge struct {
 	Host    Host
 }
 
-type Attachment struct {
-	Path  string `json:"path"`
-	Name  string `json:"name"`
-	Size  int64  `json:"size"`
-	Image bool   `json:"image"`
-}
-
 // DropResult splits dropped paths the way the window uses them: folders become projects, files attachments.
 type DropResult struct {
 	Projects    []string     `json:"projects"`

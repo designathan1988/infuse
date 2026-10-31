@@ -765,14 +765,6 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 
 // ---------------------------------------------------------------- TodoWrite
 
-type TaskItem struct {
-	ID     string `json:"id"`
-	Text   string `json:"text"`
-	Status string `json:"status"`          // pending | in_progress | done | blocked
-	Proof  string `json:"proof,omitempty"` // how the task will be shown to work (a command, a page, a file)
-	Note   string `json:"note,omitempty"`  // set by infuse, never by the model (why a task was closed as blocked)
-}
-
 type todoTool struct{}
 
 func (todoTool) Category() string { return "ui" }

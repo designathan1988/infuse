@@ -18,12 +18,6 @@ import (
 	"unicode/utf8"
 )
 
-type Event struct {
-	Type string `json:"type"`
-	Data any    `json:"data,omitempty"`
-	Seq  int    `json:"seq"`
-}
-
 type permRequest struct {
 	ID       string          `json:"id"`
 	Tool     string          `json:"tool"`
@@ -38,11 +32,6 @@ type askRequest struct {
 	Question string   `json:"question"`
 	Options  []string `json:"options"`
 	reply    chan string
-}
-
-type CheckpointFile struct {
-	Path string `json:"path"` // relative posix
-	New  bool   `json:"new"`  // did not exist before the turn
 }
 
 type SessionData struct {
@@ -588,12 +577,6 @@ func (s *Session) Answer(id, answer string) bool {
 }
 
 // ---------------------------------------------------------------- the loop
-
-// InlineImage is an image pasted into the prompt box.
-type InlineImage struct {
-	MediaType string `json:"mediaType"`
-	Data      string `json:"data"`
-}
 
 // userBlocks builds the user message: the text, then each attached file (images as image blocks, other
 // files as their content, with the path), then pasted images.

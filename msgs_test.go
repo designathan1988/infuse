@@ -1,10 +1,10 @@
 package main
 
 import (
+	"infuse/internal/core"
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -27,18 +27,10 @@ func TestCatalogIsCompleteForEveryMessageUsed(t *testing.T) {
 	if len(used) == 0 {
 		t.Fatal("no message found in the code")
 	}
-	catalogMu.RLock()
-	defer catalogMu.RUnlock()
-	names := func(s string) string {
-		var out []string
-		for _, m := range rePlaceholder.FindAllStringSubmatch(s, -1) {
-			out = append(out, m[1])
-		}
-		sort.Strings(out)
-		return strings.Join(out, ",")
-	}
+	cat := core.Catalog()
+	names := func(s string) string { return strings.Join(core.PlaceholderNames(s), ",") }
 	for id, f := range used {
-		langs, ok := catalog[id]
+		langs, ok := cat[id]
 		if !ok {
 			t.Errorf("%s (used in %s) is not in the catalog", id, f)
 			continue
@@ -75,7 +67,7 @@ func TestMessagesRenderPerLanguageWithNestedReasons(t *testing.T) {
 }
 
 func TestNoMessageIdIsDefinedTwice(t *testing.T) {
-	if len(catalogConflicts) > 0 {
-		t.Fatalf("ids defined twice with different meanings: %v", catalogConflicts)
+	if conflicts := core.Conflicts(); len(conflicts) > 0 {
+		t.Fatalf("ids defined twice with different meanings: %v", conflicts)
 	}
 }
