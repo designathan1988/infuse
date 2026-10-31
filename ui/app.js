@@ -391,6 +391,7 @@ function onEvent(L, ev) {
     case 'done': L.snap.pendingPermission = null; L.snap.pendingQuestion = null; L.snap.cost = d.cost; L.snap.usage = d.usage; re(); vs.forEach(renderRail); attention(L, 'infuse terminou', L.snap.title || ''); if (!S.views.some(x => x.sid === L.id) || !document.hasFocus()) setUnread(L.id, true); refreshChanges(L); loadUsage(); if (!d.reason) suggestNext(L); break;
     case 'error': L.snap.error = d; L.snap.pendingPermission = null; L.snap.pendingQuestion = null; re(); attention(L, 'infuse: erro', String(d)); break;
     case 'tasks': L.snap.tasks = d; vs.forEach(renderRail); paneRefresh('tasks'); break;
+    case 'diagnoses': L.snap.diagnoses = d; vs.forEach(renderRail); break;
     case 'procs': L.snap.procs = d; vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('procs'); break;
     case 'agents': L.snap.agents = d; vs.forEach(renderLive); vs.forEach(refreshAgentBlocks); vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('agents'); break;
     case 'memory': paneRefresh('memory'); break;
@@ -550,6 +551,21 @@ function runningCard(L) {
     ${live.map(p => `<div class="li" data-pane="procs"><span class="dot run"></span><span class="n mono" title="${esc(p.command)}">${esc(p.description || p.command)}</span><span class="faint">${elapsed(p.started)}</span></div>`).join('')}
     ${working.map(a => `<div class="li" data-pane="agents"><span class="spin sm"></span><span class="n" title="${esc(a.task)}">${esc(a.title)}</span><span class="faint">${a.steps} ${t('passos')}</span></div>`).join('')}
     ${ps.length > live.length ? `<div class="li faint" data-pane="procs">${ps.length - live.length} ${t('processo(s) encerrado(s)')}</div>` : ''}</div>`;
+}
+
+// The diagnosis the agent had to register before acting: the cause, the approach and the evidence,
+// each quote checked by infuse against a file the agent read to the end.
+function diagnosisCard(L) {
+  const ds = L.snap.diagnoses || []; if (!ds.length) return '';
+  const d = ds[ds.length - 1], turn = L.snap.turn;
+  const cont = d.redo === 'continues the diagnosis of the previous turn';
+  const tag = d.turn !== turn ? `<span class="tag">${t('turno')} ${d.turn}</span>` : cont ? `<span class="tag">${t('continuação')}</span>` : d.redo ? `<span class="tag warn" title="${esc(d.redo)}">${t('refeito')}</span>` : `<span class="tag ok">${t('conferido')}</span>`;
+  const row = (k, v) => `<div class="dg"><div class="dk">${t(k)}</div><div class="dv md sel">${md(v || '')}</div></div>`;
+  return `<div class="card diag" data-card="diagnosis"><div class="ch">${t('Diagnóstico')}<span class="r">${tag}</span></div>
+    ${row('Problema', d.problem)}${row('Causa raiz', d.root_cause)}${row('Abordagem', d.approach)}${row('Por que trata a causa', d.why_cause)}
+    <div class="dk">${t('Evidências')} <span class="faint">(${(d.evidence || []).length}, ${t('conferidas no arquivo')})</span></div>
+    ${(d.evidence || []).map(e => `<div class="dev"><span class="path" data-path="${esc(e.file)}">${esc(e.file)}</span><q>${esc(e.quote)}</q><span class="faint">${esc(e.supports || '')}</span></div>`).join('')}
+    ${ds.length > 1 ? `<div class="faint dhist">${ds.length - 1} ${t('diagnóstico(s) anterior(es) nesta sessão')}</div>` : ''}</div>`;
 }
 
 // The plan, live: each task with its state (done, now, next, blocked) and how it will be proven.
@@ -1200,6 +1216,7 @@ function renderRail(v) {
   const pct = Math.min(100, Math.round(((L.lastIn || 0) / ctxLimit(L)) * 100));
   const tasks = L.snap.tasks || [];
   el.innerHTML = `
+  ${diagnosisCard(L)}
   ${planCard(L)}
   <div class="card" data-card="changes"><div class="ch">${t('Alterações')}<span class="r mono">${c.isGit === false && !c.local ? t('sem git') : `<span class="add">+${c.added || 0}</span> <span class="del">−${c.removed || 0}</span>`}</span></div>${c.local ? `<div class="segrow">${scopeSwitch()}</div>` : ''}
     ${files.length ? files.slice(0, 8).map(f => `<div class="li${f.status === 'D' ? ' gone' : ''}" data-f="${esc(f.path)}"><span class="n" title="${esc(f.path)}">${esc(f.path)}</span>${chgTag(f)}<span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`).join('') + (files.length > 8 ? `<div class="faint" style="padding:3px 4px">+${files.length - 8} ${t('arquivos')}</div>` : '') : `<div class="faint">${t('Nenhuma alteração')}</div>`}
@@ -1214,6 +1231,7 @@ function renderRail(v) {
     <div class="row"><button class="btn sm line oraclego">${t('Pronto?')}</button><button class="btn sm" data-open="oracle">${t('Critérios')}</button><button class="btn sm revgo" title="${esc(t('Um revisor com contexto limpo lê o diff, o plano e os critérios e aponta problemas'))}">${t('Revisar')}</button></div></div>`;
   $('.revgo', el).onclick = () => runReview(v);
   railFolds(v, el);
+  $$('.card.diag [data-path]', el).forEach(x => x.onclick = e => { e.stopPropagation(); openFileInPane(x.dataset.path); });
   $$('[data-pane]', el).forEach(x => x.onclick = () => togglePane(x.dataset.pane, true));
   bindScope(el);
   $$('[data-goto]', el).forEach(x => x.onclick = () => { const m = $(`[data-mi="${x.dataset.goto}"]`, v.el); if (m) { v.stick = false; m.scrollIntoView({ behavior: 'smooth', block: 'center' }); m.classList.add('flash'); setTimeout(() => m.classList.remove('flash'), 1400); } });
