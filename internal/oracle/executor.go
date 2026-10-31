@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"infuse/internal/core"
+	"infuse/internal/fsx"
 	"infuse/internal/journal"
 	"infuse/internal/lang"
 	"infuse/internal/platform/process"
-	"infuse/internal/projectmap"
 	"infuse/internal/security"
 	"io"
 	"net/http"
@@ -202,14 +202,11 @@ func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResul
 	case "maxLines":
 		re := lang.GlobToRegex(c.Glob)
 		var over []string
-		_ = filepath.WalkDir(snap, func(p string, d os.DirEntry, err error) error {
+		_ = fsx.Walk(snap, fsx.Snapshot, func(p string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
 			if d.IsDir() {
-				if projectmap.IgnoredDirs[d.Name()] || d.Name() == ".git" {
-					return filepath.SkipDir
-				}
 				return nil
 			}
 			rel := filepath.ToSlash(core.RelTo(snap, p))

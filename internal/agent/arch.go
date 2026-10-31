@@ -21,6 +21,7 @@ package agent
 //   JSON Schema 2020-12: https://json-schema.org/draft/2020-12
 
 import (
+	"infuse/internal/fsx"
 	"os"
 	"path/filepath"
 	"sort"
@@ -69,7 +70,7 @@ func learnArchitecture(root string) ArchRules {
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() {
-			if !strings.HasPrefix(name, ".") && !snapSkipDirs[name] && !ignoredDirs[name] {
+			if !fsx.SkipDir(name, fsx.Project) {
 				r.TopDirs = append(r.TopDirs, name)
 			}
 			continue
@@ -108,14 +109,11 @@ func learnArchitecture(root string) ArchRules {
 // walkProjectFiles visits the project's own files (no dependencies, caches, build output or .infuse).
 func walkProjectFiles(root string, f func(rel, abs string, size int64)) {
 	n := 0
-	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+	_ = fsx.Walk(root, fsx.Project, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			if p != root && (snapSkipDirs[d.Name()] || ignoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
-				return filepath.SkipDir
-			}
 			return nil
 		}
 		if n++; n > 6000 {
@@ -142,16 +140,13 @@ func treeShape(work, ext string) (bool, []string) {
 			rootHas = rootHas || strings.EqualFold(filepath.Ext(name), ext)
 			continue
 		}
-		if strings.HasPrefix(name, ".") || snapSkipDirs[name] || ignoredDirs[name] {
+		if fsx.SkipDir(name, fsx.Project) {
 			continue
 		}
 		hasCode := false
-		_ = filepath.WalkDir(filepath.Join(work, name), func(p string, d os.DirEntry, err error) error {
+		_ = fsx.Walk(filepath.Join(work, name), fsx.Snapshot, func(p string, d os.DirEntry, err error) error {
 			if err != nil || hasCode {
 				return filepath.SkipAll
-			}
-			if d.IsDir() && (snapSkipDirs[d.Name()] || ignoredDirs[d.Name()]) {
-				return filepath.SkipDir
 			}
 			if !d.IsDir() && codeExts[strings.ToLower(filepath.Ext(p))] {
 				hasCode = true

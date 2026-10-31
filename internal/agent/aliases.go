@@ -10,6 +10,7 @@ import (
 	"infuse/internal/connections"
 	"infuse/internal/core"
 	"infuse/internal/filter"
+	"infuse/internal/fsx"
 	"infuse/internal/journal"
 	"infuse/internal/knowledge"
 	"infuse/internal/lang"
@@ -19,6 +20,7 @@ import (
 	"infuse/internal/platform/process"
 	"infuse/internal/projectmap"
 	"infuse/internal/security"
+	"infuse/internal/shellparse"
 	"infuse/internal/workspace"
 	"os/exec"
 	"regexp"
@@ -59,17 +61,17 @@ type (
 	DirInfo    = projectmap.DirInfo
 	Hotspot    = projectmap.Hotspot
 
-	ConventionRules  = knowledge.ConventionRules
+	ConventionRules = knowledge.ConventionRules
 	fileChange      = workspace.FileChange
 	compiledRule    = knowledge.CompiledRule
 	compiledRules   = knowledge.CompiledRules
-	ProjectRules     = knowledge.ProjectRules
-	Tally            = knowledge.Tally
-	OracleCheck      = oracle.OracleCheck
-	OracleSpec       = oracle.OracleSpec
-	CheckResult      = oracle.CheckResult
-	Verdict          = oracle.Verdict
-	CheckSuggestion  = oracle.CheckSuggestion
+	ProjectRules    = knowledge.ProjectRules
+	Tally           = knowledge.Tally
+	OracleCheck     = oracle.OracleCheck
+	OracleSpec      = oracle.OracleSpec
+	CheckResult     = oracle.CheckResult
+	Verdict         = oracle.Verdict
+	CheckSuggestion = oracle.CheckSuggestion
 )
 
 const (
@@ -81,106 +83,118 @@ const (
 
 var (
 	instructionNames = knowledge.InstructionNames
-	ignoredDirs      = projectmap.IgnoredDirs
 	projectRulesSpec = knowledge.ProjectRulesSpec
-	snapSkipDirs     = workspace.SnapSkipDirs
 )
 
-func M(id string, kv ...any) Msg                { return core.M(id, kv...) }
-func msgText(m Message) string                  { return core.TextOf(m) }
-func truncate(s string, n int) string           { return core.Truncate(s, n) }
-func firstLine(s string) string                 { return core.FirstLine(s) }
-func firstNonEmpty(a, b string) string          { return core.FirstNonEmpty(a, b) }
-func normSpace(s string) string                 { return core.NormSpace(s) }
-func splitLines(s string) []string              { return core.SplitLines(s) }
-func snippetAround(text string, k, n int) string { return core.SnippetAround(text, k, n) }
-func dedupe(xs []string) []string               { return core.Dedupe(xs) }
-func contains(list []string, v string) bool     { return core.Contains(list, v) }
-func firstNonZero(a, b float64) float64         { return core.FirstNonZero(a, b) }
-func sortedKeys[M ~map[string]V, V any](m M) []string { return core.SortedKeys(m) }
-func exists(p string) bool                      { return core.Exists(p) }
-func readJSON(file string, v any) error         { return core.ReadJSON(file, v) }
-func writeJSON(file string, v any) error        { return core.WriteJSON(file, v) }
-func within(root, p string) bool                { return core.Within(root, p) }
-func toPosix(p string) string                   { return core.ToPosix(p) }
-func relTo(root, abs string) string             { return core.RelTo(root, abs) }
-func FromMsysPath(p string) string              { return core.FromMsysPath(p) }
-func InfuseHome() string                        { return core.InfuseHome() }
-func randomHex(n int) string                    { return core.RandomHex(n) }
-func exitCode(err error) int                    { return core.ExitCode(err) }
-func errMsg(m Msg) error                        { return core.ErrMsg(m) }
-func userError(lang string, m Msg) error        { return core.UserError(lang, m) }
-func msgOf(err error) (Msg, bool)               { return core.MsgOf(err) }
-func errArg(err error) any                      { return core.ErrArg(err) }
+func M(id string, kv ...any) Msg                         { return core.M(id, kv...) }
+func msgText(m Message) string                           { return core.TextOf(m) }
+func truncate(s string, n int) string                    { return core.Truncate(s, n) }
+func firstLine(s string) string                          { return core.FirstLine(s) }
+func firstNonEmpty(a, b string) string                   { return core.FirstNonEmpty(a, b) }
+func normSpace(s string) string                          { return core.NormSpace(s) }
+func splitLines(s string) []string                       { return core.SplitLines(s) }
+func snippetAround(text string, k, n int) string         { return core.SnippetAround(text, k, n) }
+func dedupe(xs []string) []string                        { return core.Dedupe(xs) }
+func contains(list []string, v string) bool              { return core.Contains(list, v) }
+func firstNonZero(a, b float64) float64                  { return core.FirstNonZero(a, b) }
+func sortedKeys[M ~map[string]V, V any](m M) []string    { return core.SortedKeys(m) }
+func exists(p string) bool                               { return core.Exists(p) }
+func readJSON(file string, v any) error                  { return core.ReadJSON(file, v) }
+func writeJSON(file string, v any) error                 { return core.WriteJSON(file, v) }
+func within(root, p string) bool                         { return core.Within(root, p) }
+func toPosix(p string) string                            { return core.ToPosix(p) }
+func relTo(root, abs string) string                      { return core.RelTo(root, abs) }
+func FromMsysPath(p string) string                       { return core.FromMsysPath(p) }
+func InfuseHome() string                                 { return core.InfuseHome() }
+func randomHex(n int) string                             { return core.RandomHex(n) }
+func exitCode(err error) int                             { return core.ExitCode(err) }
+func errMsg(m Msg) error                                 { return core.ErrMsg(m) }
+func userError(lang string, m Msg) error                 { return core.UserError(lang, m) }
+func msgOf(err error) (Msg, bool)                        { return core.MsgOf(err) }
+func errArg(err error) any                               { return core.ErrArg(err) }
 func displayFor(lang, content string, msgs []Msg) string { return core.DisplayFor(lang, content, msgs) }
-func globToRegex(pat string) *regexp.Regexp     { return lang.GlobToRegex(pat) }
-func FindRealBash() string                      { return core.FindRealBash() }
-func noConsoleWindow(cmd *exec.Cmd)             { process.NoConsoleWindow(cmd) }
+func globToRegex(pat string) *regexp.Regexp              { return lang.GlobToRegex(pat) }
+func FindRealBash() string                               { return core.FindRealBash() }
+func noConsoleWindow(cmd *exec.Cmd)                      { process.NoConsoleWindow(cmd) }
 func gitRun(root string, args ...string) (string, error) { return workspace.GitRun(root, args...) }
 
-func LoadSettings() Settings                    { return config.LoadSettings() }
-func settingsFile() string                     { return config.SettingsFile() }
-func SaveSettings(s Settings) error             { return config.SaveSettings(s) }
-func EffectiveSettings(root string) Settings    { return config.EffectiveSettings(root) }
-func recordUsage(e usageEntry)                  { config.RecordUsage(e) }
-func todaySpend() float64                       { return config.TodaySpend() }
-func rootLang(root string) string               { return config.RootLanguage(root) }
+func LoadSettings() Settings                 { return config.LoadSettings() }
+func settingsFile() string                   { return config.SettingsFile() }
+func SaveSettings(s Settings) error          { return config.SaveSettings(s) }
+func EffectiveSettings(root string) Settings { return config.EffectiveSettings(root) }
+func recordUsage(e usageEntry)               { config.RecordUsage(e) }
+func todaySpend() float64                    { return config.TodaySpend() }
+func rootLang(root string) string            { return config.RootLanguage(root) }
 
-func newProvider(name string, cfg ProviderConfig) (Provider, error) { return llm.NewProvider(name, cfg) }
-func registerProvider(name string, mk func(cfg ProviderConfig) Provider) { llm.RegisterProvider(name, mk) }
+func newProvider(name string, cfg ProviderConfig) (Provider, error) {
+	return llm.NewProvider(name, cfg)
+}
+func registerProvider(name string, mk func(cfg ProviderConfig) Provider) {
+	llm.RegisterProvider(name, mk)
+}
 func ListModels(ctx context.Context, name string, cfg ProviderConfig) ([]string, error) {
 	return llm.ListModels(ctx, name, cfg)
 }
 func askJSON(ctx context.Context, p Provider, model, system, user string, spec ToolSpec, maxTokens int, out any) (Usage, error) {
 	return llm.AskJSON(ctx, p, model, system, user, spec, maxTokens, out)
 }
-func repairTranscript(msgs []Message) []Message { return llm.RepairTranscript(msgs) }
-func contextWindow(model string) int            { return llm.ContextWindow(model) }
+func repairTranscript(msgs []Message) []Message    { return llm.RepairTranscript(msgs) }
+func contextWindow(model string) int               { return llm.ContextWindow(model) }
 func outputLimit(model string, configured int) int { return llm.OutputLimit(model, configured) }
 
-func LoadRules(root string) *RuleSet { return filter.LoadRules(root) }
+func LoadRules(root string) *RuleSet            { return filter.LoadRules(root) }
 func loadProjectRules(root string) ProjectRules { return knowledge.LoadProjectRules(root) }
-func isInstructionFile(rel string) bool { return knowledge.IsInstructionFile(rel) }
-func fileDiagnosticsX() {}
-func gitHeadFile(root, rel string) string { return knowledge.GitHeadFile(root, rel) }
+func isInstructionFile(rel string) bool         { return knowledge.IsInstructionFile(rel) }
+func fileDiagnosticsX()                         {}
+func gitHeadFile(root, rel string) string       { return knowledge.GitHeadFile(root, rel) }
 func resolveInstructionImports(root, dir, text string, depth int) string {
 	return knowledge.ResolveInstructionImports(root, dir, text, depth)
 }
-func homeDir() string { return core.HomeDir() }
-func readJSONL(file string) []map[string]any { return core.ReadJSONL(file) }
+func homeDir() string                                  { return core.HomeDir() }
+func readJSONL(file string) []map[string]any           { return core.ReadJSONL(file) }
 func underReference(r ProjectRules, rel string) string { return knowledge.UnderReference(r, rel) }
+
 var version = core.Version
-func procGroup(cmd *exec.Cmd) { process.ProcGroup(cmd) }
+
+func procGroup(cmd *exec.Cmd)        { process.ProcGroup(cmd) }
 func resolveIn(cwd, p string) string { return filter.ResolveIn(cwd, p) }
 func buildTrailer(root, cwd, original string, actions []filter.TransformAction, started int64, rules *RuleSet, ruleLines []string) string {
 	return filter.BuildTrailer(root, cwd, original, actions, started, rules, ruleLines)
 }
-func mayChangeTree(cmd string) bool { return filter.MayChangeTree(cmd) }
-func MayChangeTree(cmd string) bool { return filter.MayChangeTree(cmd) }
+func mayChangeTree(cmd string) bool             { return shellparse.MayChangeTree(cmd) }
+func MayChangeTree(cmd string) bool             { return shellparse.MayChangeTree(cmd) }
 func ListedDirectory(cmd string) (string, bool) { return filter.ListedDirectory(cmd) }
 func trailerMsgs(root, cwd, original string, actions []filter.TransformAction, started int64, rules *RuleSet, notes []Msg) []Msg {
 	return filter.TrailerMsgs(root, cwd, original, actions, started, rules, notes)
 }
-func ignoredPath(root, p string) bool { return filter.IgnoredPath(root, p) }
+func ignoredPath(root, p string) bool { return fsx.IgnoredPath(root, p) }
+
 type capWriter = core.CapWriter
+
 func newCapWriter(limit int) *capWriter { return core.NewCapWriter(limit) }
+
 const (
 	ActLesson         = filter.ActLesson
 	ActHeredocToFile  = filter.ActHeredocToFile
 	ActHeredocToStdin = filter.ActHeredocToStdin
 )
+
 func loadProjects() []config.ProjectEntry { return config.LoadProjects() }
-func RememberProject(root string) { config.RememberProject(root) }
-func snapshotTurn(root, work, session string, turn int) { workspace.SnapshotTurn(root, work, session, turn) }
-func msgStrings(ms []Msg) []string { return filter.MsgStrings(ms) }
-func hiddenInternal(rel string) bool { return filter.HiddenInternal(rel) }
+func RememberProject(root string)         { config.RememberProject(root) }
+func snapshotTurn(root, work, session string, turn int) {
+	workspace.SnapshotTurn(root, work, session, turn)
+}
+func msgStrings(ms []Msg) []string            { return filter.MsgStrings(ms) }
+func hiddenInternal(rel string) bool          { return filter.HiddenInternal(rel) }
 func fileDiagnostics(root, abs string) string { return filter.FileDiagnostics(root, abs) }
+
 var imageExt = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
-func killTree(cmd *exec.Cmd) { process.KillTree(cmd) }
-func attachJob(cmd *exec.Cmd) { process.AttachJob(cmd) }
-func releaseJob(cmd *exec.Cmd) { process.ReleaseJob(cmd) }
+
+func killTree(cmd *exec.Cmd)    { process.KillTree(cmd) }
+func attachJob(cmd *exec.Cmd)   { process.AttachJob(cmd) }
+func releaseJob(cmd *exec.Cmd)  { process.ReleaseJob(cmd) }
 func processAlive(pid int) bool { return process.ProcessAlive(pid) }
-func detach(cmd *exec.Cmd) { process.Detach(cmd) }
+func detach(cmd *exec.Cmd)      { process.Detach(cmd) }
 
 func newGuard(root string, protected []string) *filter.Guard {
 	return filter.NewGuard(root, filter.Policy{
@@ -190,11 +204,11 @@ func newGuard(root string, protected []string) *filter.Guard {
 		Memory:           []string{knowledge.MemoryRel},
 	})
 }
-func TransformCommand(cmd, cwd string) TransformResult { return filter.TransformCommand(cmd, cwd) }
-func FindHeredocs(cmd string) []Heredoc                { return filter.FindHeredocs(cmd) }
-func DetectFileWrite(cmd string) *FileWriteIntent      { return filter.DetectFileWrite(cmd) }
+func TransformCommand(cmd, cwd string) TransformResult       { return filter.TransformCommand(cmd, cwd) }
+func FindHeredocs(cmd string) []Heredoc                      { return filter.FindHeredocs(cmd) }
+func DetectFileWrite(cmd string) *FileWriteIntent            { return filter.DetectFileWrite(cmd) }
 func CommandLineOf(cmd string, h Heredoc) (int, int, string) { return filter.CommandLineOf(cmd, h) }
-func HiddenInternal(rel string) bool                   { return filter.HiddenInternal(rel) }
+func HiddenInternal(rel string) bool                         { return filter.HiddenInternal(rel) }
 func ApplyCommandRulesMsgs(root string, set *RuleSet, command string) (string, []Msg) {
 	return filter.ApplyCommandRulesMsgs(root, set, command)
 }
@@ -204,7 +218,7 @@ func ApplyWriteRulesMsgs(root string, set *RuleSet, files []string) []Msg {
 func ApplyListRulesMsgs(root string, set *RuleSet, dir string) []Msg {
 	return filter.ApplyListRulesMsgs(root, set, dir)
 }
-func FileDiagnostics(root, abs string) string   { return filter.FileDiagnostics(root, abs) }
+func FileDiagnostics(root, abs string) string { return filter.FileDiagnostics(root, abs) }
 func TrailerMsgs(root, cwd, original string, actions []filter.TransformAction, started int64, rules *RuleSet, notes []Msg) []Msg {
 	return filter.TrailerMsgs(root, cwd, original, actions, started, rules, notes)
 }
@@ -216,23 +230,27 @@ func ReadJournalSince(root string, since int64) []JournalEntry {
 	return journal.ReadJournalSince(root, since)
 }
 
-func BuildMap(root string) *ProjectMap    { return projectmap.BuildMap(root) }
-func WriteMap(root string, m *ProjectMap) { projectmap.WriteMap(root, m) }
-func LoadMap(root string) *ProjectMap     { return projectmap.LoadMap(root) }
-func LoadOrBuildMap(root string) *ProjectMap { return projectmap.LoadOrBuildMap(root) }
+func BuildMap(root string) *ProjectMap                { return projectmap.BuildMap(root) }
+func WriteMap(root string, m *ProjectMap)             { projectmap.WriteMap(root, m) }
+func LoadMap(root string) *ProjectMap                 { return projectmap.LoadMap(root) }
+func LoadOrBuildMap(root string) *ProjectMap          { return projectmap.LoadOrBuildMap(root) }
 func DescribeDir(m *ProjectMap, relDir string) string { return projectmap.DescribeDir(m, relDir) }
 func DependentsMsg(m *ProjectMap, relFile string) Msg { return projectmap.DependentsMsg(m, relFile) }
 
-func conventionsFile(root string) string   { return knowledge.ConventionsFile(root) }
-func conventionsPrompt(root string) string { return knowledge.ConventionsPrompt(root) }
+func conventionsFile(root string) string               { return knowledge.ConventionsFile(root) }
+func conventionsPrompt(root string) string             { return knowledge.ConventionsPrompt(root) }
 func loadConventionRules(root string) *ConventionRules { return knowledge.LoadConventionRules(root) }
-func conventionRulesFile(root string) string { return knowledge.ConventionRulesFile(root) }
+func conventionRulesFile(root string) string           { return knowledge.ConventionRulesFile(root) }
 
 func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verdict, error) {
 	return oracle.RunOracle(ctx, evidenceRoot, workDir, session)
 }
-func CreateWorktree(root, name string) (string, string, error) { return workspace.CreateWorktree(root, name) }
-func RemoveWorktree(root, dir string, force bool) error { return workspace.RemoveWorktree(root, dir, force) }
+func CreateWorktree(root, name string) (string, string, error) {
+	return workspace.CreateWorktree(root, name)
+}
+func RemoveWorktree(root, dir string, force bool) error {
+	return workspace.RemoveWorktree(root, dir, force)
+}
 func Changes(dir string) map[string]any { return workspace.Changes(dir) }
 
 type liveSource struct{}
@@ -251,9 +269,9 @@ func LocalDiscard(root, work, session, scope, p string) error {
 func WriteUserFile(root, rel, content string, mtime int64, force bool) (int64, error) {
 	return workspace.WriteUserFile(root, rel, content, mtime, force)
 }
-func redactSecrets(s string) string { return security.RedactSecrets(s) }
+func redactSecrets(s string) string              { return security.RedactSecrets(s) }
 func externalContent(source, text string) string { return security.ExternalContent(source, text) }
-func privateTargetMsg(raw string) (bool, Msg) { return security.PrivateTargetMsg(raw) }
+func privateTargetMsg(raw string) (bool, Msg)    { return security.PrivateTargetMsg(raw) }
 
 func mcpFor(root string) *mcp.Manager { return mcp.For(root) }
 func editMCP(root, scope string, f func(map[string]mcp.ServerConfig)) error {
@@ -307,8 +325,7 @@ func (b *loopBreaker) record(name string, input json.RawMessage, isErr bool) err
 
 type usageEntry = config.UsageEntry
 
-
-func LearnConventions(root string) string { return knowledge.LearnConventions(root) }
-func SuggestChecks(root string) []CheckSuggestion { return oracle.SuggestChecks(root) }
+func LearnConventions(root string) string            { return knowledge.LearnConventions(root) }
+func SuggestChecks(root string) []CheckSuggestion    { return oracle.SuggestChecks(root) }
 func LoadOracleSpec(root string) (OracleSpec, error) { return oracle.LoadOracleSpec(root) }
-func ListVerdicts(root string, n int) []Verdict { return oracle.ListVerdicts(root, n) }
+func ListVerdicts(root string, n int) []Verdict      { return oracle.ListVerdicts(root, n) }

@@ -10,6 +10,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"infuse/internal/core"
+	"infuse/internal/fsx"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -24,9 +25,6 @@ const (
 	snapMaxFiles = 20000
 	snapMaxSize  = 2 << 20
 )
-
-// dirs that hold dependencies, caches or build output, never the project's own work
-var snapSkipDirs = map[string]bool{".git": true, ".infuse": true, "node_modules": true, "__pycache__": true, ".venv": true, "venv": true, ".cache": true, ".next": true, ".nuxt": true, ".turbo": true, ".parcel-cache": true, ".gradle": true, ".idea": true, "target": true}
 
 type treeManifest struct {
 	Work  string            `json:"work"`
@@ -61,14 +59,11 @@ type hashEntry struct {
 // contents go to root's blob store.
 func walkTree(root, work string, store bool) map[string]string {
 	out := map[string]string{}
-	_ = filepath.WalkDir(work, func(p string, d fs.DirEntry, err error) error {
+	_ = fsx.Walk(work, fsx.Snapshot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			if p != work && snapSkipDirs[d.Name()] {
-				return filepath.SkipDir
-			}
 			return nil
 		}
 		if len(out) >= snapMaxFiles || !d.Type().IsRegular() {
@@ -139,6 +134,3 @@ func ReadBlob(root, hash string) (string, bool) {
 	b, err := os.ReadFile(blobPath(root, hash))
 	return string(b), err == nil
 }
-
-// SnapSkipDirs are the folders a tree snapshot never walks.
-var SnapSkipDirs = snapSkipDirs

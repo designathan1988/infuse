@@ -7,10 +7,9 @@ package knowledge
 import (
 	"crypto/sha1"
 	"encoding/hex"
-	"infuse/internal/core"
-	"infuse/internal/projectmap"
-	"infuse/internal/workspace"
 	"fmt"
+	"infuse/internal/core"
+	"infuse/internal/fsx"
 	"os"
 	"path/filepath"
 	"sort"
@@ -44,12 +43,13 @@ func Inventory(root string) []string {
 		add(f)
 	}
 	walkKnowledge := func(dir string, deep bool) {
-		_ = filepath.WalkDir(filepath.Join(root, dir), func(p string, d os.DirEntry, err error) error {
+		base := filepath.Join(root, dir)
+		_ = fsx.Walk(base, fsx.Snapshot, func(p string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
 			if d.IsDir() {
-				if p != filepath.Join(root, dir) && (!deep || workspace.SnapSkipDirs[d.Name()] || projectmap.IgnoredDirs[d.Name()]) {
+				if p != base && !deep {
 					return filepath.SkipDir
 				}
 				return nil

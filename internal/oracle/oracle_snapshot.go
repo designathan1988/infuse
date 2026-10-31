@@ -5,8 +5,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"infuse/internal/core"
+	"infuse/internal/fsx"
 	"infuse/internal/platform/process"
-	"infuse/internal/projectmap"
 	"infuse/internal/workspace"
 	"os"
 	"os/exec"
@@ -53,15 +53,12 @@ func takeSnapshot(workDir, evDir string) (string, string, func(), error) {
 	}
 	h := sha256.New()
 	var manifest strings.Builder
-	err := filepath.WalkDir(workDir, func(p string, d os.DirEntry, err error) error {
+	err := fsx.Walk(workDir, fsx.Snapshot, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		rel := core.RelTo(workDir, p)
 		if d.IsDir() {
-			if rel != "" && (projectmap.IgnoredDirs[d.Name()] || d.Name() == core.InfuseDirName) {
-				return filepath.SkipDir
-			}
 			return nil
 		}
 		b, err := os.ReadFile(p)

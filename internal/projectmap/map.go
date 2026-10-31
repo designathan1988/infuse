@@ -5,6 +5,7 @@ package projectmap
 import (
 	"fmt"
 	"infuse/internal/core"
+	"infuse/internal/fsx"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -43,8 +44,6 @@ type ProjectMap struct {
 	Dirs        map[string]*DirInfo  `json:"dirs"`
 	Hotspots    []Hotspot            `json:"hotspots"`
 }
-
-var IgnoredDirs = map[string]bool{"node_modules": true, ".git": true, ".infuse": true, "dist": true, "build": true, "out": true, ".next": true, "coverage": true, "__pycache__": true, ".venv": true, "venv": true, "target": true, "vendor": true, "bin": true, "obj": true}
 
 var langByExt = map[string]string{
 	".ts": "ts", ".tsx": "ts", ".mts": "ts", ".cts": "ts",
@@ -107,7 +106,7 @@ func walkDir(root, dir string, m *ProjectMap) int {
 		name := e.Name()
 		full := filepath.Join(dir, name)
 		if e.IsDir() {
-			if IgnoredDirs[name] || strings.HasPrefix(name, ".") {
+			if fsx.SkipDir(name, fsx.Project) {
 				continue
 			}
 			info.Subdirs = append(info.Subdirs, name)

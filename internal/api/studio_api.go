@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"infuse/internal/agent"
 	"infuse/internal/core"
+	"infuse/internal/fsx"
 	"infuse/internal/projectmap"
 	"infuse/internal/workspace"
 	"net/http"
@@ -95,10 +96,7 @@ func fileTree(root, dir string, depth int) *treeNode {
 	m := projectmap.LoadMap(root)
 	for _, e := range entries {
 		if e.IsDir() {
-			if projectmap.IgnoredDirs[e.Name()] || (strings.HasPrefix(e.Name(), ".") && e.Name() != ".infuse") {
-				continue
-			}
-			if e.Name() == ".infuse" {
+			if fsx.SkipDir(e.Name(), fsx.Project) {
 				continue
 			}
 			n.Children = append(n.Children, fileTree(root, filepath.Join(dir, e.Name()), depth+1))

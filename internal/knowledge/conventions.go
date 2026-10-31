@@ -8,7 +8,7 @@ package knowledge
 import (
 	"fmt"
 	"infuse/internal/core"
-	"infuse/internal/projectmap"
+	"infuse/internal/fsx"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -47,7 +47,9 @@ func LoadConventionRules(root string) *ConventionRules {
 	return &r
 }
 
-func ConventionsFile(root string) string { return filepath.Join(root, core.InfuseDirName, "conventions.md") }
+func ConventionsFile(root string) string {
+	return filepath.Join(root, core.InfuseDirName, "conventions.md")
+}
 
 var (
 	ReKebab  = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)+$`)
@@ -86,14 +88,11 @@ func LearnConventions(root string) string {
 	files := 0
 	jsLike := map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true, ".vue": true, ".svelte": true}
 	src := map[string]bool{".go": true, ".py": true, ".rs": true, ".java": true, ".kt": true, ".cs": true, ".rb": true, ".php": true, ".css": true, ".scss": true, ".html": true}
-	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+	_ = fsx.Walk(root, fsx.Project, func(p string, d os.DirEntry, err error) error {
 		if err != nil || files >= 400 {
 			return nil
 		}
 		if d.IsDir() {
-			if p != root && (projectmap.IgnoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
-				return filepath.SkipDir
-			}
 			if d.Name() == "tests" || d.Name() == "test" || d.Name() == "__tests__" {
 				tests["folder "+d.Name()+"/"]++
 			}

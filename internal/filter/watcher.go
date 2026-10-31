@@ -7,13 +7,13 @@ package filter
 
 import (
 	"infuse/internal/core"
+	"infuse/internal/fsx"
 	"infuse/internal/journal"
 	"infuse/internal/platform/process"
 	"infuse/internal/projectmap"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
@@ -66,18 +66,7 @@ func StopWatcher(root string) bool {
 	return true
 }
 
-func IgnoredPath(root, p string) bool {
-	rel, err := filepath.Rel(root, p)
-	if err != nil {
-		return true
-	}
-	for _, seg := range strings.Split(core.ToPosix(rel), "/") {
-		if projectmap.IgnoredDirs[seg] || (strings.HasPrefix(seg, ".") && seg != "." && seg != "..") {
-			return true
-		}
-	}
-	return false
-}
+func IgnoredPath(root, p string) bool { return fsx.IgnoredPath(root, p) }
 
 // RunWatcher is the body of the detached process.
 func RunWatcher(root string, idle time.Duration) {
@@ -91,14 +80,11 @@ func RunWatcher(root string, idle time.Duration) {
 	}
 	defer w.Close()
 	addTree := func(dir string) {
-		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+		_ = fsx.Walk(dir, fsx.Project, func(p string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
 			if d.IsDir() {
-				if p != root && IgnoredPath(root, p) {
-					return filepath.SkipDir
-				}
 				_ = w.Add(p)
 			}
 			return nil

@@ -13,9 +13,9 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"infuse/internal/shellparse"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -175,26 +175,9 @@ func firstN(xs []string, n int) []string {
 	return xs
 }
 
-var (
-	reReadOnlyCmd = regexp.MustCompile(`^\s*(?:cd\s+\S+\s*&&\s*)?(?:git\s+(?:log|status|diff|show|blame|ls-files|grep|add|commit|push|stash|branch|switch|tag|fetch)|ls|dir|cat|head|tail|grep|rg|find|wc|tree|type|stat|file|which|where|pwd|echo)\b`)
-	reCmdSplit    = regexp.MustCompile(`&&|\|\||;|\|`)
-)
-
 // isReadOnlyCommand reports whether a shell command only reads (allowed before a diagnosis).
 func isReadOnlyCommand(cmd string) bool {
-	if helpCommand(cmd) {
-		return true
-	}
-	for _, part := range reCmdSplit.Split(cmd, -1) {
-		p := strings.TrimSpace(part)
-		if p == "" || strings.HasPrefix(p, "cd ") {
-			continue
-		}
-		if !reReadOnlyCmd.MatchString(p) || strings.Contains(p, ">") {
-			return false
-		}
-	}
-	return true
+	return helpCommand(cmd) || shellparse.DiagnosisReadOnly(cmd)
 }
 
 // diagnosisGate refuses changes and non-reading commands until the current request has a diagnosis.
@@ -231,4 +214,3 @@ func (s *Session) demandRediagnosis(why Msg) {
 		s.emitMsg("gate", M("diag.redo_notice", "why", why))
 	}
 }
-

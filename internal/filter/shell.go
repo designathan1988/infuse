@@ -8,12 +8,13 @@ package filter
 // Without `-c` (interactive/login use) it simply runs the real bash.
 
 import (
+	"fmt"
 	"infuse/internal/config"
 	"infuse/internal/core"
 	"infuse/internal/journal"
 	"infuse/internal/platform/process"
 	"infuse/internal/projectmap"
-	"fmt"
+	"infuse/internal/shellparse"
 	"io"
 	"os"
 	"os/exec"
@@ -212,27 +213,17 @@ func TrailerMsgs(root, cwd, original string, actions []TransformAction, started 
 }
 
 var (
-	reSplitSeg = regexp.MustCompile(`&&|\|\||;|\||\r?\n`)
-	reCd       = regexp.MustCompile(`^cd\s+(\S+)`)
-	reLs       = regexp.MustCompile(`^(?:ls|tree|dir)\b(.*)$`)
+	reCd = regexp.MustCompile(`^cd\s+(\S+)`)
+	reLs = regexp.MustCompile(`^(?:ls|tree|dir)\b(.*)$`)
 )
 
-// mayChangeTree reports whether a command line has a step beyond reading (it may add, move or remove files).
-func MayChangeTree(cmd string) bool {
-	readOnly := map[string]bool{"ls": true, "tree": true, "dir": true, "cd": true, "pwd": true, "echo": true, "cat": true, "head": true, "tail": true, "grep": true, "rg": true, "wc": true, "find": true, "stat": true, "file": true, "du": true, "git": false}
-	for _, seg := range reSplitSeg.Split(cmd, -1) {
-		f := strings.Fields(seg)
-		if len(f) > 0 && !readOnly[f[0]] {
-			return true
-		}
-	}
-	return false
-}
+// MayChangeTree reports whether a command line has a step beyond reading.
+func MayChangeTree(cmd string) bool { return shellparse.MayChangeTree(cmd) }
 
 // listedDirectory returns the directory an ls/tree command is listing.
 func ListedDirectory(cmd string) (string, bool) {
 	cwdPrefix := ""
-	for _, seg := range reSplitSeg.Split(cmd, -1) {
+	for _, seg := range shellparse.Segments(cmd) {
 		seg = strings.TrimSpace(seg)
 		if m := reCd.FindStringSubmatch(seg); m != nil {
 			cwdPrefix = strings.Trim(m[1], `'"`)
@@ -254,4 +245,3 @@ func ListedDirectory(cmd string) (string, bool) {
 	}
 	return "", false
 }
-

@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"infuse/internal/config"
 	"infuse/internal/core"
-	"infuse/internal/projectmap"
+	"infuse/internal/fsx"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -188,7 +188,7 @@ func SuggestChecks(root string) []CheckSuggestion {
 func hasFileMatching(root, pattern string) bool {
 	re := regexp.MustCompile(pattern)
 	found := false
-	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+	_ = fsx.Walk(root, fsx.Project, func(p string, d os.DirEntry, err error) error {
 		if found {
 			return filepath.SkipAll
 		}
@@ -197,7 +197,7 @@ func hasFileMatching(root, pattern string) bool {
 		}
 		rel := filepath.ToSlash(core.RelTo(root, p))
 		if d.IsDir() {
-			if p != root && (projectmap.IgnoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".") || strings.Count(rel, "/") >= 3) {
+			if p != root && strings.Count(rel, "/") >= 3 {
 				return filepath.SkipDir
 			}
 			return nil
@@ -214,14 +214,11 @@ func hasFileMatching(root, pattern string) bool {
 func mainExtension(root string) string {
 	src := map[string]bool{".go": true, ".js": true, ".ts": true, ".tsx": true, ".jsx": true, ".py": true, ".rs": true, ".cs": true, ".java": true, ".kt": true, ".rb": true, ".php": true, ".swift": true, ".vue": true, ".svelte": true}
 	count := map[string]int{}
-	_ = filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+	_ = fsx.Walk(root, fsx.Project, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			if p != root && (projectmap.IgnoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
-				return filepath.SkipDir
-			}
 			return nil
 		}
 		if e := strings.ToLower(filepath.Ext(p)); src[e] {

@@ -94,8 +94,6 @@ internal/
   stream parsers, the heredoc parser); files are all under 400 lines and packages are acyclic.
 - Persisted artifacts do not carry a `schemaVersion` yet; the repositories are per domain, but
   migrations are still ad hoc.
-- `fsx`/`shellparse` helpers are shared in practice but not yet in one package (ignore policies and
-  command parsing still live in more than one place).
 
 ## Verification
 
