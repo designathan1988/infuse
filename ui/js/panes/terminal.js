@@ -9,7 +9,7 @@ function mountTerminal(pb, extra, c) {
   const bar = h('<span class="row" style="gap:2px;min-width:0"></span>'); extra.appendChild(bar);
   const addBtn = h(`<button class="ib" title="${esc(t('Novo terminal'))}">${I.plus}</button>`); extra.appendChild(addBtn);
   const dark = () => document.documentElement.classList.contains('dark');
-  const theme = () => { const cs = getComputedStyle(document.documentElement); return { background: cs.getPropertyValue('--surface').trim(), foreground: cs.getPropertyValue('--text').trim(), cursor: cs.getPropertyValue('--text2').trim(), selectionBackground: dark() ? '#3a4a6a' : '#cfdcf8' }; };
+  const theme = () => { const cs = getComputedStyle(document.documentElement); return { background: cs.getPropertyValue('--surface').trim(), foreground: cs.getPropertyValue('--text').trim(), cursor: cs.getPropertyValue('--text2').trim(), selectionBackground: cs.getPropertyValue('--sel-bg').trim() }; };
   const drawTabs = () => { bar.innerHTML = ''; tabs.forEach((tb, i) => { const el = h(`<span class="ptab${tb === cur ? ' on' : ''}">${esc(tb.name)}<span class="x">×</span></span>`); el.onclick = e => { if (e.target.classList.contains('x')) return closeTab(tb); show(tb); }; bar.appendChild(el); }); };
   const show = tb => { tabs.forEach(x => x.el.style.display = x === tb ? '' : 'none'); cur = tb; drawTabs(); setTimeout(() => { tb.fit.fit(); tb.term.focus(); }, 10); };
   const closeTab = tb => { tb.dead = true; api(`/api/term/${tb.id}/close`, { body: {}, root: c.root }); tb.es?.close(); tb.term.dispose(); tb.el.remove(); tabs.splice(tabs.indexOf(tb), 1); if (cur === tb) cur = tabs[tabs.length - 1] || null; if (cur) show(cur); else drawTabs(); };

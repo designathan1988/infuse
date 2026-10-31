@@ -81,7 +81,23 @@ internal/
 - `ui/styles/*` is the only place for static styles; dynamic geometry uses CSS custom properties.
 - Remaining debt: the global `S` object with direct mutation is being replaced by a store with
   actions/reducers/selectors; the split above is the structural prerequisite and keeps behaviour
-  unchanged.
+  unchanged. Inline styles in generated markup (107) are still being moved to component classes; only
+  dynamic geometry (pane widths) should remain inline as CSS variables.
+
+## Known debt
+
+- Frontend store: `S` is still mutated directly by the modules; the planned vanilla store
+  (`dispatch`/`reducers`/`selectors`/`subscribe`) is not wired yet.
+- i18n: UI translations are keyed by the Portuguese source sentence and a `MutationObserver` applies
+  them; the target is stable namespaced ids and a shared catalog, with no observer.
+- `internal/api/aliases_*.go` is the migration shim that lets handlers keep short helper names; it should
+  disappear when handlers call packages directly.
+- A few functions are still above the 60-line target (the turn loop, the largest route group, provider
+  stream parsers, the heredoc parser); files are all under 400 lines and packages are acyclic.
+- Persisted artifacts do not carry a `schemaVersion` yet; the repositories are per domain, but
+  migrations are still ad hoc.
+- `fsx`/`shellparse` helpers are shared in practice but not yet in one package (ignore policies and
+  command parsing still live in more than one place).
 
 ## Verification
 
