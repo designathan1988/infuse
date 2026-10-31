@@ -1,6 +1,9 @@
 package api
 
-import "net/http"
+import (
+	"infuse/internal/workspace"
+	"net/http"
+)
 
 // appDevServers handles one group of application routes.
 
@@ -10,34 +13,34 @@ func appDevServers(w http.ResponseWriter, r *http.Request, q map[string]string, 
 	switch {
 	// ---------------------------------------------------------------- dev servers
 	case path == "/api/devservers" && r.Method == http.MethodGet:
-		sendJSON(w, 200, DevServers(root))
+		sendJSON(w, 200, workspace.DevServers(root))
 		return true
 	case path == "/api/devservers":
 		var err error
 		switch str("action") {
 		case "approve": // the user approved this exact command in the window
-			for _, c := range launchConfigs(root) {
+			for _, c := range workspace.LaunchConfigs(root) {
 				if c.Name == str("name") {
-					err = approveLaunch(root, c)
+					err = workspace.ApproveLaunch(root, c)
 				}
 			}
 			if err == nil {
-				err = StartDevServer(root, str("name"))
+				err = workspace.StartDevServer(root, str("name"))
 			}
 		case "start":
-			err = StartDevServer(root, str("name"))
-			if na, ok := err.(errLaunchNeedsApproval); ok {
+			err = workspace.StartDevServer(root, str("name"))
+			if na, ok := err.(workspace.ErrLaunchNeedsApproval); ok {
 				sendJSON(w, 200, map[string]any{"ok": false, "needsApproval": true, "command": na.Command, "error": na.Error()})
 				return true
 			}
 		case "stop":
-			StopDevServer(root, str("name"))
+			workspace.StopDevServer(root, str("name"))
 		case "stopall":
-			for _, c := range launchConfigs(root) {
-				StopDevServer(root, c.Name)
+			for _, c := range workspace.LaunchConfigs(root) {
+				workspace.StopDevServer(root, c.Name)
 			}
 		}
-		res := map[string]any{"ok": err == nil, "servers": DevServers(root)}
+		res := map[string]any{"ok": err == nil, "servers": workspace.DevServers(root)}
 		if err != nil {
 			res["error"] = err.Error()
 		}

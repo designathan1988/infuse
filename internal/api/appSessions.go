@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"infuse/internal/agent"
+	"infuse/internal/config"
+	"infuse/internal/workspace"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,7 +25,7 @@ func appSessions(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 			sendJSON(w, 400, map[string]any{"error": "escolha a pasta do projeto"})
 			return true
 		}
-		s := newSession(root)
+		s := agent.NewSession(root)
 		s.Mu.Lock()
 		if v := str("mode"); v != "" {
 			s.Mode = v
@@ -39,9 +41,9 @@ func appSessions(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 		}
 		s.Mu.Unlock()
 		if boolean("worktree") {
-			wt, branch, err := CreateWorktree(root, str("title"))
+			wt, branch, err := workspace.CreateWorktree(root, str("title"))
 			if err != nil {
-				_ = os.Remove(filepath.Join(sessionsDir(root), s.ID+".json"))
+				_ = os.Remove(filepath.Join(agent.SessionsDir(root), s.ID+".json"))
 				sendJSON(w, 400, map[string]any{"error": err.Error()})
 				return true
 			}
@@ -49,20 +51,20 @@ func appSessions(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 			s.Worktree, s.Branch, s.Cwd = wt, branch, wt
 			s.Mu.Unlock()
 		} else {
-			s.Branch = strings.TrimSpace(gitOutput(root, "rev-parse", "--abbrev-ref", "HEAD"))
+			s.Branch = strings.TrimSpace(workspace.GitOutput(root, "rev-parse", "--abbrev-ref", "HEAD"))
 		}
 		s.Save()
 		rememberProjectMode(root, s.Mode)
 		sendJSON(w, 200, s.Snapshot())
 		return true
 	case path == "/api/sessions/search":
-		sendJSON(w, 200, searchSessions(q["q"], 40))
+		sendJSON(w, 200, agent.SearchSessions(q["q"], 40))
 		return true
 	case path == "/api/sessions/all":
 		// every session of every project, for the sidebar (grouping and sorting happen in the page)
 		out := []map[string]any{}
-		for _, p := range loadProjects() {
-			for _, d := range listSessions(p.Root) {
+		for _, p := range config.LoadProjects() {
+			for _, d := range agent.ListSessions(p.Root) {
 				if d.Archived != (q["archived"] == "1") {
 					continue
 				}
@@ -78,7 +80,7 @@ func appSessions(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 		if len(parts) < 2 {
 			return false
 		}
-		s, err := loadSession(root, parts[0])
+		s, err := agent.LoadSession(root, parts[0])
 		if err != nil {
 			sendJSON(w, 404, map[string]any{"error": "sessão não encontrada"})
 			return true
@@ -118,7 +120,7 @@ func appSessions(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 		case "archive":
 			force := boolean("force")
 			if s.Worktree != "" && !force {
-				if st := strings.TrimSpace(gitOutput(s.Worktree, "status", "--porcelain")); st != "" {
+				if st := strings.TrimSpace(workspace.GitOutput(s.Worktree, "status", "--porcelain")); st != "" {
 					sendJSON(w, 200, map[string]any{"ok": false, "dirty": true, "error": "o worktree tem alterações não commitadas"})
 					return true
 				}

@@ -1,6 +1,10 @@
 package api
 
-import "net/http"
+import (
+	"infuse/internal/config"
+	"infuse/internal/connections"
+	"net/http"
+)
 
 // appProviders handles one group of application routes.
 
@@ -10,9 +14,9 @@ func appProviders(w http.ResponseWriter, r *http.Request, q map[string]string, b
 	switch {
 	// ---------------------------------------------------------------- providers and models
 	case path == "/api/connections" && r.Method == http.MethodGet:
-		s := LoadSettings()
+		s := config.LoadSettings()
 		out := []map[string]any{}
-		for _, p := range providerPresets {
+		for _, p := range config.ProviderPresets {
 			c := s.Connections[p.ID]
 			base := c.BaseURL
 			if base == "" {
@@ -29,7 +33,8 @@ func appProviders(w http.ResponseWriter, r *http.Request, q map[string]string, b
 		sendJSON(w, 200, out)
 		return true
 	case path == "/api/connections/connect":
-		c, err := ConnectProvider(r.Context(), str("id"), str("apiKey"), str("baseUrl"))
+		c, err := connections.
+			ConnectProvider(r.Context(), str("id"), str("apiKey"), str("baseUrl"))
 		if err != nil {
 			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
 			return true
@@ -37,17 +42,18 @@ func appProviders(w http.ResponseWriter, r *http.Request, q map[string]string, b
 		sendJSON(w, 200, map[string]any{"ok": true, "connection": c})
 		return true
 	case path == "/api/connections/disconnect":
-		_ = DisconnectProvider(str("id"))
+		_ = connections.
+			DisconnectProvider(str("id"))
 		sendJSON(w, 200, map[string]any{"ok": true})
 		return true
 	case path == "/api/connections/default":
-		s := LoadSettings()
+		s := config.LoadSettings()
 		if id := str("id"); s.Connections[id].Connected {
 			s.Provider = id
 			if m := str("model"); m != "" {
 				s.Model = m
 			}
-			_ = SaveSettings(s)
+			_ = config.SaveSettings(s)
 		}
 		sendJSON(w, 200, map[string]any{"ok": true})
 		return true

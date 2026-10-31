@@ -2,6 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"infuse/internal/core"
+	"infuse/internal/journal"
+	"infuse/internal/oracle"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,35 +19,36 @@ func appOracle(w http.ResponseWriter, r *http.Request, q map[string]string, body
 	switch {
 	// ---------------------------------------------------------------- the oracle's executor
 	case path == "/api/oracle/spec" && r.Method == http.MethodGet:
-		spec, err := LoadOracleSpec(root)
+		spec, err := oracle.LoadOracleSpec(root)
 		if err != nil {
-			sendJSON(w, 200, map[string]any{"error": err.Error(), "spec": OracleSpec{Checks: []OracleCheck{}}})
+			sendJSON(w, 200, map[string]any{"error": err.Error(), "spec": oracle.OracleSpec{Checks: []oracle.OracleCheck{}}})
 			return true
 		}
 		if spec.Checks == nil {
-			spec.Checks = []OracleCheck{}
+			spec.Checks = []oracle.OracleCheck{}
 		}
 		sendJSON(w, 200, map[string]any{"spec": spec})
 		return true
 	case path == "/api/oracle/spec" && r.Method == http.MethodPut:
-		var spec OracleSpec
+		var spec oracle.OracleSpec
+
 		b, _ := json.Marshal(body["spec"])
 		if err := json.Unmarshal(b, &spec); err != nil {
 			sendJSON(w, 400, map[string]any{"error": err.Error()})
 			return true
 		}
-		_ = os.MkdirAll(filepath.Dir(oracleSpecFile(root)), 0o755)
-		if err := writeJSON(oracleSpecFile(root), spec); err != nil {
+		_ = os.MkdirAll(filepath.Dir(oracle.SpecFile(root)), 0o755)
+		if err := core.WriteJSON(oracle.SpecFile(root), spec); err != nil {
 			sendJSON(w, 500, map[string]any{"error": err.Error()})
 			return true
 		}
-		Journal(root, JournalEntry{Kind: "oracle", Path: ".infuse/oracle/checks.json", Detail: "critérios editados pelo usuário"})
+		journal.Journal(root, journal.JournalEntry{Kind: "oracle", Path: ".infuse/oracle/checks.json", Detail: "critérios editados pelo usuário"})
 		sendJSON(w, 200, map[string]any{"ok": true})
 		return true
 	case path == "/api/oracle/run":
 		// "Pronto?": only the user's window calls this (API token); no agent tool can.
 		work := dir
-		v, err := RunOracle(r.Context(), root, work, str("session"))
+		v, err := oracle.RunOracle(r.Context(), root, work, str("session"))
 		if err != nil {
 			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error(), "verdict": v})
 			return true
@@ -64,7 +68,7 @@ func appOracle(w http.ResponseWriter, r *http.Request, q map[string]string, body
 			w.Header().Set("Content-Type", "image/jpeg")
 		}
 		w.Header().Set("Cache-Control", "max-age=86400")
-		http.ServeFile(w, r, filepath.Join(root, infuseDirName, "shots", name))
+		http.ServeFile(w, r, filepath.Join(root, core.InfuseDirName, "shots", name))
 		return true
 	}
 	return false

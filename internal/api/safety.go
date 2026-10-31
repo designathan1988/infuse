@@ -8,40 +8,11 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/url"
 	"os"
 	"strings"
 )
-
-// loopBreaker stops a turn that keeps failing: the same failing call three times, or eight failures in a row.
-type loopBreaker struct {
-	same        map[string]int
-	consecutive int
-}
-
-// record counts a call's outcome; the error it returns when the breaker trips carries the message
-// (msgOf), so a caller with a session shows it to the user in their language.
-func (b *loopBreaker) record(name string, input json.RawMessage, isErr bool) error {
-	if !isErr {
-		b.consecutive = 0
-		return nil
-	}
-	if b.same == nil {
-		b.same = map[string]int{}
-	}
-	key := name + "|" + string(input)
-	b.same[key]++
-	b.consecutive++
-	if b.same[key] >= 3 {
-		return errMsg(M("breaker.same", "tool", name))
-	}
-	if b.consecutive >= 8 {
-		return errMsg(M("breaker.many"))
-	}
-	return nil
-}
 
 // ---------------------------------------------------------------- local API: same-origin only
 
@@ -86,4 +57,3 @@ func errString(err error) string {
 	}
 	return err.Error()
 }
-

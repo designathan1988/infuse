@@ -90,8 +90,6 @@ internal/
   (`dispatch`/`reducers`/`selectors`/`subscribe`) is not wired yet.
 - i18n: UI translations are keyed by the Portuguese source sentence and a `MutationObserver` applies
   them; the target is stable namespaced ids and a shared catalog, with no observer.
-- `internal/api/aliases_*.go` is the migration shim that lets handlers keep short helper names; it should
-  disappear when handlers call packages directly.
 - A few functions are still above the 60-line target (the turn loop, the largest route group, provider
   stream parsers, the heredoc parser); files are all under 400 lines and packages are acyclic.
 - Persisted artifacts do not carry a `schemaVersion` yet; the repositories are per domain, but

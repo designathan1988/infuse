@@ -1,6 +1,9 @@
 package api
 
 import (
+	"infuse/internal/config"
+	"infuse/internal/core"
+	"infuse/internal/filter"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,9 +23,9 @@ func appCommands(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 			sendJSON(w, 400, map[string]any{"error": "nome inválido"})
 			return true
 		}
-		base := filepath.Join(root, infuseDirName, "commands")
+		base := filepath.Join(root, core.InfuseDirName, "commands")
 		if str("scope") == "global" {
-			base = filepath.Join(InfuseHome(), "commands")
+			base = filepath.Join(core.InfuseHome(), "commands")
 		}
 		_ = os.MkdirAll(base, 0o755)
 		content := str("prompt")
@@ -39,7 +42,7 @@ func appCommands(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 		sendJSON(w, 200, listCommands(root))
 		return true
 	case path == "/api/commands/delete":
-		for _, base := range []string{filepath.Join(root, infuseDirName, "commands"), filepath.Join(InfuseHome(), "commands")} {
+		for _, base := range []string{filepath.Join(root, core.InfuseDirName, "commands"), filepath.Join(core.InfuseHome(), "commands")} {
 			_ = os.Remove(filepath.Join(base, taskSlug(str("name"))+".md"))
 		}
 		sendJSON(w, 200, listCommands(root))
@@ -49,9 +52,9 @@ func appCommands(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 		return true
 	case path == "/api/settings/full":
 		// settings without secrets plus what the settings screen needs
-		s := LoadSettings()
+		s := config.LoadSettings()
 		s.APIKey = ""
-		sendJSON(w, 200, map[string]any{"settings": s, "version": version, "shell": GetStatus()})
+		sendJSON(w, 200, map[string]any{"settings": s, "version": core.Version, "shell": filter.GetStatus()})
 		return true
 	}
 	return false

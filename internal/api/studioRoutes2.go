@@ -1,6 +1,9 @@
 package api
 
 import (
+	"infuse/internal/agent"
+	"infuse/internal/core"
+	"infuse/internal/workspace"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -39,8 +42,8 @@ func studioRoutes2(w http.ResponseWriter, r *http.Request, q map[string]string, 
 		sendJSON(w, 200, map[string]any{"path": q["path"], "content": string(b)})
 		return true
 	case path == "/api/diff":
-		if !exists(filepath.Join(root, ".git")) {
-			sendJSON(w, 200, map[string]any{"diff": LocalDiff(firstNonEmpty(q["project"], root), root, q["session"], q["scope"], q["path"])})
+		if !core.Exists(filepath.Join(root, ".git")) {
+			sendJSON(w, 200, map[string]any{"diff": workspace.LocalDiff(core.FirstNonEmpty(q["project"], root), root, q["session"], q["scope"], q["path"], snapshots{})})
 			return true
 		}
 		sendJSON(w, 200, gitDiff(root, q["path"]))
@@ -54,25 +57,25 @@ func studioRoutes2(w http.ResponseWriter, r *http.Request, q map[string]string, 
 				sendJSON(w, 400, map[string]any{"error": "mensagem vazia"})
 				return true
 			}
-			out, err := gitRun(root, "add", "-A")
+			out, err := workspace.GitRun(root, "add", "-A")
 			if err == nil {
-				out, err = gitRun(root, "commit", "-m", msg)
+				out, err = workspace.GitRun(root, "commit", "-m", msg)
 			}
 			sendJSON(w, 200, map[string]any{"ok": err == nil, "output": out})
 		case "discard":
-			if !exists(filepath.Join(root, ".git")) { // a local folder: back to the copy before the first change
-				err := LocalDiscard(firstNonEmpty(q["project"], root), root, q["session"], q["scope"], str("path"))
+			if !core.Exists(filepath.Join(root, ".git")) { // a local folder: back to the copy before the first change
+				err := workspace.LocalDiscard(core.FirstNonEmpty(q["project"], root), root, q["session"], q["scope"], str("path"), snapshots{})
 				sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err)})
 				return true
 			}
-			out, err := gitRun(root, "checkout", "--", str("path"))
+			out, err := workspace.GitRun(root, "checkout", "--", str("path"))
 			sendJSON(w, 200, map[string]any{"ok": err == nil, "output": out})
 		default:
-			sendJSON(w, 200, map[string]any{"branch": gitOutput(root, "rev-parse", "--abbrev-ref", "HEAD"), "status": gitOutput(root, "status", "--porcelain"), "log": gitOutput(root, "log", "--oneline", "-15")})
+			sendJSON(w, 200, map[string]any{"branch": workspace.GitOutput(root, "rev-parse", "--abbrev-ref", "HEAD"), "status": workspace.GitOutput(root, "status", "--porcelain"), "log": workspace.GitOutput(root, "log", "--oneline", "-15")})
 		}
 		return true
 	case path == "/api/oracle":
-		dir := filepath.Join(root, infuseDirName, "oracle")
+		dir := filepath.Join(root, core.InfuseDirName, "oracle")
 		if r.Method == http.MethodPut {
 			_ = os.MkdirAll(dir, 0o755)
 			name := reSafeName.ReplaceAllString(str("name"), "_")
@@ -87,20 +90,20 @@ func studioRoutes2(w http.ResponseWriter, r *http.Request, q map[string]string, 
 		files := []map[string]string{}
 		for _, e := range entries {
 			if !e.IsDir() {
-				files = append(files, map[string]string{"name": e.Name(), "content": readIfExists(filepath.Join(dir, e.Name()))})
+				files = append(files, map[string]string{"name": e.Name(), "content": agent.ReadIfExists(filepath.Join(dir, e.Name()))})
 			}
 		}
 		sendJSON(w, 200, files)
 		return true
 	case path == "/api/memory":
-		file := filepath.Join(root, infuseDirName, "memory.md")
+		file := filepath.Join(root, core.InfuseDirName, "memory.md")
 		if r.Method == http.MethodPut {
 			_ = os.MkdirAll(filepath.Dir(file), 0o755)
 			_ = os.WriteFile(file, []byte(str("content")), 0o644)
 			sendJSON(w, 200, map[string]any{"ok": true})
 			return true
 		}
-		sendJSON(w, 200, map[string]any{"content": readIfExists(file), "instructions": loadInstructions(root)})
+		sendJSON(w, 200, map[string]any{"content": agent.ReadIfExists(file), "instructions": agent.LoadInstructions(root)})
 		return true
 	}
 	return false

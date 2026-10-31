@@ -48,6 +48,26 @@ func runStubborn(t *testing.T, listen bool) *Session {
 	return s
 }
 
+func TestLoopBreakerThresholds(t *testing.T) {
+	var b loopBreaker
+	in := json.RawMessage(`{"command":"make"}`)
+	if b.record("Bash", in, true) != nil || b.record("Bash", in, true) != nil {
+		t.Fatal("tripped too early")
+	}
+	if b.record("Bash", in, true) == nil {
+		t.Fatal("same failure x3 must trip")
+	}
+	var c loopBreaker
+	for i := 0; i < 7; i++ {
+		if c.record("Bash", json.RawMessage(`{"i":`+string(rune('0'+i))+`}`), true) != nil {
+			t.Fatal("tripped before 8")
+		}
+	}
+	if c.record("Read", json.RawMessage(`{}`), true) == nil {
+		t.Fatal("8 consecutive failures must trip")
+	}
+}
+
 func TestBreakerSendsTheAgentBackOnce(t *testing.T) {
 	s := runStubborn(t, true)
 	if s.State != "idle" {

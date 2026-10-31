@@ -4,6 +4,11 @@ package api
 
 import (
 	"context"
+	"infuse/internal/agent"
+	"infuse/internal/core"
+	"infuse/internal/filter"
+	"infuse/internal/journal"
+	"infuse/internal/platform/process"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,46 +27,49 @@ type terminalResult struct {
 // runTerminal runs one command through the filter (heredoc transform, rules, journal) and returns what the
 // agent would have seen, plus the new working directory.
 func runTerminal(root, cwd, command string) terminalResult {
-	if cwd == "" || !within(root, cwd) {
+	if cwd == "" || !core.Within(root, cwd) {
 		cwd = root
 	}
 	if strings.TrimSpace(command) == "" {
 		return terminalResult{Cwd: cwd, Notes: []string{}}
 	}
-	rules := LoadRules(root)
-	tr := TransformCommand(command, cwd)
+	rules := filter.LoadRules(root)
+	tr := filter.TransformCommand(command, cwd)
 	if rules.Disabled["heredoc"] {
-		tr = TransformResult{Command: command}
+		tr = filter.TransformResult{Command: command}
 	}
-	final, ruleLines := ApplyCommandRules(root, rules, tr.Command)
-	Journal(root, JournalEntry{Kind: "command", Command: command, Detail: "terminal"})
+	final, ruleLines := filter.ApplyCommandRules(root, rules, tr.Command)
+	journal.Journal(root, journal.JournalEntry{Kind: "command", Command: command, Detail: "terminal"})
 	for _, a := range tr.Actions {
-		if a.Kind == ActLesson && a.Vice != "" {
-			Lesson(root, a.Vice, a.Detail)
+		if a.Kind ==
+			filter.ActLesson &&
+			a.Vice != "" {
+			journal.Lesson(root, a.Vice, a.Detail)
 		} else {
-			Journal(root, JournalEntry{Kind: "transform", Path: a.Path, Bytes: a.Bytes, Detail: a.Detail})
+			journal.Journal(root, journal.JournalEntry{Kind: "transform", Path: a.Path, Bytes: a.Bytes, Detail: a.Detail})
 		}
 	}
 	started := time.Now().UnixMilli()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, FindRealBash(), "-c", final+"\nprintf '\\n__INFUSE_CWD__%s' \"$PWD\"")
-	noConsoleWindow(cmd)
+	cmd := exec.CommandContext(ctx, core.FindRealBash(), "-c", final+"\nprintf '\\n__INFUSE_CWD__%s' \"$PWD\"")
+	process.NoConsoleWindow(cmd)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	buf := newCapWriter(1 << 20)
+	buf := core.NewCapWriter(1 << 20)
 	cmd.Stdout, cmd.Stderr = buf, buf
 	err := cmd.Run()
 	out := buf.String()
-	res := terminalResult{Cwd: cwd, Exit: exitCode(err), Notes: []string{}}
+	res := terminalResult{Cwd: cwd, Exit: core.ExitCode(err), Notes: []string{}}
 	if i := strings.LastIndex(out, "__INFUSE_CWD__"); i >= 0 {
-		if nc := FromMsysPath(strings.TrimSpace(out[i+len("__INFUSE_CWD__"):])); nc != "" && within(root, nc) {
+		if nc := core.FromMsysPath(strings.TrimSpace(out[i+len("__INFUSE_CWD__"):])); nc != "" &&
+			core.Within(root, nc) {
 			res.Cwd = nc
 		}
 		out = strings.TrimRight(out[:i], "\n")
 	}
 	res.Output = out
-	if trailer := buildTrailer(root, cwd, command, tr.Actions, started, rules, ruleLines); trailer != "" {
+	if trailer := filter.BuildTrailer(root, cwd, command, tr.Actions, started, rules, ruleLines); trailer != "" {
 		res.Notes = strings.Split(strings.TrimSpace(trailer), "\n")
 	}
 	return res
@@ -103,8 +111,8 @@ func listCommands(root string) []slashCommand {
 	}
 	seen := map[string]bool{}
 	for _, dir := range []string{
-		filepath.Join(root, infuseDirName, "commands"), filepath.Join(root, ".claude", "commands"),
-		filepath.Join(InfuseHome(), "commands"), filepath.Join(homeDir(), ".claude", "commands"),
+		filepath.Join(root, core.InfuseDirName, "commands"), filepath.Join(root, ".claude", "commands"),
+		filepath.Join(core.InfuseHome(), "commands"), filepath.Join(core.HomeDir(), ".claude", "commands"),
 	} {
 		entries, _ := os.ReadDir(dir)
 		for _, e := range entries {
@@ -116,7 +124,7 @@ func listCommands(root string) []slashCommand {
 				continue
 			}
 			seen[name] = true
-			body := readIfExists(filepath.Join(dir, e.Name()))
+			body := agent.ReadIfExists(filepath.Join(dir, e.Name()))
 			desc := ""
 			if strings.HasPrefix(body, "---") { // frontmatter: description
 				if end := strings.Index(body[3:], "---"); end > 0 {
@@ -129,7 +137,7 @@ func listCommands(root string) []slashCommand {
 				}
 			}
 			if desc == "" {
-				desc = truncate(strings.SplitN(strings.TrimSpace(body), "\n", 2)[0], 80)
+				desc = core.Truncate(strings.SplitN(strings.TrimSpace(body), "\n", 2)[0], 80)
 			}
 			out = append(out, slashCommand{Name: name, Description: desc, Prompt: body})
 		}

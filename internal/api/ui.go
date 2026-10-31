@@ -4,9 +4,18 @@ package api
 // native window (window_*.go). Nothing leaves the machine. `infuse serve` serves without a window.
 
 import (
-	uiembed "infuse/ui"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/agent"
+	"infuse/internal/browser"
+	"infuse/internal/config"
+	"infuse/internal/core"
+	"infuse/internal/desktop"
+	"infuse/internal/filter"
+	"infuse/internal/mcp"
+	"infuse/internal/platform/process"
+	"infuse/internal/projectmap"
+	uiembed "infuse/ui"
 	"net"
 	"net/http"
 	"os"
@@ -14,7 +23,6 @@ import (
 	"regexp"
 	"strings"
 )
-
 
 // uiFile serves one embedded file; INFUSE_UI_DIR serves ui/ from disk instead (development).
 func uiFile(w http.ResponseWriter, name string) {
@@ -71,7 +79,7 @@ func StartUI(window bool) {
 	})
 	mux.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "image/png")
-		_, _ = w.Write(iconPNG(64))
+		_, _ = w.Write(desktop.IconPNG(64))
 	})
 	// The token is the app's own key to its API. Other sites cannot send it (CSRF), rebound hostnames are
 	// refused (DNS rebinding), and local processes — the agent's own Bash included — do not know it, so
@@ -86,17 +94,17 @@ func StartUI(window bool) {
 	})
 	go func() { _ = http.Serve(ln, mux) }()
 	StartScheduler()
-	go resumeInterruptedSessions() // turns that infuse stopped by closing or restarting go on
+	go agent.ResumeInterruptedSessions() // turns that infuse stopped by closing or restarting go on
 	// the token travels in the URL fragment, which never leaves the window (not sent in requests)
 	if window {
-		RunWindow(url + "/#token=" + token)
-		closeAgentBrowsers()
+		desktop.RunWindow(url + "/#token=" + token)
+		browser.CloseAgentBrowsers()
 		closeViewBrowsers()
-		stopAllProcs()
-		closeAllMCP()
+		agent.StopAllProcs()
+		mcp.CloseAll()
 		os.Exit(0)
 	}
-	attachParentConsole()
+	process.AttachParentConsole()
 	fmt.Println("[infuse] " + url + "/#token=" + token)
 	select {}
 }
@@ -127,29 +135,31 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.URL.Path {
 	case "/api/status":
-		sendJSON(w, 200, GetStatus())
+		sendJSON(w, 200, filter.GetStatus())
 	case "/api/projects":
 		if r.Method == http.MethodPut { // reorder / rename: the whole list, as the sidebar shows it
-			var list []projectEntry
+			var list []config.ProjectEntry
+
 			b, _ := json.Marshal(body["projects"])
 			_ = json.Unmarshal(b, &list)
 			if list == nil {
-				list = []projectEntry{}
+				list = []config.ProjectEntry{}
 			}
-			_ = saveProjects(list)
+			_ = config.SaveProjects(list)
 		}
-		sendJSON(w, 200, loadProjects())
+		sendJSON(w, 200, config.LoadProjects())
 	case "/api/projects/remove":
-		var out []projectEntry
-		for _, p := range loadProjects() {
+		var out []config.ProjectEntry
+
+		for _, p := range config.LoadProjects() {
 			if p.Root != str("root") {
 				out = append(out, p)
 			}
 		}
 		if out == nil {
-			out = []projectEntry{}
+			out = []config.ProjectEntry{}
 		}
-		_ = saveProjects(out)
+		_ = config.SaveProjects(out)
 		sendJSON(w, 200, out)
 	case "/api/projects/add":
 		p := filepath.Clean(str("root"))
@@ -157,106 +167,109 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, 400, map[string]any{"error": "pasta não encontrada"})
 			return
 		}
-		RememberProject(p)
+		config.RememberProject(p)
 		sendJSON(w, 200, map[string]any{"ok": true, "root": p})
 	case "/api/fs":
 		// Folder listing for the in-app folder browser (no native dialog): "" lists the roots (drives / home).
 		sendJSON(w, 200, listFolders(q.Get("path")))
 	case "/api/dialog/folder":
 		// Native dialog from the server side: used when the page is not inside the native window.
-		p, err := osDialogs(nil).PickFolder("Abrir pasta do projeto")
+		p, err := desktop.OSDialogs(nil).PickFolder("Abrir pasta do projeto")
 		if err != nil {
 			sendJSON(w, 500, map[string]any{"error": err.Error()})
 			return
 		}
 		if p != "" {
-			RememberProject(p)
+			config.RememberProject(p)
 		}
 		sendJSON(w, 200, map[string]any{"path": p})
 	case "/api/dialog/files":
-		list, err := osDialogs(nil).PickFiles("Anexar arquivos")
+		list, err := desktop.OSDialogs(nil).PickFiles("Anexar arquivos")
 		if err != nil {
 			sendJSON(w, 500, map[string]any{"error": err.Error()})
 			return
 		}
-		out := []Attachment{}
+		out := []core.Attachment{}
 		for _, p := range list {
-			if a, ok := attachmentOf(p); ok {
+			if a, ok := desktop.AttachmentOf(p); ok {
 				out = append(out, a)
 			}
 		}
 		sendJSON(w, 200, out)
 	case "/api/reveal":
-		_ = revealInFileManager(str("path"))
+		_ = desktop.RevealInFileManager(str("path"))
 		sendJSON(w, 200, map[string]any{"ok": true})
 	case "/api/install":
-		sendJSON(w, 200, Install())
+		sendJSON(w, 200, filter.Install())
 	case "/api/uninstall":
-		sendJSON(w, 200, Uninstall())
+		sendJSON(w, 200, filter.Uninstall())
 	case "/api/rules":
-		file := projectRulesFile(root)
+		file := filter.ProjectRulesFile(root)
 		if q.Get("scope") == "global" {
-			file = globalRulesFile()
+			file = filter.GlobalRulesFile()
 		}
 		if r.Method == http.MethodPut {
-			var rf RulesFile
+			var rf filter.RulesFile
+
 			b, _ := json.Marshal(body)
 			_ = json.Unmarshal(b, &rf)
 			if rf.Rules == nil {
-				rf.Rules = []Rule{}
+				rf.Rules = []filter.Rule{}
 			}
 			if rf.Disable == nil {
 				rf.Disable = []string{}
 			}
-			if err := writeJSON(file, rf); err != nil {
+			if err := core.WriteJSON(file, rf); err != nil {
 				sendJSON(w, 500, map[string]any{"error": err.Error()})
 				return
 			}
 			sendJSON(w, 200, map[string]any{"ok": true, "file": file})
 			return
 		}
-		rf := RulesFile{Rules: []Rule{}, Disable: []string{}}
-		_ = readJSON(file, &rf)
-		sendJSON(w, 200, map[string]any{"file": file, "exists": exists(file), "rules": rf.Rules, "disable": rf.Disable})
+		rf := filter.RulesFile{Rules: []filter.Rule{}, Disable: []string{}}
+		_ = core.ReadJSON(file, &rf)
+		sendJSON(w, 200, map[string]any{"file": file, "exists": core.Exists(file), "rules": rf.Rules, "disable": rf.Disable})
 	case "/api/rules/test":
 		// Dry run: what the filter would do with this command under the current rules. Nothing is executed.
-		set := LoadRules(root)
+		set := filter.LoadRules(root)
 		command := str("command")
 		var notes []string
 		if strings.Contains(command, "<<") && !set.Disabled["heredoc"] {
-			scratch := filepath.Join(InfuseHome(), "preview")
+			scratch := filepath.Join(core.InfuseHome(), "preview")
 			_ = os.MkdirAll(scratch, 0o755)
-			tr := TransformCommand(command, scratch)
+			tr := filter.TransformCommand(command, scratch)
 			command = tr.Command
 			for _, a := range tr.Actions {
-				if a.Kind == ActLesson {
+				if a.Kind ==
+					filter.ActLesson {
 					notes = append(notes, fmt.Sprintf("[infuse] vice %s: %s", a.Vice, a.Detail))
 				} else {
 					notes = append(notes, "[infuse] "+a.Detail)
 				}
 			}
 		}
-		final, lines := ApplyCommandRules(root, set, command)
+		final, lines := filter.ApplyCommandRules(root, set, command)
 		sendJSON(w, 200, map[string]any{"finalCommand": final, "lines": append(notes, lines...)})
 	case "/api/journal":
-		sendJSON(w, 200, reverse(readJSONL(filepath.Join(root, infuseDirName, "journal.jsonl")), 300))
+		sendJSON(w, 200, reverse(core.ReadJSONL(filepath.Join(root, core.InfuseDirName, "journal.jsonl")), 300))
 	case "/api/lessons":
-		sendJSON(w, 200, reverse(readJSONL(filepath.Join(root, infuseDirName, "lessons.jsonl")), 300))
+		sendJSON(w, 200, reverse(core.ReadJSONL(filepath.Join(root, core.InfuseDirName, "lessons.jsonl")), 300))
 	case "/api/map":
-		var m *ProjectMap
+		var m *projectmap.ProjectMap
+
 		if q.Get("refresh") != "" {
-			m = BuildMap(root)
-			WriteMap(root, m)
+			m = projectmap.BuildMap(root)
+			projectmap.WriteMap(root, m)
 		} else {
-			m = LoadOrBuildMap(root)
+			m = projectmap.LoadOrBuildMap(root)
 		}
 		sendJSON(w, 200, m)
 	case "/api/watcher":
-		pid, alive := watcherAlive(root)
+		pid, alive := filter.WatcherAlive(root)
 		sendJSON(w, 200, map[string]any{"pid": pid, "alive": alive})
 	case "/api/notes":
 		name := reSafeName.ReplaceAllString(q.Get("name"), "_")
-		file := filepath.Join(root, infuseDirName, "notes", name)
+		file := filepath.Join(root, core.InfuseDirName, "notes", name)
 		if r.Method == http.MethodPut {
 			_ = os.MkdirAll(filepath.Dir(file), 0o755)
 			_ = os.WriteFile(file, []byte(str("content")), 0o644)
@@ -266,7 +279,7 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 		b, _ := os.ReadFile(file)
 		sendJSON(w, 200, map[string]any{"file": file, "content": string(b)})
 	case "/api/notes/list":
-		dir := filepath.Join(root, infuseDirName, "notes")
+		dir := filepath.Join(root, core.InfuseDirName, "notes")
 		entries, _ := os.ReadDir(dir)
 		names := []string{}
 		for _, e := range entries {

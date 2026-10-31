@@ -1,6 +1,8 @@
 package api
 
 import (
+	"infuse/internal/agent"
+	"infuse/internal/core"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,16 +18,16 @@ func appHooks(w http.ResponseWriter, r *http.Request, q map[string]string, body 
 	switch {
 	// ---------------------------------------------------------------- hooks and skills
 	case path == "/api/hooks" && r.Method == http.MethodGet:
-		out := LoadHooks(root)
+		out := agent.LoadHooks(root)
 		if out == nil {
-			out = []HookEntry{}
+			out = []agent.HookEntry{}
 		}
 		sendJSON(w, 200, out)
 		return true
 	case path == "/api/hooks/add":
 		ev, cmdline := str("event"), strings.TrimSpace(str("command"))
 		valid := false
-		for _, e := range hookEvents {
+		for _, e := range agent.HookEvents {
 			valid = valid || e == ev
 		}
 		if !valid || cmdline == "" {
@@ -36,28 +38,28 @@ func appHooks(w http.ResponseWriter, r *http.Request, q map[string]string, body 
 		if scope != "global" {
 			scope = "project"
 		}
-		err := addHook(root, scope, ev, str("matcher"), cmdline)
+		err := agent.AddHook(root, scope, ev, str("matcher"), cmdline)
 		if err == nil { // added by the user in the app: approved in the same click
-			err = approveHook(hookKey(root, scope, ev, str("matcher"), cmdline))
+			err = agent.ApproveHook(agent.HookKey(root, scope, ev, str("matcher"), cmdline))
 		}
 		sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err)})
 		return true
 	case path == "/api/hooks/approve":
-		sendJSON(w, 200, map[string]any{"ok": approveHook(str("key")) == nil})
+		sendJSON(w, 200, map[string]any{"ok": agent.ApproveHook(str("key")) == nil})
 		return true
 	case path == "/api/hooks/remove":
-		err := removeHook(root, str("key"))
+		err := agent.RemoveHook(root, str("key"))
 		sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err)})
 		return true
 	case path == "/api/skills" && r.Method == http.MethodGet:
-		out := LoadSkills(root)
+		out := agent.LoadSkills(root)
 		for i := range out {
 			if b, err := os.ReadFile(filepath.Join(out[i].Dir, "SKILL.md")); err == nil {
-				_, _, out[i].Body = parseSkill(string(b))
+				_, _, out[i].Body = agent.ParseSkill(string(b))
 			}
 		}
 		if out == nil {
-			out = []Skill{}
+			out = []agent.Skill{}
 		}
 		sendJSON(w, 200, out)
 		return true
@@ -67,9 +69,9 @@ func appHooks(w http.ResponseWriter, r *http.Request, q map[string]string, body 
 			sendJSON(w, 200, map[string]any{"ok": false, "error": "nome: letras minúsculas, números e hífens (ex.: revisar-pr)"})
 			return true
 		}
-		dir := filepath.Join(root, infuseDirName, "skills", name)
+		dir := filepath.Join(root, core.InfuseDirName, "skills", name)
 		if str("scope") == "global" {
-			dir = filepath.Join(InfuseHome(), "skills", name)
+			dir = filepath.Join(core.InfuseHome(), "skills", name)
 		}
 		desc := strings.ReplaceAll(strings.TrimSpace(str("description")), "\n", " ")
 		content := "---\nname: " + name + "\ndescription: " + desc + "\n---\n\n" + strings.TrimSpace(str("body")) + "\n"
@@ -78,8 +80,8 @@ func appHooks(w http.ResponseWriter, r *http.Request, q map[string]string, body 
 		sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err)})
 		return true
 	case path == "/api/skills/remove":
-		for _, s := range LoadSkills(root) {
-			if s.Name == str("name") && (strings.HasPrefix(s.Dir, filepath.Join(root, infuseDirName)) || strings.HasPrefix(s.Dir, InfuseHome())) {
+		for _, s := range agent.LoadSkills(root) {
+			if s.Name == str("name") && (strings.HasPrefix(s.Dir, filepath.Join(root, core.InfuseDirName)) || strings.HasPrefix(s.Dir, core.InfuseHome())) {
 				_ = os.RemoveAll(s.Dir)
 			}
 		}

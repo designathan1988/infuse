@@ -5,6 +5,7 @@ package api
 // scheduled tasks, usage totals.
 
 import (
+	"infuse/internal/config"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -41,17 +42,17 @@ func rememberProjectMode(root, mode string) {
 	if mode == "" {
 		return
 	}
-	list := loadProjects()
+	list := config.LoadProjects()
 	for i := range list {
 		if list[i].Root == root {
 			list[i].Mode = mode
 		}
 	}
-	_ = saveProjects(list)
+	_ = config.SaveProjects(list)
 }
 
 func projectMode(root string) string {
-	for _, p := range loadProjects() {
+	for _, p := range config.LoadProjects() {
 		if p.Root == root {
 			return p.Mode
 		}

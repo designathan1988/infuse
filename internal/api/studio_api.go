@@ -5,6 +5,10 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"infuse/internal/agent"
+	"infuse/internal/core"
+	"infuse/internal/projectmap"
+	"infuse/internal/workspace"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -25,7 +29,9 @@ func studioAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body
 	return false
 }
 
-func streamEvents(w http.ResponseWriter, r *http.Request, s *Session) {
+func streamEvents(w http.ResponseWriter, r *http.Request, s *agent.Session,
+
+) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming não suportado", 500)
@@ -36,12 +42,14 @@ func streamEvents(w http.ResponseWriter, r *http.Request, s *Session) {
 	w.Header().Set("connection", "keep-alive")
 	ch, unsub := s.Subscribe()
 	defer unsub()
-	write := func(ev Event) {
+	write := func(ev core.Event,
+
+	) {
 		b, _ := json.Marshal(ev)
 		fmt.Fprintf(w, "data: %s\n\n", b)
 		fl.Flush()
 	}
-	write(Event{Type: "session", Data: s.Snapshot()})
+	write(core.Event{Type: "session", Data: s.Snapshot()})
 	ping := time.NewTicker(20 * time.Second)
 	defer ping.Stop()
 	for {
@@ -69,7 +77,7 @@ type treeNode struct {
 }
 
 func fileTree(root, dir string, depth int) *treeNode {
-	rel := relTo(root, dir)
+	rel := core.RelTo(root, dir)
 	n := &treeNode{Name: filepath.Base(dir), Path: rel, Dir: true}
 	if rel == "" {
 		n.Name = filepath.Base(root)
@@ -84,10 +92,10 @@ func fileTree(root, dir string, depth int) *treeNode {
 		}
 		return entries[i].Name() < entries[j].Name()
 	})
-	m := LoadMap(root)
+	m := projectmap.LoadMap(root)
 	for _, e := range entries {
 		if e.IsDir() {
-			if ignoredDirs[e.Name()] || (strings.HasPrefix(e.Name(), ".") && e.Name() != ".infuse") {
+			if projectmap.IgnoredDirs[e.Name()] || (strings.HasPrefix(e.Name(), ".") && e.Name() != ".infuse") {
 				continue
 			}
 			if e.Name() == ".infuse" {
@@ -116,7 +124,7 @@ func fileTree(root, dir string, depth int) *treeNode {
 
 func gitDiff(root, path string) map[string]any {
 	if path != "" {
-		out, _ := gitRun(root, "diff", "--", path)
+		out, _ := workspace.GitRun(root, "diff", "--", path)
 		if strings.TrimSpace(out) == "" {
 			// untracked: show whole file as added
 			if b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path))); err == nil {
@@ -129,7 +137,7 @@ func gitDiff(root, path string) map[string]any {
 		}
 		return map[string]any{"path": path, "diff": out}
 	}
-	status, _ := gitRun(root, "status", "--porcelain") // untrimmed: the first column is significant
+	status, _ := workspace.GitRun(root, "status", "--porcelain") // untrimmed: the first column is significant
 	files := []map[string]string{}
 	for _, l := range strings.Split(status, "\n") {
 		if len(l) < 4 {
@@ -137,6 +145,6 @@ func gitDiff(root, path string) map[string]any {
 		}
 		files = append(files, map[string]string{"status": strings.TrimSpace(l[:2]), "path": strings.TrimSpace(l[3:])})
 	}
-	stat, _ := gitRun(root, "diff", "--stat")
-	return map[string]any{"files": files, "stat": stat, "isGit": exists(filepath.Join(root, ".git"))}
+	stat, _ := workspace.GitRun(root, "diff", "--stat")
+	return map[string]any{"files": files, "stat": stat, "isGit": core.Exists(filepath.Join(root, ".git"))}
 }

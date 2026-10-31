@@ -3,6 +3,7 @@ package api
 // Folder listing behind the in-app folder browser. Hidden and system folders are skipped.
 
 import (
+	"infuse/internal/core"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,10 +25,10 @@ type folderListing struct {
 
 func listFolders(p string) folderListing {
 	out := folderListing{Dirs: []folderEntry{}, Roots: []folderEntry{}}
-	home := homeDir()
+	home := core.HomeDir()
 	out.Roots = append(out.Roots, folderEntry{Name: "Início", Path: home})
 	for _, sub := range []string{"Documents", "Desktop", "Downloads", "Projects", "src", "dev", "code"} {
-		if d := filepath.Join(home, sub); exists(d) {
+		if d := filepath.Join(home, sub); core.Exists(d) {
 			out.Roots = append(out.Roots, folderEntry{Name: sub, Path: d})
 		}
 	}

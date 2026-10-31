@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"infuse/internal/workspace"
 	"net/http"
 )
 
@@ -13,25 +14,25 @@ func appReview(w http.ResponseWriter, r *http.Request, q map[string]string, body
 	switch {
 	// ---------------------------------------------------------------- review
 	case path == "/api/changes":
-		ch := Changes(dir)
+		ch := workspace.Changes(dir)
 		if ch["isGit"] == false { // a local folder: counted against the copies infuse kept before each first change
-			ch = LocalChanges(root, dir, r.URL.Query().Get("session"), r.URL.Query().Get("scope"))
+			ch = workspace.LocalChanges(root, dir, r.URL.Query().Get("session"), r.URL.Query().Get("scope"), snapshots{})
 		}
 		sendJSON(w, 200, ch)
 		return true
 	case path == "/api/pr" && r.Method == http.MethodGet:
-		sendJSON(w, 200, PRStatus(dir))
+		sendJSON(w, 200, workspace.PRStatus(dir))
 		return true
 	case path == "/api/pr":
 		var out string
 		var err error
 		switch str("action") {
 		case "create":
-			out, err = CreatePR(dir)
+			out, err = workspace.CreatePR(dir)
 		case "merge-auto":
-			out, err = ghRun(dir, "pr", "merge", "--auto", "--squash")
+			out, err = workspace.GhRun(dir, "pr", "merge", "--auto", "--squash")
 		case "failed-logs": // the failing CI run of this branch, for the agent to fix
-			out, err = FailedCILogs(dir)
+			out, err = workspace.FailedCILogs(dir)
 		default:
 			err = errors.New("ação desconhecida")
 		}

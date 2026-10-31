@@ -1,6 +1,9 @@
 package api
 
 import (
+	"infuse/internal/agent"
+	"infuse/internal/desktop"
+	"infuse/internal/workspace"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -36,8 +39,9 @@ func appFiles(w http.ResponseWriter, r *http.Request, q map[string]string, body 
 		return true
 	case path == "/api/file" && r.Method == http.MethodPut:
 		mtime, _ := body["mtime"].(float64)
-		nm, err := WriteUserFile(dir, str("path"), str("content"), int64(mtime), boolean("force"))
-		if err == errConflict {
+		nm, err := workspace.WriteUserFile(dir, str("path"), str("content"), int64(mtime), boolean("force"))
+		if err ==
+			workspace.ErrConflict {
 			cur, _ := os.ReadFile(filepath.Join(dir, filepath.FromSlash(str("path"))))
 			sendJSON(w, 409, map[string]any{"conflict": true, "mtime": nm, "content": string(cur)})
 			return true
@@ -49,15 +53,15 @@ func appFiles(w http.ResponseWriter, r *http.Request, q map[string]string, body 
 		sendJSON(w, 200, map[string]any{"ok": true, "mtime": nm})
 		return true
 	case path == "/api/editors":
-		sendJSON(w, 200, Editors())
+		sendJSON(w, 200, workspace.Editors())
 		return true
 	case path == "/api/frameable":
-		sendJSON(w, 200, map[string]any{"frameable": frameable(r.Context(), q["url"])})
+		sendJSON(w, 200, map[string]any{"frameable": agent.Frameable(r.Context(), q["url"])})
 		return true
 	case path == "/api/websearch":
-		res, engine, err := WebSearch(r.Context(), q["q"], 12)
+		res, engine, err := agent.WebSearch(r.Context(), q["q"], 12)
 		if err != nil {
-			sendJSON(w, 200, map[string]any{"error": err.Error(), "results": []SearchResult{}})
+			sendJSON(w, 200, map[string]any{"error": err.Error(), "results": []agent.SearchResult{}})
 			return true
 		}
 		sendJSON(w, 200, map[string]any{"results": res, "engine": engine})
@@ -69,7 +73,7 @@ func appFiles(w http.ResponseWriter, r *http.Request, q map[string]string, body 
 			sendJSON(w, 400, map[string]any{"error": "endereço inválido"})
 			return true
 		}
-		sendJSON(w, 200, map[string]any{"ok": openDefaultBrowser(u) == nil})
+		sendJSON(w, 200, map[string]any{"ok": agent.OpenDefaultBrowser(u) == nil})
 		return true
 	case path == "/api/open":
 		p := str("path")
@@ -78,9 +82,9 @@ func appFiles(w http.ResponseWriter, r *http.Request, q map[string]string, body 
 		}
 		var err error
 		if str("app") == "explorer" {
-			err = revealInFileManager(p)
+			err = desktop.RevealInFileManager(p)
 		} else {
-			err = OpenInEditor(str("app"), p)
+			err = workspace.OpenInEditor(str("app"), p)
 		}
 		res := map[string]any{"ok": err == nil}
 		if err != nil {

@@ -23,17 +23,22 @@ func appMCP(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		if scope != "global" {
 			scope = "project"
 		}
-		m := mcpFor(root)
+		m := mcp.For(root)
 		var err error
 		switch strings.TrimPrefix(path, "/api/mcp/") {
 		case "add": // a server from a preset or written by the user
-			var cfg mcpServerConfig
+			var cfg mcp.ServerConfig
+
 			b, _ := json.Marshal(body["config"])
 			if err = json.Unmarshal(b, &cfg); err == nil {
 				if strings.TrimSpace(name) == "" || (cfg.Command == "" && cfg.URL == "") {
 					err = errors.New("informe o nome e o comando (ou o endereço) do servidor")
 				} else {
-					err = editMCP(root, scope, func(sv map[string]mcpServerConfig) { sv[name] = cfg })
+					err = mcp.Edit(root, scope, func(sv map[string]mcp.ServerConfig,
+
+					) {
+						sv[name] = cfg
+					})
 				}
 			}
 			if err == nil && boolean("approve") { // added by the user from the app: approved in the same click
@@ -47,14 +52,20 @@ func appMCP(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				err = mcp.Approve(root, scope, name, cfg)
 			}
 		case "toggle":
-			err = editMCP(root, scope, func(sv map[string]mcpServerConfig) {
+			err = mcp.Edit(root, scope, func(sv map[string]mcp.ServerConfig,
+
+			) {
 				if c, ok := sv[name]; ok {
 					c.Disabled = boolean("disabled")
 					sv[name] = c
 				}
 			})
 		case "remove":
-			err = editMCP(root, scope, func(sv map[string]mcpServerConfig) { delete(sv, name) })
+			err = mcp.Edit(root, scope, func(sv map[string]mcp.ServerConfig,
+
+			) {
+				delete(sv, name)
+			})
 		case "restart":
 		default:
 			sendJSON(w, 404, map[string]any{"error": "ação desconhecida"})

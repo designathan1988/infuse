@@ -4,7 +4,9 @@ package api
 // starts a session for a due task.
 
 import (
+	"infuse/internal/agent"
 	"infuse/internal/scheduler"
+	"infuse/internal/workspace"
 	"time"
 )
 
@@ -26,7 +28,7 @@ func taskSlug(name string) string { return scheduler.Slug(name) }
 type scheduledRunner struct{}
 
 func (scheduledRunner) RunTask(t scheduler.Task) (string, error) {
-	s := newSession(t.Root)
+	s := agent.NewSession(t.Root)
 	s.Mu.Lock()
 	s.Title = "⏱ " + t.Name
 	if t.Mode != "" {
@@ -41,7 +43,7 @@ func (scheduledRunner) RunTask(t scheduler.Task) (string, error) {
 	s.Mu.Unlock()
 	s.AllowAlways(t.AlwaysOK)
 	if t.Worktree {
-		if dir, branch, err := CreateWorktree(t.Root, t.Name); err == nil {
+		if dir, branch, err := workspace.CreateWorktree(t.Root, t.Name); err == nil {
 			s.Mu.Lock()
 			s.Worktree, s.Branch, s.Cwd = dir, branch, dir
 			s.Mu.Unlock()

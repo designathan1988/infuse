@@ -4,6 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"infuse/internal/agent"
+	"infuse/internal/config"
+	"infuse/internal/core"
+	"infuse/internal/desktop"
+	"infuse/internal/llm"
+	"infuse/internal/projectmap"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,38 +24,41 @@ func studioRoutes1(w http.ResponseWriter, r *http.Request, q map[string]string, 
 	switch {
 	case path == "/api/settings":
 		if r.Method == http.MethodPut {
-			s := LoadSettings()
+			s := config.LoadSettings()
 			b, _ := json.Marshal(body)
 			if err := json.Unmarshal(b, &s); err != nil {
 				sendJSON(w, 400, map[string]any{"error": err.Error()})
 				return true
 			}
-			if err := SaveSettings(s); err != nil {
+			if err := config.SaveSettings(s); err != nil {
 				sendJSON(w, 500, map[string]any{"error": err.Error()})
 				return true
 			}
 			sendJSON(w, 200, map[string]any{"ok": true})
 			return true
 		}
-		s := LoadSettings()
+		s := config.LoadSettings()
 		masked := s
 		if len(masked.APIKey) > 8 {
 			masked.APIKey = masked.APIKey[:6] + "…" + masked.APIKey[len(masked.APIKey)-4:]
 		}
-		sendJSON(w, 200, map[string]any{"settings": masked, "hasKey": s.APIKey != "", "providers": providerNames(), "tools": toolSpecs()})
+		sendJSON(w, 200, map[string]any{"settings": masked, "hasKey": s.APIKey != "", "providers": llm.ProviderNames(), "tools": agent.ToolSpecs()})
 		return true
 
 	case path == "/api/settings/test":
-		s := LoadSettings()
+		s := config.LoadSettings()
 		if str("apiKey") != "" && !strings.Contains(str("apiKey"), "…") {
 			s.APIKey = str("apiKey")
 		}
-		p, err := newProvider(s.Provider, ProviderConfig{APIKey: s.APIKey, BaseURL: s.BaseURL})
+		p, err := llm.NewProvider(s.Provider, llm.ProviderConfig{APIKey: s.APIKey, BaseURL: s.BaseURL})
 		if err != nil {
 			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
 			return true
 		}
-		res, err := p.Stream(r.Context(), ModelRequest{Model: s.Model, Messages: []Message{{Role: "user", Content: []Block{{Type: "text", Text: "Responda apenas: ok"}}}}, MaxTokens: 16}, func(StreamEvent) {})
+		res, err := p.Stream(r.Context(), llm.ModelRequest{Model: s.Model, Messages: []core.Message{{Role: "user", Content: []core.Block{{Type: "text", Text: "Responda apenas: ok"}}}}, MaxTokens: 16}, func(llm.StreamEvent,
+
+		) {
+		})
 		if err != nil {
 			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
 			return true
@@ -59,14 +67,14 @@ func studioRoutes1(w http.ResponseWriter, r *http.Request, q map[string]string, 
 		return true
 
 	case path == "/api/sessions" && r.Method == http.MethodGet:
-		sendJSON(w, 200, listSessions(root))
+		sendJSON(w, 200, agent.ListSessions(root))
 		return true
 	case path == "/api/sessions" && r.Method == http.MethodPost:
 		if st, err := os.Stat(root); err != nil || !st.IsDir() {
 			sendJSON(w, 400, map[string]any{"error": "projeto não encontrado"})
 			return true
 		}
-		s := newSession(root)
+		s := agent.NewSession(root)
 		sendJSON(w, 200, s.Snapshot())
 		return true
 
@@ -78,7 +86,7 @@ func studioRoutes1(w http.ResponseWriter, r *http.Request, q map[string]string, 
 		if len(parts) > 1 {
 			action = parts[1]
 		}
-		s, err := loadSession(root, id)
+		s, err := agent.LoadSession(root, id)
 		if err != nil {
 			sendJSON(w, 404, map[string]any{"error": "sessão não encontrada"})
 			return true
@@ -105,7 +113,7 @@ func studioRoutes1(w http.ResponseWriter, r *http.Request, q map[string]string, 
 				sendJSON(w, 200, s.Snapshot())
 			}
 		case "duplicate":
-			d := newSession(root)
+			d := agent.NewSession(root)
 			d.Mu.Lock()
 			d.Title = s.Title + " (cópia)"
 			d.Model = s.Model
@@ -116,10 +124,12 @@ func studioRoutes1(w http.ResponseWriter, r *http.Request, q map[string]string, 
 			d.Save()
 			sendJSON(w, 200, d.Snapshot())
 		case "send":
-			var atts []Attachment
+			var atts []core.Attachment
+
 			ab, _ := json.Marshal(body["attachments"])
 			_ = json.Unmarshal(ab, &atts)
-			var imgs []InlineImage
+			var imgs []core.InlineImage
+
 			ib, _ := json.Marshal(body["images"])
 			_ = json.Unmarshal(ib, &imgs)
 			if err := s.Send(str("text"), atts, imgs); err != nil {
@@ -150,7 +160,7 @@ func studioRoutes1(w http.ResponseWriter, r *http.Request, q map[string]string, 
 
 	case path == "/api/files/list":
 		// Flat list for the @ autocomplete: every file and directory the map knows, project-relative.
-		m := LoadOrBuildMap(root)
+		m := projectmap.LoadOrBuildMap(root)
 		out := []string{}
 		seen := map[string]bool{}
 		for p := range m.Files {
@@ -164,10 +174,10 @@ func studioRoutes1(w http.ResponseWriter, r *http.Request, q map[string]string, 
 		sendJSON(w, 200, out)
 		return true
 	case path == "/api/apps":
-		sendJSON(w, 200, DetectApps())
+		sendJSON(w, 200, desktop.DetectApps())
 		return true
 	case path == "/api/apps/open":
-		res, err := LaunchApp(str("id"), root)
+		res, err := desktop.LaunchApp(str("id"), root)
 		if err != nil {
 			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
 			return true
@@ -175,7 +185,7 @@ func studioRoutes1(w http.ResponseWriter, r *http.Request, q map[string]string, 
 		sendJSON(w, 200, map[string]any{"ok": true, "launched": res})
 		return true
 	case path == "/api/providers/models":
-		s := LoadSettings()
+		s := config.LoadSettings()
 		name := str("provider")
 		if name == "" {
 			name = s.Provider
@@ -188,7 +198,7 @@ func studioRoutes1(w http.ResponseWriter, r *http.Request, q map[string]string, 
 		if b, ok := body["baseUrl"].(string); ok {
 			base = b
 		}
-		names, err := ListModels(r.Context(), name, ProviderConfig{APIKey: key, BaseURL: base})
+		names, err := llm.ListModels(r.Context(), name, llm.ProviderConfig{APIKey: key, BaseURL: base})
 		if err != nil {
 			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
 			return true
