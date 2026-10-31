@@ -230,11 +230,9 @@ func studioAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body
 		sendJSON(w, 200, map[string]any{"path": q["path"], "content": string(b)})
 		return true
 	case path == "/api/diff":
-		if !exists(filepath.Join(root, ".git")) && q["session"] != "" {
-			if s, err := loadSession(q["project"], q["session"]); err == nil {
-				sendJSON(w, 200, map[string]any{"diff": s.LocalDiff(q["path"])})
-				return true
-			}
+		if !exists(filepath.Join(root, ".git")) {
+			sendJSON(w, 200, map[string]any{"diff": LocalDiff(firstNonEmpty(q["project"], root), root, q["path"])})
+			return true
 		}
 		sendJSON(w, 200, gitDiff(root, q["path"]))
 		return true
@@ -253,11 +251,8 @@ func studioAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body
 			}
 			sendJSON(w, 200, map[string]any{"ok": err == nil, "output": out})
 		case "discard":
-			if !exists(filepath.Join(root, ".git")) && q["session"] != "" { // a local folder: back to the checkpoint
-				s, err := loadSession(q["project"], q["session"])
-				if err == nil {
-					err = s.LocalDiscard(str("path"))
-				}
+			if !exists(filepath.Join(root, ".git")) { // a local folder: back to the copy before the first change
+				err := LocalDiscard(firstNonEmpty(q["project"], root), root, str("path"))
 				sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err)})
 				return true
 			}

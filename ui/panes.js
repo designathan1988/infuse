@@ -32,7 +32,8 @@ function openFileInPane(path) { togglePane('files', true); setTimeout(() => pane
 function paneCtx() { return { root: curRoot(), dir: curDir(), L: curL() }; }
 
 function renderPanes() {
-  const host = $('#panes'); host.classList.toggle('empty', !P2.open.length || !!S.page); // full pages hide the panes host.style.width = P2.width + 'px';
+  const host = $('#panes'); host.classList.toggle('empty', !P2.open.length || !!S.page); // full pages hide the panes
+  host.style.width = P2.width + 'px'; // the width the user set (dragging starts from what is on screen)
   const ctxKey = curRoot() + '|' + curDir();
   // remove panes no longer open
   $$('.pane', host).forEach(p => { if (!P2.open.includes(p.dataset.id)) p.remove(); });
@@ -69,15 +70,22 @@ function renderPanes() {
   S.views.forEach(v => { if (!v.el) return; $$('.vbar [data-a]', v.el).forEach(b => b.classList.toggle('on', P2.open.includes(b.dataset.a))); $('.chg', v.el)?.classList.toggle('on', P2.open.includes('changes')); });
 }
 function dragSplit(e, a, b) {
-  e.preventDefault(); const pa = $(`.pane[data-id="${a}"]`), pb = $(`.pane[data-id="${b}"]`); const ha = pa.offsetHeight, hb = pb.offsetHeight, y0 = e.clientY;
+  e.preventDefault(); const pa = $(`.pane[data-id="${a}"]`), pb = $(`.pane[data-id="${b}"]`); const ha = pa.offsetHeight, hb = pb.offsetHeight, y0 = e.clientY; const done = dragShield('row-resize');
   const move = ev => { const d = ev.clientY - y0; const na = Math.max(90, ha + d), nb = Math.max(90, hb - d); P2.sizes[a] = na / 100; P2.sizes[b] = nb / 100; pa.style.flex = `${P2.sizes[a]} 1 0`; pb.style.flex = `${P2.sizes[b]} 1 0`; P2.inst[a]?.fit?.(); P2.inst[b]?.fit?.(); };
-  const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); lsSet('paneSizes', P2.sizes); };
+  const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); done(); lsSet('paneSizes', P2.sizes); };
   addEventListener('mousemove', move); addEventListener('mouseup', up);
 }
+// While a divider is dragged a shield covers the window: the mouse stays with the drag even over the
+// browser's page (a stream or a native view), which would otherwise take the movements.
+function dragShield(cursor) {
+  const d = h(`<div class="dragshield" style="cursor:${cursor}"></div>`); document.body.appendChild(d); document.body.classList.add('dragging');
+  return () => { d.remove(); document.body.classList.remove('dragging'); };
+}
 $('#paneGrip').onmousedown = e => {
-  e.preventDefault(); const w0 = P2.width, x0 = e.clientX;
-  const move = ev => { P2.width = Math.max(320, Math.min(innerWidth - 480, w0 - (ev.clientX - x0))); $('#panes').style.width = P2.width + 'px'; for (const id of P2.open) P2.inst[id]?.fit?.(); };
-  const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); lsSet('paneWidth', P2.width); };
+  e.preventDefault(); const x0 = e.clientX; const w0 = $('#panes').getBoundingClientRect().width; // from what is on screen
+  const done = dragShield('col-resize'); let raf = 0;
+  const move = ev => { P2.width = Math.round(Math.max(320, Math.min(innerWidth - 480, w0 - (ev.clientX - x0)))); cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { $('#panes').style.width = P2.width + 'px'; for (const id of P2.open) P2.inst[id]?.fit?.(); }); };
+  const up = () => { removeEventListener('mousemove', move); removeEventListener('mouseup', up); done(); lsSet('paneWidth', P2.width); for (const id of P2.open) P2.inst[id]?.fit?.(); };
   addEventListener('mousemove', move); addEventListener('mouseup', up);
 };
 addEventListener('resize', () => { for (const id of P2.open) P2.inst[id]?.fit?.(); });
@@ -246,7 +254,7 @@ function mountBrowser(pb, extra, c) {
   const place = force => {
     if (!native) return;
     const rect = rectNow();
-    const visible = document.body.contains(frames) && frames.offsetParent !== null && rect.w > 4 && rect.h > 4 && !document.querySelector('.menu, .overlay') && !document.hidden;
+    const visible = document.body.contains(frames) && frames.offsetParent !== null && rect.w > 4 && rect.h > 4 && !document.querySelector('.menu, .overlay, .dragshield') && !document.hidden;
     const key = JSON.stringify([rect, visible, cur?.id]); if (!force && key === lastPlace) return; lastPlace = key;
     tabs.forEach(tb => tb.opened && infuse.call('browser', 'place', { id: tb.id, ...rect, visible: visible && tb === cur }).catch(() => { }));
   };

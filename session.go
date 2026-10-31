@@ -103,10 +103,30 @@ var (
 
 func sessionsDir(root string) string { return filepath.Join(root, infuseDirName, "sessions") }
 
+var sessionIDMu sync.Mutex
+
+// newSessionID is the creation time in milliseconds (sessions sort by it), moved forward when that
+// millisecond is taken — two sessions created in the same millisecond (a fork) must not share an id.
+func newSessionID(root string) string {
+	sessionIDMu.Lock()
+	defer sessionIDMu.Unlock()
+	ms := time.Now().UnixNano() / 1e6
+	for {
+		id := fmt.Sprintf("%d", ms)
+		sessionsMu.Lock()
+		_, taken := sessions[id]
+		sessionsMu.Unlock()
+		if !taken && !exists(filepath.Join(sessionsDir(root), id+".json")) {
+			return id
+		}
+		ms++
+	}
+}
+
 func newSession(root string) *Session {
 	s := &Session{
 		SessionData: SessionData{
-			ID: fmt.Sprintf("%d", time.Now().UnixNano()/1e6), Root: root, Created: time.Now().UnixMilli(), Updated: time.Now().UnixMilli(),
+			ID: newSessionID(root), Root: root, Created: time.Now().UnixMilli(), Updated: time.Now().UnixMilli(),
 			Cwd: root, Checkpoints: map[int][]CheckpointFile{}, Title: "Nova sessão",
 		},
 		State: "idle", subs: map[chan Event]struct{}{}, readFiles: map[string]bool{}, allowAlways: map[string]bool{},

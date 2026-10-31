@@ -169,55 +169,92 @@ func unifiedDiff(path string, a, b []string) (string, int, int) {
 	return sb.String(), added, removed
 }
 
-// sessionBaselines maps each file the session changed to its content before the first change ("" and
-// isNew for files it created).
-func (s *Session) sessionBaselines() map[string]struct {
+type baseline struct {
 	content string
 	isNew   bool
-} {
-	s.mu.Lock()
-	turns := make([]int, 0, len(s.Checkpoints))
-	for t := range s.Checkpoints {
-		turns = append(turns, t)
+}
+
+// projectBaselines maps each file any session of the project changed to its content before the first
+// change (earliest session, earliest turn); "" and isNew for files a session created.
+func projectBaselines(root string) map[string]baseline {
+	entries, _ := os.ReadDir(sessionsDir(root))
+	type sess struct {
+		id      string
+		created int64
+		cps     map[int][]CheckpointFile
 	}
-	sort.Ints(turns)
-	cps := map[int][]CheckpointFile{}
-	for _, t := range turns {
-		cps[t] = append([]CheckpointFile{}, s.Checkpoints[t]...)
+	var list []sess
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		var d struct {
+			ID          string                   `json:"id"`
+			Created     int64                    `json:"created"`
+			Checkpoints map[int][]CheckpointFile `json:"checkpoints"`
+		}
+		if readJSON(filepath.Join(sessionsDir(root), e.Name()), &d) == nil && len(d.Checkpoints) > 0 {
+			list = append(list, sess{d.ID, d.Created, d.Checkpoints})
+		}
 	}
-	s.mu.Unlock()
-	out := map[string]struct {
-		content string
-		isNew   bool
-	}{}
-	for _, t := range turns {
-		for _, c := range cps[t] {
-			if _, seen := out[c.Path]; seen {
-				continue
+	// a session running now has checkpoints not saved yet
+	sessionsMu.Lock()
+	for _, live := range sessions {
+		if live.Root != root {
+			continue
+		}
+		live.mu.Lock()
+		cps := map[int][]CheckpointFile{}
+		for t, c := range live.Checkpoints {
+			cps[t] = append([]CheckpointFile{}, c...)
+		}
+		id, created := live.ID, live.Created
+		live.mu.Unlock()
+		replaced := false
+		for i := range list {
+			if list[i].id == id {
+				list[i].cps, replaced = cps, true
 			}
-			if c.New {
-				out[c.Path] = struct {
-					content string
-					isNew   bool
-				}{"", true}
-				continue
+		}
+		if !replaced && len(cps) > 0 {
+			list = append(list, sess{id, created, cps})
+		}
+	}
+	sessionsMu.Unlock()
+	sort.Slice(list, func(i, j int) bool { return list[i].created < list[j].created })
+	out := map[string]baseline{}
+	for _, se := range list {
+		turns := make([]int, 0, len(se.cps))
+		for t := range se.cps {
+			turns = append(turns, t)
+		}
+		sort.Ints(turns)
+		for _, t := range turns {
+			for _, c := range se.cps[t] {
+				if _, seen := out[c.Path]; seen {
+					continue
+				}
+				if c.New {
+					out[c.Path] = baseline{"", true}
+					continue
+				}
+				b, err := os.ReadFile(filepath.Join(root, infuseDirName, "checkpoints", se.id, fmt.Sprint(t), filepath.FromSlash(c.Path)))
+				if err != nil {
+					continue // the copy is gone (rewound): this change is not measurable
+				}
+				out[c.Path] = baseline{string(b), false}
 			}
-			b, _ := os.ReadFile(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t), filepath.FromSlash(c.Path)))
-			out[c.Path] = struct {
-				content string
-				isNew   bool
-			}{string(b), false}
 		}
 	}
 	return out
 }
 
-// LocalChanges lists what the session changed in a folder without git, with line counts.
-func (s *Session) LocalChanges() map[string]any {
+// LocalChanges lists what infuse's sessions changed in a folder without git, with line counts.
+func LocalChanges(root, work string) map[string]any {
 	files := []fileChange{}
 	add, rem := 0, 0
-	for p, base := range s.sessionBaselines() {
-		now, err := os.ReadFile(filepath.Join(s.workRoot(), filepath.FromSlash(p)))
+	for p, base := range projectBaselines(root) {
+		now, err := os.ReadFile(filepath.Join(work, filepath.FromSlash(p)))
 		st := "M"
 		switch {
 		case err != nil && base.isNew:
@@ -239,25 +276,25 @@ func (s *Session) LocalChanges() map[string]any {
 	return map[string]any{"isGit": false, "local": true, "files": files, "added": add, "removed": rem}
 }
 
-// LocalDiff is the unified diff of one file against its session baseline.
-func (s *Session) LocalDiff(p string) string {
-	base, ok := s.sessionBaselines()[p]
+// LocalDiff is the unified diff of one file against its baseline.
+func LocalDiff(root, work, p string) string {
+	base, ok := projectBaselines(root)[p]
 	if !ok {
 		return ""
 	}
-	now, _ := os.ReadFile(filepath.Join(s.workRoot(), filepath.FromSlash(p)))
+	now, _ := os.ReadFile(filepath.Join(work, filepath.FromSlash(p)))
 	d, _, _ := unifiedDiff(p, splitLines(base.content), splitLines(string(now)))
 	return d
 }
 
-// LocalDiscard puts a file back as it was before the session changed it.
-func (s *Session) LocalDiscard(p string) error {
-	base, ok := s.sessionBaselines()[p]
+// LocalDiscard puts a file back as it was before infuse's sessions changed it.
+func LocalDiscard(root, work, p string) error {
+	base, ok := projectBaselines(root)[p]
 	if !ok {
-		return fmt.Errorf("arquivo sem alteração desta sessão")
+		return fmt.Errorf("arquivo sem alteração registrada")
 	}
-	abs := filepath.Join(s.workRoot(), filepath.FromSlash(p))
-	if !within(s.workRoot(), abs) {
+	abs := filepath.Join(work, filepath.FromSlash(p))
+	if !within(work, abs) {
 		return fmt.Errorf("fora do projeto")
 	}
 	if base.isNew {

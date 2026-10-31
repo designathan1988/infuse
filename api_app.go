@@ -581,10 +581,8 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 	// ---------------------------------------------------------------- review
 	case path == "/api/changes":
 		ch := Changes(dir)
-		if ch["isGit"] == false && q["session"] != "" { // a local folder: counted against the session's checkpoints
-			if s, err := loadSession(root, q["session"]); err == nil {
-				ch = s.LocalChanges()
-			}
+		if ch["isGit"] == false { // a local folder: counted against the copies infuse kept before each first change
+			ch = LocalChanges(root, dir)
 		}
 		sendJSON(w, 200, ch)
 		return true

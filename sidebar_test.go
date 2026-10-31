@@ -59,7 +59,10 @@ func TestLocalChangesWithoutGit(t *testing.T) {
 	s.checkpointBeforeWrite(filepath.Join(root, "novo.js"))
 	_ = os.WriteFile(filepath.Join(root, "a.js"), []byte("um\nDOIS\ntres\nquatro\n"), 0o644)
 	_ = os.WriteFile(filepath.Join(root, "novo.js"), []byte("x\ny\n"), 0o644)
-	ch := s.LocalChanges()
+	s.save()
+	other := newSession(root) // another session of the same project sees the project's changes
+	_ = other
+	ch := LocalChanges(root, root)
 	files := ch["files"].([]fileChange)
 	if len(files) != 2 || ch["added"] != 4 || ch["removed"] != 1 {
 		t.Fatalf("%+v", ch)
@@ -67,17 +70,17 @@ func TestLocalChangesWithoutGit(t *testing.T) {
 	if files[0].Path != "a.js" || files[0].Added != 2 || files[0].Removed != 1 || files[1].Status != "A" || files[1].Added != 2 {
 		t.Fatalf("%+v", files)
 	}
-	d := s.LocalDiff("a.js")
+	d := LocalDiff(root, root, "a.js")
 	if !strings.Contains(d, "-dois") || !strings.Contains(d, "+DOIS") || !strings.Contains(d, "+quatro") || !strings.Contains(d, "@@ -1,3 +1,4 @@") {
 		t.Fatal(d)
 	}
-	if err := s.LocalDiscard("a.js"); err != nil {
+	if err := LocalDiscard(root, root, "a.js"); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(root, "a.js")); string(b) != "um\ndois\ntres\n" {
 		t.Fatalf("%q", b)
 	}
-	if err := s.LocalDiscard("novo.js"); err != nil || exists(filepath.Join(root, "novo.js")) {
+	if err := LocalDiscard(root, root, "novo.js"); err != nil || exists(filepath.Join(root, "novo.js")) {
 		t.Fatal("new file not removed")
 	}
 }
