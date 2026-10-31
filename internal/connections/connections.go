@@ -1,10 +1,13 @@
-package main
+package connections
 
 // Connections: the model providers the user has connected. Each one has a kind (the wire protocol:
 // anthropic | openai | google | ollama | mock), an endpoint and a key. Keys live in the OS secret store
 // (secrets_*.go), never in settings.json. Sessions pick a connection and a model from it.
 
 import (
+	"infuse/internal/config"
+	"infuse/internal/core"
+	"infuse/internal/llm"
 	"context"
 	"errors"
 	"sort"
@@ -12,8 +15,29 @@ import (
 	"time"
 )
 
+type Settings = config.Settings
+type Connection = config.Connection
+type ProviderConfig = llm.ProviderConfig
+type Provider = llm.Provider
+
+var providerPresets = config.ProviderPresets
+
+func presetFor(id string) config.ProviderPreset { return config.PresetFor(id) }
+func secretGet(name string) (string, error)      { return config.SecretGet(name) }
+func secretSet(name, v string) error             { return config.SecretSet(name, v) }
+func secretDelete(name string) error             { return config.SecretDelete(name) }
+func secretName(id string) string                { return config.SecretName(id) }
+func keyHint(k string) string                    { return config.KeyHint(k) }
+func contains(list []string, v string) bool      { return core.Contains(list, v) }
+func ListModels(ctx context.Context, name string, cfg ProviderConfig) ([]string, error) {
+	return llm.ListModels(ctx, name, cfg)
+}
+func newProvider(name string, cfg ProviderConfig) (Provider, error) { return llm.NewProvider(name, cfg) }
+func LoadSettings() Settings                    { return config.LoadSettings() }
+func SaveSettings(s Settings) error             { return config.SaveSettings(s) }
+
 // connectionConfig resolves a connection id to the provider kind and its config (key from the secret store).
-func connectionConfig(s Settings, id string) (string, ProviderConfig) {
+func ConnectionConfig(s Settings, id string) (string, ProviderConfig) {
 	p := presetFor(id)
 	c := s.Connections[id]
 	kind := c.Kind
@@ -28,8 +52,8 @@ func connectionConfig(s Settings, id string) (string, ProviderConfig) {
 	return kind, ProviderConfig{APIKey: key, BaseURL: base}
 }
 
-func providerFor(s Settings, id string) (Provider, error) {
-	kind, cfg := connectionConfig(s, id)
+func ProviderFor(s Settings, id string) (Provider, error) {
+	kind, cfg := ConnectionConfig(s, id)
 	return newProvider(kind, cfg)
 }
 
@@ -85,7 +109,7 @@ func ConnectProvider(ctx context.Context, id, key, base string) (Connection, err
 	if s.Provider == "" || !s.Connections[s.Provider].Connected {
 		s.Provider = id
 		if len(c.Models) > 0 && !contains(c.Models, s.Model) {
-			s.Model = preferredModel(c.Models)
+			s.Model = PreferredModel(c.Models)
 			s.FastModel = s.Model
 		}
 	}
@@ -110,7 +134,7 @@ func DisconnectProvider(id string) error {
 
 
 // preferredModel picks a sensible default from a provider's list: a coding/chat model, not an embedding one.
-func preferredModel(models []string) string {
+func PreferredModel(models []string) string {
 	for _, want := range []string{"claude-sonnet", "gpt-5", "gemini-2.5-pro", "deepseek-chat", "deepseek-v4", "qwen", "llama"} {
 		for _, m := range models {
 			if strings.Contains(m, want) && !strings.Contains(m, "embed") {
@@ -129,15 +153,15 @@ func preferredModel(models []string) string {
 	return ""
 }
 
-type modelChoice struct {
+type ModelChoice struct {
 	Provider string `json:"provider"`
 	Label    string `json:"label"`
 	Model    string `json:"model"`
 }
 
 // AvailableModels lists every model of every connected provider, for the model picker.
-func AvailableModels(s Settings) []modelChoice {
-	var out []modelChoice
+func AvailableModels(s Settings) []ModelChoice {
+	var out []ModelChoice
 	ids := make([]string, 0, len(s.Connections))
 	for id := range s.Connections {
 		ids = append(ids, id)
@@ -156,11 +180,11 @@ func AvailableModels(s Settings) []modelChoice {
 			if strings.Contains(m, "embed") || strings.Contains(m, "whisper") || strings.Contains(m, "tts") || strings.Contains(m, "dall-e") {
 				continue
 			}
-			out = append(out, modelChoice{Provider: id, Label: presetFor(id).Label, Model: m})
+			out = append(out, ModelChoice{Provider: id, Label: presetFor(id).Label, Model: m})
 		}
 	}
 	if out == nil {
-		out = []modelChoice{}
+		out = []ModelChoice{}
 	}
 	return out
 }

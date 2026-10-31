@@ -8,6 +8,7 @@ import (
 	"infuse/internal/agent"
 	"infuse/internal/browser"
 	"infuse/internal/config"
+	"infuse/internal/connections"
 	"infuse/internal/filter"
 	"regexp"
 	"infuse/internal/core"
@@ -474,3 +475,16 @@ func frameable(ctx context.Context, u string) bool { return agent.Frameable(ctx,
 func readIfExists(p string) string { return agent.ReadIfExists(p) }
 func loadInstructions(root string) string { return agent.LoadInstructions(root) }
 func closeAgentBrowsers() { browser.CloseAgentBrowsers() }
+
+type ModelChoice = connections.ModelChoice
+
+func ConnectProvider(ctx context.Context, id, key, base string) (Connection, error) {
+	return connections.ConnectProvider(ctx, id, key, base)
+}
+func DisconnectProvider(id string) error { return connections.DisconnectProvider(id) }
+func AvailableModels(s Settings) []ModelChoice { return connections.AvailableModels(s) }
+func PreferredModel(models []string) string { return connections.PreferredModel(models) }
+func connectionConfig(s Settings, id string) (string, ProviderConfig) {
+	return connections.ConnectionConfig(s, id)
+}
+func providerFor(s Settings, id string) (Provider, error) { return connections.ProviderFor(s, id) }

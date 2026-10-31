@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"infuse/internal/config"
+	"infuse/internal/connections"
 	"infuse/internal/core"
 	"infuse/internal/filter"
 	"infuse/internal/journal"
@@ -260,24 +261,10 @@ func editMCP(root, scope string, f func(map[string]mcp.ServerConfig)) error {
 }
 
 func connectionConfig(s Settings, id string) (string, ProviderConfig) {
-	p := config.PresetFor(id)
-	c := s.Connections[id]
-	kind := c.Kind
-	if kind == "" {
-		kind = p.Kind
-	}
-	base := c.BaseURL
-	if base == "" {
-		base = p.BaseURL
-	}
-	key, _ := config.SecretGet(config.SecretName(id))
-	return kind, ProviderConfig{APIKey: key, BaseURL: base}
+	return connections.ConnectionConfig(s, id)
 }
 
-func providerFor(s Settings, id string) (Provider, error) {
-	kind, cfg := connectionConfig(s, id)
-	return llm.NewProvider(kind, cfg)
-}
+func providerFor(s Settings, id string) (Provider, error) { return connections.ProviderFor(s, id) }
 
 var blockMsgs = map[string]bool{
 	"protocol.no_plan": true, "protocol.docs_first": true, "protocol.convention": true, "protocol.file_grows": true,
