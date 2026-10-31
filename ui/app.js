@@ -374,7 +374,7 @@ function onEvent(L, ev) {
     case 'stream':
       if (d.kind === 'text') L.text += d.text; else if (d.kind === 'thinking') L.think += d.text;
       else if (d.kind === 'tool_start') L.tools[d.id] = { name: d.name, input: '' }; else if (d.kind === 'tool_input') (L.tools[d.id] = L.tools[d.id] || { name: '', input: '' }).input += d.text;
-      vs.forEach(renderLive); break;
+      vs.forEach(v => { if (!v._liveRaf) v._liveRaf = requestAnimationFrame(() => { v._liveRaf = 0; renderLive(v); }); }); break;
     case 'message': L.snap.messages.push(d.message); L.snap.usage = d.totalUsage; L.snap.cost = d.cost; L.lastIn = d.lastInput; L.lastOut = d.usage?.output || 0; L.text = ''; L.think = ''; L.tools = {}; re(); vs.forEach(renderRail); break;
     case 'tool_run': L.running = d; vs.forEach(renderLive); break;
     case 'tool_result': L.running = null; L.snap.messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, is_error: d.isError, ms: d.ms }], ts: Date.now() }); vs.forEach(renderChat); refreshChanges(L); break;
@@ -664,16 +664,43 @@ function bindChat(v, root) {
   $$('[data-ans]', root).forEach(b => b.onclick = () => answer(v, b.dataset.id, b.dataset.ans));
   const free = $('.free input', root); if (free) free.onkeydown = e => { if (e.key === 'Enter' && free.value.trim()) answer(v, free.dataset.id, free.value.trim()); };
 }
+// The tool input while it streams: complete fields and the string being written so far, read from the
+// incomplete JSON (so the code shows as the model writes it).
+function partialJSON(src) {
+  try { return JSON.parse(src); } catch { }
+  const out = { _streaming: true };
+  const re = /"([A-Za-z_]+)"\s*:\s*/g; let m;
+  while ((m = re.exec(src))) {
+    const key = m[1]; let i = re.lastIndex;
+    if (src[i] === '"') { // a string, possibly unfinished
+      let s = '', j = i + 1, done = false;
+      for (; j < src.length; j++) {
+        const ch = src[j];
+        if (ch === '\\') { const nx = src[j + 1]; if (nx === undefined) break; const map = { n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f' }; if (nx === 'u') { const hex = src.slice(j + 2, j + 6); if (hex.length < 4) break; s += String.fromCharCode(parseInt(hex, 16)); j += 5; } else { s += map[nx] ?? nx; j++; } continue; }
+        if (ch === '"') { done = true; break; }
+        s += ch;
+      }
+      out[key] = s; if (!done) out._open = key; re.lastIndex = j + 1;
+    } else { const mm = /^(-?\d+(?:\.\d+)?|true|false|null)/.exec(src.slice(i)); if (mm) out[key] = JSON.parse(mm[1]); }
+  }
+  return out;
+}
+// Code being written: numbered lines, following the end while it grows.
+function liveCodeHTML(text, cls) {
+  const lines = String(text || '').split('\n');
+  return `<div class="livecode ${cls || ''}">${lines.map((l, k) => `<div class="lc"><span class="no">${k + 1}</span><span class="tx">${esc(l) || ' '}</span></div>`).join('')}<span class="cursor"></span></div>`;
+}
 function renderLive(v) {
   if (!v.el) return; const el = $('.live', v.el); const L = v.sid && S.live[v.sid]; if (!el || !L) return;
   let out = '';
   if (L.think) out += thinkBlock(`${L.id}:live`, L.think, true);
   if (L.text) out += `<div class="a"><div class="md sel">${md(L.text)}<span class="cursor"></span></div></div>`;
-  for (const [id, tl] of Object.entries(L.tools)) { let inp; try { inp = JSON.parse(tl.input); } catch { inp = { _partial: tl.input }; } out += toolBlock(id, tl.name, inp, null, L.running?.id === id); }
+  for (const [id, tl] of Object.entries(L.tools)) { const inp = partialJSON(tl.input); out += toolBlock(id, tl.name, inp, null, L.running?.id === id); }
   if (L.sub && busy(L)) out += `<div class="status sub"><span class="spin"></span><span>${t('subagente')} ${esc(t(L.sub.kind || ''))}${L.sub.title ? ' · ' + esc(L.sub.title) : ''} · ${L.sub.steps || 0} ${t('passos')}${L.sub.tool ? ' · ' + esc(L.sub.tool) + ' ' + esc((L.sub.summary || '').slice(0, 60)) : ''}</span></div>`;
   const st = L.snap?.state;
   if (st === 'thinking' || st === 'tool' || st === 'compacting') out += `<div class="status"><span class="spin"></span><span>${st === 'tool' ? t('executando ') + esc(L.running?.name || '') : st === 'compacting' ? t('compactando contexto') : t('pensando')}</span><span class="faint el" data-el="${L.id}"></span></div>`;
   el.innerHTML = out; bindChat(v, el);
+  $$('.livecode', el).forEach(c => { c.scrollTop = c.scrollHeight; });
   if (v.stick !== false) toBottom(v); updateJump(v);
 }
 setInterval(() => { for (const el of $$('[data-el]')) { const L = S.live[el.dataset.el]; if (L?.started) el.textContent = Math.round((Date.now() - L.started) / 1000) + 's'; } }, 500);
@@ -713,6 +740,16 @@ function reportCard(inp, result) {
 function toolBlock(id, name, input, result, running) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
   if (name === 'Report' && inp && Array.isArray(inp.claims)) return reportCard(inp, result);
+  if (inp?._streaming && ['Write', 'Edit', 'MultiEdit', 'Bash'].includes(name)) { // being written right now
+    const p = inp.path || inp.file_path || '';
+    let body = '', what = '';
+    if (name === 'Write') { body = liveCodeHTML(inp.content); what = `${String(inp.content || '').split('\n').length} ${t('linhas')}`; }
+    else if (name === 'Edit') { body = (inp.old_string != null ? liveCodeHTML(inp.old_string, 'old') : '') + (inp.new_string != null ? liveCodeHTML(inp.new_string, 'new') : ''); what = t('editando'); }
+    else if (name === 'MultiEdit') { body = liveCodeHTML(inp._open === 'old_string' ? inp.old_string : inp.new_string, inp._open === 'old_string' ? 'old' : 'new'); what = t('editando'); }
+    else { body = liveCodeHTML(inp.command, 'cmd'); what = t('montando o comando'); }
+    const open = S.fold[id] ?? true;
+    return `<div class="tool live${open ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot run"></span><b>${esc(t({ Write: 'Escrevendo', Edit: 'Editando', MultiEdit: 'Editando', Bash: 'Preparando comando' }[name]))}</b><span class="s mono">${esc(p ? relPath(p) : '')}</span><span class="tdur faint">${esc(what)}</span></div><div class="b">${body}</div></div>`;
+  }
   const shot = name === 'Browser' && result && String(result.content || '').match(/\.infuse\/shots\/([\w.-]+\.png)/); // the agent's screenshot, shown in place
   const isPath = ['Read', 'Write', 'Edit', 'MultiEdit'].includes(name) && (inp?.path || inp?.file_path);
   let body = '';

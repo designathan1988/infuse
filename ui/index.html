@@ -123,6 +123,11 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .flash{animation:flash 1.4s ease} @keyframes flash{0%,40%{background:var(--accent-soft)}100%{background:transparent}}
 .pins .pinli{cursor:pointer} .pins .pinli:hover .n{color:var(--text)}
 .dragshield{position:fixed;inset:0;z-index:9999;background:transparent} body.dragging{user-select:none}
+.livecode{font-family:var(--mono);font-size:12px;line-height:1.55;max-height:380px;overflow:auto;background:var(--s2);border-radius:8px;padding:6px 0;margin:4px 0}
+.livecode .lc{display:flex;white-space:pre} .livecode .no{flex:none;width:42px;text-align:right;padding-right:12px;color:var(--text3);user-select:none} .livecode .tx{flex:1;min-width:0}
+.livecode.old{background:var(--bad-soft)} .livecode.new{background:var(--ok-soft)} .livecode.old .tx{text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--bad) 40%,transparent)}
+.livecode .cursor{display:inline-block;width:7px;height:14px;margin-left:54px;background:var(--text2);animation:blink 1s steps(2) infinite;vertical-align:middle}
+@keyframes blink{50%{opacity:0}}
 .report{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:6px 0;display:flex;flex-direction:column;gap:6px;font-size:13px}
 .report .rh{display:flex;gap:8px;align-items:baseline} .report .rh .faint{font-size:11.5px}
 .rrow{display:flex;gap:8px;align-items:flex-start;line-height:1.45} .rrow code{font-size:11.5px} .rrow .rev{display:block;font-size:11.5px}
