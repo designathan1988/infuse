@@ -51,7 +51,7 @@ func TestGuardSpeaksInMessages(t *testing.T) {
 	root := t.TempDir()
 	g := newGuard(root, []string{"secrets/**"})
 	_, _, err := g.GuardCommandMsgs("rm secrets/key.pem", root)
-	m := msgOf(err)
+	m, _ := msgOf(err)
 	want := M("guard.protected", "file", "secrets/key.pem", "detail", M("guard.with_command", "why", M("guard.command"), "command", "rm secrets/key.pem"))
 	if m.String() != want.String() || err.Error() != want.String() {
 		t.Fatalf("%v", err)

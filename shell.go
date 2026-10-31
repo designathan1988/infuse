@@ -46,7 +46,7 @@ func RunShell(args []string) int {
 	guarded, guardNotes, gerr := newGuard(root, EffectiveSettings(root).ProtectedPaths).GuardCommandMsgs(original, cwd)
 	if gerr != nil {
 		var why any = gerr.Error()
-		if m := msgOf(gerr); !m.Empty() {
+		if m, _ := msgOf(gerr); !m.Empty() {
 			why = m
 		}
 		fmt.Fprintln(os.Stderr, M("shell.refused", "why", why).String())

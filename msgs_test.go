@@ -73,3 +73,9 @@ func TestMessagesRenderPerLanguageWithNestedReasons(t *testing.T) {
 		t.Fatal("an English reader gets no separate display")
 	}
 }
+
+func TestNoMessageIdIsDefinedTwice(t *testing.T) {
+	if len(catalogConflicts) > 0 {
+		t.Fatalf("ids defined twice with different meanings: %v", catalogConflicts)
+	}
+}

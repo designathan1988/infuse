@@ -23,8 +23,9 @@ type Msg struct {
 }
 
 var (
-	catalog   = map[string]map[string]string{} // id → language → template
-	catalogMu sync.RWMutex
+	catalog          = map[string]map[string]string{} // id → language → template
+	catalogConflicts []string                         // ids registered twice with different English (a test fails on them)
+	catalogMu        sync.RWMutex
 )
 
 // registerMessages adds messages to the catalog: id → {language: template}. English is required.
@@ -32,6 +33,9 @@ func registerMessages(m map[string]map[string]string) {
 	catalogMu.Lock()
 	defer catalogMu.Unlock()
 	for id, langs := range m {
+		if old, ok := catalog[id]; ok && old["en"] != langs["en"] { // two catalogs gave the same id different meanings
+			catalogConflicts = append(catalogConflicts, id)
+		}
 		if catalog[id] == nil {
 			catalog[id] = map[string]string{}
 		}

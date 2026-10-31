@@ -857,7 +857,7 @@ func (s *Session) run(ctx context.Context) {
 		if ctx.Err() != nil || tripped != nil {
 			why := M("session.cancelled")
 			if tripped != nil {
-				if why = msgOf(tripped); why.Empty() {
+				if why, _ = msgOf(tripped); why.Empty() {
 					why = M("text.verbatim", "text", tripped.Error())
 				}
 			}

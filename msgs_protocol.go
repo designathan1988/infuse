@@ -4,8 +4,6 @@ package main
 // trailer, the rules and the session loop. English is what the model reads; pt-BR is what a Brazilian
 // user reads on screen. Every id keeps the same named arguments in both languages.
 
-import "errors"
-
 func init() {
 	registerMessages(map[string]map[string]string{
 		// ---------------------------------------------------------------- protocol.go
@@ -370,21 +368,4 @@ var blockMsgs = map[string]bool{
 	"protocol.file_too_big": true, "gate.research_local": true, "gate.research_web": true, "instr.required": true,
 	"instr.no_edit": true, "instr.reference": true, "instr.loop": true, "instr.loop_docs": true,
 	"gate.redo": true, "gate.no_diagnosis": true,
-}
-
-// msgError is an error that carries a message: the model reads Error() (English), a caller that has a
-// session records the message itself, so the user reads it in their language.
-type msgError struct{ m Msg }
-
-func (e msgError) Error() string { return e.m.String() }
-
-func errMsg(m Msg) error { return msgError{m} }
-
-// msgOf is the message an error carries (empty when it is not one of infuse's).
-func msgOf(err error) Msg {
-	var me msgError
-	if errors.As(err, &me) {
-		return me.m
-	}
-	return Msg{}
 }
