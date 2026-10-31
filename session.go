@@ -67,6 +67,7 @@ type SessionData struct {
 	Branch      string                   `json:"branch,omitempty"`
 	Plan        string                   `json:"plan,omitempty"`      // the latest plan proposed in plan mode
 	LastInput   int                      `json:"lastInput,omitempty"` // context size of the latest request
+	Memory      []MemoryItem             `json:"memory,omitempty"`    // structured memory of this session only
 }
 
 type Session struct {
@@ -391,7 +392,7 @@ func (s *Session) permissionFor(tool Tool, input json.RawMessage) string {
 			return "deny"
 		}
 	case "acceptEdits":
-		if cat == "write" {
+		if cat == "write" || cat == "memory" {
 			return "allow"
 		}
 	}
@@ -823,6 +824,9 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 			summary += b.Text
 		}
 	}
+	if v := verbatimRequests(older[:len(older)-1]); v != "" {
+		summary += "\n\n## Pedidos do usuário, literais\n" + v
+	}
 	s.mu.Lock()
 	s.Messages = append([]Message{{Role: "user", Content: []Block{{Type: "text", Text: "[Contexto compactado — resumo do trabalho até aqui]\n\n" + summary}}}, {Role: "assistant", Content: []Block{{Type: "text", Text: "Entendido, continuo a partir desse estado."}}}}, keep...)
 	s.TurnStarts = []int{0}
@@ -831,6 +835,54 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 	s.mu.Unlock()
 	s.emit("compacted", map[string]any{"summary": summary})
 	return nil
+}
+
+// verbatimRequests returns what the user typed in msgs, word for word, newest kept whole when the
+// budget runs out: a summary may lose a nuance; these islands keep the user's own wording.
+func verbatimRequests(msgs []Message) string {
+	var reqs []string
+	for _, m := range msgs {
+		if m.Role != "user" {
+			continue
+		}
+		for _, b := range m.Content {
+			if b.Type == "text" && strings.HasPrefix(b.Text, "[Contexto compactado") { // islands kept by an earlier compaction
+				const head = "## Pedidos do usuário, literais\n"
+				if k := strings.Index(b.Text, head); k >= 0 {
+					for _, chunk := range strings.Split(b.Text[k+len(head):], "\n\n") {
+						if strings.HasPrefix(chunk, "> ") {
+							reqs = append(reqs, strings.ReplaceAll(strings.TrimPrefix(chunk, "> "), "\n> ", "\n"))
+						}
+					}
+				}
+				break
+			}
+			if b.Type == "text" && strings.TrimSpace(b.Text) != "" && !strings.HasPrefix(b.Text, "[") && !strings.HasPrefix(b.Text, "<") {
+				reqs = append(reqs, strings.TrimSpace(b.Text))
+				break
+			}
+		}
+	}
+	const budget = 6000
+	var out []string
+	used := 0
+	for i := len(reqs) - 1; i >= 0; i-- {
+		r := reqs[i]
+		if used+len(r) > budget {
+			if used == 0 {
+				r = r[:budget] + " […]"
+			} else {
+				out = append(out, fmt.Sprintf("(%d pedido(s) mais antigo(s) omitido(s))", i+1))
+				break
+			}
+		}
+		used += len(r)
+		out = append(out, "> "+strings.ReplaceAll(r, "\n", "\n> "))
+	}
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	return strings.Join(out, "\n\n")
 }
 
 // ---------------------------------------------------------------- rewind variants, summaries, side chat

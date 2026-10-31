@@ -34,7 +34,7 @@ type Guard struct {
 }
 
 func newGuard(root string, protected []string) *Guard {
-	return &Guard{Root: root, Protected: append([]string{oracleRel + "/**", oracleRel, evidenceRel + "/**", evidenceRel}, protected...)}
+	return &Guard{Root: root, Protected: append([]string{oracleRel + "/**", oracleRel, evidenceRel + "/**", evidenceRel, memoryRel + "/**", memoryRel}, protected...)}
 }
 
 // protects reports whether p (absolute, or relative to cwd) is agent-proof. A symlink counts as its target.

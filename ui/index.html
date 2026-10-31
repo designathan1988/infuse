@@ -210,7 +210,14 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .cres{font-size:12px;color:var(--bad);background:var(--bad-soft);border-radius:6px;padding:4px 8px;margin-left:24px;white-space:pre-wrap;word-break:break-word}
 .sug{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px dashed var(--border2);border-radius:10px;margin-bottom:6px;font-size:12.5px;line-height:1.45} .sug b{font-weight:600}
 .odet{border-top:1px solid var(--border);padding-top:10px} .odet summary{cursor:pointer;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);list-style:none} .odet summary::before{content:'›';display:inline-block;width:12px;transition:transform .15s} .odet[open] summary::before{transform:rotate(90deg)} .odet[open] summary{margin-bottom:8px}
-.odet textarea.doc{min-height:150px}
+.odet .mem{display:flex;flex-direction:column;gap:12px} .mintro{color:var(--text2);font-size:12.5px;line-height:1.5}
+.mex{cursor:pointer;border-radius:8px;padding:4px 6px;margin:-4px -6px} .mex:hover{background:var(--s3,var(--bg))}
+.seg{display:flex;gap:2px;background:var(--s2);border-radius:9px;padding:2px} .seg button{flex:1;padding:5px 8px;border-radius:7px;font-size:12px;color:var(--text2)} .seg button.on{background:var(--bg);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.12)} .seg button:disabled{opacity:.45}
+.madd{display:flex;gap:6px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:5px 6px 5px 8px} .madd input{flex:1;font-size:13px;padding:4px 2px;background:transparent} .madd .chip,.mitem .chip{flex:none;font-size:11.5px}
+.mitem{display:grid;grid-template-columns:auto 1fr auto auto;gap:4px 6px;align-items:start;padding:8px 2px;border-bottom:1px solid var(--border)} .mitem .mtext{font-size:13px;line-height:1.45;resize:none;background:transparent;padding:2px 4px;border-radius:5px;overflow:hidden;min-height:22px} .mitem .mtext:focus{background:var(--s2)}
+.mitem .mmeta{grid-column:2/5;font-size:11px;padding-left:4px} .mitem .ib{width:24px;height:24px} .mitem .del{opacity:0} .mitem:hover .del{opacity:1}
+.mitem .star{color:var(--text3);font-size:14px} .mitem.p2 .star,.mitem.p3 .star{color:var(--warn)} .mitem .star sup{font-size:9px}
+textarea.doc{min-height:150px}
 textarea.doc{width:100%;min-height:240px;font-family:var(--mono);font-size:12.5px;line-height:1.55;background:var(--s2);border-radius:8px;padding:10px 12px;resize:vertical}
 .rule{display:grid;grid-template-columns:18px 84px 1fr 96px 1fr 22px;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)} .rule input,.rule select{width:100%;font-size:12px;padding:2px 4px;border-radius:4px} .rule input:focus,.rule select:focus{background:var(--s2)}
 

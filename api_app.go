@@ -109,6 +109,54 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		}
 		sendJSON(w, 200, map[string]any{"ok": true, "verdict": v})
 		return true
+	// ---------------------------------------------------------------- structured memory (the user's curation)
+	case path == "/api/memory" && r.Method == http.MethodGet:
+		out := map[string]any{"project": loadMemory(projectMemoryFile(root)), "global": loadMemory(globalMemoryFile()), "session": []MemoryItem{}}
+		if id := q["session"]; id != "" {
+			if s, err := loadSession(root, id); err == nil {
+				s.mu.Lock()
+				out["session"] = append([]MemoryItem{}, s.Memory...)
+				s.mu.Unlock()
+			}
+		}
+		sendJSON(w, 200, out)
+		return true
+	case path == "/api/memory/save":
+		var items []MemoryItem
+		b, _ := jsonMarshal(body["items"])
+		if err := jsonUnmarshal(b, &items); err != nil {
+			sendJSON(w, 400, map[string]any{"error": err.Error()})
+			return true
+		}
+		clean := []MemoryItem{}
+		for _, it := range items {
+			if it.Origin == "" {
+				it.Origin = "usuario"
+			}
+			if normalizeMemory(&it) == nil {
+				clean = append(clean, it)
+			}
+		}
+		var err error
+		switch scope := str("scope"); scope {
+		case "session":
+			s, e := loadSession(root, str("session"))
+			if e != nil {
+				sendJSON(w, 404, map[string]any{"error": "sessão não encontrada"})
+				return true
+			}
+			err = s.editMemory("session", func([]MemoryItem) []MemoryItem { return clean })
+		case "global":
+			err = saveMemory(globalMemoryFile(), clean)
+		default:
+			err = saveMemory(projectMemoryFile(root), clean)
+		}
+		if err != nil {
+			sendJSON(w, 500, map[string]any{"error": err.Error()})
+			return true
+		}
+		sendJSON(w, 200, map[string]any{"ok": true, "items": clean})
+		return true
 	case path == "/api/oracle/suggest":
 		sendJSON(w, 200, SuggestChecks(root))
 		return true

@@ -330,7 +330,7 @@ function sessionMenu(v, anchor) {
 function moreMenu(v, anchor) {
   menu(anchor, [
     { label: 'Tarefas', f: () => togglePane('tasks') }, { label: 'Plano', f: () => togglePane('plan') },
-    { label: 'Filtro', items: [{ label: 'Pronto (critérios)', f: () => togglePane('oracle') }, { label: 'Regras', f: () => togglePane('rules') }, { label: 'Jornal', f: () => togglePane('journal') }, { label: 'Vícios', f: () => togglePane('vices') }, { label: 'Mapa do projeto', f: () => togglePane('map') }] },
+    { label: 'Filtro', items: [{ label: 'Pronto (critérios)', f: () => togglePane('oracle') }, { label: 'Memória', f: () => togglePane('memory') }, { label: 'Regras', f: () => togglePane('rules') }, { label: 'Jornal', f: () => togglePane('journal') }, { label: 'Vícios', f: () => togglePane('vices') }, { label: 'Mapa do projeto', f: () => togglePane('map') }] },
     { sep: 1 }, { label: S.rail ? 'Ocultar detalhes da sessão' : 'Mostrar detalhes da sessão', f: () => { S.rail = !S.rail; lsSet('rail', S.rail); S.views.forEach(renderView); } },
   ], null, { alignRight: true });
 }
@@ -372,6 +372,7 @@ function onEvent(L, ev) {
     case 'done': L.snap.pendingPermission = null; L.snap.pendingQuestion = null; L.snap.cost = d.cost; L.snap.usage = d.usage; re(); vs.forEach(renderRail); attention(L, 'infuse terminou', L.snap.title || ''); refreshChanges(L); loadUsage(); break;
     case 'error': L.snap.error = d; L.snap.pendingPermission = null; L.snap.pendingQuestion = null; re(); attention(L, 'infuse: erro', String(d)); break;
     case 'tasks': L.snap.tasks = d; vs.forEach(renderRail); paneRefresh('tasks'); break;
+    case 'memory': paneRefresh('memory'); break;
     case 'cwd': L.snap.cwd = d; break;
     case 'checkpoint': (L.snap.checkpoints[d.turn] = L.snap.checkpoints[d.turn] || []).push({ path: d.path }); break;
     case 'map': paneRefresh('map'); paneRefresh('files'); break;
@@ -747,7 +748,7 @@ async function slash(v, text) {
     case 'rename': if (L && arg) setSessionOpts(v, { title: arg }); else renameInline(v); return true;
     case 'review': case 'code-review': $('.prompt', v.el).value = t('Revise as alterações não commitadas deste projeto (git diff) procurando bugs de correção. Liste cada achado com arquivo:linha, o problema e a correção sugerida.') + (arg ? '\n' + arg : ''); return false;
     case 'init': $('.prompt', v.el).value = t('Analise este projeto e escreva um INFUSE.md na raiz com: como compilar, testar e rodar; a arquitetura e onde cada responsabilidade mora; convenções do código. Seja conciso.'); return false;
-    case 'memory': openCustomize('instructions'); return true;
+    case 'memory': togglePane('memory', true); return true;
     case 'terminal': togglePane('terminal', true); return true;
     case 'vim': await saveSetting({ vim: !S.settings.vim }); toast(S.settings.vim ? 'Modo vim ligado' : 'Modo vim desligado'); S.views.forEach(renderComposer); return true;
     case 'help': shortcutsDialog(); return true;
@@ -936,7 +937,7 @@ function paletteItems(kind) {
     { label: 'Provedores e chaves', f: () => openSettings('providers') },
     { label: 'Voltar no tempo…', d: 'Esc Esc', f: () => rewindDialog(v) }, { label: 'Pergunta paralela', d: 'Ctrl ;', f: () => openSide(v) },
     { label: 'Alterações', d: 'Ctrl Shift D', f: () => togglePane('changes', true) }, { label: 'Terminal', d: 'Ctrl `', f: () => togglePane('terminal', true) }, { label: 'Arquivos', f: () => togglePane('files', true) }, { label: 'Navegador', d: 'Ctrl Shift B', f: () => togglePane('browser', true) },
-    { label: 'Tarefas', f: () => togglePane('tasks', true) }, { label: 'Plano', f: () => togglePane('plan', true) }, { label: 'Pronto (critérios)', f: () => togglePane('oracle', true) }, { label: 'Regras', f: () => togglePane('rules', true) }, { label: 'Jornal', f: () => togglePane('journal', true) }, { label: 'Vícios', f: () => togglePane('vices', true) }, { label: 'Mapa do projeto', f: () => togglePane('map', true) },
+    { label: 'Tarefas', f: () => togglePane('tasks', true) }, { label: 'Plano', f: () => togglePane('plan', true) }, { label: 'Pronto (critérios)', f: () => togglePane('oracle', true) }, { label: 'Memória', f: () => togglePane('memory', true) }, { label: 'Regras', f: () => togglePane('rules', true) }, { label: 'Jornal', f: () => togglePane('journal', true) }, { label: 'Vícios', f: () => togglePane('vices', true) }, { label: 'Mapa do projeto', f: () => togglePane('map', true) },
     ...Object.entries(modeInfo).map(([k, [l]]) => ({ label: t('Modo: ') + t(l), f: () => setSessionOpts(v, { mode: k }) })),
     { label: 'Exibição: Normal', f: () => setViewMode('normal') }, { label: 'Exibição: Pensamento', f: () => setViewMode('thinking') }, { label: 'Exibição: Detalhado', d: 'Ctrl O', f: () => setViewMode('verbose') },
     { label: 'Barra lateral', d: 'Ctrl B', f: () => document.body.classList.toggle('nosb') }, { label: 'Atalhos de teclado', d: 'Ctrl /', f: shortcutsDialog },
