@@ -532,6 +532,13 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 			sendJSON(w, 200, map[string]any{"ok": true, "id": n.ID, "root": n.Root})
 		case "pinmsg":
 			sendJSON(w, 200, map[string]any{"ok": true, "pinned": s.TogglePin(num("index"))})
+		case "bans": // the user's prohibitions: list, lift or restore one
+			if str("action") == "set" {
+				off, _ := body["off"].(bool)
+				sendJSON(w, 200, map[string]any{"bans": s.liftBan(num("index"), off)})
+				return true
+			}
+			sendJSON(w, 200, map[string]any{"bans": s.Bans()})
 		case "procs": // background processes: list, full output of one, stop one
 			switch str("action") {
 			case "stop":
