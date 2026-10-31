@@ -9,6 +9,7 @@ import (
 	"infuse/internal/filter"
 	"regexp"
 	"infuse/internal/core"
+	"infuse/internal/knowledge"
 	"infuse/internal/desktop"
 	"infuse/internal/journal"
 	"infuse/internal/lang"
@@ -206,6 +207,19 @@ func ListVerdicts(root string, n int) []Verdict { return oracle.ListVerdicts(roo
 func oracleSpecFile(root string) string         { return oracle.SpecFile(root) }
 func evidenceDir(root string) string            { return oracle.EvidenceDir(root) }
 func SuggestChecks(root string) []CheckSuggestion { return oracle.SuggestChecks(root) }
+
+type ConventionRules = knowledge.ConventionRules
+type Tally = knowledge.Tally
+
+func ConventionsFile(root string) string        { return knowledge.ConventionsFile(root) }
+func conventionsFile(root string) string        { return knowledge.ConventionsFile(root) }
+func ConventionsPrompt(root string) string      { return knowledge.ConventionsPrompt(root) }
+func conventionsPrompt(root string) string      { return knowledge.ConventionsPrompt(root) }
+func LearnConventions(root string) string       { return knowledge.LearnConventions(root) }
+func conventionRulesFile(root string) string    { return knowledge.ConventionRulesFile(root) }
+func loadConventionRules(root string) *ConventionRules {
+	return knowledge.LoadConventionRules(root)
+}
 
 type launchConfig = workspace.LaunchConfig
 type errLaunchNeedsApproval = workspace.ErrLaunchNeedsApproval

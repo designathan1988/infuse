@@ -1,4 +1,4 @@
-package main
+package knowledge
 
 // Convention learner: reads a sample of the project's source files and states its conventions
 // (indentation, quotes, semicolons, module system, file naming, test layout, line endings, comment
@@ -7,6 +7,8 @@ package main
 
 import (
 	"fmt"
+	"infuse/internal/core"
+	"infuse/internal/projectmap"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,20 +16,51 @@ import (
 	"strings"
 )
 
-func conventionsFile(root string) string { return filepath.Join(root, infuseDirName, "conventions.md") }
+// ConventionRules are the enforceable numeric rules learned from the project's code.
+type ConventionRules struct {
+	Indent      string             `json:"indent"` // tabs | 2 | 4
+	IndentShare float64            `json:"indentShare"`
+	Quotes      string             `json:"quotes"` // single | double
+	QuotesShare float64            `json:"quotesShare"`
+	Semis       string             `json:"semis"` // with | without
+	SemisShare  float64            `json:"semisShare"`
+	Modules     string             `json:"modules"` // esm | cjs
+	ModShare    float64            `json:"modulesShare"`
+	Naming      map[string]string  `json:"naming"` // ext → kebab-case | snake_case | camelCase | PascalCase
+	NamingShare map[string]float64 `json:"namingShare"`
+	NamingN     map[string]int     `json:"namingCount"`
+	Files       int                `json:"files"`
+}
+
+func ConventionRulesFile(root string) string {
+	return filepath.Join(root, core.InfuseDirName, "conventions.json")
+}
+
+func LoadConventionRules(root string) *ConventionRules {
+	var r ConventionRules
+	if core.ReadJSON(ConventionRulesFile(root), &r) != nil || r.Files == 0 {
+		ConventionsPrompt(root) // learn them when missing
+		if core.ReadJSON(ConventionRulesFile(root), &r) != nil || r.Files == 0 {
+			return nil
+		}
+	}
+	return &r
+}
+
+func ConventionsFile(root string) string { return filepath.Join(root, core.InfuseDirName, "conventions.md") }
 
 var (
-	reKebab  = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)+$`)
-	reSnake  = regexp.MustCompile(`^[a-z0-9]+(_[a-z0-9]+)+$`)
-	reCamel  = regexp.MustCompile(`^[a-z][a-z0-9]*([A-Z][a-z0-9]*)+$`)
-	rePascal = regexp.MustCompile(`^([A-Z][a-z0-9]+)+$`)
+	ReKebab  = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)+$`)
+	ReSnake  = regexp.MustCompile(`^[a-z0-9]+(_[a-z0-9]+)+$`)
+	ReCamel  = regexp.MustCompile(`^[a-z][a-z0-9]*([A-Z][a-z0-9]*)+$`)
+	RePascal = regexp.MustCompile(`^([A-Z][a-z0-9]+)+$`)
 	rePtWord = regexp.MustCompile(`(?i)\b(que|não|para|uma|com|quando|arquivo|função|usuário|então|também)\b`)
 	reEnWord = regexp.MustCompile(`(?i)\b(the|and|when|file|function|user|this|should|returns?)\b`)
 )
 
-type tally map[string]int
+type Tally map[string]int
 
-func (t tally) top() (string, int, int) {
+func (t Tally) Top() (string, int, int) {
 	total, best, n := 0, "", 0
 	keys := make([]string, 0, len(t))
 	for k := range t {
@@ -47,8 +80,8 @@ func pct(n, total int) string { return fmt.Sprintf("%d%%", n*100/max(total, 1)) 
 
 // LearnConventions analyses the project and returns the rules as Markdown.
 func LearnConventions(root string) string {
-	indent, quotes, semis, modules, naming, eol, lang := tally{}, tally{}, tally{}, tally{}, map[string]tally{}, tally{}, tally{}
-	tests := tally{}
+	indent, quotes, semis, modules, naming, eol, lang := Tally{}, Tally{}, Tally{}, Tally{}, map[string]Tally{}, Tally{}, Tally{}
+	tests := Tally{}
 	var lengths []int
 	files := 0
 	jsLike := map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true, ".vue": true, ".svelte": true}
@@ -58,7 +91,7 @@ func LearnConventions(root string) string {
 			return nil
 		}
 		if d.IsDir() {
-			if p != root && (ignoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
+			if p != root && (projectmap.IgnoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
 				return filepath.SkipDir
 			}
 			if d.Name() == "tests" || d.Name() == "test" || d.Name() == "__tests__" {
@@ -81,16 +114,16 @@ func LearnConventions(root string) string {
 			tests["test_*.py"]++
 		}
 		if naming[ext] == nil {
-			naming[ext] = tally{}
+			naming[ext] = Tally{}
 		}
 		switch {
-		case reKebab.MatchString(name):
+		case ReKebab.MatchString(name):
 			naming[ext]["kebab-case"]++
-		case reSnake.MatchString(name):
+		case ReSnake.MatchString(name):
 			naming[ext]["snake_case"]++
-		case reCamel.MatchString(name):
+		case ReCamel.MatchString(name):
 			naming[ext]["camelCase"]++
-		case rePascal.MatchString(name):
+		case RePascal.MatchString(name):
 			naming[ext]["PascalCase"]++
 		}
 		b, err := os.ReadFile(p)
@@ -104,7 +137,7 @@ func LearnConventions(root string) string {
 		} else {
 			eol["LF"]++
 		}
-		fileIndent := tally{}
+		fileIndent := Tally{}
 		for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
 			lengths = append(lengths, len([]rune(line)))
 			trimmed := strings.TrimLeft(line, " \t")
@@ -145,7 +178,7 @@ func LearnConventions(root string) string {
 				}
 			}
 		}
-		if k, _, _ := fileIndent.top(); k != "" {
+		if k, _, _ := fileIndent.Top(); k != "" {
 			indent[k]++
 		}
 		return nil
@@ -155,8 +188,8 @@ func LearnConventions(root string) string {
 	}
 	// the enforceable rules, with the share of samples behind each (protocol.go refuses writes against them)
 	rules := ConventionRules{Files: files, Naming: map[string]string{}, NamingShare: map[string]float64{}, NamingN: map[string]int{}}
-	share := func(t tally) (string, float64) {
-		k, n, total := t.top()
+	share := func(t Tally) (string, float64) {
+		k, n, total := t.Top()
 		if total == 0 {
 			return "", 0
 		}
@@ -175,16 +208,16 @@ func LearnConventions(root string) string {
 		rules.Modules, rules.ModShare = map[string]string{"ESM (import/export)": "esm", "CommonJS (require)": "cjs"}[k], sh
 	}
 	for e, t := range naming {
-		if k, n, total := t.top(); k != "" {
+		if k, n, total := t.Top(); k != "" {
 			rules.Naming[e], rules.NamingShare[e], rules.NamingN[e] = k, float64(n)/float64(total), total
 		}
 	}
-	_ = os.MkdirAll(filepath.Join(root, infuseDirName), 0o755)
-	_ = writeJSON(conventionRulesFile(root), rules)
+	_ = os.MkdirAll(filepath.Join(root, core.InfuseDirName), 0o755)
+	_ = core.WriteJSON(ConventionRulesFile(root), rules)
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Project conventions\n\nDetected in %d code files (counted, not assumed). Edit freely: the agent reads this file on every turn.\n\n", files)
-	line := func(label string, t tally) {
-		if k, n, total := t.top(); k != "" && total > 0 {
+	line := func(label string, t Tally) {
+		if k, n, total := t.Top(); k != "" && total > 0 {
 			fmt.Fprintf(&b, "- %s: %s (%s)\n", label, k, pct(n, total))
 		}
 	}
@@ -200,7 +233,7 @@ func LearnConventions(root string) string {
 	}
 	sort.Strings(exts)
 	for _, e := range exts {
-		if k, n, total := naming[e].top(); k != "" && total >= 3 {
+		if k, n, total := naming[e].Top(); k != "" && total >= 3 {
 			fmt.Fprintf(&b, "- File names %s: %s (%s)\n", e, k, pct(n, total))
 		}
 	}
@@ -220,8 +253,8 @@ func LearnConventions(root string) string {
 }
 
 // conventionsPrompt returns the project's conventions, learning them the first time.
-func conventionsPrompt(root string) string {
-	p := conventionsFile(root)
+func ConventionsPrompt(root string) string {
+	p := ConventionsFile(root)
 	if b, err := os.ReadFile(p); err == nil {
 		return string(b)
 	}

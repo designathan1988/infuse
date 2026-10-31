@@ -15,6 +15,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"infuse/internal/knowledge"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -230,38 +231,8 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) Msg {
 // ---------------------------------------------------------------- conventions as rules
 
 // ConventionRules is the enforceable part of the learned conventions (with the share of samples).
-type ConventionRules struct {
-	Indent      string             `json:"indent"` // tabs | 2 | 4
-	IndentShare float64            `json:"indentShare"`
-	Quotes      string             `json:"quotes"` // single | double
-	QuotesShare float64            `json:"quotesShare"`
-	Semis       string             `json:"semis"` // with | without
-	SemisShare  float64            `json:"semisShare"`
-	Modules     string             `json:"modules"` // esm | cjs
-	ModShare    float64            `json:"modulesShare"`
-	Naming      map[string]string  `json:"naming"` // ext → kebab-case | snake_case | camelCase | PascalCase
-	NamingShare map[string]float64 `json:"namingShare"`
-	NamingN     map[string]int     `json:"namingCount"`
-	Files       int                `json:"files"`
-}
-
-func conventionRulesFile(root string) string {
-	return filepath.Join(root, infuseDirName, "conventions.json")
-}
-
-func loadConventionRules(root string) *ConventionRules {
-	var r ConventionRules
-	if readJSON(conventionRulesFile(root), &r) != nil || r.Files == 0 {
-		conventionsPrompt(root) // learn them when missing
-		if readJSON(conventionRulesFile(root), &r) != nil || r.Files == 0 {
-			return nil
-		}
-	}
-	return &r
-}
-
 func indentOf(code string) (string, int) {
-	t := tally{}
+	t := Tally{}
 	for _, line := range strings.Split(strings.ReplaceAll(code, "\r\n", "\n"), "\n") {
 		trimmed := strings.TrimLeft(line, " \t")
 		if trimmed == "" || len(trimmed) == len(line) {
@@ -277,7 +248,7 @@ func indentOf(code string) (string, int) {
 			t["2"]++
 		}
 	}
-	k, n, total := t.top()
+	k, n, total := t.Top()
 	if total < 5 || n*100/total < 70 {
 		return "", total
 	}
@@ -364,13 +335,13 @@ func conventionViolation(root, path, before, after string) Msg {
 
 func namingStyle(name string) string {
 	switch {
-	case reKebab.MatchString(name):
+	case knowledge.ReKebab.MatchString(name):
 		return "kebab-case"
-	case reSnake.MatchString(name):
+	case knowledge.ReSnake.MatchString(name):
 		return "snake_case"
-	case reCamel.MatchString(name):
+	case knowledge.ReCamel.MatchString(name):
 		return "camelCase"
-	case rePascal.MatchString(name):
+	case knowledge.RePascal.MatchString(name):
 		return "PascalCase"
 	}
 	return ""
