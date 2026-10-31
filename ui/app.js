@@ -39,7 +39,7 @@ const I = {
 const S = {
   settings: {}, projects: [], sessions: [], archived: [], models: [], connections: [], editors: [],
   commands: {}, files: {}, live: {}, views: [], focus: 0, page: null,
-  history: lsGet('hist', []), sb: lsGet('sb', { group: 'folder', sort: 'updated', closed: {} }),
+  history: lsGet('hist', []), sb: lsGet('sb', { group: 'folder', sort: 'updated', closed: {} }), unread: new Set(lsGet('unread', [])), hits: {}, hitsQ: '',
   viewMode: lsGet('viewMode', 'normal'), rail: lsGet('rail', true), recent: [], lang: 'pt', fold: {},
 };
 function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } }
@@ -150,18 +150,22 @@ function renderSidebar() {
   $('#navScheduled').classList.toggle('on', S.page === 'scheduled'); $('#navCustomize').classList.toggle('on', S.page === 'customize');
   const archivedMode = S.sb.show === 'archived';
   $('#sbHeadLabel').textContent = t(archivedMode ? 'Arquivadas' : 'Sessões');
-  let list = (archivedMode ? S.archived : S.sessions).filter(s => !q || (s.title || '').toLowerCase().includes(q) || (s.root || '').toLowerCase().includes(q) || (s.branch || '').toLowerCase().includes(q));
+  if (q.length >= 2 && S.hitsQ !== q) searchTranscripts(q); else if (!q) { S.hits = {}; S.hitsQ = ''; }
+  let list = (archivedMode ? S.archived : S.sessions).filter(s => !q || S.hits[s.id] || (s.title || '').toLowerCase().includes(q) || (s.root || '').toLowerCase().includes(q) || (s.branch || '').toLowerCase().includes(q));
   const sortKey = S.sb.sort; list.sort((a, b) => sortKey === 'title' ? (a.title || '').localeCompare(b.title || '') : (b[sortKey] || 0) - (a[sortKey] || 0));
   const openIds = S.views.map(v => v.sid);
   const row = s => {
     const L = S.live[s.id]; const st = L?.snap?.state || s.state;
-    const r = h(`<div class="srow${openIds[S.focus] === s.id ? ' on' : ''}${openIds.includes(s.id) && openIds[S.focus] !== s.id ? ' split' : ''}" draggable="true"><span class="st ${stateClass(st)}"></span><span class="t">${esc(L?.snap?.title || s.title || t('Nova sessão'))}</span><span class="w">${ago(s.updated)}</span><button class="ib more act" data-act="${archivedMode ? 'delete' : 'archive'}" title="${esc(t(archivedMode ? 'Excluir' : 'Arquivar'))}">${archivedMode ? I.trash : I.archive}</button><button class="ib more" title="Mais">${I.more}</button></div>`);
+    const hit = q && S.hits[s.id] && S.hits[s.id] !== s.title ? S.hits[s.id] : '';
+    const r = h(`<div class="srow${openIds[S.focus] === s.id ? ' on' : ''}${openIds.includes(s.id) && openIds[S.focus] !== s.id ? ' split' : ''}${S.unread.has(s.id) ? ' unread' : ''}${hit ? ' hit' : ''}" draggable="true"><span class="st ${stateClass(st)}"></span><span class="t"><span class="tt">${s.pinned ? '<span class="pin">📌</span>' : ''}${esc(L?.snap?.title || s.title || t('Nova sessão'))}</span>${hit ? `<span class="snip">${esc(hit)}</span>` : ''}</span><span class="w">${ago(s.updated)}</span><button class="ib more act" data-act="${archivedMode ? 'delete' : 'archive'}" title="${esc(t(archivedMode ? 'Excluir' : 'Arquivar'))}">${archivedMode ? I.trash : I.archive}</button><button class="ib more" title="Mais">${I.more}</button></div>`);
     r.title = (s.branch ? s.branch + ' · ' : '') + s.root;
     r.onclick = e => { const act = e.target.closest('[data-act]'); if (act) { e.stopPropagation(); return act.dataset.act === 'delete' ? deleteSession(s) : archiveSession(s); } if (e.target.closest('.more')) return sessionRowMenu(s, e.target.closest('.more')); if (archivedMode) return; if (e.altKey) openInSplit(s.root, s.id); else openSession(s.root, s.id); };
     r.oncontextmenu = e => { e.preventDefault(); sessionRowMenu(s, null, e); };
     r.ondragstart = e => e.dataTransfer.setData('text/infuse-session', JSON.stringify({ root: s.root, id: s.id }));
     return r;
   };
+  const pinned = archivedMode ? [] : list.filter(s => s.pinned);
+  if (pinned.length) { const g = h(`<div class="grp pinned"><div class="gh"><span class="trunc">${t('Fixadas')}</span></div></div>`); pinned.forEach(s => g.appendChild(row(s))); el.appendChild(g); list = list.filter(s => !s.pinned); }
   if (S.sb.group === 'folder' && !archivedMode) {
     const roots = S.projects.map(p => p.root);
     for (const s of list) if (!roots.includes(s.root)) roots.push(s.root);
@@ -210,6 +214,8 @@ function sessionRowMenu(s, anchor, ev) {
     { label: 'Abrir', f: () => openSession(s.root, s.id) },
     { label: 'Abrir em', items: [{ label: 'Tela dividida', d: 'Alt+clique', f: () => openInSplit(s.root, s.id) }, { sep: 1 }, ...openInItems(s.root)] },
     { label: 'Renomear', f: () => { openSession(s.root, s.id).then(() => renameInline(V())); } },
+    { label: s.pinned ? 'Desafixar' : 'Fixar no topo', f: async () => { await api(`/api/session/${s.id}/pin`, { body: { pinned: !s.pinned }, root: s.root }); await loadSessions(); } },
+    { label: S.unread.has(s.id) ? 'Marcar como lida' : 'Marcar como não lida', f: () => setUnread(s.id, !S.unread.has(s.id)) },
     { sep: 1 }, { label: 'Arquivar', f: () => archiveSession(s) }, { label: 'Excluir', danger: 1, f: () => deleteSession(s) },
   ];
   menu(anchor, items, ev);
@@ -369,7 +375,7 @@ function onEvent(L, ev) {
     case 'tool_result': L.running = null; L.snap.messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, is_error: d.isError, ms: d.ms }], ts: Date.now() }); vs.forEach(renderChat); refreshChanges(L); break;
     case 'permission': L.snap.pendingPermission = d; vs.forEach(renderChat); attention(L, 'infuse precisa de você', t('Aprovar ') + d.tool + '?'); break;
     case 'question': L.snap.pendingQuestion = d; vs.forEach(renderChat); attention(L, 'infuse tem uma pergunta', d.question); break;
-    case 'done': L.snap.pendingPermission = null; L.snap.pendingQuestion = null; L.snap.cost = d.cost; L.snap.usage = d.usage; re(); vs.forEach(renderRail); attention(L, 'infuse terminou', L.snap.title || ''); refreshChanges(L); loadUsage(); break;
+    case 'done': L.snap.pendingPermission = null; L.snap.pendingQuestion = null; L.snap.cost = d.cost; L.snap.usage = d.usage; re(); vs.forEach(renderRail); attention(L, 'infuse terminou', L.snap.title || ''); if (!S.views.some(x => x.sid === L.id) || !document.hasFocus()) setUnread(L.id, true); refreshChanges(L); loadUsage(); if (!d.reason) suggestNext(L); break;
     case 'error': L.snap.error = d; L.snap.pendingPermission = null; L.snap.pendingQuestion = null; re(); attention(L, 'infuse: erro', String(d)); break;
     case 'tasks': L.snap.tasks = d; vs.forEach(renderRail); paneRefresh('tasks'); break;
     case 'memory': paneRefresh('memory'); break;
@@ -379,6 +385,9 @@ function onEvent(L, ev) {
     case 'compacted': vs.forEach(renderChat); toast('Contexto compactado'); break;
   }
 }
+const setUnread = (id, on) => { if (on) S.unread.add(id); else S.unread.delete(id); lsSet('unread', [...S.unread]); renderSidebar(); };
+// the search box also looks inside every conversation (titles alone find little)
+const searchTranscripts = debounce(async q => { S.hitsQ = q; const r = await api('/api/sessions/search?q=' + encodeURIComponent(q), { root: '' }); if ($('#search').value.trim().toLowerCase() !== q) return; S.hits = {}; (Array.isArray(r) ? r : []).forEach(x => S.hits[x.id] = x.snippet); renderSidebar(); }, 250);
 function renderSidebarState(L) { const r = $$('#sessList .srow').find(x => x.querySelector('.t') && S.sessions.find(s => s.id === L.id) && x.title.endsWith(L.root)); renderSidebar(); }
 function attention(L, title, body) {
   if (S.settings.notify === false) return;
@@ -396,7 +405,7 @@ async function openSession(root, id) {
   closeMenu(); S.page = null; showPage(null);
   const v = V() || (S.views[0] = newView());
   if (S.views.some((x, i) => x.sid === id && i !== S.focus)) { S.focus = S.views.findIndex(x => x.sid === id); mountViews(); renderSidebar(); renderPanes(); return; }
-  v.sid = id; v.root = root;
+  v.sid = id; v.root = root; if (S.unread.has(id)) setUnread(id, false);
   const L = connect(root, id);
   if (!L.snap) { L.snap = norm(await api(`/api/sessions/${id}`, { root })); L.lastIn = L.snap.lastInput || 0; }
   if (!L.changes) refreshChanges(L);
@@ -699,8 +708,16 @@ function renderAtts(v) {
   v.images.forEach((im, i) => { const c = h(`<span class="chipx"><img src="data:${im.mediaType};base64,${im.data}"><span>${t('imagem')}</span><b>×</b></span>`); $('b', c).onclick = () => { v.images.splice(i, 1); renderAtts(v); }; el.appendChild(c); });
 }
 
+// The gray suggestion of the next message (Tab or → accepts), asked of the fast model after each turn.
+const PROMPT_PH = 'Peça algo… @ para arquivos, / para comandos';
+function setGhost(v, text) { const P = v.el && $('.prompt', v.el); if (!P) return; P.dataset.ghost = text || ''; P.placeholder = text ? text + '   ⇥ Tab' : t(PROMPT_PH); P.classList.toggle('ghost', !!text); }
+async function suggestNext(L) {
+  if (S.settings.promptSuggestions === false || !L?.id) return;
+  const r = await api(`/api/session/${L.id}/suggest`, { body: {}, root: L.root }); if (!r.text) return;
+  viewsOf(L).forEach(v => { const P = $('.prompt', v.el); if (P && !P.value && !v.atts.length && !v.images.length && !busy(L)) setGhost(v, r.text); });
+}
 async function send(v) {
-  const P = $('.prompt', v.el); let text = P.value.trim();
+  const P = $('.prompt', v.el); let text = P.value.trim(); setGhost(v, '');
   if (!text && !v.atts.length && !v.images.length) return;
   if (text.startsWith('/')) { const handled = await slash(v, text); if (handled) { P.value = ''; grow(P); hideAC(); return; } text = P.value.trim(); }
   let L = v.sid && S.live[v.sid];
@@ -790,6 +807,7 @@ function composerKey(v, e) {
   if (vimKey(v, e)) return;
   if (acKey(e)) return;
   const P = $('.prompt', v.el); const L = v.sid && S.live[v.sid];
+  if ((e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !P.value && P.dataset.ghost) { e.preventDefault(); P.value = P.dataset.ghost; setGhost(v, ''); grow(P); return; }
   if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); send(v); return; }
   if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); const order = Object.keys(modeInfo); const cur = vopts(v).mode; setSessionOpts(v, { mode: order[(order.indexOf(cur) + 1) % order.length] }); return; }
   if (e.key === 'Escape') {

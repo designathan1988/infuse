@@ -33,6 +33,7 @@ async function openSettings(section = 'general') {
     el.append(setRow('Idioma', 'Idioma da interface', selectEl([['pt-BR', 'Português (Brasil)'], ['en', 'English']], s.language === 'en' ? 'en' : 'pt-BR', v => save({ language: v }).then(() => location.reload()))));
     el.append(setRow('Tema', 'Claro, escuro ou seguir o sistema', selectEl([['system', 'Seguir o sistema'], ['light', 'Claro'], ['dark', 'Escuro']], s.theme || 'system', v => save({ theme: v }).then(applyTheme))));
     el.append(setRow('Mostrar raciocínio na conversa', 'Blocos de raciocínio abertos por padrão; o caret recolhe cada um', toggleEl(s.showThinking !== false, v => save({ showThinking: v }))));
+    el.append(setRow('Sugestão da próxima mensagem', 'Depois de cada resposta, uma sugestão em cinza na caixa de mensagem; Tab ou → aceita. Usa o modelo rápido (custo mínimo).', toggleEl(s.promptSuggestions !== false, v => save({ promptSuggestions: v }))));
     el.append(setRow('Notificações', 'Avisar quando o agente precisar de você ou terminar, se você não estiver olhando a sessão', toggleEl(s.notify !== false, v => save({ notify: v }))));
     el.append(setRow('Ícone na bandeja', 'Mostrar o infuse na bandeja do sistema (Abrir / Sair)', toggleEl(!s.hideTray, v => save({ hideTray: !v }))));
     el.append(setRow('Fechar mantém na bandeja', 'Fechar a janela deixa as sessões rodando em segundo plano', toggleEl(!!s.closeToTray, v => save({ closeToTray: v }))));

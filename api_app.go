@@ -254,6 +254,9 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		rememberProjectMode(root, s.Mode)
 		sendJSON(w, 200, s.snapshot())
 		return true
+	case path == "/api/sessions/search":
+		sendJSON(w, 200, searchSessions(q["q"], 40))
+		return true
 	case path == "/api/sessions/all":
 		// every session of every project, for the sidebar (grouping and sorting happen in the page)
 		out := []map[string]any{}
@@ -269,7 +272,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				}
 				sessionsMu.Unlock()
 				out = append(out, map[string]any{"id": d.ID, "root": d.Root, "title": d.Title, "updated": d.Updated, "created": d.Created,
-					"cost": d.Cost, "branch": d.Branch, "worktree": d.Worktree, "archived": d.Archived, "state": state, "model": d.Model})
+					"cost": d.Cost, "branch": d.Branch, "worktree": d.Worktree, "archived": d.Archived, "state": state, "model": d.Model, "pinned": d.Pinned})
 			}
 		}
 		sendJSON(w, 200, out)
@@ -310,6 +313,12 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 			snap := s.snapshot()
 			s.emit("session", snap)
 			sendJSON(w, 200, snap)
+		case "pin":
+			s.mu.Lock()
+			s.Pinned = boolean("pinned")
+			s.mu.Unlock()
+			s.save()
+			sendJSON(w, 200, map[string]any{"ok": true})
 		case "archive":
 			force := boolean("force")
 			if s.Worktree != "" && !force {
@@ -350,6 +359,9 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				return true
 			}
 			sendJSON(w, 200, map[string]any{"ok": true, "answer": ans})
+		case "suggest": // the gray suggestion in the prompt box
+			text, err := s.SuggestNext(r.Context())
+			sendJSON(w, 200, map[string]any{"text": text, "error": errString(err)})
 		case "context":
 			sendJSON(w, 200, s.ContextBreakdown())
 		case "comments": // review comments from the diff pane become one message to the agent

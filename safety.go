@@ -245,3 +245,10 @@ func sameOrigin(host, origin, method, marker, token string) error {
 	}
 	return nil
 }
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}

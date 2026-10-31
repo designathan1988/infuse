@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type Event struct {
@@ -68,6 +69,7 @@ type SessionData struct {
 	Plan        string                   `json:"plan,omitempty"`      // the latest plan proposed in plan mode
 	LastInput   int                      `json:"lastInput,omitempty"` // context size of the latest request
 	Memory      []MemoryItem             `json:"memory,omitempty"`    // structured memory of this session only
+	Pinned      bool                     `json:"pinned,omitempty"`    // shown at the top of the sidebar
 }
 
 type Session struct {
@@ -1084,4 +1086,124 @@ func (s *Session) ContextBreakdown() map[string]any {
 			{"name": "Imagens", "tokens": images},
 		},
 	}
+}
+
+// SuggestNext guesses the user's likely next message from the end of the conversation, for the gray
+// suggestion in the prompt box (Tab accepts). The fast model sees only the recent text, no tools.
+func (s *Session) SuggestNext(ctx context.Context) (string, error) {
+	p, err := providerFor(s.settings, s.providerID())
+	if err != nil {
+		return "", err
+	}
+	msgs := s.copyMessages()
+	var lines []string
+	for i := len(msgs) - 1; i >= 0 && len(lines) < 6; i-- {
+		if t := strings.TrimSpace(msgText(msgs[i])); t != "" && !strings.HasPrefix(t, "[") {
+			who := "Agente"
+			if msgs[i].Role == "user" {
+				who = "Usuário"
+			}
+			if len(t) > 1200 {
+				t = t[:1200] + "…"
+			}
+			lines = append([]string{who + ": " + t}, lines...)
+		}
+	}
+	if len(lines) == 0 {
+		return "", nil
+	}
+	ask := "Conversa recente entre um usuário e um agente de programação:\n\n" + strings.Join(lines, "\n\n") +
+		"\n\nEscreva a próxima mensagem mais provável do usuário, curta (até 12 palavras), no idioma dele. Responda só com a mensagem, sem aspas. Se não houver um próximo passo claro, responda com um traço (-)."
+	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: []Message{{Role: "user", Content: []Block{{Type: "text", Text: ask}}}}, MaxTokens: 60}, func(StreamEvent) {})
+	if err != nil {
+		return "", err
+	}
+	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.fastModel(), Input: res.Usage.Input, Output: res.Usage.Output, Cost: s.settings.costOf(s.fastModel(), res.Usage)})
+	out := strings.Trim(strings.TrimSpace(msgText(Message{Content: res.Content})), "\"'“”")
+	if out == "-" || out == "" || strings.Contains(out, "\n") || len([]rune(out)) > 120 {
+		return "", nil
+	}
+	return out, nil
+}
+
+// msgText joins the text blocks of a message.
+func msgText(m Message) string {
+	var b strings.Builder
+	for _, c := range m.Content {
+		if c.Type == "text" {
+			if b.Len() > 0 {
+				b.WriteString("\n")
+			}
+			b.WriteString(c.Text)
+		}
+	}
+	return b.String()
+}
+
+type sessionHit struct {
+	ID      string `json:"id"`
+	Root    string `json:"root"`
+	Title   string `json:"title"`
+	Snippet string `json:"snippet"`
+}
+
+// searchSessions finds q (case-insensitive) in the titles and messages of every project's sessions.
+func searchSessions(q string, max int) []sessionHit {
+	q = strings.ToLower(strings.TrimSpace(q))
+	out := []sessionHit{}
+	if len([]rune(q)) < 2 {
+		return out
+	}
+	for _, p := range loadProjects() {
+		entries, _ := os.ReadDir(sessionsDir(p.Root))
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".json") || len(out) >= max {
+				continue
+			}
+			var d SessionData
+			if readJSON(filepath.Join(sessionsDir(p.Root), e.Name()), &d) != nil {
+				continue
+			}
+			hit := ""
+			if strings.Contains(strings.ToLower(d.Title), q) {
+				hit = d.Title
+			}
+			for i := len(d.Messages) - 1; i >= 0 && hit == ""; i-- {
+				for _, b := range d.Messages[i].Content {
+					text := b.Text
+					if b.Type == "tool_result" {
+						text = b.Content
+					}
+					low := strings.ToLower(text)
+					if k := strings.Index(low, q); k >= 0 {
+						hit = snippetAround(text, k, len(q))
+						break
+					}
+				}
+			}
+			if hit != "" {
+				out = append(out, sessionHit{ID: d.ID, Root: d.Root, Title: d.Title, Snippet: hit})
+			}
+		}
+	}
+	return out
+}
+
+// snippetAround cuts ~40 characters on each side of the match at byte k (rune-safe).
+func snippetAround(text string, k, n int) string {
+	from, to := max(0, k-40), min(len(text), k+n+40)
+	for from > 0 && !utf8.RuneStart(text[from]) {
+		from--
+	}
+	for to < len(text) && !utf8.RuneStart(text[to]) {
+		to++
+	}
+	s := strings.Join(strings.Fields(text[from:to]), " ")
+	if from > 0 {
+		s = "…" + s
+	}
+	if to < len(text) {
+		s += "…"
+	}
+	return s
 }

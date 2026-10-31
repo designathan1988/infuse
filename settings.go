@@ -27,12 +27,13 @@ type Settings struct {
 	Pricing        map[string][2]float64 `json:"pricing"` // model prefix → [input, output] USD per MTok
 	DailyLimitUSD  float64               `json:"dailyLimitUsd"`
 	Language       string                `json:"language"`
-	HideTray       bool                  `json:"hideTray"`               // no tray icon
-	CloseToTray    bool                  `json:"closeToTray"`            // closing the window keeps the app in the tray
-	Notify         bool                  `json:"notify"`                 // OS notification when the agent needs you or finishes
-	Vim            bool                  `json:"vim"`                    // vim keys in the prompt box
-	Theme          string                `json:"theme"`                  // system | light | dark
-	ShowThinking   *bool                 `json:"showThinking,omitempty"` // reasoning blocks open by default (nil = yes)
+	HideTray       bool                  `json:"hideTray"`                    // no tray icon
+	CloseToTray    bool                  `json:"closeToTray"`                 // closing the window keeps the app in the tray
+	Notify         bool                  `json:"notify"`                      // OS notification when the agent needs you or finishes
+	Vim            bool                  `json:"vim"`                         // vim keys in the prompt box
+	Theme          string                `json:"theme"`                       // system | light | dark
+	ShowThinking   *bool                 `json:"showThinking,omitempty"`      // reasoning blocks open by default (nil = yes)
+	PromptSuggest  *bool                 `json:"promptSuggestions,omitempty"` // gray next-message suggestion in the prompt box (nil = yes)
 }
 
 func defaultSettings() Settings {

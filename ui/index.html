@@ -58,7 +58,9 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 .srow{display:flex;align-items:center;gap:8px;height:32px;padding:0 6px 0 10px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--text2);margin:1px 0;position:relative}
 .srow:hover{background:var(--s3);color:var(--text)} .srow.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)} .srow.split{box-shadow:inset 2px 0 0 var(--accent)}
 .st{width:7px;height:7px;border-radius:50%;flex:none;background:transparent} .st.busy{background:var(--accent);animation:pulse 1.2s infinite} .st.wait{background:var(--warn)} .st.err{background:var(--bad)}
-.srow .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .srow .w{font-size:11px;color:var(--text3);flex:none} .srow .more{display:none;width:20px;height:20px} .srow:hover .more{display:inline-flex} .srow:hover .w{display:none}
+.srow .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;flex-direction:column} .srow .tt{overflow:hidden;text-overflow:ellipsis}
+.srow .pin{font-size:10px;margin-right:4px} .srow.unread .tt{color:var(--text);font-weight:600} .srow.unread::after{content:'';position:absolute;left:1px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--accent)}
+.srow.hit{height:46px} .srow .snip{font-size:11.5px;color:var(--text3);overflow:hidden;text-overflow:ellipsis} .srow .w{font-size:11px;color:var(--text3);flex:none} .srow .more{display:none;width:20px;height:20px} .srow:hover .more{display:inline-flex} .srow:hover .w{display:none}
 @keyframes pulse{50%{opacity:.25}}
 #sbBottom{padding:8px 10px;border-top:1px solid var(--border);display:flex;align-items:center;gap:6px}
 #sbBottom .usage{margin-left:auto;font-size:11px;color:var(--text3)}
@@ -93,6 +95,7 @@ body.nosb #sidebar{width:0;border:0;overflow:hidden}
 
 /* ---------------- transcript */
 .turnsep{display:flex;align-items:center;gap:10px;color:var(--text3);font-size:11px;margin-top:6px} .turnsep .l{flex:1;border-top:1px solid var(--border)} .turnsep button{visibility:hidden} .turnsep:hover button{visibility:visible}
+.prompt.ghost::placeholder{color:var(--text3);font-style:italic}
 .umsg{align-self:flex-end;max-width:86%;display:flex;flex-direction:column;align-items:flex-end;position:relative}
 .msgacts{display:flex;gap:2px;opacity:0;transition:opacity .1s;position:absolute;z-index:2} .msgacts .ib{width:24px;height:24px;background:var(--bg)} .umsg:hover .msgacts,.a:hover>.msgacts{opacity:1}
 .umsg>.msgacts{right:calc(100% + 4px);top:6px;align-items:center} .a{position:relative} .a>.msgacts{right:-34px;top:0}
