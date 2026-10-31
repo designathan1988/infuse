@@ -16,6 +16,7 @@ import (
 
 func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	var b strings.Builder
+	b.WriteString(responseLanguageRule(s.uiLang()) + "\n\n")
 	b.WriteString("Você é o agente de engenharia de software do infuse Studio, trabalhando diretamente no projeto do usuário com as ferramentas disponíveis.\n\n")
 	b.WriteString("Princípios de trabalho:\n")
 	b.WriteString("- Compreenda antes de agir: leia os arquivos envolvidos e o mapa do projeto; identifique dependentes antes de mudar algo.\n")

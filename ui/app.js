@@ -384,7 +384,7 @@ function onEvent(L, ev) {
       vs.forEach(v => { if (!v._liveRaf) v._liveRaf = requestAnimationFrame(() => { v._liveRaf = 0; renderLive(v); }); }); break;
     case 'message': L.snap.messages.push(d.message); L.snap.usage = d.totalUsage; L.snap.cost = d.cost; L.lastIn = d.lastInput; L.lastOut = d.usage?.output || 0; L.text = ''; L.think = ''; L.tools = {}; re(); vs.forEach(renderRail); break;
     case 'tool_run': L.running = d; vs.forEach(renderLive); break;
-    case 'tool_result': L.running = null; L.snap.messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, is_error: d.isError, ms: d.ms }], ts: Date.now() }); vs.forEach(renderChat); refreshChanges(L); break;
+    case 'tool_result': L.running = null; L.snap.messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, display: d.display, is_error: d.isError, ms: d.ms }], ts: Date.now() }); vs.forEach(renderChat); refreshChanges(L); break;
     case 'permission': L.snap.pendingPermission = d; vs.forEach(renderChat); attention(L, 'infuse precisa de você', t('Aprovar ') + d.tool + '?'); break;
     case 'question': L.snap.pendingQuestion = d; vs.forEach(renderChat); attention(L, 'infuse tem uma pergunta', d.question); break;
     case 'done': L.snap.pendingPermission = null; L.snap.pendingQuestion = null; L.snap.cost = d.cost; L.snap.usage = d.usage; re(); vs.forEach(renderRail); attention(L, 'infuse terminou', L.snap.title || ''); if (!S.views.some(x => x.sid === L.id) || !document.hasFocus()) setUnread(L.id, true); refreshChanges(L); loadUsage(); if (!d.reason) suggestNext(L); break;
@@ -393,7 +393,7 @@ function onEvent(L, ev) {
     case 'procs': L.snap.procs = d; vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('procs'); break;
     case 'agents': L.snap.agents = d; vs.forEach(renderLive); vs.forEach(refreshAgentBlocks); vs.forEach(renderRail); vs.forEach(renderRunBadges); paneRefresh('agents'); break;
     case 'memory': paneRefresh('memory'); break;
-    case 'gate': toast(t('infuse interveio: ') + String(d.message || '').replace(/^\[infuse\] /, '').split('\n')[0].slice(0, 140)); break;
+    case 'gate': toast(t('infuse interveio: ') + String(d.display || d.message || '').replace(/^\[infuse\] /, '').split('\n')[0].slice(0, 140)); break;
     case 'subagent': L.sub = d.state === 'done' ? null : { ...(L.sub || {}), ...d, steps: (L.sub?.steps || 0) + (d.state === 'tool' ? 1 : 0) }; vs.forEach(renderLive); break;
     case 'mission': L.snap.mission = d; vs.forEach(renderRail); break;
     case 'cwd': L.snap.cwd = d; break;
@@ -893,10 +893,10 @@ function toolBlock(id, name, input, result, running) {
   else if (name === 'Edit' && inp?.old_string != null) body += diffHTML(inp.old_string.split('\n').map(l => '-' + l).join('\n') + '\n' + (inp.new_string || '').split('\n').map(l => '+' + l).join('\n'));
   else if (inp && Object.keys(inp).length && name !== 'TodoWrite') body += `<div class="lab">${t('entrada')}</div><pre>${esc(JSON.stringify(inp, null, 2))}</pre>`;
   if (name === 'TodoWrite' && Array.isArray(inp?.todos || inp?.tasks)) body += (inp.todos || inp.tasks).map(x => `<div>${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text || x.content || '')}</div>`).join('');
-  if (result) { const o = String(result.content || ''); const k = o.indexOf('\n[infuse'); const main = k >= 0 ? o.slice(0, k) : o, inf = k >= 0 ? o.slice(k + 1) : ''; body += `<div class="lab">${t('resultado')}<button class="ib mini" data-copy-tool="out" title="${esc(t('Copiar resultado'))}">${I.copy}</button></div><pre class="res">${esc(main.length > 20000 ? main.slice(0, 20000) + '\n…' : main)}</pre>` + (inf ? `<div class="lab">${t('infundido')}</div><pre class="inf">${esc(inf)}</pre>` : ''); }
+  if (result) { const o = String(result.display || result.content || ''); const k = o.indexOf('\n[infuse'); const main = k >= 0 ? o.slice(0, k) : o, inf = k >= 0 ? o.slice(k + 1) : ''; body += `<div class="lab">${t('resultado')}<button class="ib mini" data-copy-tool="out" title="${esc(t('Copiar resultado'))}">${I.copy}</button></div><pre class="res">${esc(main.length > 20000 ? main.slice(0, 20000) + '\n…' : main)}</pre>` + (inf ? `<div class="lab">${t('infundido')}</div><pre class="inf">${esc(inf)}</pre>` : ''); }
   const dot = running ? 'run' : result ? (result.is_error ? 'err' : '') : 'pend';
   const open = S.fold[id] ?? (S.viewMode === 'verbose'); // an error does not open the block by itself: its first line shows in the header
-  const errLine = result?.is_error ? String(result.content || '').split('\n').find(l => l.trim()) || '' : '';
+  const errLine = result?.is_error ? String(result.display || result.content || '').split('\n').find(l => l.trim()) || '' : '';
   const fullPath = isPath ? (inp.path || inp.file_path) : '';
   const shown = isPath ? relPath(fullPath) : '';
   const summ = isPath ? `<span class="s"><span class="path" data-path="${esc(shown)}" title="${esc(fullPath)}">${esc(shown)}</span></span>` : `<span class="s">${esc(toolSummary(name, inp))}</span>`;

@@ -249,6 +249,17 @@ func (s *Session) subscribe() (chan Event, func()) {
 }
 
 func (s *Session) emit(t string, data any) {
+	if m, ok := data.(map[string]any); ok && (t == "gate" || t == "tool_result") { // the user reads infuse in their language
+		key := "message"
+		if t == "tool_result" {
+			key = "output"
+		}
+		if txt, ok := m[key].(string); ok {
+			if d := localize(s.uiLang(), txt); d != txt {
+				m["display"] = d
+			}
+		}
+	}
 	s.mu.Lock()
 	s.seq++
 	ev := Event{Type: t, Data: data, Seq: s.seq}
@@ -807,7 +818,7 @@ func (s *Session) run(ctx context.Context) {
 			out, isErr := s.runTool(ctx, rules, b)
 			out = redactSecrets(out) // credentials never reach the model, the transcript or the UI
 			ms := time.Since(toolStart).Milliseconds()
-			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms})
+			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms, Display: displayIfLocalized(s.uiLang(), out)})
 			s.mu.Lock()
 			s.inflight = append([]Block{}, results...)
 			s.mu.Unlock()

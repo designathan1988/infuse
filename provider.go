@@ -26,7 +26,8 @@ type Block struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   string          `json:"content,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
-	Ms        int64           `json:"ms,omitempty"` // tool_result: how long the tool ran; thinking: how long the model thought
+	Ms        int64           `json:"ms,omitempty"`      // tool_result: how long the tool ran; thinking: how long the model thought
+	Display   string          `json:"display,omitempty"` // tool_result/text from infuse: the content in the user's language (never sent to a model)
 }
 
 // Message carries, besides the content sent to providers, what the transcript shows about it: when it
