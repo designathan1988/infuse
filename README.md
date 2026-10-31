@@ -48,10 +48,19 @@ binary serves them when placed accordingly (launcher for those comes next).
 ## Build
 
 ```sh
-go build -ldflags="-s -w -H windowsgui" -o build/infuse.exe .   # Windows: no console window
-go build -o build/infuse .                                        # macOS/Linux (CGO_ENABLED=1 for the native window)
+go build -ldflags="-s -w -H windowsgui" -o build/infuse.exe ./cmd/infuse   # Windows: no console window
+go build -o build/infuse ./cmd/infuse                                      # macOS/Linux (CGO_ENABLED=1 for the native window)
 go test ./...
 go vet ./...
 ```
+
+## Repository layout
+
+`cmd/infuse` is role dispatch and wiring only. The domains live in `internal/`: `core` (types,
+messages, paths), `config`/`connections`/`llm`, `filter` (the interposed shell), `knowledge`,
+`browser`, `mcp`, `oracle`, `workspace`, `terminal`, `scheduler`, `agent` (session loop, gates,
+tools), `api` (HTTP/SSE), `desktop` (window, WebView2, dialogs). The frontend is `ui/js` (one file
+per area and pane), `ui/styles` (tokens and area CSS) and `ui/locales` (JSON translations). The
+architecture rules are executable: `go test ./internal/architecture`.
 
 `legacy/ts` holds the original TypeScript implementation of slice 1, kept for reference.
