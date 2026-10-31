@@ -26,6 +26,12 @@ func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	b.WriteString("- Consulte documentação oficial da versão instalada antes de tentativa e erro.\n")
 	b.WriteString("- Responda em português, de forma direta.\n\n")
 
+	b.WriteString("Protocolo do infuse (aplicado pelo infuse a cada ação; uma ação fora dele é recusada com o motivo):\n")
+	b.WriteString("1. Antes de alterar arquivos: registre o plano com TodoWrite, cada tarefa aberta com proof.\n")
+	b.WriteString("2. Antes de escrever código que usa uma biblioteca ou API externa: consulte a documentação oficial da versão em uso neste turno (WebSearch, WebFetch, documentação fixada, código do pacote).\n")
+	b.WriteString("3. O código segue as convenções do projeto e o limite de tamanho de arquivo.\n")
+	b.WriteString("4. Duas falhas seguidas exigem investigação antes de nova tentativa.\n")
+	b.WriteString("5. O turno só termina com o plano concluído (done ou blocked), o verificador do projeto sem erros nos arquivos alterados, um Report conferido e os achados da revisão independente tratados.\n\n")
 	fmt.Fprintf(&b, "Ambiente: %s/%s · data %s · diretório do projeto: %s · diretório atual: %s\n", runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"), s.Root, s.Cwd)
 	if branch := gitOutput(s.Root, "rev-parse", "--abbrev-ref", "HEAD"); branch != "" {
 		fmt.Fprintf(&b, "Git: branch %s", branch)

@@ -153,6 +153,34 @@ func LearnConventions(root string) string {
 	if files == 0 {
 		return ""
 	}
+	// the enforceable rules, with the share of samples behind each (protocol.go refuses writes against them)
+	rules := ConventionRules{Files: files, Naming: map[string]string{}, NamingShare: map[string]float64{}, NamingN: map[string]int{}}
+	share := func(t tally) (string, float64) {
+		k, n, total := t.top()
+		if total == 0 {
+			return "", 0
+		}
+		return k, float64(n) / float64(total)
+	}
+	if k, sh := share(indent); k != "" {
+		rules.Indent, rules.IndentShare = map[string]string{"tabs": "tabs", "2 espaços": "2", "4 espaços": "4"}[k], sh
+	}
+	if k, sh := share(quotes); k != "" {
+		rules.Quotes, rules.QuotesShare = map[string]string{"aspas simples": "single", "aspas duplas": "double"}[k], sh
+	}
+	if k, sh := share(semis); k != "" {
+		rules.Semis, rules.SemisShare = map[string]string{"com ponto e vírgula": "with", "sem ponto e vírgula": "without"}[k], sh
+	}
+	if k, sh := share(modules); k != "" {
+		rules.Modules, rules.ModShare = map[string]string{"ESM (import/export)": "esm", "CommonJS (require)": "cjs"}[k], sh
+	}
+	for e, t := range naming {
+		if k, n, total := t.top(); k != "" {
+			rules.Naming[e], rules.NamingShare[e], rules.NamingN[e] = k, float64(n)/float64(total), total
+		}
+	}
+	_ = os.MkdirAll(filepath.Join(root, infuseDirName), 0o755)
+	_ = writeJSON(conventionRulesFile(root), rules)
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Convenções do projeto\n\nDetectadas em %d arquivos de código (contagem, não suposição). Edite à vontade: o agente lê este arquivo a cada turno.\n\n", files)
 	line := func(label string, t tally) {

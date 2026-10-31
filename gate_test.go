@@ -62,6 +62,7 @@ func TestShortcutsInEditsAreCaught(t *testing.T) {
 	root := t.TempDir()
 	s := newSession(root)
 	s.Mode = "bypass"
+	s.gate.planned = true // the protocol's plan rule is tested apart
 	test := filepath.Join(root, "soma.test.js")
 	_ = os.WriteFile(test, []byte("test('soma', () => { expect(soma(2, 2)).toBe(4) })\n"), 0o644)
 	s.markRead(test)

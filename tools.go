@@ -698,7 +698,7 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 type TaskItem struct {
 	ID     string `json:"id"`
 	Text   string `json:"text"`
-	Status string `json:"status"`          // pending | in_progress | done
+	Status string `json:"status"`          // pending | in_progress | done | blocked
 	Proof  string `json:"proof,omitempty"` // how the task will be shown to work (a command, a page, a file)
 }
 
@@ -706,8 +706,8 @@ type todoTool struct{}
 
 func (todoTool) Category() string { return "ui" }
 func (todoTool) Spec() ToolSpec {
-	return ToolSpec{Name: "TodoWrite", Description: "Mantém a lista de tarefas visível ao usuário. Envie a lista completa a cada atualização. Status: pending, in_progress, done.",
-		InputSchema: schema(`{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","done"]},"proof":{"type":"string","description":"como esta tarefa será comprovada: o comando, a página ou o arquivo que mostra que funciona"}},"required":["id","text","status"]}}},"required":["tasks"]}`)}
+	return ToolSpec{Name: "TodoWrite", Description: "O plano do pedido, visível ao usuário e marcado em tempo real. Obrigatório antes de alterar arquivos. Envie a lista completa a cada atualização; cada tarefa aberta com proof (como será comprovada). Status: pending, in_progress, done, blocked (com o motivo no Report). O turno só termina com todas done ou blocked.",
+		InputSchema: schema(`{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","done","blocked"]},"proof":{"type":"string","description":"como esta tarefa será comprovada: o comando, a página ou o arquivo que mostra que funciona"}},"required":["id","text","status"]}}},"required":["tasks"]}`)}
 }
 
 func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
@@ -717,8 +717,23 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if err := json.Unmarshal(input, &in); err != nil {
 		return err.Error(), true
 	}
+	if len(in.Tasks) == 0 {
+		return "o plano precisa de pelo menos uma tarefa", true
+	}
+	var noProof []string
+	for _, t := range in.Tasks {
+		if t.Status != "done" && t.Status != "blocked" && strings.TrimSpace(t.Proof) == "" {
+			noProof = append(noProof, t.Text)
+		}
+	}
+	if len(noProof) > 0 { // the protocol: every open task says how it will be proven
+		return "plano recusado: cada tarefa aberta precisa de proof (o comando, a página ou o arquivo que comprovará que funciona). Sem proof: " + strings.Join(noProof, "; "), true
+	}
 	tc.S.setTasks(in.Tasks)
-	return fmt.Sprintf("lista atualizada (%d tarefas)", len(in.Tasks)), false
+	tc.S.mu.Lock()
+	tc.S.gate.planned = true
+	tc.S.mu.Unlock()
+	return fmt.Sprintf("plano registrado (%d tarefas); o usuário vê cada uma marcada conforme você atualiza", len(in.Tasks)), false
 }
 
 // ---------------------------------------------------------------- AskUserQuestion

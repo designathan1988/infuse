@@ -721,9 +721,12 @@ func (s *Session) run(ctx context.Context) {
 			}
 		}
 		if res.StopReason != "tool_use" {
-			if why := s.missingReport(); why != "" {
+			if why := s.turnObligation(ctx); why != "" { // the protocol decides when the turn may end
 				s.mu.Lock()
-				s.gate.reportAsks++
+				s.gate.obligationAsks++
+				if strings.Contains(why, "sem Report") {
+					s.gate.reportAsks++
+				}
 				s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: why}}, TS: time.Now().UnixMilli()})
 				s.mu.Unlock()
 				s.emit("gate", map[string]any{"message": why})
@@ -848,6 +851,16 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	_ = json.Unmarshal(b.Input, &toolInput)
 	if o := s.runHooks(ctx, "PreToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput}); o.Block {
 		return "bloqueado por um hook: " + o.Message, true
+	}
+	if inv, _ := isResearch(b.Name, b.Input); inv && b.Name != "Read" || b.Name == "Read" && isSourceRead(b.Input) {
+		s.noteResearch(b.Name, b.Input)
+	}
+	if tool.Category() == "write" { // the protocol: plan, docs before use, conventions, size
+		if why := s.protocolCheckWrite(b.Name, b.Input); why != "" {
+			Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})
+			s.emit("gate", map[string]any{"message": why})
+			return why, true
+		}
 	}
 	if why := s.gateCheck(b.Name, tool.Category(), b.Input); why != "" { // research before another attempt
 		Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})

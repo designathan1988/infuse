@@ -29,6 +29,11 @@ type researchGate struct {
 	trips      int      // how many times the gate closed in this turn
 	needWeb    bool     // local reading was not enough: only outside research opens it
 	reportAsks int      // times the agent was sent back for a Report in this turn
+
+	planned        bool     // a plan (TodoWrite) was registered in this turn
+	researched     []string // what research calls looked at in this turn (queries, addresses, doc files)
+	obligationAsks int      // times the turn was refused an end
+	reviewed       bool     // the mandatory review ran in this turn
 }
 
 func (g *researchGate) reset() { *g = researchGate{} }
