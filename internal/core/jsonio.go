@@ -9,6 +9,9 @@ import (
 
 func Exists(p string) bool { _, err := os.Stat(p); return err == nil }
 
+// RawJSON is a literal JSON document (tool input schemas).
+func RawJSON(s string) json.RawMessage { return json.RawMessage(s) }
+
 func ReadJSON(file string, v any) error {
 	b, err := os.ReadFile(file)
 	if err != nil {

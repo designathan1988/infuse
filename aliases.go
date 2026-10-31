@@ -210,6 +210,27 @@ func SuggestChecks(root string) []CheckSuggestion { return oracle.SuggestChecks(
 
 type ConventionRules = knowledge.ConventionRules
 type Tally = knowledge.Tally
+type ProjectRules = knowledge.ProjectRules
+type compiledRule = knowledge.CompiledRule
+type compiledRules = knowledge.CompiledRules
+
+var instructionNames = knowledge.InstructionNames
+var projectRulesSpec = knowledge.ProjectRulesSpec
+
+const compilePrompt = knowledge.CompilePrompt
+
+func loadProjectRules(root string) ProjectRules { return knowledge.LoadProjectRules(root) }
+func gitHeadFile(root, rel string) string       { return knowledge.GitHeadFile(root, rel) }
+func resolveInstructionImports(root, dir, text string, depth int) string {
+	return knowledge.ResolveInstructionImports(root, dir, text, depth)
+}
+func isInstructionFile(rel string) bool         { return knowledge.IsInstructionFile(rel) }
+func underReference(r ProjectRules, rel string) string {
+	return knowledge.UnderReference(r, rel)
+}
+func verifyRule(root, normText string, r CompiledRule) Msg {
+	return knowledge.VerifyRule(root, normText, r)
+}
 
 func ConventionsFile(root string) string        { return knowledge.ConventionsFile(root) }
 func conventionsFile(root string) string        { return knowledge.ConventionsFile(root) }
