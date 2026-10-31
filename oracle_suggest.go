@@ -31,6 +31,9 @@ func cmdCheck(id, title, run string) OracleCheck {
 
 var reMakeTest = regexp.MustCompile(`(?m)^test\s*:`)
 
+// The suggestion's Title and Why are shown in the interface, which translates them from these Portuguese
+// texts (ui/i18n.js); the check's Description is stored in the criteria the model reads, so it is English.
+
 // SuggestChecks lists criteria that fit the project at root, leaving out those already in the spec.
 func SuggestChecks(root string) []CheckSuggestion {
 	var out []CheckSuggestion
@@ -66,24 +69,24 @@ func SuggestChecks(root string) []CheckSuggestion {
 			return pm + " run " + script
 		}
 		if s := pkg.Scripts["test"]; s != "" && !strings.Contains(s, "no test specified") {
-			add("Os testes passam", "Roda \""+run("test")+"\" (definido em package.json) e exige que termine sem erro.", cmdCheck("testes", "Os testes passam", run("test")), setup)
+			add("Os testes passam", "Roda \""+run("test")+"\" (definido em package.json) e exige que termine sem erro.", cmdCheck("testes", "The tests pass", run("test")), setup)
 		} else if hasFileMatching(root, `\.test\.(m?js|cjs)$`) {
-			add("Os testes passam", "Há arquivos *.test.js: roda o executor de testes do Node e exige que termine sem erro.", cmdCheck("testes", "Os testes passam", "node --test"), setup)
+			add("Os testes passam", "Há arquivos *.test.js: roda o executor de testes do Node e exige que termine sem erro.", cmdCheck("testes", "The tests pass", "node --test"), setup)
 		}
 		if pkg.Scripts["build"] != "" {
-			add("O projeto compila", "Roda \""+run("build")+"\" e exige que termine sem erro.", cmdCheck("build", "O projeto compila", run("build")), setup)
+			add("O projeto compila", "Roda \""+run("build")+"\" e exige que termine sem erro.", cmdCheck("build", "The project builds", run("build")), setup)
 		}
 		if pkg.Scripts["lint"] != "" {
-			add("Sem erros de lint", "Roda \""+run("lint")+"\" e exige que termine sem erro.", cmdCheck("lint", "Sem erros de lint", run("lint")), setup)
+			add("Sem erros de lint", "Roda \""+run("lint")+"\" e exige que termine sem erro.", cmdCheck("lint", "No lint errors", run("lint")), setup)
 		}
 		_, ts := pkg.DevDependencies["typescript"]
 		if _, d := pkg.Dependencies["typescript"]; d {
 			ts = true
 		}
 		if pkg.Scripts["typecheck"] != "" {
-			add("Sem erros de tipo", "Roda \""+run("typecheck")+"\".", cmdCheck("tipos", "Sem erros de tipo", run("typecheck")), setup)
+			add("Sem erros de tipo", "Roda \""+run("typecheck")+"\".", cmdCheck("tipos", "No type errors", run("typecheck")), setup)
 		} else if ts && hasPath(root, "tsconfig.json") {
-			add("Sem erros de tipo", "Confere os tipos do TypeScript sem gerar arquivos (tsc --noEmit).", cmdCheck("tipos", "Sem erros de tipo", "npx tsc --noEmit"), setup)
+			add("Sem erros de tipo", "Confere os tipos do TypeScript sem gerar arquivos (tsc --noEmit).", cmdCheck("tipos", "No type errors", "npx tsc --noEmit"), setup)
 		}
 		port := ""
 		deps := map[string]string{}
@@ -102,19 +105,19 @@ func SuggestChecks(root string) []CheckSuggestion {
 			port = "4200"
 		}
 		if port != "" {
-			c := OracleCheck{ID: "pagina", Kind: "http", URL: "http://localhost:" + port + "/", Description: "A página inicial abre"}
+			c := OracleCheck{ID: "pagina", Kind: "http", URL: "http://localhost:" + port + "/", Description: "The home page opens"}
 			c.Expect.Status = 200
 			add("A página inicial abre", "Pede http://localhost:"+port+"/ e exige resposta 200. O app precisa estar rodando (Navegador > Servidores).", c, "")
 		}
 	}
 	if hasPath(root, "go.mod") {
-		add("O projeto compila", "Roda \"go build ./...\".", cmdCheck("build", "O projeto compila", "go build ./..."), "")
-		add("Os testes passam", "Roda \"go test ./...\".", cmdCheck("testes", "Os testes passam", "go test ./..."), "")
-		add("Sem problemas do go vet", "Roda \"go vet ./...\": aponta erros comuns que compilam.", cmdCheck("vet", "Sem problemas do go vet", "go vet ./..."), "")
+		add("O projeto compila", "Roda \"go build ./...\".", cmdCheck("build", "The project builds", "go build ./..."), "")
+		add("Os testes passam", "Roda \"go test ./...\".", cmdCheck("testes", "The tests pass", "go test ./..."), "")
+		add("Sem problemas do go vet", "Roda \"go vet ./...\": aponta erros comuns que compilam.", cmdCheck("vet", "No go vet problems", "go vet ./..."), "")
 	}
 	if hasPath(root, "Cargo.toml") {
-		add("O projeto compila", "Roda \"cargo build\".", cmdCheck("build", "O projeto compila", "cargo build"), "")
-		add("Os testes passam", "Roda \"cargo test\".", cmdCheck("testes", "Os testes passam", "cargo test"), "")
+		add("O projeto compila", "Roda \"cargo build\".", cmdCheck("build", "The project builds", "cargo build"), "")
+		add("Os testes passam", "Roda \"cargo test\".", cmdCheck("testes", "The tests pass", "cargo test"), "")
 	}
 	if hasPath(root, "pyproject.toml") || hasPath(root, "requirements.txt") || hasPath(root, "setup.py") {
 		setup := ""
@@ -122,33 +125,33 @@ func SuggestChecks(root string) []CheckSuggestion {
 			setup = "python -m pip install -r requirements.txt"
 		}
 		if hasPath(root, "tests") || hasPath(root, "pytest.ini") || hasFileMatching(root, `(^|/)test_[^/]+\.py$`) {
-			add("Os testes passam", "Roda \"python -m pytest\".", cmdCheck("testes", "Os testes passam", "python -m pytest -q"), setup)
+			add("Os testes passam", "Roda \"python -m pytest\".", cmdCheck("testes", "The tests pass", "python -m pytest -q"), setup)
 		}
-		add("Todo arquivo Python é válido", "Compila cada .py; acusa erro de sintaxe.", cmdCheck("sintaxe", "Todo arquivo Python é válido", "python -m compileall -q ."), "")
+		add("Todo arquivo Python é válido", "Compila cada .py; acusa erro de sintaxe.", cmdCheck("sintaxe", "Every Python file is valid", "python -m compileall -q ."), "")
 	}
 	if hasFileMatching(root, `\.(sln|csproj)$`) {
-		add("O projeto compila", "Roda \"dotnet build\".", cmdCheck("build", "O projeto compila", "dotnet build"), "")
-		add("Os testes passam", "Roda \"dotnet test\".", cmdCheck("testes", "Os testes passam", "dotnet test"), "")
+		add("O projeto compila", "Roda \"dotnet build\".", cmdCheck("build", "The project builds", "dotnet build"), "")
+		add("Os testes passam", "Roda \"dotnet test\".", cmdCheck("testes", "The tests pass", "dotnet test"), "")
 	}
 	if hasPath(root, "pom.xml") {
-		add("Os testes passam", "Roda \"mvn -q test\".", cmdCheck("testes", "Os testes passam", "mvn -q test"), "")
+		add("Os testes passam", "Roda \"mvn -q test\".", cmdCheck("testes", "The tests pass", "mvn -q test"), "")
 	}
 	if hasPath(root, "build.gradle") || hasPath(root, "build.gradle.kts") {
 		g := "gradle"
 		if hasPath(root, "gradlew") {
 			g = "./gradlew"
 		}
-		add("Os testes passam", "Roda \""+g+" test\".", cmdCheck("testes", "Os testes passam", g+" test"), "")
+		add("Os testes passam", "Roda \""+g+" test\".", cmdCheck("testes", "The tests pass", g+" test"), "")
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "Makefile")); err == nil && reMakeTest.Match(b) {
-		add("Os testes passam", "Roda \"make test\".", cmdCheck("testes", "Os testes passam", "make test"), "")
+		add("Os testes passam", "Roda \"make test\".", cmdCheck("testes", "The tests pass", "make test"), "")
 	}
 	if ext := mainExtension(root); ext != "" {
-		c := OracleCheck{ID: "tamanho", Kind: "maxLines", Glob: "**/*" + ext, Max: 400, Description: "Nenhum arquivo grande demais"}
+		c := OracleCheck{ID: "tamanho", Kind: "maxLines", Glob: "**/*" + ext, Max: 400, Description: "No file is too large"}
 		add("Nenhum arquivo grande demais", "Nenhum arquivo *"+ext+" passa de 400 linhas: arquivos enormes indicam responsabilidades misturadas.", c, "")
 	}
 	if hasPath(root, "README.md") {
-		c := OracleCheck{ID: "readme", Kind: "file", Path: "README.md", Description: "O README existe"}
+		c := OracleCheck{ID: "readme", Kind: "file", Path: "README.md", Description: "The README exists"}
 		add("O README existe", "Exige o arquivo README.md. Troque o texto esperado para conferir uma seção (ex.: \"Instalação\").", c, "")
 	}
 

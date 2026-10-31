@@ -60,7 +60,7 @@ func clip(s string) string {
 	if len(s) <= maxToolOutput {
 		return s
 	}
-	return s[:maxToolOutput/2] + fmt.Sprintf("\n\n[... %d caracteres omitidos ...]\n\n", len(s)-maxToolOutput) + s[len(s)-maxToolOutput/2:]
+	return s[:maxToolOutput/2] + fmt.Sprintf("\n\n[... %d characters omitted ...]\n\n", len(s)-maxToolOutput) + s[len(s)-maxToolOutput/2:]
 }
 
 // resolvePath turns a tool path into an absolute path inside the project; refuses escapes and protected paths.
@@ -74,16 +74,16 @@ func (tc *ToolContext) resolvePath(p string, forWrite bool) (string, error) {
 	rel, err := filepath.Rel(tc.Root, abs)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		if forWrite {
-			return "", fmt.Errorf("caminho fora do projeto: %s", p)
+			return "", fmt.Errorf("path outside the project: %s", p)
 		}
 	}
 	if !forWrite && err == nil && !strings.HasPrefix(rel, "..") && hiddenInternal(rel) {
-		return "", fmt.Errorf("%s é um arquivo interno do infuse (sessões, jornal, histórico), não do projeto. O agente lê do .infuse/ só a documentação fixada (.infuse/docs), as convenções, o mapa (.infuse/map/MAP.md) e as próprias capturas", toPosix(rel))
+		return "", fmt.Errorf("%s is an internal infuse file (sessions, journal, history), not part of the project. From .infuse/ the agent reads only the pinned documentation (.infuse/docs), the conventions, the map (.infuse/map/MAP.md) and its own captures", toPosix(rel))
 	}
 	if forWrite && tc.S.isProtected(abs) {
 		Journal(tc.Root, JournalEntry{Kind: "blocked", Path: toPosix(rel), Detail: "tentativa de escrita em caminho protegido"})
 		Lesson(tc.Root, "protected-path-write", "tentativa de escrever em "+toPosix(rel))
-		return "", fmt.Errorf("caminho protegido, somente leitura para o agente: %s. O oráculo e os caminhos protegidos são definidos pelo usuário e não podem ser alterados pelo agente", toPosix(rel))
+		return "", fmt.Errorf("protected path, read-only for the agent: %s. The oracle and the protected paths are set by the user and cannot be changed by the agent", toPosix(rel))
 	}
 	return abs, nil
 }
@@ -106,7 +106,7 @@ func (tc *ToolContext) afterWrite(abs string) []string {
 	lines = append(lines, ApplyWriteRules(tc.Root, tc.Rules, []string{abs})...)
 	if tc.S.settings.Diagnostics == nil || *tc.S.settings.Diagnostics {
 		if d := fileDiagnostics(tc.Root, abs); d != "" {
-			lines = append(lines, "[diagnóstico] problemas encontrados pelo verificador do projeto neste arquivo:\n"+d)
+			lines = append(lines, fmt.Sprintf("[diagnostics] problems found by the project's checker in this file:\n%s", d))
 		}
 	}
 	return lines
@@ -118,8 +118,8 @@ type bashTool struct{}
 
 func (bashTool) Category() string { return "exec" }
 func (bashTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Bash", Description: "Executa um comando no shell do projeto (bash). Use para rodar builds, testes, git e utilitários. A saída volta com informações do projeto quando relevante. run_in_background=true para o que continua rodando (servidor, jogo, watcher): volta na hora com o id; leia a saída com BashOutput e encerre com KillShell. Você é avisado quando o processo termina.",
-		InputSchema: schema(`{"type":"object","properties":{"command":{"type":"string","description":"Comando a executar"},"timeout":{"type":"integer","description":"Timeout em segundos (padrão 120, máximo 600)"},"description":{"type":"string","description":"Descrição curta do que o comando faz"},"run_in_background":{"type":"boolean","description":"roda sem esperar terminar"}},"required":["command"]}`)}
+	return ToolSpec{Name: "Bash", Description: "Runs a command in the project's shell (bash). Use it to run builds, tests, git and utilities. The output comes back with project information when relevant. run_in_background=true for something that keeps running (server, game, watcher): returns at once with the id; read the output with BashOutput and stop it with KillShell. You are notified when the process ends.",
+		InputSchema: schema(`{"type":"object","properties":{"command":{"type":"string","description":"Command to run"},"timeout":{"type":"integer","description":"Timeout in seconds (default 120, maximum 600)"},"description":{"type":"string","description":"Short description of what the command does"},"run_in_background":{"type":"boolean","description":"runs without waiting for it to finish"}},"required":["command"]}`)}
 }
 
 func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
@@ -131,7 +131,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	_ = json.Unmarshal(input, &in)
 	if strings.TrimSpace(in.Command) == "" {
-		return "comando vazio", true
+		return "empty command", true
 	}
 	if in.Timeout <= 0 {
 		in.Timeout = 120
@@ -169,7 +169,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if in.Background {
 		p, err := tc.S.startBackground(command, in.Description, tc.Cwd)
 		if err != nil {
-			return "não iniciou: " + err.Error(), true
+			return fmt.Sprintf("did not start: %s", err.Error()), true
 		}
 		// the first moments of output: a command that fails at once says so now
 		deadline := time.Now().Add(2 * time.Second)
@@ -184,9 +184,12 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		p.read = off
 		state := p.State
 		tc.S.mu.Unlock()
-		msg := fmt.Sprintf("processo %s em segundo plano (pid %d), %s. Leia a saída nova com BashOutput(id=%q); encerre com KillShell. O usuário acompanha no painel Processos.", p.ID, p.PID, map[bool]string{true: "rodando", false: "já terminou"}[state == "running"], p.ID)
+		msg := fmt.Sprintf("process %s running in the background (pid %d). Read the new output with BashOutput(id=%q); stop it with KillShell. The user follows it in the Processes pane.", p.ID, p.PID, p.ID)
+		if state != "running" {
+			msg = fmt.Sprintf("process %s in the background (pid %d) has already finished. Read the new output with BashOutput(id=%q); stop it with KillShell. The user follows it in the Processes pane.", p.ID, p.PID, p.ID)
+		}
 		if strings.TrimSpace(first) != "" {
-			msg += "\nPrimeiros 2 s de saída:\n" + clip(first)
+			msg += fmt.Sprintf("\nFirst 2 s of output:\n%s", clip(first))
 		}
 		return msg, state != "running" && p.Exit != nil && *p.Exit != 0
 	}
@@ -212,7 +215,7 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	isErr := false
 	if cctx.Err() == context.DeadlineExceeded {
-		out += fmt.Sprintf("\n[tempo esgotado após %ds]", in.Timeout)
+		out += fmt.Sprintf("\n[timed out after %ds]", in.Timeout)
 		isErr = true
 	} else if err != nil {
 		out += fmt.Sprintf("\n[exit %d]", exitCode(err))
@@ -231,8 +234,8 @@ type readTool struct{}
 
 func (readTool) Category() string { return "read" }
 func (readTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Read", Description: "Lê um arquivo do projeto com números de linha. Use offset/limit para arquivos grandes.",
-		InputSchema: schema(`{"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer","description":"Linha inicial (1-based)"},"limit":{"type":"integer","description":"Quantidade de linhas"}},"required":["path"]}`)}
+	return ToolSpec{Name: "Read", Description: "Reads a project file with line numbers. Use offset/limit for large files.",
+		InputSchema: schema(`{"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer","description":"First line (1-based)"},"limit":{"type":"integer","description":"Number of lines"}},"required":["path"]}`)}
 }
 
 func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
@@ -251,16 +254,16 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	if mt := imageType(abs); mt != "" { // the model sees the image itself
 		if len(b) > 5<<20 {
-			return fmt.Sprintf("imagem grande demais para enviar ao modelo (%d bytes; máximo 5 MB)", len(b)), true
+			return fmt.Sprintf("image too large to send to the model (%d bytes; maximum 5 MB)", len(b)), true
 		}
 		tc.S.mu.Lock()
 		tc.S.pendingImages = append(tc.S.pendingImages, Block{Type: "image", MediaType: mt, Data: base64.StdEncoding.EncodeToString(b)})
 		tc.S.mu.Unlock()
 		tc.S.markRead(abs)
-		return fmt.Sprintf("imagem %s (%d bytes) anexada a esta resposta para você ver", relTo(tc.Root, abs), len(b)), false
+		return fmt.Sprintf("image %s (%d bytes) attached to this reply for you to see", relTo(tc.Root, abs), len(b)), false
 	}
 	if bytes.IndexByte(b, 0) >= 0 {
-		return fmt.Sprintf("arquivo binário (%d bytes)", len(b)), true
+		return fmt.Sprintf("binary file (%d bytes)", len(b)), true
 	}
 	lines := strings.Split(string(b), "\n")
 	start := in.Offset
@@ -284,7 +287,7 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		shown = i + 1
 	}
 	if shown < end {
-		fmt.Fprintf(&sb, "\n[continua: o arquivo tem %d linhas; leia a partir daqui com Read offset=%d]\n", len(lines), shown+1)
+		fmt.Fprintf(&sb, "\n[continues: the file has %d lines; read on from here with Read offset=%d]\n", len(lines), shown+1)
 	}
 	tc.S.noteCoverage(abs, len(lines), start, shown)
 	tc.S.markRead(abs)
@@ -303,7 +306,7 @@ type writeTool struct{}
 
 func (writeTool) Category() string { return "write" }
 func (writeTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Write", Description: "Cria ou sobrescreve um arquivo com o conteúdo completo. Para mudanças pontuais em arquivo existente, prefira Edit.",
+	return ToolSpec{Name: "Write", Description: "Creates or overwrites a file with its complete content. For targeted changes to an existing file, prefer Edit.",
 		InputSchema: schema(`{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}`)}
 }
 
@@ -319,7 +322,7 @@ func (writeTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 	if err := os.WriteFile(abs, []byte(in.Content), 0o644); err != nil {
 		return err.Error(), true
 	}
-	lines := append([]string{fmt.Sprintf("Arquivo escrito: %s (%d bytes)", relTo(tc.Root, abs), len(in.Content))}, tc.afterWrite(abs)...)
+	lines := append([]string{fmt.Sprintf("File written: %s (%d bytes)", relTo(tc.Root, abs), len(in.Content))}, tc.afterWrite(abs)...)
 	return strings.Join(lines, "\n"), false
 }
 
@@ -329,7 +332,7 @@ type editTool struct{}
 
 func (editTool) Category() string { return "write" }
 func (editTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Edit", Description: "Substitui um trecho exato de um arquivo. old_string precisa ocorrer exatamente uma vez (ou use replace_all). Leia o arquivo antes de editar.",
+	return ToolSpec{Name: "Edit", Description: "Replaces an exact passage of a file. old_string must occur exactly once (or use replace_all). Read the file before editing it.",
 		InputSchema: schema(`{"type":"object","properties":{"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"}},"required":["path","old_string","new_string"]}`)}
 }
 
@@ -350,22 +353,22 @@ func (editTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		return err.Error(), true
 	}
 	if !tc.S.wasRead(abs) {
-		return "leia o arquivo com Read antes de editá-lo", true
+		return "read the file with Read before editing it", true
 	}
 	content := string(b)
 	n := strings.Count(content, in.OldString)
 	if in.OldString == "" || n == 0 {
-		return "old_string não encontrado no arquivo", true
+		return "old_string not found in the file", true
 	}
 	if n > 1 && !in.ReplaceAll {
-		return fmt.Sprintf("old_string ocorre %d vezes; torne-o único ou use replace_all", n), true
+		return fmt.Sprintf("old_string occurs %d times; make it unique or use replace_all", n), true
 	}
 	tc.S.checkpointBeforeWrite(abs)
 	next := strings.Replace(content, in.OldString, in.NewString, map[bool]int{true: -1, false: 1}[in.ReplaceAll])
 	if err := os.WriteFile(abs, []byte(next), 0o644); err != nil {
 		return err.Error(), true
 	}
-	lines := append([]string{fmt.Sprintf("Editado: %s (%d substituição(ões))", relTo(tc.Root, abs), map[bool]int{true: n, false: 1}[in.ReplaceAll])}, tc.afterWrite(abs)...)
+	lines := append([]string{fmt.Sprintf("Edited: %s (%d replacement(s))", relTo(tc.Root, abs), map[bool]int{true: n, false: 1}[in.ReplaceAll])}, tc.afterWrite(abs)...)
 	return strings.Join(lines, "\n"), false
 }
 
@@ -375,7 +378,7 @@ type multiEditTool struct{}
 
 func (multiEditTool) Category() string { return "write" }
 func (multiEditTool) Spec() ToolSpec {
-	return ToolSpec{Name: "MultiEdit", Description: "Aplica várias substituições exatas num mesmo arquivo, em ordem, de uma vez: ou todas valem, ou nenhuma é gravada. Cada old_string precisa ocorrer exatamente uma vez no texto já com as edições anteriores (ou use replace_all). Leia o arquivo antes.",
+	return ToolSpec{Name: "MultiEdit", Description: "Applies several exact replacements to the same file, in order, all at once: either all of them apply or none is written. Each old_string must occur exactly once in the text as it stands after the previous edits (or use replace_all). Read the file first.",
 		InputSchema: schema(`{"type":"object","properties":{"path":{"type":"string"},"edits":{"type":"array","items":{"type":"object","properties":{"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"}},"required":["old_string","new_string"]}}},"required":["path","edits"]}`)}
 }
 
@@ -398,20 +401,20 @@ func (multiEditTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 		return err.Error(), true
 	}
 	if !tc.S.wasRead(abs) {
-		return "leia o arquivo com Read antes de editá-lo", true
+		return "read the file with Read before editing it", true
 	}
 	if len(in.Edits) == 0 {
-		return "nenhuma edição", true
+		return "no edits", true
 	}
 	content := string(b)
 	total := 0
 	for i, e := range in.Edits {
 		n := strings.Count(content, e.OldString)
 		if e.OldString == "" || n == 0 {
-			return fmt.Sprintf("edição %d: old_string não encontrado (nada foi gravado)", i+1), true
+			return fmt.Sprintf("edit %d: old_string not found (nothing was written)", i+1), true
 		}
 		if n > 1 && !e.ReplaceAll {
-			return fmt.Sprintf("edição %d: old_string ocorre %d vezes; torne-o único ou use replace_all (nada foi gravado)", i+1, n), true
+			return fmt.Sprintf("edit %d: old_string occurs %d times; make it unique or use replace_all (nothing was written)", i+1, n), true
 		}
 		if e.ReplaceAll {
 			content = strings.ReplaceAll(content, e.OldString, e.NewString)
@@ -425,7 +428,7 @@ func (multiEditTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
 		return err.Error(), true
 	}
-	lines := append([]string{fmt.Sprintf("Editado: %s (%d edições, %d substituição(ões))", relTo(tc.Root, abs), len(in.Edits), total)}, tc.afterWrite(abs)...)
+	lines := append([]string{fmt.Sprintf("Edited %s: %d edits, %d replacement(s)", relTo(tc.Root, abs), len(in.Edits), total)}, tc.afterWrite(abs)...)
 	return strings.Join(lines, "\n"), false
 }
 
@@ -450,8 +453,8 @@ type globTool struct{}
 
 func (globTool) Category() string { return "read" }
 func (globTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Glob", Description: "Encontra arquivos por padrão (ex.: src/**/*.ts). Ordenado por modificação, mais recentes primeiro.",
-		InputSchema: schema(`{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string","description":"Pasta base (padrão: raiz do projeto)"}},"required":["pattern"]}`)}
+	return ToolSpec{Name: "Glob", Description: "Finds files by pattern (e.g. src/**/*.ts). Sorted by modification time, most recent first.",
+		InputSchema: schema(`{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string","description":"Base folder (default: the project root)"}},"required":["pattern"]}`)}
 }
 
 func globToRegex(pat string) *regexp.Regexp {
@@ -540,7 +543,7 @@ func (globTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		sb.WriteString(h.p + "\n")
 	}
 	if len(hits) == 0 {
-		return "nenhum arquivo encontrado", false
+		return "no files found", false
 	}
 	return clip(sb.String()), false
 }
@@ -551,8 +554,8 @@ type grepTool struct{}
 
 func (grepTool) Category() string { return "read" }
 func (grepTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Grep", Description: "Busca por expressão regular no conteúdo dos arquivos. Devolve arquivo:linha:texto.",
-		InputSchema: schema(`{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string","description":"Filtrar arquivos, ex.: *.ts"},"ignore_case":{"type":"boolean"},"context":{"type":"integer","description":"Linhas de contexto"},"files_only":{"type":"boolean"}},"required":["pattern"]}`)}
+	return ToolSpec{Name: "Grep", Description: "Searches file contents with a regular expression. Returns file:line:text.",
+		InputSchema: schema(`{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string","description":"Filter files, e.g. *.ts"},"ignore_case":{"type":"boolean"},"context":{"type":"integer","description":"Lines of context"},"files_only":{"type":"boolean"}},"required":["pattern"]}`)}
 }
 
 func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
@@ -571,7 +574,7 @@ func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	re, err := regexp.Compile(pat)
 	if err != nil {
-		return "regex inválida: " + err.Error(), true
+		return fmt.Sprintf("invalid regex: %s", err.Error()), true
 	}
 	base := tc.Root
 	if in.Path != "" {
@@ -639,7 +642,7 @@ func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		return nil
 	})
 	if matches == 0 {
-		return "nenhuma ocorrência", false
+		return "no matches", false
 	}
 	return clip(sb.String()), false
 }
@@ -650,7 +653,7 @@ type lsTool struct{}
 
 func (lsTool) Category() string { return "read" }
 func (lsTool) Spec() ToolSpec {
-	return ToolSpec{Name: "LS", Description: "Lista uma pasta do projeto. A resposta inclui o mapa da pasta: o que cada arquivo exporta, quem depende dele, arquivos grandes demais.",
+	return ToolSpec{Name: "LS", Description: "Lists a project folder. The answer includes the folder's map: what each file exports, what depends on it, files that are too large.",
 		InputSchema: schema(`{"type":"object","properties":{"path":{"type":"string"}},"required":[]}`)}
 }
 
@@ -700,8 +703,8 @@ type webFetchTool struct{}
 
 func (webFetchTool) Category() string { return "net" }
 func (webFetchTool) Spec() ToolSpec {
-	return ToolSpec{Name: "WebFetch", Description: "Baixa uma página ou documento da web e devolve o texto (HTML convertido para texto), em partes de 30000 caracteres. Uma página em partes precisa ser lida até o fim (offset) antes de você executar comandos ou alterar arquivos.",
-		InputSchema: schema(`{"type":"object","properties":{"url":{"type":"string"},"offset":{"type":"integer","description":"onde continuar a leitura (indicado no fim de cada parte)"}},"required":["url"]}`)}
+	return ToolSpec{Name: "WebFetch", Description: "Downloads a web page or document and returns its text (HTML converted to text), in parts of 30000 characters. A page in parts must be read to the end (offset) before you run commands or change files.",
+		InputSchema: schema(`{"type":"object","properties":{"url":{"type":"string"},"offset":{"type":"integer","description":"where to continue reading (given at the end of each part)"}},"required":["url"]}`)}
 }
 
 var reTag = regexp.MustCompile(`(?s)<(script|style)[^>]*>.*?</(script|style)>|<[^>]+>`)
@@ -715,7 +718,7 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	_ = json.Unmarshal(input, &in)
 	if bad, why := privateTarget(in.URL); bad { // no requests into this machine or the private network
 		Journal(tc.Root, JournalEntry{Kind: "blocked", Command: in.URL, Detail: "WebFetch recusado: " + why})
-		return "WebFetch recusado: " + why + ". O agente só busca endereços públicos.", true
+		return fmt.Sprintf("WebFetch refused: %s. The agent only fetches public addresses.", why), true
 	}
 	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.URL, Detail: "pesquisa"})
 	req, err := http.NewRequestWithContext(ctx, "GET", in.URL, nil)
@@ -741,9 +744,9 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	body := text[part*docPageSize : min(len(text), (part+1)*docPageSize)]
 	head := fmt.Sprintf("HTTP %d", resp.StatusCode)
 	if total > 1 {
-		head += fmt.Sprintf(" · parte %d de %d", part+1, total)
+		head = fmt.Sprintf("HTTP %d · part %d of %d", resp.StatusCode, part+1, total)
 		if part+1 < total {
-			body += fmt.Sprintf("\n\n[continua: WebFetch com offset=%d — leia até o fim antes de agir]", (part+1)*docPageSize)
+			body += fmt.Sprintf("\n\n[continues: WebFetch with offset=%d — read to the end before acting]", (part+1)*docPageSize)
 		}
 	}
 	if tc.S != nil && resp.StatusCode < 400 {
@@ -766,8 +769,8 @@ type todoTool struct{}
 
 func (todoTool) Category() string { return "ui" }
 func (todoTool) Spec() ToolSpec {
-	return ToolSpec{Name: "TodoWrite", Description: "O plano do pedido, visível ao usuário e marcado em tempo real. Obrigatório antes de alterar arquivos. Envie a lista completa a cada atualização; cada tarefa aberta com proof (como será comprovada). Status: pending, in_progress, done, blocked (com o motivo no Report). O turno só termina com todas done ou blocked.",
-		InputSchema: schema(`{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","done","blocked"]},"proof":{"type":"string","description":"como esta tarefa será comprovada: o comando, a página ou o arquivo que mostra que funciona"}},"required":["id","text","status"]}}},"required":["tasks"]}`)}
+	return ToolSpec{Name: "TodoWrite", Description: "The plan for the request, visible to the user and checked off in real time. Required before changing files. Send the complete list on every update; each open task with a proof (how it will be proven). Status: pending, in_progress, done, blocked (with the reason in the Report). The turn only ends with all of them done or blocked.",
+		InputSchema: schema(`{"type":"object","properties":{"tasks":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"text":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","done","blocked"]},"proof":{"type":"string","description":"how this task will be proven: the command, the page or the file that shows it works"}},"required":["id","text","status"]}}},"required":["tasks"]}`)}
 }
 
 func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
@@ -778,7 +781,7 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		return err.Error(), true
 	}
 	if len(in.Tasks) == 0 {
-		return "o plano precisa de pelo menos uma tarefa", true
+		return "the plan needs at least one task", true
 	}
 	var noProof []string
 	for _, t := range in.Tasks {
@@ -787,7 +790,7 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		}
 	}
 	if len(noProof) > 0 { // the protocol: every open task says how it will be proven
-		return "plano recusado: cada tarefa aberta precisa de proof (o comando, a página ou o arquivo que comprovará que funciona). Sem proof: " + strings.Join(noProof, "; "), true
+		return fmt.Sprintf("plan refused: every open task needs a proof (the command, the page or the file that will prove it works). Without proof: %s", strings.Join(noProof, "; ")), true
 	}
 	for i := range in.Tasks {
 		in.Tasks[i].Note = ""
@@ -796,7 +799,7 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	tc.S.mu.Lock()
 	tc.S.gate.planned = true
 	tc.S.mu.Unlock()
-	return fmt.Sprintf("plano registrado (%d tarefas); o usuário vê cada uma marcada conforme você atualiza", len(in.Tasks)), false
+	return fmt.Sprintf("plan recorded (%d tasks); the user sees each one checked off as you update it", len(in.Tasks)), false
 }
 
 // ---------------------------------------------------------------- AskUserQuestion
@@ -805,7 +808,7 @@ type askTool struct{}
 
 func (askTool) Category() string { return "ui" }
 func (askTool) Spec() ToolSpec {
-	return ToolSpec{Name: "AskUserQuestion", Description: "Faz uma pergunta ao usuário na interface, com opções. Use quando uma decisão é do usuário e não pode ser inferida.",
+	return ToolSpec{Name: "AskUserQuestion", Description: "Asks the user a question in the interface, with options. Use it when a decision belongs to the user and cannot be inferred.",
 		InputSchema: schema(`{"type":"object","properties":{"question":{"type":"string"},"options":{"type":"array","items":{"type":"string"}}},"required":["question"]}`)}
 }
 
@@ -817,9 +820,9 @@ func (askTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) 
 	_ = json.Unmarshal(input, &in)
 	answer, ok := tc.S.askUser(ctx, in.Question, in.Options)
 	if !ok {
-		return "o usuário não respondeu", true
+		return "the user did not answer", true
 	}
-	return "Resposta do usuário: " + answer, false
+	return fmt.Sprintf("User's answer: %s", answer), false
 }
 
 func init() {

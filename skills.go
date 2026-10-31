@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -99,7 +100,7 @@ type skillTool struct{}
 
 func (skillTool) Category() string { return "read" }
 func (skillTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Skill", Description: "Carrega as instruções de uma skill (listadas no prompt do sistema) quando a tarefa corresponde à descrição dela. Devolve o SKILL.md e a pasta da skill, cujos arquivos você pode ler.",
+	return ToolSpec{Name: "Skill", Description: "Loads the instructions of a skill (listed in the system prompt) when the task matches its description. Returns the SKILL.md and the skill's folder, whose files you can read.",
 		InputSchema: schema(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`)}
 }
 
@@ -116,10 +117,10 @@ func (skillTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 			}
 			_, _, body := parseSkill(string(b))
 			tc.S.markRead(filepath.Join(s.Dir, "SKILL.md"))
-			return "Skill " + s.Name + " (pasta: " + s.Dir + ")\n\n" + clip(body), false
+			return fmt.Sprintf("Skill %s (folder: %s)\n\n%s", s.Name, s.Dir, clip(body)), false
 		}
 	}
-	return "skill não encontrada: " + in.Name, true
+	return fmt.Sprintf("skill not found: %s", in.Name), true
 }
 
 func init() { registerTool(skillTool{}) }

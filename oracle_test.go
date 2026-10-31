@@ -44,7 +44,7 @@ func TestOracleUnreachableByEveryTool(t *testing.T) {
 	s, tc, oracle := oracleSession(t)
 	rel := ".infuse/oracle/pronto.md"
 
-	if out, isErr := run(t, tc, "Write", map[string]any{"path": rel, "content": "hack"}); !isErr || !strings.Contains(out, "protegido") {
+	if out, isErr := run(t, tc, "Write", map[string]any{"path": rel, "content": "hack"}); !isErr || !strings.Contains(out, "protected path") {
 		t.Fatalf("Write: %v %q", isErr, out)
 	}
 	s.markRead(oracle)

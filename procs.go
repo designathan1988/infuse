@@ -61,7 +61,7 @@ func (l *procLog) since(off int64) (string, int64) {
 	first := l.total - int64(len(l.buf))
 	prefix := ""
 	if off < first {
-		prefix = fmt.Sprintf("[… %d bytes mais antigos descartados …]\n", first-off)
+		prefix = fmt.Sprintf("[… %d older bytes discarded …]\n", first-off)
 		off = first
 	}
 	return prefix + string(l.buf[off-first:]), l.total
@@ -127,7 +127,7 @@ func (s *Session) proc(id string) *bgProc {
 func (s *Session) stopProc(id string) error {
 	p := s.proc(id)
 	if p == nil {
-		return fmt.Errorf("processo %s não existe nesta sessão", id)
+		return fmt.Errorf("process %s does not exist in this session", id)
 	}
 	s.mu.Lock()
 	running := p.State == "running"
@@ -173,9 +173,9 @@ func (s *Session) procNotes() string {
 				code = *p.Exit
 			}
 			if p.State == "stopped" {
-				notes = append(notes, fmt.Sprintf("[infuse] o processo em segundo plano %s (%s) foi encerrado.", p.ID, truncate(p.Command, 80)))
+				notes = append(notes, fmt.Sprintf("[infuse] the background process %s (%s) was stopped.", p.ID, truncate(p.Command, 80)))
 			} else {
-				notes = append(notes, fmt.Sprintf("[infuse] o processo em segundo plano %s (%s) terminou sozinho, código %d. Leia a saída com BashOutput.", p.ID, truncate(p.Command, 80), code))
+				notes = append(notes, fmt.Sprintf("[infuse] the background process %s (%s) finished on its own, exit code %d. Read its output with BashOutput.", p.ID, truncate(p.Command, 80), code))
 			}
 		}
 	}
@@ -196,7 +196,7 @@ type bashOutputTool struct{}
 
 func (bashOutputTool) Category() string { return "read" }
 func (bashOutputTool) Spec() ToolSpec {
-	return ToolSpec{Name: "BashOutput", Description: "Lê a saída nova de um processo em segundo plano (iniciado com Bash run_in_background), e diz se ainda está rodando. filter: regex para mostrar só as linhas que interessam.",
+	return ToolSpec{Name: "BashOutput", Description: "Reads the new output of a background process (started with Bash run_in_background) and says whether it is still running. filter: a regex to show only the lines that matter.",
 		InputSchema: schema(`{"type":"object","properties":{"id":{"type":"string"},"filter":{"type":"string"}},"required":["id"]}`)}
 }
 
@@ -205,7 +205,7 @@ func (bashOutputTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 	_ = json.Unmarshal(input, &in)
 	p := tc.S.proc(in.ID)
 	if p == nil {
-		return "processo não encontrado: " + in.ID + ". Processos desta sessão: " + tc.S.procIDs(), true
+		return fmt.Sprintf("process not found: %s. Processes in this session: %s", in.ID, tc.S.procIDs()), true
 	}
 	tc.S.mu.Lock()
 	from := p.read
@@ -221,7 +221,7 @@ func (bashOutputTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 	if in.Filter != "" {
 		re, err := regexp.Compile(in.Filter)
 		if err != nil {
-			return "filter inválido: " + err.Error(), true
+			return fmt.Sprintf("invalid filter: %s", err.Error()), true
 		}
 		var keep []string
 		for _, l := range strings.Split(text, "\n") {
@@ -231,15 +231,15 @@ func (bashOutputTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 		}
 		text = strings.Join(keep, "\n")
 	}
-	head := "rodando"
+	head := "running"
 	if state != "running" {
 		head = state
 		if exit != nil {
-			head += fmt.Sprintf(" (código %d)", *exit)
+			head += fmt.Sprintf(" (exit code %d)", *exit)
 		}
 	}
 	if strings.TrimSpace(text) == "" {
-		text = "(nenhuma saída nova)"
+		text = "(no new output)"
 	}
 	return fmt.Sprintf("[%s · %s]\n%s", in.ID, head, clip(text)), false
 }
@@ -248,7 +248,7 @@ type killShellTool struct{}
 
 func (killShellTool) Category() string { return "exec" }
 func (killShellTool) Spec() ToolSpec {
-	return ToolSpec{Name: "KillShell", Description: "Encerra um processo em segundo plano e tudo o que ele iniciou.",
+	return ToolSpec{Name: "KillShell", Description: "Stops a background process and everything it started.",
 		InputSchema: schema(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`)}
 }
 
@@ -258,7 +258,7 @@ func (killShellTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	if err := tc.S.stopProc(in.ID); err != nil {
 		return err.Error(), true
 	}
-	return "processo " + in.ID + " encerrado", false
+	return fmt.Sprintf("process %s stopped", in.ID), false
 }
 
 func (s *Session) procIDs() string {
@@ -269,7 +269,7 @@ func (s *Session) procIDs() string {
 		ids = append(ids, p.ID+" ("+p.State+")")
 	}
 	if len(ids) == 0 {
-		return "nenhum"
+		return "none"
 	}
 	return strings.Join(ids, ", ")
 }

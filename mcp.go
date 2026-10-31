@@ -201,11 +201,11 @@ func (c *mcpClient) start(ctx context.Context, root string) error {
 
 func (c *mcpClient) spawn(root string) error {
 	if c.cfg.Command == "" {
-		return errors.New("servidor sem command nem url")
+		return errors.New("server has neither a command nor a url")
 	}
 	exe, err := exec.LookPath(c.cfg.Command)
 	if err != nil {
-		return fmt.Errorf("%s não encontrado neste computador", c.cfg.Command)
+		return fmt.Errorf("%s not found on this computer", c.cfg.Command)
 	}
 	args := make([]string, len(c.cfg.Args))
 	for i, a := range c.cfg.Args {
@@ -237,7 +237,7 @@ func (c *mcpClient) spawn(root string) error {
 		c.mu.Lock()
 		if c.state != "stopped" {
 			c.state = "error"
-			c.err = "o servidor terminou"
+			c.err = "the server exited"
 			if err != nil {
 				c.err += ": " + err.Error()
 			}
@@ -294,7 +294,7 @@ func (c *mcpClient) dispatch(m rpcMessage) {
 			if m.Method == "ping" {
 				reply["result"] = map[string]any{}
 			} else {
-				reply["error"] = map[string]any{"code": -32601, "message": "não suportado pelo infuse"}
+				reply["error"] = map[string]any{"code": -32601, "message": "not supported by infuse"}
 			}
 			b, _ := json.Marshal(reply)
 			c.writeLine(b)
@@ -337,7 +337,7 @@ func (c *mcpClient) call(ctx context.Context, method string, params any) (json.R
 		c.mu.Lock()
 		if c.pending == nil {
 			c.mu.Unlock()
-			return nil, errors.New("servidor parado")
+			return nil, errors.New("server stopped")
 		}
 		c.pending[id] = ch
 		c.mu.Unlock()
@@ -347,17 +347,17 @@ func (c *mcpClient) call(ctx context.Context, method string, params any) (json.R
 		select {
 		case r, ok := <-ch:
 			if !ok {
-				return nil, errors.New("o servidor terminou: " + c.stderrTail())
+				return nil, fmt.Errorf("the server exited: %s", c.stderrTail())
 			}
 			m = r
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-timeout.C:
-			return nil, errors.New("o servidor não respondeu em 120 s")
+			return nil, errors.New("the server did not answer within 120 s")
 		}
 	}
 	if m.Error != nil {
-		return nil, fmt.Errorf("%s (código %d)", m.Error.Message, m.Error.Code)
+		return nil, fmt.Errorf("%s (code %d)", m.Error.Message, m.Error.Code)
 	}
 	return m.Result, nil
 }
@@ -432,7 +432,7 @@ func (c *mcpClient) post(ctx context.Context, body []byte, id int64) (rpcMessage
 				data.Reset()
 			}
 		}
-		return rpcMessage{}, errors.New("o fluxo do servidor terminou sem resposta")
+		return rpcMessage{}, errors.New("the server's stream ended without an answer")
 	}
 	var m rpcMessage
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
@@ -626,7 +626,7 @@ func (t mcpAgentTool) Spec() ToolSpec {
 	if len(desc) > 1500 {
 		desc = desc[:1500] + "…"
 	}
-	return ToolSpec{Name: mcpToolName(t.client.name, t.tool.Name), Description: "[conector " + t.client.name + "] " + desc, InputSchema: schema}
+	return ToolSpec{Name: mcpToolName(t.client.name, t.tool.Name), Description: fmt.Sprintf("[connector %s] %s", t.client.name, desc), InputSchema: schema}
 }
 
 func (t mcpAgentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
@@ -636,7 +636,7 @@ func (t mcpAgentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 	Journal(tc.Root, JournalEntry{Kind: "mcp", Command: t.client.name + "/" + t.tool.Name, Detail: truncate(string(input), 300)})
 	raw, err := t.client.call(ctx, "tools/call", map[string]any{"name": t.tool.Name, "arguments": input})
 	if err != nil {
-		return "conector " + t.client.name + ": " + err.Error(), true
+		return fmt.Sprintf("connector %s: %s", t.client.name, err.Error()), true
 	}
 	var res struct {
 		Content []struct {
@@ -660,7 +660,7 @@ func (t mcpAgentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 				tc.S.mu.Lock()
 				tc.S.pendingImages = append(tc.S.pendingImages, Block{Type: "image", MediaType: c.MimeType, Data: c.Data})
 				tc.S.mu.Unlock()
-				b.WriteString("[imagem anexada a esta resposta]\n")
+				b.WriteString("[image attached to this reply]\n")
 			}
 		case "resource":
 			b.WriteString(string(c.Resource) + "\n")
@@ -669,7 +669,7 @@ func (t mcpAgentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 	if b.Len() == 0 && len(res.Structured) > 0 {
 		b.Write(res.Structured)
 	}
-	return clip(externalContent("conector "+t.client.name+"/"+t.tool.Name, strings.TrimSpace(b.String()))), res.IsError
+	return clip(externalContent(fmt.Sprintf("connector %s/%s", t.client.name, t.tool.Name), strings.TrimSpace(b.String()))), res.IsError
 }
 
 // sessionTools is the session's tool set: the built-in tools and the running connectors' tools.

@@ -48,7 +48,9 @@ type Impasse struct {
 	Needs    string   `json:"needs"`
 }
 
-const missionBrief = `[Missão] Trabalhe sozinho até cumprir o objetivo abaixo. Ao fim de cada turno o infuse roda os critérios do Pronto? numa cópia do projeto; se falharem, você recebe os motivos e continua. Se concluir que não é possível terminar (falta acesso, informação ou uma decisão do usuário), chame a ferramenta Impasse com o que tentou e a evidência: isso encerra a missão e é um resultado válido.
+// The "[Missão]" tag and the "Objetivo: " label are markers the interface (ui/app.js) and sentinel.go
+// look for; they stay as they are until those readers change with them.
+const missionBrief = `[Missão] Mission: work on your own until the goal below is met. At the end of each turn infuse runs the Done? criteria on a copy of the project; if they fail, you receive the reasons and continue. If you conclude that it is not possible to finish (missing access, information or a decision from the user), call the Impasse tool with what you tried and the evidence: that ends the mission and is a valid result.
 
 Objetivo: `
 
@@ -158,17 +160,17 @@ func (s *Session) missionStep() {
 		return
 	}
 	var next strings.Builder
-	fmt.Fprintf(&next, "[Missão — turno %d de %d · US$ %.2f de US$ %.2f] ", turns+1, m.MaxTurns, spent, m.BudgetUSD)
+	fmt.Fprintf(&next, "[Missão — turn %d of %d · US$ %.2f of US$ %.2f] ", turns+1, m.MaxTurns, spent, m.BudgetUSD)
 	switch step.Verdict {
 	case "sem-criterios":
-		next.WriteString("Não há critérios executáveis no Pronto?, então o infuse não tem como confirmar o fim. Se o objetivo está cumprido, relate com Report e chame Impasse explicando que faltam critérios para confirmar; senão, continue.")
+		next.WriteString("There are no executable criteria in Done?, so infuse has no way to confirm the end. If the goal is met, report it with Report and call Impasse explaining that criteria are missing to confirm it; otherwise, continue.")
 	case "erro":
-		next.WriteString("Os critérios não puderam rodar: " + step.Summary + "\nCorrija o que impede a verificação ou chame Impasse.")
+		fmt.Fprintf(&next, "The criteria could not run: %s\nFix what prevents the verification or call Impasse.", step.Summary)
 	default:
-		next.WriteString("O Pronto? reprovou o trabalho atual. Critérios que falharam:\n" + step.Summary + "\nCorrija e continue. Não altere os critérios nem os testes para passar.")
+		fmt.Fprintf(&next, "Done? rejected the current work. Criteria that failed:\n%s\nFix it and continue. Do not change the criteria or the tests to make them pass.", step.Summary)
 	}
 	if step.Auditor != "" {
-		next.WriteString("\n\nObservação do auditor de fluxo (conselho, não ordem): " + step.Auditor)
+		fmt.Fprintf(&next, "\n\nNote from the flow auditor (advice, not an order): %s", step.Auditor)
 	}
 	if err := s.Send(next.String(), nil, nil); err != nil {
 		s.endMission("parada", "não foi possível continuar: "+err.Error())
@@ -200,11 +202,11 @@ func (s *Session) auditTurn(ctx context.Context) string {
 			case "text":
 				fmt.Fprintf(&b, "%s: %s\n", m.Role, truncate(c.Text, 400))
 			case "tool_use":
-				fmt.Fprintf(&b, "ferramenta %s %s\n", c.Name, truncate(string(c.Input), 200))
+				fmt.Fprintf(&b, "tool %s %s\n", c.Name, truncate(string(c.Input), 200))
 			case "tool_result":
 				status := "ok"
 				if c.IsError {
-					status = "ERRO"
+					status = "ERROR"
 				}
 				fmt.Fprintf(&b, "  → %s: %s\n", status, truncate(firstLine(c.Content), 160))
 			}
@@ -213,8 +215,8 @@ func (s *Session) auditTurn(ctx context.Context) string {
 	if b.Len() == 0 {
 		return ""
 	}
-	ask := "Objetivo da missão: " + goal + "\n\nRegistro do último turno de um agente de programação:\n" + truncate(b.String(), 12000) +
-		"\n\nAponte em no máximo duas frases um problema de condução, se houver: repetição da mesma tentativa, erros ignorados, trabalho fora do objetivo, alteração de testes ou critérios, afirmação sem verificação. Se a condução estiver adequada, responda só: -"
+	ask := fmt.Sprintf("Mission goal: %s\n\nLog of the last turn of a coding agent:\n%s", goal, truncate(b.String(), 12000)) +
+		"\n\nIn at most two sentences, point out a problem in how the work is being conducted, if there is one: repeating the same attempt, ignored errors, work outside the goal, changes to tests or criteria, claims without verification. If the work is being conducted properly, answer only: -"
 	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: []Message{{Role: "user", Content: []Block{{Type: "text", Text: ask}}}}, MaxTokens: 200}, func(StreamEvent) {})
 	if err != nil {
 		return ""
@@ -233,7 +235,7 @@ type impasseTool struct{}
 
 func (impasseTool) Category() string { return "ui" }
 func (impasseTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Impasse", Description: "Encerra a missão em andamento declarando que não é possível concluí-la agora: o motivo, o que foi tentado, a evidência (comandos e saídas) e o que seria preciso (acesso, informação, decisão do usuário). Um impasse honesto é um resultado válido; continuar sem caminho não é.",
+	return ToolSpec{Name: "Impasse", Description: "Ends the running mission by declaring that it cannot be completed now: the reason, what was tried, the evidence (commands and outputs) and what would be needed (access, information, a decision from the user). An honest impasse is a valid result; carrying on with no way forward is not.",
 		InputSchema: schema(`{"type":"object","properties":{"reason":{"type":"string"},"tried":{"type":"array","items":{"type":"string"}},"evidence":{"type":"string"},"needs":{"type":"string"}},"required":["reason","tried","needs"]}`)}
 }
 
@@ -248,10 +250,10 @@ func (impasseTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	}
 	s.mu.Unlock()
 	if !running {
-		return "não há missão em andamento; explique o impasse ao usuário na resposta", false
+		return "there is no mission running; explain the impasse to the user in your answer", false
 	}
 	s.endMission("impasse", im.Reason)
-	return "Missão encerrada em impasse. O usuário vê o motivo, o que foi tentado e o que é preciso. Termine o turno com um resumo curto.", false
+	return "Mission ended at an impasse. The user sees the reason, what was tried and what is needed. End the turn with a short summary.", false
 }
 
 func init() { registerTool(impasseTool{}) }

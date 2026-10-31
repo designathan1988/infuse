@@ -33,13 +33,14 @@ func subagentSystem(s *Session, kind string) string {
 	var b strings.Builder
 	switch kind {
 	case "review":
-		b.WriteString("Você é um revisor independente de código. Você não escreveu este trabalho e não viu o raciocínio de quem escreveu. Confira as alterações contra o pedido, o plano e os critérios: procure erros de lógica, casos de borda sem tratamento, validações ou verificações removidas, testes alterados para passar, código que não é chamado, responsabilidades espalhadas. Leia os arquivos que precisar. Responda com uma lista de achados, do mais grave ao menos grave, cada um com arquivo:linha, o problema e a consequência concreta; e por fim um veredito: aprovar ou corrigir. Se não houver achados, diga isso.\n")
+		b.WriteString("You are an independent code reviewer. You did not write this work and you have not seen the reasoning of whoever wrote it. Check the changes against the request, the plan and the criteria: look for logic errors, unhandled edge cases, removed validations or checks, tests changed so they pass, code that is never called, scattered responsibilities. Read whatever files you need. Answer with a list of findings, from most to least severe, each with file:line, the problem and its concrete consequence; and finally a verdict: approve or fix. If there are no findings, say so.\n")
 	case "explore":
-		b.WriteString("Você é um subagente de pesquisa num projeto de software. Leia e procure o que for preciso para responder à tarefa e devolva uma conclusão objetiva, com caminhos de arquivos e linhas. Você só tem ferramentas de leitura.\n")
+		b.WriteString("You are a research subagent in a software project. Read and search whatever is needed to answer the task and return an objective conclusion, with file paths and lines. You only have read tools.\n")
 	default:
-		b.WriteString("Você é um subagente executando uma tarefa delimitada num projeto de software. Faça só o que a tarefa pede e devolva um relato curto do que fez, com a evidência (comandos e resultados).\n")
+		b.WriteString("You are a subagent carrying out a bounded task in a software project. Do only what the task asks and return a short account of what you did, with the evidence (commands and results).\n")
 	}
-	fmt.Fprintf(&b, "Diretório do projeto: %s. Responda em português.\n", s.workRoot())
+	fmt.Fprintf(&b, "Project directory: %s.\n", s.workRoot())
+	b.WriteString(responseLanguageRule(s.uiLang()) + "\n")
 	return b.String()
 }
 
@@ -121,7 +122,7 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 			})
 			t0 := time.Now()
 			if !allowed(b.Name) {
-				out, isErr = "ferramenta indisponível para este subagente: "+b.Name, true
+				out, isErr = fmt.Sprintf("tool unavailable for this subagent: %s", b.Name), true
 			} else {
 				out, isErr = s.runTool(ctx, rules, b)
 				out = redactSecrets(out)
@@ -135,42 +136,42 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 				}
 			})
 			if err := breaker.record(b.Name, b.Input, isErr); err != nil {
-				return "", fmt.Errorf("subagente interrompido: %w", err)
+				return "", fmt.Errorf("subagent stopped: %w", err)
 			}
 		}
 		msgs = append(msgs, Message{Role: "user", Content: results})
 	}
-	return "", errors.New("subagente atingiu o limite de passos")
+	return "", errors.New("subagent reached the step limit")
 }
 
 // reviewMaterial is what the reviewer sees: the request, the plan, the criteria and the diff.
 func (s *Session) reviewMaterial(focus string) string {
 	var b strings.Builder
 	if req := s.turnRequest(); req != "" {
-		b.WriteString("## Pedido do usuário\n" + req + "\n\n")
+		b.WriteString("## User's request\n" + req + "\n\n")
 	}
 	s.mu.Lock()
 	tasks := append([]TaskItem{}, s.Tasks...)
 	s.mu.Unlock()
 	if len(tasks) > 0 {
-		b.WriteString("## Plano\n")
+		b.WriteString("## Plan\n")
 		for _, t := range tasks {
 			fmt.Fprintf(&b, "- [%s] %s", t.Status, t.Text)
 			if t.Proof != "" {
-				fmt.Fprintf(&b, " (comprovação: %s)", t.Proof)
+				fmt.Fprintf(&b, " (proof: %s)", t.Proof)
 			}
 			b.WriteString("\n")
 		}
 		b.WriteString("\n")
 	}
 	if o := readOracle(s.Root); o != "" {
-		b.WriteString("## Critérios de pronto\n" + o + "\n\n")
+		b.WriteString("## Definition of done\n" + o + "\n\n")
 	}
 	if m := memoryPrompt(s); m != "" {
-		b.WriteString("## Memória (correções e critérios combinados)\n" + m + "\n")
+		b.WriteString("## Memory (corrections and agreed criteria)\n" + m + "\n")
 	}
 	if focus != "" {
-		b.WriteString("## Foco pedido\n" + focus + "\n\n")
+		b.WriteString("## Requested focus\n" + focus + "\n\n")
 	}
 	root := s.workRoot()
 	const budget = 60000
@@ -183,7 +184,7 @@ func (s *Session) reviewMaterial(focus string) string {
 					break
 				}
 				if c, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f))); err == nil && len(c) < 40000 {
-					diff += "\n--- /dev/null\n+++ b/" + f + " (arquivo novo)\n" + string(c)
+					diff += "\n--- /dev/null\n+++ b/" + f + " (new file)\n" + string(c)
 				}
 			}
 		}
@@ -202,17 +203,17 @@ func (s *Session) reviewMaterial(focus string) string {
 		s.mu.Unlock()
 		for _, f := range files {
 			if c, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f))); err == nil && len(diff) < budget {
-				diff += "\n=== " + f + " (alterado nesta sessão)\n" + string(c)
+				diff += "\n=== " + f + " (changed in this session)\n" + string(c)
 			}
 		}
 	}
 	if len(diff) > budget {
-		diff = diff[:budget] + "\n[… diff cortado]"
+		diff = diff[:budget] + "\n[… diff cut]"
 	}
 	if strings.TrimSpace(diff) == "" {
-		diff = "(nenhuma alteração encontrada)"
+		diff = "(no changes found)"
 	}
-	b.WriteString("## Alterações\n```diff\n" + diff + "\n```\n")
+	b.WriteString("## Changes\n```diff\n" + diff + "\n```\n")
 	return b.String()
 }
 
@@ -222,8 +223,8 @@ type agentTool struct{}
 
 func (agentTool) Category() string { return "ui" }
 func (agentTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Agent", Description: "Delega uma tarefa a um subagente com contexto limpo, que devolve só a conclusão. Vários subagentes explore/review chamados na mesma resposta trabalham ao mesmo tempo (uma equipe): divida pesquisas independentes entre eles. kind=explore: pesquisa e leitura no projeto (só leitura). kind=review: revisor independente das alterações atuais (vê o diff, o plano e os critérios, não o seu raciocínio) — use antes de declarar um trabalho pronto. kind=general: tarefa delimitada com qualquer ferramenta. As ações do subagente passam pelas mesmas permissões e pelo filtro.",
-		InputSchema: schema(`{"type":"object","properties":{"kind":{"type":"string","enum":["explore","review","general"]},"description":{"type":"string","description":"título curto"},"prompt":{"type":"string","description":"a tarefa, completa: o subagente não vê esta conversa"}},"required":["kind","prompt"]}`)}
+	return ToolSpec{Name: "Agent", Description: "Delegates a task to a subagent with a clean context, which returns only its conclusion. Several explore/review subagents called in the same reply work at the same time (a team): split independent research among them. kind=explore: research and reading in the project (read-only). kind=review: independent reviewer of the current changes (sees the diff, the plan and the criteria, not your reasoning) — use it before declaring a piece of work done. kind=general: a bounded task with any tool. The subagent's actions go through the same permissions and the filter.",
+		InputSchema: schema(`{"type":"object","properties":{"kind":{"type":"string","enum":["explore","review","general"]},"description":{"type":"string","description":"short title"},"prompt":{"type":"string","description":"the full task: the subagent does not see this conversation"}},"required":["kind","prompt"]}`)}
 }
 
 func (agentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
@@ -235,11 +236,11 @@ func (agentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 	_ = json.Unmarshal(input, &in)
 	task := in.Prompt
 	if in.Kind == "review" {
-		task = tc.S.reviewMaterial(in.Prompt) + "\nRevise as alterações acima."
+		task = tc.S.reviewMaterial(in.Prompt) + "\nReview the changes above."
 	}
 	out, err := tc.S.RunSubagent(ctx, in.Kind, in.Description, task)
 	if err != nil {
-		return "subagente falhou: " + err.Error(), true
+		return fmt.Sprintf("subagent failed: %s", err.Error()), true
 	}
 	return out, false
 }
@@ -258,7 +259,7 @@ func (s *Session) IndependentReview(ctx context.Context, focus string) (string, 
 	if busy {
 		return "", errors.New("espere o agente terminar para revisar")
 	}
-	out, err := s.RunSubagent(ctx, "review", "Revisão independente", s.reviewMaterial(focus)+"\nRevise as alterações acima.")
+	out, err := s.RunSubagent(ctx, "review", "Revisão independente", s.reviewMaterial(focus)+"\nReview the changes above.")
 	if err != nil {
 		return "", err
 	}

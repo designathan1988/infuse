@@ -25,10 +25,10 @@ func TestMemoryToolAndPrompt(t *testing.T) {
 	run(`{"action":"add","type":"decisao","text":"CommonJS","scope":"session"}`)
 	run(`{"action":"add","type":"comando","text":"go test ./...","scope":"global"}`)
 	p := memoryPrompt(s)
-	if !strings.HasPrefix(p, "- [correção do usuário · projeto] use pnpm") {
+	if !strings.HasPrefix(p, "- [user correction · project] use pnpm") {
 		t.Fatalf("highest priority first:\n%s", p)
 	}
-	for _, want := range []string{"[decisão · sessão] CommonJS", "[comando que funcionou · global] go test", "[fato · projeto] o projeto usa Node 22"} {
+	for _, want := range []string{"[decision · session] CommonJS", "[command that worked · global] go test", "[fact · project] o projeto usa Node 22"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("missing %q in\n%s", want, p)
 		}
@@ -46,7 +46,7 @@ func TestMemoryToolAndPrompt(t *testing.T) {
 	for i := 0; i < 40; i++ {
 		run(`{"action":"add","type":"fato","text":"` + strings.Repeat("x", 300) + `"}`)
 	}
-	if p := memoryPrompt(s); len(p) > memoryBudget+200 || !strings.Contains(p, "não couberam") || !strings.Contains(p, "use pnpm") {
+	if p := memoryPrompt(s); len(p) > memoryBudget+200 || !strings.Contains(p, "did not fit") || !strings.Contains(p, "use pnpm") {
 		t.Fatalf("budget: %d chars", len(p))
 	}
 }

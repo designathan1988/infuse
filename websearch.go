@@ -97,7 +97,7 @@ func bingTarget(link string) string {
 func WebSearch(ctx context.Context, q string, max int) ([]SearchResult, string, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
-		return nil, "", errors.New("pesquisa vazia")
+		return nil, "", errors.New("empty search")
 	}
 	if max <= 0 || max > 20 {
 		max = 8
@@ -119,12 +119,12 @@ func WebSearch(ctx context.Context, q string, max int) ([]SearchResult, string, 
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		resp.Body.Close()
 		if resp.StatusCode >= 400 {
-			lastErr = fmt.Errorf("%s respondeu HTTP %d", e.name, resp.StatusCode)
+			lastErr = fmt.Errorf("%s answered HTTP %d", e.name, resp.StatusCode)
 			continue
 		}
 		res := e.parse(string(b))
 		if len(res) == 0 {
-			lastErr = fmt.Errorf("%s não retornou resultados", e.name)
+			lastErr = fmt.Errorf("%s returned no results", e.name)
 			continue
 		}
 		if len(res) > max {
@@ -141,8 +141,8 @@ type webSearchTool struct{}
 
 func (webSearchTool) Category() string { return "net" }
 func (webSearchTool) Spec() ToolSpec {
-	return ToolSpec{Name: "WebSearch", Description: "Pesquisa na web e devolve título, endereço e trecho de cada resultado. Use para achar documentação oficial, mensagens de erro e versões; depois leia a página com WebFetch.",
-		InputSchema: schema(`{"type":"object","properties":{"query":{"type":"string"},"max":{"type":"integer","description":"quantos resultados (padrão 8)"}},"required":["query"]}`)}
+	return ToolSpec{Name: "WebSearch", Description: "Searches the web and returns the title, address and snippet of each result. Use it to find official documentation, error messages and versions; then read the page with WebFetch.",
+		InputSchema: schema(`{"type":"object","properties":{"query":{"type":"string"},"max":{"type":"integer","description":"how many results (default 8)"}},"required":["query"]}`)}
 }
 
 func (webSearchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
@@ -154,7 +154,7 @@ func (webSearchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.Query, Detail: "pesquisa na web"})
 	res, engine, err := WebSearch(ctx, in.Query, in.Max)
 	if err != nil {
-		return "pesquisa falhou: " + err.Error(), true
+		return fmt.Sprintf("search failed: %s", err.Error()), true
 	}
 	var b strings.Builder
 	for i, r := range res {

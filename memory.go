@@ -30,13 +30,13 @@ type MemoryItem struct {
 }
 
 var memoryTypes = map[string]string{
-	"correcao": "correção do usuário",
-	"criterio": "critério de aceite",
-	"decisao":  "decisão",
-	"beco":     "beco sem saída",
-	"comando":  "comando que funcionou",
-	"arquivo":  "arquivo",
-	"fato":     "fato",
+	"correcao": "user correction",
+	"criterio": "acceptance criterion",
+	"decisao":  "decision",
+	"beco":     "dead end",
+	"comando":  "command that worked",
+	"arquivo":  "file",
+	"fato":     "fact",
 }
 
 // typeRank orders items of the same priority: what the user said first, trivia last.
@@ -66,7 +66,7 @@ func saveMemory(file string, items []MemoryItem) error {
 func normalizeMemory(it *MemoryItem) error {
 	it.Text = strings.TrimSpace(it.Text)
 	if it.Text == "" {
-		return fmt.Errorf("texto vazio")
+		return fmt.Errorf("empty text")
 	}
 	if _, ok := memoryTypes[it.Type]; !ok {
 		it.Type = "fato"
@@ -109,11 +109,11 @@ func memoryPrompt(s *Session) string {
 	var all []scoped
 	s.mu.Lock()
 	for _, it := range s.Memory {
-		all = append(all, scoped{it, "sessão"})
+		all = append(all, scoped{it, "session"})
 	}
 	s.mu.Unlock()
 	for _, it := range loadMemory(projectMemoryFile(s.Root)) {
-		all = append(all, scoped{it, "projeto"})
+		all = append(all, scoped{it, "project"})
 	}
 	for _, it := range loadMemory(globalMemoryFile()) {
 		all = append(all, scoped{it, "global"})
@@ -142,7 +142,7 @@ func memoryPrompt(s *Session) string {
 		b.WriteString(line)
 	}
 	if left > 0 {
-		fmt.Fprintf(&b, "(%d item(ns) de menor prioridade não couberam; liste com Memory action=list)\n", left)
+		fmt.Fprintf(&b, "(%d lower-priority item(s) did not fit; list them with Memory action=list)\n", left)
 	}
 	return b.String()
 }
@@ -153,7 +153,7 @@ type memoryTool struct{}
 
 func (memoryTool) Category() string { return "memory" }
 func (memoryTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Memory", Description: "Registra, lista ou remove itens da memória estruturada, que volta em toda requisição (também depois de compactar). Tipos: correcao (o usuário corrigiu algo), criterio (critério de aceite combinado), decisao, beco (abordagem que não funciona e por quê), comando (comando que funcionou), arquivo (arquivo tocado e por quê), fato. Escopo: session, project (padrão) ou global. Prioridade 1-3.",
+	return ToolSpec{Name: "Memory", Description: "Records, lists or removes items of the structured memory, which comes back in every request (also after compaction). Types: correcao (the user corrected something), criterio (an agreed acceptance criterion), decisao (a decision), beco (a dead end: an approach that does not work, and why), comando (a command that worked), arquivo (a file touched, and why), fato (a fact). Scope: session, project (default) or global. Priority 1-3.",
 		InputSchema: schema(`{"type":"object","properties":{"action":{"type":"string","enum":["add","remove","list"]},"type":{"type":"string","enum":["correcao","criterio","decisao","beco","comando","arquivo","fato"]},"text":{"type":"string"},"scope":{"type":"string","enum":["session","project","global"]},"priority":{"type":"integer","minimum":1,"maximum":3},"id":{"type":"string"}},"required":["action"]}`)}
 }
 
@@ -169,7 +169,7 @@ func (memoryTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 		if p := memoryPrompt(s); p != "" {
 			return p, false
 		}
-		return "memória vazia", false
+		return "memory is empty", false
 	case "add":
 		it := MemoryItem{Type: in.Type, Text: in.Text, Priority: in.Priority, Origin: "agente", Session: s.ID}
 		if err := normalizeMemory(&it); err != nil {
@@ -179,7 +179,7 @@ func (memoryTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 			return err.Error(), true
 		}
 		s.emit("memory", map[string]any{"action": "add", "item": it})
-		return "registrado: " + it.ID, false
+		return fmt.Sprintf("recorded: %s", it.ID), false
 	case "remove":
 		found := false
 		for _, scope := range []string{"session", "project", "global"} {
@@ -196,12 +196,12 @@ func (memoryTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 			})
 		}
 		if !found {
-			return "item não encontrado: " + in.ID, true
+			return fmt.Sprintf("item not found: %s", in.ID), true
 		}
 		s.emit("memory", map[string]any{"action": "remove", "id": in.ID})
-		return "removido: " + in.ID, false
+		return fmt.Sprintf("removed: %s", in.ID), false
 	}
-	return "ação desconhecida: " + in.Action, true
+	return fmt.Sprintf("unknown action: %s", in.Action), true
 }
 
 // editMemory changes the items of one scope (session, project — the default — or global).
