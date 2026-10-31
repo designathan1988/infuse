@@ -1,0 +1,32 @@
+{
+  "name": "infuse",
+  "version": "0.3.0",
+  "description": "Mandatory, instant, agent-independent interposition layer between coding agents and the project.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"if(process.platform!=='win32'){require('fs').chmodSync('dist/cli.js',0o755);require('fs').chmodSync('dist/shell/fsh.js',0o755)}\"",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chokidar": "^6.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "type": "module",
+  "bin": {
+    "infuse": "dist/cli.js",
+    "infuse-shell": "dist/shell/fsh.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5"
+  },
+  "files": [
+    "dist",
+    "shim/win32",
+    "shim/linux",
+    "SPEC.md",
+    "README.md"
+  ]
+}

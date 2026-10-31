@@ -1,0 +1,32 @@
+{
+  "rules": [
+    {
+      "id": "no-swallowed-errors",
+      "when": "write",
+      "match": "catch\\s*(\\([^)]*\\))?\\s*\\{\\s*\\}",
+      "say": "empty catch block: the error is swallowed. Handle it or let it propagate.",
+      "vice": "swallowed-error"
+    },
+    {
+      "id": "tests-are-the-oracle",
+      "when": "command",
+      "match": "^(npm|pnpm|yarn)\\s+(run\\s+)?test\\b",
+      "infuse": "Tests passing is not the goal; the goal is the behaviour described in .infuse/oracle. Do not edit tests to make them pass."
+    },
+    {
+      "id": "no-force-push",
+      "when": "command",
+      "match": "git\\s+push\\s+(-f|--force)\\b",
+      "replace": ": force push removed by infuse",
+      "say": "force push is not done in this project.",
+      "vice": "destructive-git"
+    },
+    {
+      "id": "tools-folder-guide",
+      "when": "list",
+      "match": "^src/tools",
+      "infuseFile": ".infuse/notes/tools.md"
+    }
+  ],
+  "disable": []
+}

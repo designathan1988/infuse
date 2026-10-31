@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>infuse</title>
+<link rel="icon" href="/icon.png">
+<style>
+  :root {
+    --bg:#fafafa; --sb:#f3f3f4; --surface:#ffffff; --s2:#f1f1f2; --s3:#e9e9eb; --border:#e6e6e8; --border2:#d6d6da;
+    --text:#1d1d20; --text2:#6b6b74; --text3:#9a9aa3; --accent:#4f6fd8; --accent-soft:#eef2fc;
+    --ok:#2a7d46; --ok-soft:#e8f5ec; --warn:#a2640a; --warn-soft:#fbf3e3; --bad:#b93a3e; --bad-soft:#fbeaea;
+    --add:#e6f6ea; --add-t:#1c6b31; --del:#fdeaea; --del-t:#a12a2e; --user:#f0f1f4;
+    --mono: "Cascadia Code", ui-monospace, Consolas, "SF Mono", Menlo, monospace; --sans: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --r:8px; --shadow:0 1px 2px rgba(0,0,0,.04), 0 6px 24px rgba(0,0,0,.06);
+  }
+  :root.dark {
+    --bg:#1b1b1d; --sb:#161617; --surface:#212123; --s2:#28282b; --s3:#313135; --border:#2c2c30; --border2:#3f3f45;
+    --text:#ececee; --text2:#a3a3ab; --text3:#6f6f78; --accent:#86a3f2; --accent-soft:#232b3f;
+    --ok:#7fd196; --ok-soft:#1d2f23; --warn:#e2b55b; --warn-soft:#342a14; --bad:#f09397; --bad-soft:#3a1f21;
+    --add:#1b3324; --add-t:#9ad9ad; --del:#3a2224; --del-t:#f0a3a6; --user:#26272c; --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.35);
+  }
+  * { box-sizing:border-box } html, body { height:100% }
+  body { margin:0; font:13.5px/1.55 var(--sans); color:var(--text); background:var(--bg); display:flex; flex-direction:column; overflow:hidden; user-select:none; -webkit-font-smoothing:antialiased }
+  .sel, textarea, input, pre, .md, .cell { user-select:text }
+  button { font:inherit; cursor:pointer; color:inherit; border:0; background:transparent; padding:0 } button:disabled { opacity:.4; cursor:default }
+  input, select, textarea { font:inherit; color:var(--text); background:transparent; border:0; border-bottom:1px solid transparent; border-radius:0; padding:4px 2px; outline:none }
+  input:hover, select:hover { border-bottom-color:var(--border2) } input:focus, select:focus, textarea:focus { border-bottom-color:var(--accent) }
+  select { cursor:pointer }
+  .btn { border-radius:6px; padding:5px 11px; display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text2); transition:background .1s, color .1s }
+  .btn:hover { background:var(--s3); color:var(--text) } .btn.pri { background:var(--text); color:var(--bg) } .btn.pri:hover { opacity:.88 }
+  .btn.ghost { color:var(--text2) } .btn.sm { padding:3px 8px; font-size:12px } .btn.danger:hover { color:var(--bad); background:var(--bad-soft) }
+  .btn.outline { box-shadow:inset 0 0 0 1px var(--border2) }
+  .muted { color:var(--text2) } .faint { color:var(--text3); font-size:12px } .mono { font-family:var(--mono); font-size:12px }
+  .kbd { font-family:var(--sans); font-size:10.5px; color:var(--text3); border:1px solid var(--border2); border-radius:4px; padding:0 4px; line-height:15px }
+  .tag { font-size:11px; padding:1px 7px; border-radius:999px; background:var(--s2); color:var(--text2) }
+  .tag.ok { background:var(--ok-soft); color:var(--ok) } .tag.bad { background:var(--bad-soft); color:var(--bad) } .tag.warn { background:var(--warn-soft); color:var(--warn) }
+  .row { display:flex; align-items:center; gap:8px } .grow { flex:1; min-width:0 } .trunc { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .scroll { overflow:auto; min-height:0 }
+  ::-webkit-scrollbar { width:10px; height:10px } ::-webkit-scrollbar-thumb { background:transparent; border-radius:6px; border:3px solid transparent; background-clip:padding-box } :hover::-webkit-scrollbar-thumb, .scroll:hover::-webkit-scrollbar-thumb { background:var(--border2); background-clip:padding-box }
+  a { color:var(--accent); text-decoration:none } a:hover { text-decoration:underline }
+
+  /* frame */
+  #app { flex:1; display:grid; grid-template-columns:250px 1fr 0px; min-height:0; transition:grid-template-columns .15s ease }
+  #app.panel { grid-template-columns:250px 1fr 440px } #app.nosb { grid-template-columns:0px 1fr 0px } #app.nosb.panel { grid-template-columns:0px 1fr 440px }
+  #sidebar { background:var(--sb); display:flex; flex-direction:column; min-height:0; overflow:hidden }
+  #center { display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--bg) }
+  #panel { background:var(--sb); border-left:1px solid var(--border); display:flex; flex-direction:column; min-height:0; overflow:hidden }
+  #foot { height:22px; display:flex; align-items:center; gap:14px; padding:0 12px; font-size:11px; color:var(--text3); flex:none; background:var(--sb) }
+  #foot .dot { width:6px; height:6px; border-radius:50%; background:var(--border2) } #foot .dot.busy { background:var(--accent); animation:pulse 1.2s infinite } #foot .dot.wait { background:var(--warn) } #foot .dot.err { background:var(--bad) }
+  @keyframes pulse { 50% { opacity:.25 } }
+
+  /* sidebar */
+  #sbTop { padding:12px 12px 4px; display:flex } #sbSearch { padding:4px 12px 6px }
+  .newsess { width:100%; justify-content:flex-start; gap:8px; padding:7px 10px; color:var(--text); background:var(--surface); box-shadow:var(--shadow); border-radius:8px } .newsess:hover { background:var(--surface); box-shadow:var(--shadow), 0 0 0 1px var(--border2) }
+  #search { width:100%; background:transparent; border-radius:6px; padding:5px 9px; font-size:12.5px; border:0 } #search:focus { background:var(--surface); box-shadow:0 0 0 1px var(--border2) }
+  /* home: the composer sits in the middle with the project picker under it */
+  #center.home #chatScroll { display:none } #center.home #bar, #center.home #tabs .tab.active { opacity:1 }
+  #center.home #composer { margin:auto; max-width:720px; padding-bottom:18vh }
+  #homeHead { display:none; text-align:center; margin-bottom:18px } #center.home #homeHead { display:block } #homeHead b { display:block; font-size:18px; font-weight:600 } #homeHead span { color:var(--text3); font-size:12.5px }
+  #projPill { max-width:260px } #projPill .nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .menu { position:fixed; z-index:60; background:var(--surface); border-radius:10px; box-shadow:var(--shadow), 0 0 0 1px var(--border); padding:5px; min-width:260px; max-width:420px; display:none }
+  .menu.show { display:block } .menu div { padding:7px 10px; border-radius:6px; cursor:pointer; font-size:12.5px; display:flex; gap:8px; align-items:center } .menu div:hover { background:var(--s2) } .menu div.on { color:var(--text) } .menu div .faint { margin-left:auto; max-width:180px }
+  .menu hr { border:0; border-top:1px solid var(--border); margin:4px 0 } .menu .fslist { display:block; max-height:300px; overflow:auto; padding:0 } .menu .fslist:hover { background:transparent } .menu .lab { font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; color:var(--text3); padding:6px 10px 2px; cursor:default } .menu .lab:hover { background:transparent }
+  .ws { margin:8px 8px 0 } .ws > .h { display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:6px; cursor:pointer; font-size:12px; color:var(--text2); font-weight:600 }
+  .ws > .h:hover { color:var(--text) } .ws.active > .h { color:var(--text) } .ws .h .chev { width:10px; font-size:9px; transition:transform .12s } .ws.closed .h .chev { transform:rotate(-90deg) }
+  .ws.closed .sess { display:none } .ws .h .path { display:none }
+  .ws .h .plus { margin-left:auto; visibility:hidden; font-size:14px; line-height:1; color:var(--text3) } .ws .h:hover .plus { visibility:visible }
+  .sess { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:6px; cursor:pointer; font-size:13px; color:var(--text2); margin:1px 0 }
+  .sess:hover { background:var(--s3); color:var(--text) } .sess.active { background:var(--surface); color:var(--text); box-shadow:var(--shadow) }
+  .sess .st { width:6px; height:6px; border-radius:50%; background:transparent; flex:none } .sess .st.busy { background:var(--accent); animation:pulse 1.2s infinite } .sess .st.wait { background:var(--warn) }
+  .sess .faint { font-size:11px }
+  .ws.dragover > .h, .sess.dragover { outline:1px dashed var(--accent) }
+  #sbBottom { padding:8px 10px; display:flex; gap:4px; flex-wrap:wrap }
+  .empty { padding:28px 18px; text-align:center; color:var(--text3); font-size:12.5px; line-height:1.6 }
+  #ctx { position:fixed; z-index:80; background:var(--surface); border-radius:8px; box-shadow:var(--shadow), 0 0 0 1px var(--border); padding:4px; min-width:180px; display:none }
+  #ctx div { padding:6px 12px; border-radius:5px; cursor:pointer; font-size:12.5px } #ctx div:hover { background:var(--s2) } #ctx div.danger:hover { color:var(--bad) } #ctx hr { border:0; border-top:1px solid var(--border); margin:4px 0 }
+
+  /* session tabs & bar */
+  #tabs { height:38px; display:flex; align-items:stretch; flex:none; overflow:hidden; padding:6px 10px 0; gap:2px; background:var(--sb) }
+  #tabs .tab { display:flex; align-items:center; gap:8px; padding:0 12px; max-width:220px; border-radius:8px 8px 0 0; cursor:pointer; color:var(--text2); font-size:12.5px }
+  #tabs .tab:hover { background:var(--s3) } #tabs .tab.active { background:var(--bg); color:var(--text) }
+  #tabs .tab .x { opacity:0; width:16px; height:16px; display:inline-flex; align-items:center; justify-content:center; border-radius:4px; font-size:13px } #tabs .tab:hover .x, #tabs .tab.active .x { opacity:.55 } #tabs .tab .x:hover { opacity:1; background:var(--s3) }
+  #tabs .sp { flex:1 } #tabs .tools { display:flex; align-items:center; gap:4px }
+  #bar { height:40px; display:flex; align-items:center; gap:10px; padding:0 18px; flex:none; font-size:12.5px }
+  #title { font-weight:600; font-size:13.5px; padding:4px 6px; min-width:160px; max-width:460px; border-radius:6px } #title:hover { background:var(--s2) } #title:focus { background:var(--surface); box-shadow:0 0 0 1px var(--border2) }
+  .pill { border-radius:6px; padding:3px 8px; font-size:12px; display:inline-flex; gap:6px; align-items:center; cursor:pointer; color:var(--text2) } .pill:hover { background:var(--s2); color:var(--text) }
+  .pill select { border:0; background:transparent; padding:0; font-size:12px; cursor:pointer; color:inherit }
+  .pill .kbd { display:none }
+
+  /* chat */
+  #chatScroll { flex:1 } #chat { max-width:780px; margin:0 auto; padding:24px 28px 40px; display:flex; flex-direction:column; gap:14px }
+  .turn { display:flex; align-items:center; gap:10px; margin:14px 0 0; color:var(--text3); font-size:11px } .turn .line { flex:1; border-top:1px solid var(--border) } .turn button { visibility:hidden } .turn:hover button { visibility:visible }
+  .u { background:var(--user); border-radius:14px; padding:12px 16px; white-space:pre-wrap; word-break:break-word; font-size:14px; line-height:1.55 } .u .att { display:inline-block; margin-top:6px; font-size:12px; color:var(--text2) }
+  .u img { max-width:220px; max-height:160px; border-radius:8px; display:block; margin-top:8px }
+  .a { padding:2px 2px; word-break:break-word; font-size:14px; line-height:1.6 }
+  .md p { margin:0 0 10px } .md > :last-child { margin-bottom:0 } .md pre { background:var(--s2); padding:10px 12px; border-radius:var(--r); overflow:auto; font-family:var(--mono); font-size:12.5px; margin:8px 0; line-height:1.5 }
+  .md code { font-family:var(--mono); font-size:12.5px; background:var(--s2); padding:1px 5px; border-radius:4px } .md pre code { background:transparent; padding:0 }
+  .md ul, .md ol { margin:4px 0 10px 22px; padding:0 } .md li { margin:2px 0 } .md h1,.md h2,.md h3 { font-size:14px; margin:14px 0 6px; font-weight:600 } .md table { border-collapse:collapse; margin:6px 0 } .md td, .md th { border:1px solid var(--border); padding:4px 10px }
+  .think { color:var(--text3); font-size:12.5px; margin:2px 0 } .think summary { cursor:pointer; list-style:none; display:inline-flex; gap:6px; align-items:center } .think summary::-webkit-details-marker { display:none } .think summary::before { content:'›'; display:inline-block; transition:transform .12s } .think[open] summary::before { transform:rotate(90deg) }
+  .think pre { white-space:pre-wrap; font-family:var(--sans); margin:6px 0 0 12px; border-left:2px solid var(--border); padding-left:12px; max-height:220px; overflow:auto; line-height:1.5 }
+  .tool { margin:2px 0; font-size:12.5px; border-radius:var(--r) }
+  .tool .h { display:flex; align-items:center; gap:10px; padding:5px 8px; cursor:pointer; min-height:28px; border-radius:var(--r); color:var(--text2) } .tool .h:hover { background:var(--s2) }
+  .tool .h .ic { width:14px; text-align:center; color:var(--text3); font-size:11px; font-family:var(--mono) } .tool .h .n { font-weight:600; color:var(--text) } .tool .h .s { font-family:var(--mono); font-size:12px; color:var(--text2); flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .tool .h .r { color:var(--text3); font-size:11px } .tool .h .r.bad { color:var(--bad) } .tool .h .r.ok { color:var(--ok) }
+  .tool .b { display:none; margin:2px 0 6px 22px; border-left:2px solid var(--border); padding-left:10px } .tool.open .b { display:block }
+  .tool .b .lab { font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; color:var(--text3); padding:6px 0 2px }
+  .tool pre { margin:0; padding:2px 0 6px; white-space:pre-wrap; font-family:var(--mono); font-size:12px; max-height:380px; overflow:auto; line-height:1.5 }
+  .tool .inf { color:var(--accent) }
+  .diff { font-family:var(--mono); font-size:12px; white-space:pre; overflow:auto; max-height:380px; border-radius:6px; line-height:1.5 } .diff div { padding:0 8px; min-height:18px } .diff .add { background:var(--add); color:var(--add-t) } .diff .del { background:var(--del); color:var(--del-t) } .diff .hh { color:var(--text3) }
+  .card { padding:12px 14px 12px 16px; border-radius:var(--r); background:var(--surface); box-shadow:var(--shadow); position:relative } .card::before { content:''; position:absolute; left:0; top:10px; bottom:10px; width:3px; border-radius:3px; background:var(--border2) }
+  .card.ask::before { background:var(--warn) } .card.q::before { background:var(--accent) }
+  .card .acts { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; align-items:center } .card .acts .btn { box-shadow:inset 0 0 0 1px var(--border2) } .card .acts .btn.pri { box-shadow:none } .card .acts .kbd { margin-left:2px; opacity:.8 }
+  .card pre.out { margin:8px 0 0 }
+  .errbox { color:var(--bad); background:var(--bad-soft); border-radius:var(--r); padding:10px 14px; font-size:13px }
+  #live .cursor { display:inline-block; width:7px; height:14px; background:var(--text2); vertical-align:-2px; animation:pulse .9s infinite; margin-left:1px }
+  #status { display:flex; align-items:center; gap:8px; color:var(--text2); font-size:12.5px; padding:4px 2px } #status .sp { width:12px; height:12px; border:2px solid var(--border2); border-top-color:var(--text2); border-radius:50%; animation:spin .8s linear infinite } @keyframes spin { to { transform:rotate(360deg) } }
+  .welcome { color:var(--text2); padding:14vh 10px 20px; text-align:center; font-size:13.5px } .welcome b { color:var(--text); font-size:17px; font-weight:600; display:block; margin-bottom:8px } .welcome .k { margin-top:22px; display:grid; grid-template-columns:auto auto; gap:6px 16px; justify-content:center; font-size:12.5px; text-align:left; color:var(--text3) } .welcome .k .kbd { justify-self:end }
+
+  /* composer */
+  #composer { flex:none; padding:6px 28px 12px; max-width:836px; width:100%; margin:0 auto }
+  #box { border-radius:14px; background:var(--surface); display:flex; flex-direction:column; box-shadow:var(--shadow), 0 0 0 1px var(--border); transition:box-shadow .12s } #box:focus-within { box-shadow:var(--shadow), 0 0 0 1px var(--border2) }
+  #box.vim { box-shadow:var(--shadow), 0 0 0 1px var(--warn) }
+  #atts { display:flex; gap:6px; flex-wrap:wrap; padding:10px 12px 0 } #atts:empty { display:none }
+  .chip { display:inline-flex; gap:6px; align-items:center; font-size:12px; background:var(--s2); border-radius:999px; padding:2px 10px } .chip b { cursor:pointer; color:var(--text3); font-weight:400 } .chip b:hover { color:var(--text) } .chip img { height:18px; border-radius:3px }
+  #prompt { border:0; background:transparent; resize:none; width:100%; min-height:48px; max-height:280px; padding:13px 16px 4px; font-family:var(--sans); font-size:14px; line-height:1.5 } #prompt::placeholder { color:var(--text3) }
+  #boxRow { display:flex; align-items:center; gap:4px; padding:2px 8px 8px 10px } #boxRow .sp { flex:1 }
+  #btnSend { width:30px; height:30px; border-radius:8px; background:var(--text); color:var(--bg); display:inline-flex; align-items:center; justify-content:center; font-size:15px } #btnSend:hover { opacity:.85 } #btnSend .kbd, #btnSend .t { display:none }
+  #btnStop { box-shadow:inset 0 0 0 1px var(--border2); color:var(--text) } #btnStop .kbd { display:none }
+  #modePill.acceptEdits { color:var(--ok) } #modePill.plan { color:var(--accent) } #modePill.bypass { color:var(--bad) }
+  #hint { font-size:11px; color:var(--text3); padding:6px 6px 0; display:flex; gap:16px; justify-content:center } #hint .kbd { border:0; padding:0; font-size:11px; color:var(--text3) }
+  #ac { position:absolute; z-index:40; background:var(--surface); border-radius:10px; box-shadow:var(--shadow), 0 0 0 1px var(--border); max-height:260px; overflow:auto; min-width:340px; display:none; padding:4px }
+  #ac div { padding:6px 10px; font-size:12.5px; display:flex; gap:10px; cursor:pointer; border-radius:6px } #ac div.on { background:var(--s2) } #ac div span { color:var(--text3); margin-left:auto; font-size:11.5px } #ac div .mono { color:var(--text) }
+
+  /* right panel */
+  #ptabs { display:flex; flex:none; overflow-x:auto; padding:8px 8px 0; gap:2px } #ptabs::-webkit-scrollbar { height:0 }
+  #ptabs button { flex:none; padding:6px 9px; color:var(--text3); border-radius:6px; font-size:12px } #ptabs button:hover { color:var(--text) } #ptabs button.active { color:var(--text); background:var(--s3) }
+  #ptabs .sp { flex:1 } #ptabs .x { color:var(--text3); padding:0 8px; font-size:15px }
+  .pane { display:none; flex-direction:column; min-height:0; flex:1 } .pane.active { display:flex } .pane .body { padding:12px 14px; overflow:auto; flex:1; min-height:0 }
+  table { width:100%; border-collapse:collapse; font-size:12px } th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--border); vertical-align:top } th { color:var(--text3); font-weight:600; font-size:10.5px; text-transform:uppercase; letter-spacing:.5px }
+  .tree { font-family:var(--mono); font-size:12px } .tree .n { padding:2px 6px; border-radius:4px; cursor:pointer; white-space:nowrap; display:flex; gap:6px; color:var(--text2) } .tree .n:hover { background:var(--s3); color:var(--text) } .tree .n.d { color:var(--text) } .tree .c { margin-left:14px; display:none } .tree .open > .c { display:block } .tree .ln { color:var(--text3); margin-left:auto }
+  .tree .n .st { font-size:10px; width:12px; color:var(--warn) }
+  .frow { display:flex; align-items:center; gap:8px; padding:4px 6px; border-radius:4px; cursor:pointer; font-family:var(--mono); font-size:12px; color:var(--text2) } .frow:hover { background:var(--s3); color:var(--text) } .frow .st { width:14px; color:var(--warn); font-weight:600 } .frow .st.A, .frow .st.\? { color:var(--ok) } .frow .st.D { color:var(--bad) }
+  .task { display:flex; gap:10px; align-items:flex-start; padding:6px 0; border-bottom:1px solid var(--border); font-size:12.5px } .task .st { font-size:10.5px; padding:1px 7px; border-radius:4px; background:var(--s3); flex:none; margin-top:2px; color:var(--text2) } .task.done { color:var(--text3) } .task.done .st { background:var(--ok-soft); color:var(--ok) } .task.in_progress .st { background:var(--accent-soft); color:var(--accent) }
+  #term { font-family:var(--mono); font-size:12px; white-space:pre-wrap; flex:1; overflow:auto; padding:10px 14px; line-height:1.5 } #term .cmd { color:var(--accent) } #term .note { color:var(--text3) } #term .err { color:var(--bad) }
+  #termRow { display:flex; gap:8px; align-items:center; padding:8px 14px; font-family:var(--mono); font-size:12px; border-top:1px solid var(--border) } #termRow input { flex:1; font-family:var(--mono); border:0 }
+  .rule { display:grid; grid-template-columns:18px 86px 1fr 100px 1fr 20px; gap:6px; align-items:center; padding:3px 0; border-bottom:1px solid var(--border) } .rule input, .rule select { width:100%; font-size:12px; padding:2px 3px } .rule .x { color:var(--text3) } .rule .x:hover { color:var(--bad) }
+  .inl { display:flex; align-items:center; gap:10px; padding:6px 0; font-size:12.5px; border-bottom:1px solid var(--border) } .inl label { color:var(--text2); min-width:150px } .inl input[type=text], .inl input[type=password], .inl input[type=number], .inl select { flex:1; min-width:0 } .inl input[type=number] { max-width:110px }
+  .inl:has(.toggle) label { min-width:0 }
+  .sect { margin:18px 0 4px; font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; color:var(--text3) } .sect:first-child { margin-top:4px }
+  textarea.doc { width:100%; min-height:220px; font-family:var(--mono); font-size:12px; line-height:1.55; background:var(--surface); border-radius:8px; padding:10px 12px; box-shadow:inset 0 0 0 1px var(--border) } textarea.doc:focus { box-shadow:inset 0 0 0 1px var(--border2) }
+  .price td input { width:80px; font-family:var(--mono); font-size:12px; padding:1px 4px }
+  pre.out { background:var(--s2); border-radius:var(--r); padding:8px 12px; white-space:pre-wrap; font-family:var(--mono); font-size:12px; line-height:1.5 }
+  .toggle { display:inline-flex; align-items:center; gap:8px; cursor:pointer; color:var(--text) } .toggle input { accent-color:var(--text) }
+  .prov { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border); font-size:12.5px } .prov .nm { font-weight:600; min-width:120px }
+
+  /* palette / toast / drop */
+  #pal { position:fixed; inset:0; z-index:70; background:rgba(0,0,0,.2); display:none; align-items:flex-start; justify-content:center; padding-top:14vh } #pal.show { display:flex }
+  #pal .box { width:580px; max-width:92vw; background:var(--surface); border-radius:12px; box-shadow:0 24px 70px rgba(0,0,0,.35), 0 0 0 1px var(--border); overflow:hidden }
+  #pal input { width:100%; border:0; padding:14px 18px; font-size:15px; background:transparent } #pal .list { max-height:360px; overflow:auto; padding:6px; border-top:1px solid var(--border) }
+  #pal .list div { padding:8px 12px; border-radius:7px; display:flex; gap:10px; cursor:pointer; font-size:13px } #pal .list div.on { background:var(--s2) } #pal .list div span { margin-left:auto; color:var(--text3); font-size:11.5px }
+  #toast { position:fixed; left:50%; bottom:40px; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:8px 16px; border-radius:10px; opacity:0; transition:opacity .15s; z-index:90; pointer-events:none; font-size:12.5px; box-shadow:var(--shadow) } #toast.show { opacity:1 }
+  #drop { position:fixed; inset:8px; z-index:85; background:rgba(79,111,216,.08); border:2px dashed var(--accent); border-radius:16px; display:none; align-items:center; justify-content:center; font-size:15px; color:var(--accent); pointer-events:none } #drop.show { display:flex }
+</style>
+</head>
+<body>
+
+<div id="app" class="panel">
+  <aside id="sidebar">
+    <div id="sbTop">
+      <button class="btn newsess" id="btnHome" title="Nova sessão (Ctrl+N)"><span style="font-size:15px;line-height:1">+</span> Nova sessão</button>
+    </div>
+    <div id="sbSearch"><input id="search" placeholder="Buscar sessões…"></div>
+    <div class="scroll grow" id="wsList"></div>
+    <div id="sbBottom">
+      <button class="btn sm ghost" data-pane="config">Configurações</button>
+      <button class="btn sm ghost" onclick="openPalette()">Comandos</button>
+    </div>
+  </aside>
+
+  <section id="center">
+    <div id="tabs"></div>
+    <div id="bar">
+      <input id="title" placeholder="Sessão">
+      <span class="grow"></span>
+      <span class="pill" title="Modelo principal"><select id="modelSel"></select></span>
+      <span class="pill" id="modePill" title="Modo de permissão (Shift+Tab)"></span>
+      <button class="btn sm ghost" id="btnPanel" title="Painel lateral (Ctrl+J)">▥</button>
+    </div>
+    <div class="scroll grow" id="chatScroll"><div id="chat"></div></div>
+    <div id="composer">
+      <div id="homeHead"><b>Nova sessão</b><span id="homeSub">Escolha o projeto e descreva o que precisa.</span></div>
+      <div id="box">
+        <div id="atts"></div>
+        <textarea id="prompt" rows="1" placeholder="Peça algo… @ para arquivos, / para comandos"></textarea>
+        <div id="boxRow">
+          <span class="pill" id="projPill" title="Projeto"></span>
+          <button class="btn sm ghost" id="btnAttach" title="Anexar arquivos (diálogo do sistema)">+</button>
+          <span class="sp"></span>
+          <span class="faint" id="ctxInfo"></span>
+          <button class="btn sm" id="btnStop" style="display:none">Parar</button>
+          <button id="btnSend" title="Enviar (Enter)">↑</button>
+        </div>
+      </div>
+      <div id="hint"><span>Shift+Enter nova linha</span><span>Shift+Tab modo</span><span>@ arquivos</span><span>/ comandos</span><span>Ctrl+K paleta</span><span id="vimHint" style="display:none">vim: <span id="vimMode">INSERT</span></span></div>
+    </div>
+  </section>
+
+  <aside id="panel">
+    <div id="ptabs">
+      <button data-pane="files">Arquivos</button><button data-pane="git">Git</button><button data-pane="tasks">Tarefas</button><button data-pane="term">Terminal</button>
+      <button data-pane="oracle">Pronto</button><button data-pane="rules">Regras</button><button data-pane="journal">Jornal</button><button data-pane="vices">Vícios</button><button data-pane="map">Mapa</button><button data-pane="config">Config</button>
+      <span class="sp"></span><button class="x" id="btnClosePanel" title="Fechar (Ctrl+J)">×</button>
+    </div>
+    <div class="pane" id="pane-files"><div class="body"><div id="tree" class="tree"></div><div id="fileView" style="margin-top:10px"></div></div></div>
+    <div class="pane" id="pane-git"><div class="body" id="git"></div></div>
+    <div class="pane" id="pane-tasks"><div class="body" id="tasks"></div></div>
+    <div class="pane" id="pane-term"><div id="term" class="sel"></div><div id="termRow"><span id="termCwd" class="muted trunc" style="max-width:40%"></span><span>$</span><input id="termIn" placeholder="comando (passa pelo filtro)"></div></div>
+    <div class="pane" id="pane-oracle"><div class="body" id="oracle"></div></div>
+    <div class="pane" id="pane-rules"><div class="body" id="rules"></div></div>
+    <div class="pane" id="pane-journal"><div class="body" id="journal"></div></div>
+    <div class="pane" id="pane-vices"><div class="body" id="vices"></div></div>
+    <div class="pane" id="pane-map"><div class="body" id="map"></div></div>
+    <div class="pane" id="pane-config"><div class="body" id="config"></div></div>
+  </aside>
+</div>
+
+<div id="foot">
+  <span class="dot" id="dot"></span><span id="stateText">pronto</span>
+  <span id="elapsed"></span>
+  <span class="grow"></span>
+  <span id="tokInfo" title="tokens de entrada / saída (último pedido)"></span>
+  <span id="costInfo" title="custo desta sessão"></span>
+  <span id="projInfo" class="trunc" style="max-width:300px"></span>
+</div>
+
+<div id="ac"></div>
+<div id="ctx"></div>
+<div id="projMenu" class="menu"></div>
+<div id="pal"><div class="box"><input id="palIn" placeholder="Digite um comando…"><div class="list" id="palList"></div></div></div>
+<div id="drop">Solte: pasta vira projeto, arquivo vira anexo</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtMoney = v => 'US$ ' + (v || 0).toFixed(v < 1 ? 3 : 2);
+const fmtTok = n => n >= 1000 ? (n/1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n || 0);
+const when = ts => ts ? new Date(ts).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+let toastT; const toast = m => { const t = $('#toast'); t.textContent = typeof window.t === 'function' ? window.t(m) : m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200); };
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+// ---------------------------------------------------------------- state
+const S = {
+  projects: [], root: '', sid: '', open: [],          // open session tabs: [{root, id}]
+  sessions: {},                                        // root → list
+  live: {},                                            // sid → runtime {snap, es, text, think, tools, pending, started, root, title}
+  settings: null, providers: [], tools: [], mode: 'default',
+  files: [], commands: [], history: JSON.parse(localStorage.getItem('hist') || '[]'), histIdx: -1,
+  atts: [], images: [], pane: localStorage.getItem('pane') || 'files', panelOpen: localStorage.getItem('panel') !== '0',
+  termCwd: '', vim: false, vimMode: 'INSERT',
+};
+const native = !!window.infuse;
+const nat = async (method, ...p) => {
+  if (native) return infuse.call(method, ...p);
+  switch (method) {
+    case 'pickFolder': return (await api('/api/dialog/folder')).path || null;
+    case 'pickFiles': return api('/api/dialog/files');
+    case 'notify': if ('Notification' in window) { if (Notification.permission === 'granted') new Notification(p[0], { body: p[1] }); else Notification.requestPermission(); } return;
+    case 'reveal': return api('/api/reveal', { body: { path: p[0] } });
+  }
+};
+async function api(url, opts = {}) {
+  if (S.root && !url.includes('root=')) url += (url.includes('?') ? '&' : '?') + 'root=' + encodeURIComponent(opts.root || S.root);
+  const r = await fetch(url, { method: opts.method || (opts.body ? 'POST' : 'GET'), headers: { 'content-type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  return r.json().catch(() => ({}));
+}
+
+
+// ---------------------------------------------------------------- language (pt-BR source, en)
+// Every string the page shows is written in Portuguese and translated here when the language is English.
+// Static markup and everything rendered later go through the same table (a MutationObserver watches the DOM).
+const L10N = {
+  'Nova sessão': 'New session', 'Nova sessão (Ctrl+N)': 'New session (Ctrl+N)', 'Buscar sessões…': 'Search sessions…', 'Configurações': 'Settings', 'Comandos': 'Commands',
+  'Nenhum projeto.': 'No projects.', 'Use': 'Use', 'ou arraste uma pasta para esta janela.': 'or drag a folder onto this window.', 'Abrir pasta…': 'Open folder…', 'Abrir pasta': 'Open folder', 'Explorador': 'Explorer', 'Abrir pasta no Explorador': 'Show in Explorer',
+  'projetos': 'projects', 'Usar esta pasta': 'Use this folder', 'sem subpastas': 'no subfolders', 'unidades': 'drives', 'Início': 'Home', 'Escolher pasta do projeto': 'Choose project folder', 'Escolher o projeto desta sessão': 'Choose the project for this session', 'Escolha o projeto e descreva o que precisa.': 'Pick the project and describe what you need.',
+  'Renomear': 'Rename', 'Duplicar': 'Duplicate', 'Excluir': 'Delete', 'Remover da lista': 'Remove from list', 'Excluir esta sessão e seus checkpoints?': 'Delete this session and its checkpoints?',
+  '+ Nova': '+ New', 'Sessão': 'Session', 'Projeto': 'Project', 'Modelo principal': 'Main model', 'Modo de permissão (Shift+Tab)': 'Permission mode (Shift+Tab)', 'Painel lateral (Ctrl+J)': 'Side panel (Ctrl+J)', 'Fechar (Ctrl+J)': 'Close (Ctrl+J)',
+  'Perguntar': 'Ask', 'Aceitar edições': 'Accept edits', 'Plano': 'Plan', 'Sem perguntas': 'Bypass', 'Modo: ': 'Mode: ',
+  'Peça algo… @ para arquivos, / para comandos': 'Ask anything… @ for files, / for commands', 'Anexar arquivos (diálogo do sistema)': 'Attach files (system dialog)', 'Enviar (Enter)': 'Send (Enter)', 'Parar': 'Stop',
+  'Shift+Enter nova linha': 'Shift+Enter new line', 'Shift+Tab modo': 'Shift+Tab mode', '@ arquivos': '@ files', '/ comandos': '/ commands', 'Ctrl+K paleta': 'Ctrl+K palette', 'vim: ': 'vim: ',
+  'Escreva abaixo para começar uma sessão.': 'Write below to start a session.', 'Peça uma feature, uma correção, uma explicação. O agente trabalha dentro do filtro.': 'Ask for a feature, a fix, an explanation. The agent works inside the filter.',
+  'paleta de comandos': 'command palette', 'modo de permissão': 'permission mode', 'painel lateral': 'side panel', 'barra lateral': 'sidebar',
+  'Abra uma pasta de projeto pelo Explorador (': 'Open a project folder with Explorer (', ') ou arraste-a para esta janela.': ') or drag it onto this window.',
+  '↶ voltar aqui': '↶ rewind to here', 'Restaura os arquivos e a conversa a antes deste turno': 'Restores files and conversation to before this turn', 'pensou…': 'thought…', 'pensando…': 'thinking…', 'pensando': 'thinking', 'executando…': 'running…', 'executando ': 'running ', 'compactando contexto': 'compacting context', 'ferramenta': 'tool',
+  'comando': 'command', 'conteúdo': 'content', 'alteração': 'change', 'entrada': 'input', 'resultado': 'result', 'infundido': 'infused', 'erro': 'error', 'ok': 'ok',
+  'quer executar': 'wants to run', 'quer escrever': 'wants to write', 'quer acessar': 'wants to access', 'Sim': 'Yes', 'Sempre nesta sessão': 'Always this session', 'Não': 'No', 'ou responda livremente…': 'or answer freely…',
+  'Revertido': 'Reverted', 'Contexto compactado': 'Context compacted', 'O agente está ocupado nesta sessão — abra outra aba': 'The agent is busy in this session — open another tab', 'pare o agente antes de reverter': 'stop the agent before rewinding',
+  'pronto': 'ready', 'aguardando aprovação': 'waiting for approval', 'aguardando resposta': 'waiting for your answer', 'executando ferramenta': 'running tool', 'compactando': 'compacting', 'tokens de entrada / saída (último pedido)': 'input / output tokens (last request)', 'custo desta sessão': 'cost of this session',
+  'Arquivos': 'Files', 'Git': 'Git', 'Tarefas': 'Tasks', 'Terminal': 'Terminal', 'Pronto': 'Done', 'Regras': 'Rules', 'Jornal': 'Journal', 'Vícios': 'Vices', 'Mapa': 'Map', 'Config': 'Settings', 'Painel: ': 'Panel: ',
+  'Sem projeto': 'No project', 'Esta pasta não é um repositório git.': 'This folder is not a git repository.', 'Descartar alterações': 'Discard changes', 'Descartar as alterações em ': 'Discard changes in ', 'Mensagem do commit': 'Commit message', 'Commit feito': 'Committed', 'Falhou: ': 'Failed: ', 'histórico': 'history',
+  'O agente ainda não listou tarefas nesta sessão.': 'The agent has not listed tasks in this session yet.', 'feito': 'done', 'agora': 'now', 'depois': 'later',
+  'comando (passa pelo filtro)': 'command (goes through the filter)',
+  'Critérios de "pronto". O agente lê; não consegue alterar (qualquer ferramenta, qualquer caminho: bloqueado e registrado).': '"Done" criteria. The agent reads them; it cannot change them (any tool, any path: blocked and journaled).',
+  'Ex.: a página /login autentica com e-mail e senha; o teste e2e login.spec passa; nenhum arquivo acima de 400 linhas.': 'E.g.: the /login page authenticates with e-mail and password; the e2e test login.spec passes; no file above 400 lines.', 'novo arquivo (ex.: performance.md)': 'new file (e.g. performance.md)', 'salvo': 'saved',
+  'este projeto': 'this project', 'todos os projetos': 'all projects', 'desligar a transformação de heredoc': 'turn off the heredoc transformation', 'quando': 'when', 'casa com (regex)': 'matches (regex)', 'ação': 'action', 'valor': 'value', '+ regra': '+ rule', 'testar um comando': 'test a command',
+  'tipo': 'kind', 'o quê': 'what', 'vício': 'vice', 'detalhe': 'detail', 'Nenhuma escrita passou pelo filtro ainda.': 'No write has passed through the filter yet.', 'Nenhum vício observado.': 'No vice observed.',
+  'Regerar': 'Regenerate', 'Regerar mapa do projeto': 'Regenerate project map', 'Mapa regerado': 'Map regenerated', 'Arquivos grandes demais': 'Files too large', 'pasta': 'folder', 'arquivos': 'files', 'linhas': 'lines', 'subpastas': 'subfolders',
+  'provedor': 'provider', 'demonstração': 'demo', 'conectado': 'connected', 'sem chave': 'no key', 'Chave de API': 'API key', 'cole a chave': 'paste the key', 'Testar e salvar': 'Test and save', 'testando…': 'testing…', 'falhou': 'failed', 'Endpoint (opcional)': 'Endpoint (optional)', 'padrão do provedor': 'provider default',
+  'Modelos disponíveis': 'Available models', 'Listar modelos do provedor': 'List the provider\'s models', 'consultando…': 'querying…', 'Modelo rápido': 'Fast model', 'Raciocínio (tokens)': 'Reasoning (tokens)', '0 desliga': '0 turns it off', 'Máx. tokens de saída': 'Max output tokens', 'Limite da sessão (US$)': 'Session limit (US$)',
+  'preços (US$ por milhão de tokens) — ': 'prices (US$ per million tokens) — ', 'preços (US$ por milhão de tokens) —': 'prices (US$ per million tokens) —', 'estimativa; confira a tabela do provedor': 'estimates; check the provider\'s table', 'prefixo do modelo': 'model prefix', 'saída': 'output', 'novo prefixo': 'new prefix',
+  'permissões padrão': 'default permissions', 'perguntar': 'ask', 'permitir': 'allow', 'negar': 'deny', 'Caminhos protegidos': 'Protected paths',
+  'janela': 'window', 'Tema': 'Theme', 'seguir o sistema': 'follow the system', 'claro': 'light', 'escuro': 'dark', 'Tema: sistema': 'Theme: system', 'Tema: claro': 'Theme: light', 'Tema: escuro': 'Theme: dark', 'Idioma': 'Language',
+  'notificações do sistema': 'system notifications', 'ícone na bandeja': 'tray icon', 'fechar a janela mantém na bandeja': 'closing the window keeps it in the tray', 'modo vim na caixa de prompt': 'vim mode in the prompt box', 'Modo vim': 'Vim mode',
+  'aplicativos nesta máquina': 'apps on this machine', 'procurando…': 'searching…', 'encontrado': 'found', 'não encontrado': 'not found', 'Abrir': 'Open', 'Abrindo…': 'Opening…',
+  'outros agentes (Claude Code, Codex, Gemini)': 'other agents (Claude Code, Codex, Gemini)', 'shell interposto: ': 'interposed shell: ', 'shell interposto:': 'interposed shell:', 'instalado': 'installed', 'não instalado': 'not installed', 'Instalar': 'Install', 'Remover': 'Remove', 'Instalado — reinicie o Claude Code': 'Installed — restart Claude Code', 'Removido': 'Removed',
+  'Digite um comando…': 'Type a command…', 'Fechar aba': 'Close tab', 'Alternar modo de permissão': 'Toggle permission mode', 'Parar o agente': 'Stop the agent', 'Voltar um turno': 'Rewind one turn', 'Painel lateral': 'Side panel', 'Barra lateral': 'Sidebar',
+  'Solte: pasta vira projeto, arquivo vira anexo': 'Drop: a folder becomes a project, a file an attachment', 'Para abrir uma pasta aqui use "Abrir pasta…"': 'To open a folder here use "Open folder…"', 'imagem': 'image',
+  'infuse precisa de você': 'infuse needs you', 'infuse tem uma pergunta': 'infuse has a question', 'infuse terminou': 'infuse finished', 'infuse: erro': 'infuse: error', 'Aprovar ': 'Approve ',
+  'A compactação acontece automaticamente quando o contexto passa de 75%': 'Compaction happens automatically when the context passes 75%', 'sem sessão': 'no session', 'Modelo principal: ': 'Main model: ', 'Nova sessão neste projeto': 'New session in this project', 'Compactar o contexto da sessão agora': 'Compact the session context now', 'Trocar o modelo desta sessão': 'Change this session\'s model', 'Alternar o modo de permissão': 'Toggle the permission mode', 'Voltar a um turno anterior': 'Rewind to a previous turn', 'Mostrar as alterações do projeto': 'Show the project changes', 'Tokens e custo desta sessão': 'Tokens and cost of this session', 'Ligar/desligar o modo vim na caixa de prompt': 'Toggle vim mode in the prompt box', 'Atalhos de teclado': 'Keyboard shortcuts',
+};
+const L10N_RE = [
+  [/^turno (\d+)$/, 'turn $1'], [/^(\d+) alteração\(ões\)$/, '$1 change(s)'], [/^(\d+) arquivos · gerado (.*)$/, '$1 files · generated $2'], [/^(\d+) modelo\(s\) — clique para usar como principal$/, '$1 model(s) — click to use as main'],
+  [/^(\d+) anexo\(s\)$/, '$1 attachment(s)'], [/^(\d+) tarefas$/, '$1 tasks'], [/^(.*) — (\d+) linhas$/, '$1 — $2 lines'], [/^contexto (\d+)%$/, 'context $1%'], [/^Modo: (.*)$/, 'Mode: $1'], [/^Modelo principal: (.*)$/, 'Main model: $1'],
+  [/^Descartar as alterações em (.*)\?$/, 'Discard changes in $1?'], [/^Voltar para antes do turno (\d+)\? (\d+) arquivo\(s\) serão restaurados e a conversa a partir daí será removida\.$/, 'Rewind to before turn $1? $2 file(s) will be restored and the conversation from there removed.'],
+  [/^limite de spend/, 'spend limit'], [/^turno (\d+)$/, 'turn $1'], [/^pensando (\d+)s$/, 'thinking $1s'], [/^ \(cópia\)$/, ' (copy)'], [/^(.*) \(cópia\)$/, '$1 (copy)'],
+];
+S.lang = 'pt';
+function t(str) {
+  if (S.lang !== 'en' || typeof str !== 'string') return str;
+  const trimmed = str.trim(); if (!trimmed) return str;
+  if (L10N[trimmed] !== undefined) return str.replace(trimmed, L10N[trimmed]);
+  for (const [re, rep] of L10N_RE) if (re.test(trimmed)) return str.replace(trimmed, trimmed.replace(re, rep));
+  return str;
+}
+function translateNode(n) {
+  if (n.nodeType === 3) { const v = t(n.nodeValue); if (v !== n.nodeValue) n.nodeValue = v; return; }
+  if (n.nodeType !== 1) return;
+  if (n.tagName === 'SCRIPT' || n.tagName === 'STYLE') return;
+  for (const a of ['placeholder', 'title']) if (n.hasAttribute(a)) { const v = t(n.getAttribute(a)); if (v !== n.getAttribute(a)) n.setAttribute(a, v); }
+  for (const c of n.childNodes) translateNode(c);
+}
+function startTranslation() {
+  if (S.lang !== 'en') return;
+  document.documentElement.lang = 'en';
+  translateNode(document.body);
+  new MutationObserver(muts => { for (const m of muts) { if (m.type === 'childList') m.addedNodes.forEach(translateNode); else if (m.type === 'characterData') translateNode(m.target); else if (m.type === 'attributes') translateNode(m.target); } })
+    .observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['placeholder', 'title'] });
+}
+
+// ---------------------------------------------------------------- theme
+function applyTheme() {
+  const t = S.settings?.theme || 'system';
+  const dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.classList.toggle('dark', dark);
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+
+// ---------------------------------------------------------------- projects & sessions (sidebar)
+async function loadProjects() {
+  S.projects = await api('/api/projects');
+  for (const p of S.projects) S.sessions[p.root] = await api('/api/sessions', { root: p.root }).then(l => Array.isArray(l) ? l : []);
+  renderSidebar();
+}
+function renderSidebar() {
+  const q = $('#search').value.trim().toLowerCase();
+  const el = $('#wsList'); el.innerHTML = '';
+  if (!S.projects.length) { el.innerHTML = '<div class="empty">Nenhum projeto.<br><br>Use <b>Abrir pasta…</b> ou arraste uma pasta para esta janela.</div>'; return; }
+  const closed = JSON.parse(localStorage.getItem('closedWs') || '{}');
+  for (const p of S.projects) {
+    const list = (S.sessions[p.root] || []).filter(s => !q || (s.title || '').toLowerCase().includes(q));
+    if (q && !list.length && !p.root.toLowerCase().includes(q)) continue;
+    const ws = document.createElement('div'); ws.className = 'ws' + (p.root === S.root ? ' active' : '') + (closed[p.root] && !q ? ' closed' : ''); ws.draggable = true; ws.dataset.root = p.root;
+    const name = p.label || p.root.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+    ws.innerHTML = `<div class="h"><span class="chev">▼</span><span class="trunc">${esc(name)}</span><span class="path trunc">${esc(p.root)}</span><button class="btn sm ghost plus" title="Nova sessão">+</button></div>` +
+      list.map(s => `<div class="sess${s.id === S.sid ? ' active' : ''}" data-id="${s.id}" draggable="true"><span class="st ${stateClass(S.live[s.id]?.snap?.state)}"></span><span class="trunc grow">${esc(s.title || 'Nova sessão')}</span><span class="faint">${when(s.updated)}</span></div>`).join('');
+    ws.querySelector('.h').onclick = e => { if (e.target.closest('.plus')) { S.sid = ''; selectProject(p.root); renderChat(); P.focus(); return; } closed[p.root] = !closed[p.root]; localStorage.setItem('closedWs', JSON.stringify(closed)); renderSidebar(); };
+    ws.querySelector('.h').oncontextmenu = e => { e.preventDefault(); ctxMenu(e, [
+      ['Nova sessão', () => { S.sid = ''; selectProject(p.root); renderChat(); P.focus(); }], ['Renomear', () => renameProject(p)], ['Abrir pasta no Explorador', () => nat('reveal', p.root)], null,
+      ['Remover da lista', () => api('/api/projects/remove', { body: { root: p.root } }).then(loadProjects), true]]); };
+    ws.querySelectorAll('.sess').forEach(se => {
+      const s = list.find(x => x.id === se.dataset.id);
+      se.onclick = () => openSession(p.root, s.id);
+      se.oncontextmenu = e => { e.preventDefault(); ctxMenu(e, [
+        ['Renomear', () => inlineRename(se.querySelector('.grow'), s.title, t => api(`/api/sessions/${s.id}`, { method: 'PUT', body: { title: t }, root: p.root }).then(() => { if (S.live[s.id]?.snap) S.live[s.id].snap.title = t; refreshSessions(p.root); }))],
+        ['Duplicar', () => api(`/api/sessions/${s.id}/duplicate`, { body: {}, root: p.root }).then(d => { refreshSessions(p.root).then(() => openSession(p.root, d.id)); })],
+        ['Abrir pasta', () => nat('reveal', p.root)], null,
+        ['Excluir', () => deleteSession(p.root, s.id), true]]); };
+      se.ondragstart = e => { e.dataTransfer.setData('text/sess', JSON.stringify({ root: p.root, id: s.id })); e.stopPropagation(); };
+    });
+    ws.ondragstart = e => { if (e.target === ws) e.dataTransfer.setData('text/ws', p.root); };
+    ws.ondragover = e => { if (e.dataTransfer.types.includes('text/ws') || e.dataTransfer.types.includes('text/sess')) { e.preventDefault(); ws.classList.add('dragover'); } };
+    ws.ondragleave = () => ws.classList.remove('dragover');
+    ws.ondrop = e => { ws.classList.remove('dragover'); const from = e.dataTransfer.getData('text/ws'); if (!from || from === p.root) return; e.preventDefault(); e.stopPropagation();
+      const list = S.projects.slice(); const i = list.findIndex(x => x.root === from), j = list.findIndex(x => x.root === p.root); const [m] = list.splice(i, 1); list.splice(j, 0, m);
+      api('/api/projects', { method: 'PUT', body: { projects: list } }).then(loadProjects); };
+    el.appendChild(ws);
+  }
+}
+const stateClass = st => !st || st === 'idle' ? '' : st === 'error' ? 'err' : st.startsWith('waiting') ? 'wait' : 'busy';
+$('#search').oninput = renderSidebar;
+function renameProject(p) { const el = $(`.ws[data-root="${CSS.escape(p.root)}"] .h .trunc`); inlineRename(el, p.label || el.textContent, t => { const list = S.projects.map(x => x.root === p.root ? { ...x, label: t } : x); return api('/api/projects', { method: 'PUT', body: { projects: list } }).then(loadProjects); }); }
+// Renaming happens in place: the label turns into a field, Enter applies, Esc cancels.
+function inlineRename(el, current, apply) { if (!el) return; const inp = document.createElement('input'); inp.value = current || ''; inp.style.cssText = 'width:100%;font-size:12px;padding:1px 4px'; el.replaceWith(inp); inp.focus(); inp.select();
+  let done = false; const finish = ok => { if (done) return; done = true; const v = inp.value.trim(); inp.replaceWith(el); if (ok && v && v !== current) apply(v); else renderSidebar(); };
+  inp.onkeydown = e => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); e.stopPropagation(); }; inp.onblur = () => finish(true); inp.onclick = e => e.stopPropagation(); }
+async function refreshSessions(root) { S.sessions[root] = await api('/api/sessions', { root }); renderSidebar(); renderTabs(); }
+function selectProject(root) { S.root = root; $('#projInfo').textContent = root; S.termCwd = root; S.files = []; api('/api/files/list').then(l => S.files = Array.isArray(l) ? l : []); api('/api/commands').then(l => S.commands = Array.isArray(l) ? l : []); renderSidebar(); renderPane(); if (!S.sid) renderChat(); }
+async function newSession(root) { const s = await api('/api/sessions', { body: {}, root }); await refreshSessions(root); openSession(root, s.id); }
+async function deleteSession(root, id) { if (!confirm(t('Excluir esta sessão e seus checkpoints?'))) return; await api(`/api/sessions/${id}`, { method: 'DELETE', root }); closeTab(id); refreshSessions(root); }
+
+function ctxMenu(e, items) {
+  const m = $('#ctx'); m.innerHTML = items.map(it => it === null ? '<hr>' : `<div class="${it[2] ? 'danger' : ''}">${esc(it[0])}</div>`).join('');
+  [...m.children].filter(c => c.tagName === 'DIV').forEach((d, i) => d.onclick = () => { m.style.display = 'none'; items.filter(x => x)[i][1](); });
+  m.style.display = 'block'; m.style.left = Math.min(e.clientX, innerWidth - 190) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - m.offsetHeight - 8) + 'px';
+}
+addEventListener('click', e => { if (!e.target.closest('#ctx')) $('#ctx').style.display = 'none'; });
+
+// ---------------------------------------------------------------- tabs (sessions in parallel)
+function renderTabs() {
+  const el = $('#tabs'); el.innerHTML = '';
+  for (const t of S.open) {
+    const L = S.live[t.id]; const title = L?.snap?.title || (S.sessions[t.root] || []).find(s => s.id === t.id)?.title || 'Sessão';
+    const d = document.createElement('div'); d.className = 'tab' + (t.id === S.sid ? ' active' : '');
+    d.innerHTML = `<span class="st ${stateClass(L?.snap?.state)}" style="width:6px;height:6px;border-radius:50%;background:${stateClass(L?.snap?.state) ? 'var(--accent)' : 'transparent'}"></span><span class="trunc">${esc(title)}</span><span class="x">×</span>`;
+    d.onclick = e => { if (e.target.classList.contains('x')) closeTab(t.id); else openSession(t.root, t.id); };
+    d.onauxclick = e => { if (e.button === 1) closeTab(t.id); };
+    el.appendChild(d);
+  }
+  el.insertAdjacentHTML('beforeend', `<span class="sp"></span><div class="tools"><button class="btn sm ghost" title="Nova sessão (Ctrl+N)" onclick="goHome()">+ Nova</button></div>`);
+}
+function closeTab(id) {
+  const i = S.open.findIndex(t => t.id === id); if (i < 0) return;
+  S.open.splice(i, 1); const L = S.live[id]; if (L?.es) L.es.close(); delete S.live[id];
+  if (S.sid === id) { S.sid = ''; const n = S.open[Math.min(i, S.open.length - 1)]; if (n) openSession(n.root, n.id); else { renderChat(); renderTabs(); renderSidebar(); updateFoot(); } } else renderTabs();
+  saveOpen();
+}
+const saveOpen = () => localStorage.setItem('open', JSON.stringify({ open: S.open, sid: S.sid }));
+
+// ---------------------------------------------------------------- session events
+function connect(root, id) {
+  if (S.live[id]) return S.live[id];
+  const L = { root, id, snap: null, text: '', think: '', tools: {}, started: 0, lastIn: 0 };
+  S.live[id] = L;
+  const es = new EventSource(`/api/sessions/${id}/events?root=${encodeURIComponent(root)}`);
+  L.es = es;
+  es.onmessage = e => { const ev = JSON.parse(e.data); handleEvent(L, ev); };
+  es.onerror = () => { /* reconnects by itself */ };
+  return L;
+}
+const normalize = sn => { if (!sn) return sn; sn.messages = sn.messages || []; sn.turnStarts = sn.turnStarts || []; sn.tasks = sn.tasks || []; sn.checkpoints = sn.checkpoints || {}; return sn; };
+function handleEvent(L, ev) {
+  const d = ev.data; const active = L.id === S.sid;
+  switch (ev.type) {
+    case 'session': L.snap = normalize(d); if (d.state === 'idle' || d.state === 'error') { L.text = ''; L.think = ''; L.tools = {}; } if (active) { renderChat(); syncBar(); } renderTabs(); renderSidebar(); break;
+    case 'state': if (L.snap) L.snap.state = d.state; if (d.state === 'thinking') { L.text = ''; L.think = ''; if (!L.started) L.started = Date.now(); } if (d.state === 'idle' || d.state === 'error') L.started = 0; if (active) { renderLive(); updateFoot(); } renderTabs(); renderSidebar(); break;
+    case 'turn': if (L.snap) { L.snap.turn = d.turn; L.snap.title = d.title; L.snap.messages.push({ role: 'user', content: [{ type: 'text', text: d.text }] }); L.snap.turnStarts.push(L.snap.messages.length - 1); } if (active) { renderChat(); syncBar(); } refreshSessions(L.root); break;
+    case 'stream':
+      if (d.kind === 'text') L.text += d.text; else if (d.kind === 'thinking') L.think += d.text;
+      else if (d.kind === 'tool_start') L.tools[d.id] = { name: d.name, input: '' }; else if (d.kind === 'tool_input') (L.tools[d.id] = L.tools[d.id] || { name: '', input: '' }).input += d.text;
+      if (active) renderLive(); break;
+    case 'message': L.snap.messages.push(d.message); L.snap.usage = d.totalUsage; L.snap.cost = d.cost; L.lastIn = d.lastInput; L.lastOut = d.usage.output; L.text = ''; L.think = ''; L.tools = {}; if (active) { renderChat(); updateFoot(); } break;
+    case 'tool_run': L.running = d; if (active) renderLive(); break;
+    case 'tool_result': L.running = null; L.snap.messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, is_error: d.isError }] }); if (active) renderChat(); break;
+    case 'permission': L.snap.pendingPermission = d; if (active) renderChat(); notify('infuse precisa de você', `Aprovar ${d.tool}?`); break;
+    case 'question': L.snap.pendingQuestion = d; if (active) renderChat(); notify('infuse tem uma pergunta', d.question); break;
+    case 'done': L.snap.pendingPermission = null; L.snap.pendingQuestion = null; L.snap.cost = d.cost; L.snap.usage = d.usage; if (active) { renderChat(); updateFoot(); loadGit(); } notify('infuse terminou', L.snap.title || ''); refreshSessions(L.root); break;
+    case 'error': L.snap.error = d; L.snap.pendingPermission = null; L.snap.pendingQuestion = null; if (active) renderChat(); notify('infuse: erro', String(d)); break;
+    case 'tasks': L.snap.tasks = d; if (active) renderTasks(); break;
+    case 'cwd': L.snap.cwd = d; break;
+    case 'checkpoint': if (!L.snap.checkpoints) L.snap.checkpoints = {}; (L.snap.checkpoints[d.turn] = L.snap.checkpoints[d.turn] || []).push({ path: d.path }); break;
+    case 'map': if (active && S.pane === 'map') loadMap(); if (active && S.pane === 'files') loadTree(); break;
+    case 'compacted': if (active) toast('Contexto compactado'); break;
+  }
+}
+function notify(title, body) { if (S.settings?.notify === false) return; if (document.hasFocus() && !native) return; nat('notify', t(title), t(body)); }
+
+async function openSession(root, id) {
+  if (S.root !== root) selectProject(root);
+  S.sid = id; if (!S.open.find(t => t.id === id)) S.open.push({ root, id });
+  const L = connect(root, id);
+  if (!L.snap) L.snap = await api(`/api/sessions/${id}`, { root });
+  normalize(L.snap);
+  S.termCwd = L.snap.cwd || root;
+  saveOpen(); renderTabs(); renderSidebar(); renderChat(); syncBar(); updateFoot(); renderTasks(); $('#prompt').focus();
+}
+function cur() { return S.live[S.sid]; }
+function syncBar() { const L = cur(); $('#title').value = L?.snap?.title || ''; if (L?.snap?.model) $('#modelSel').value = L.snap.model; S.mode = L?.snap?.mode || S.settings?.mode || 'default'; renderMode(); }
+$('#title').onchange = e => { const L = cur(); if (L) api(`/api/sessions/${S.sid}`, { method: 'PUT', body: { title: e.target.value } }).then(() => { L.snap.title = e.target.value; refreshSessions(L.root); renderTabs(); }); };
+$('#modelSel').onchange = e => { const L = cur(); if (L) api(`/api/sessions/${S.sid}`, { method: 'PUT', body: { model: e.target.value } }).then(() => L.snap.model = e.target.value); else saveSetting({ model: e.target.value }); };
+
+// ---------------------------------------------------------------- chat rendering
+function renderChat() {
+  const chat = $('#chat'); const L = cur();
+  $('#center').classList.toggle('home', !L?.snap); renderProjPill();
+  if (!L?.snap) {
+    chat.innerHTML = S.root ? `<div class="welcome"><b>${esc(S.root.split(/[\\/]/).pop())}</b>Escreva abaixo para começar uma sessão.<div class="k"><span class="kbd">Ctrl K</span><span>paleta de comandos</span><span class="kbd">Shift Tab</span><span>modo de permissão</span><span class="kbd">Ctrl J</span><span>painel lateral</span><span class="kbd">Ctrl B</span><span>barra lateral</span></div></div>`
+      : '<div class="welcome">Abra uma pasta de projeto pelo Explorador (<b>Abrir pasta…</b>) ou arraste-a para esta janela.</div>';
+    return;
+  }
+  const s = L.snap; const msgs = s.messages || []; const results = {};
+  for (const m of msgs) for (const b of m.content || []) if (b.type === 'tool_result') results[b.tool_use_id] = b;
+  let html = ''; let turn = 0; const starts = new Set(s.turnStarts || []);
+  msgs.forEach((m, i) => {
+    if (starts.has(i)) { turn++; html += `<div class="turn"><span>turno ${turn}</span><span class="line"></span>${turn > 1 || true ? `<button class="btn sm ghost" onclick="rewind(${turn})" title="Restaura os arquivos e a conversa a antes deste turno">↶ voltar aqui</button>` : ''}</div>`; }
+    if (m.role === 'user') {
+      const texts = m.content.filter(b => b.type === 'text'), imgs = m.content.filter(b => b.type === 'image');
+      if (!texts.length && !imgs.length) return; // tool results are rendered inside their tool blocks
+      const main = texts[0]?.text || ''; const attached = texts.slice(1).map(b => (b.text.match(/path="([^"]+)"/) || [])[1]).filter(Boolean);
+      html += `<div class="u sel">${esc(main)}${attached.map(p => `<span class="att">📎 ${esc(p)}</span>`).join('')}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div>`;
+    } else {
+      html += '<div class="a sel">';
+      for (const b of m.content) {
+        if (b.type === 'text' && b.text) html += `<div class="md">${md(b.text)}</div>`;
+        else if (b.type === 'thinking' && b.thinking) html += `<details class="think"><summary>pensou…</summary><pre>${esc(b.thinking)}</pre></details>`;
+        else if (b.type === 'tool_use') html += toolBlock(b.id, b.name, b.input, results[b.id], false);
+      }
+      html += '</div>';
+    }
+  });
+  html += '<div id="live"></div>';
+  if (s.pendingPermission) html += permCard(s.pendingPermission);
+  if (s.pendingQuestion) html += questionCard(s.pendingQuestion);
+  if (s.error && s.state === 'error') html += `<div class="errbox">${esc(s.error)}</div>`;
+  if (!msgs.length) html = `<div class="welcome"><b>${esc(S.root.split(/[\\/]/).pop())}</b>Peça uma feature, uma correção, uma explicação. O agente trabalha dentro do filtro.</div>` + html;
+  chat.innerHTML = html; renderLive(); scrollBottom();
+}
+function renderLive() {
+  const L = cur(); const el = $('#live'); if (!el || !L) return;
+  const st = L.snap?.state; let html = '';
+  if (L.think) html += `<details class="think" open><summary>pensando…</summary><pre>${esc(L.think)}</pre></details>`;
+  if (L.text) html += `<div class="a sel"><div class="md">${md(L.text)}<span class="cursor"></span></div></div>`;
+  for (const [id, t] of Object.entries(L.tools)) { let input = null; try { input = JSON.parse(t.input); } catch { input = { _partial: t.input }; } html += toolBlock(id, t.name, input, null, L.running?.id === id); }
+  if (st === 'thinking' || st === 'tool' || st === 'compacting') html += `<div id="status"><span class="sp"></span><span>${st === 'tool' ? 'executando ' + esc(L.running?.name || 'ferramenta') : st === 'compacting' ? 'compactando contexto' : 'pensando'}</span><span id="elapsedLive" class="faint"></span></div>`;
+  el.innerHTML = html; scrollBottom();
+}
+function scrollBottom() { const sc = $('#chatScroll'); if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 240) sc.scrollTop = sc.scrollHeight; }
+setInterval(() => { const L = cur(); const e = $('#elapsedLive'); const f = $('#elapsed'); const s = L?.started ? Math.round((Date.now() - L.started) / 1000) : 0; const t = s ? `${s}s` : ''; if (e) e.textContent = t; f.textContent = t; }, 500);
+
+const toolSummary = (name, inp) => { if (!inp) return ''; if (inp._partial !== undefined) return inp._partial.slice(-80); switch (name) {
+  case 'Bash': return inp.command || ''; case 'Read': case 'Write': case 'Edit': case 'NotebookEdit': return inp.path || inp.file_path || ''; case 'Glob': return inp.pattern || ''; case 'Grep': return `/${inp.pattern || ''}/ ${inp.path || ''}`;
+  case 'LS': return inp.path || '.'; case 'WebFetch': return inp.url || ''; case 'TodoWrite': return `${(inp.todos || inp.tasks || []).length} tarefas`; case 'AskUserQuestion': return inp.question || ''; default: return JSON.stringify(inp).slice(0, 100); } };
+const toolIcon = { Bash: '$', Read: '≡', Write: '+', Edit: '±', Glob: '*', Grep: '/', LS: '▸', WebFetch: '↓', TodoWrite: '☑', AskUserQuestion: '?' };
+function toolBlock(id, name, input, result, running) {
+  let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
+  const openDefault = result?.is_error;
+  let body = '';
+  if (name === 'Bash' && inp?.command) body += `<div class="lab">comando</div><pre>${esc(inp.command)}</pre>`;
+  else if (name === 'Write' && inp?.content != null) body += `<div class="lab">conteúdo</div>` + diffHTML(inp.content.split('\n').map(l => '+' + l).join('\n'));
+  else if (name === 'Edit' && inp?.old_string != null) body += `<div class="lab">alteração</div>` + diffHTML(inp.old_string.split('\n').map(l => '-' + l).join('\n') + '\n' + (inp.new_string || '').split('\n').map(l => '+' + l).join('\n'));
+  else if (inp && Object.keys(inp).length) body += `<div class="lab">entrada</div><pre>${esc(JSON.stringify(inp, null, 2))}</pre>`;
+  if (result) { const out = String(result.content || ''); const i = out.indexOf('\n[infuse'); const main = i >= 0 ? out.slice(0, i) : out, inf = i >= 0 ? out.slice(i + 1) : ''; body += `<div class="lab">resultado</div><pre>${esc(main)}</pre>` + (inf ? `<div class="lab">infundido</div><pre class="inf">${esc(inf)}</pre>` : ''); }
+  const r = running ? '<span class="r">executando…</span>' : result ? (result.is_error ? '<span class="r bad">erro</span>' : '<span class="r ok">ok</span>') : '<span class="r">…</span>';
+  return `<div class="tool${openDefault ? ' open' : ''}" id="t-${esc(id)}"><div class="h" onclick="this.parentNode.classList.toggle('open')"><span class="ic">${toolIcon[name] || '•'}</span><span class="n">${esc(name)}</span><span class="s">${esc(toolSummary(name, inp))}</span>${r}</div><div class="b">${body}</div></div>`;
+}
+const diffHTML = text => `<div class="diff">${text.split('\n').map(l => `<div class="${l.startsWith('+') && !l.startsWith('+++') ? 'add' : l.startsWith('-') && !l.startsWith('---') ? 'del' : /^(@@|---|\+\+\+)/.test(l) ? 'hh' : ''}">${esc(l) || ' '}</div>`).join('')}</div>`;
+function permCard(p) {
+  let inp = {}; try { inp = typeof p.input === 'string' ? JSON.parse(p.input) : p.input || {}; } catch {}
+  const detail = p.tool === 'Bash' ? `<pre class="out">${esc(inp.command || '')}</pre>` : p.tool === 'Edit' ? diffHTML((inp.old_string || '').split('\n').map(l => '-' + l).join('\n') + '\n' + (inp.new_string || '').split('\n').map(l => '+' + l).join('\n')) : p.tool === 'Write' ? `<div class="mono">${esc(inp.path)}</div>` + diffHTML((inp.content || '').split('\n').map(l => '+' + l).join('\n')) : `<pre class="out">${esc(JSON.stringify(inp, null, 2))}</pre>`;
+  return `<div class="card ask" id="perm"><div class="row"><b>${esc(p.tool)}</b><span class="muted">quer ${p.category === 'exec' ? 'executar' : p.category === 'write' ? 'escrever' : 'acessar'}${inp.path ? ' ' + esc(inp.path) : ''}</span></div>${detail}
+  <div class="acts"><button class="btn pri" onclick="decide('${p.id}','allow')">Sim <span class="kbd">Y</span></button><button class="btn" onclick="decide('${p.id}','always')">Sempre nesta sessão <span class="kbd">A</span></button><button class="btn" onclick="decide('${p.id}','deny')">Não <span class="kbd">N</span></button></div></div>`;
+}
+function questionCard(q) {
+  return `<div class="card q" id="quest"><b>${esc(q.question)}</b><div class="acts">${(q.options || []).map((o, i) => `<button class="btn" onclick="answer('${q.id}', this.dataset.v)" data-v="${esc(o)}">${esc(o)} <span class="kbd">${i + 1}</span></button>`).join('')}</div>
+  <div class="row" style="margin-top:8px"><input class="grow" id="qFree" placeholder="ou responda livremente…" onkeydown="if(event.key==='Enter'){answer('${q.id}', this.value)}"></div></div>`;
+}
+window.decide = async (id, d) => { const L = cur(); await api(`/api/sessions/${S.sid}/permission`, { body: { id, decision: d } }); if (L?.snap) L.snap.pendingPermission = null; renderChat(); };
+window.answer = async (id, a) => { if (!a) return; const L = cur(); await api(`/api/sessions/${S.sid}/answer`, { body: { id, answer: a } }); if (L?.snap) L.snap.pendingQuestion = null; renderChat(); };
+window.rewind = async n => { const L = cur(); if (!L) return; const files = Object.entries(L.snap.checkpoints || {}).filter(([t]) => +t >= n).reduce((a, [, f]) => a + f.length, 0); if (!confirm(t(`Voltar para antes do turno ${n}? ${files} arquivo(s) serão restaurados e a conversa a partir daí será removida.`))) return; const r = await api(`/api/sessions/${S.sid}/revert`, { body: { turn: n } }); if (r.error) return toast(r.error); L.snap = r; renderChat(); loadGit(); toast('Revertido'); };
+
+// markdown (small, safe)
+function md(src) {
+  const blocks = []; src = src.replace(/```(\w*)\n([\s\S]*?)```/g, (_, l, c) => { blocks.push(`<pre><code>${esc(c.replace(/\n$/, ''))}</code></pre>`); return `\u0000${blocks.length - 1}\u0000`; });
+  let h = esc(src);
+  h = h.replace(/^### (.*)$/gm, '<h3>$1</h3>').replace(/^## (.*)$/gm, '<h2>$1</h2>').replace(/^# (.*)$/gm, '<h1>$1</h1>');
+  h = h.replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>').replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  h = h.replace(/(?:^(?:[-*] |\d+\. ).*(?:\n|$))+/gm, m => { const ol = /^\d/.test(m); return `<${ol ? 'ol' : 'ul'}>${m.trim().split('\n').map(l => `<li>${l.replace(/^(?:[-*] |\d+\. )/, '')}</li>`).join('')}</${ol ? 'ol' : 'ul'}>`; });
+  h = h.split(/\n{2,}/).map(p => /^<(h\d|ul|ol|pre)/.test(p.trim()) || /\u0000/.test(p) ? p : `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+  return h.replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[i]);
+}
+
+// ---------------------------------------------------------------- footer / mode
+function updateFoot() {
+  const L = cur(); const st = L?.snap?.state || 'idle';
+  const names = { idle: 'pronto', thinking: 'pensando', tool: 'executando ferramenta', waiting_permission: 'aguardando aprovação', waiting_user: 'aguardando resposta', compacting: 'compactando', error: 'erro' };
+  $('#stateText').textContent = names[st] || st; $('#dot').className = 'dot ' + stateClass(st);
+  const busy = st !== 'idle' && st !== 'error'; $('#btnStop').style.display = busy ? '' : 'none'; $('#btnSend').style.display = busy ? 'none' : '';
+  if (L?.snap) { const u = L.snap.usage || {}; $('#tokInfo').textContent = `↑${fmtTok(L.lastIn || 0)} ↓${fmtTok(L.lastOut || 0)} · total ${fmtTok((u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0))}/${fmtTok(u.output || 0)}`; $('#costInfo').textContent = fmtMoney(L.snap.cost || 0); const pct = Math.round(((L.lastIn || 0) / (S.settings?.contextLimit || 200000)) * 100); $('#ctxInfo').textContent = pct ? `contexto ${pct}%` : ''; }
+  else { $('#tokInfo').textContent = ''; $('#costInfo').textContent = ''; $('#ctxInfo').textContent = ''; }
+}
+const modeNames = { default: 'Perguntar', acceptEdits: 'Aceitar edições', plan: 'Plano', bypass: 'Sem perguntas' };
+const modeOrder = ['default', 'acceptEdits', 'plan', 'bypass'];
+function renderMode() { const p = $('#modePill'); p.className = 'pill ' + S.mode; p.innerHTML = `${esc(modeNames[S.mode] || S.mode)} <span style="opacity:.6">⌄</span>`; }
+async function setMode(m) { S.mode = m; renderMode(); await saveSetting({ mode: m }); const L = cur(); if (L?.snap) L.snap.mode = m; toast('Modo: ' + modeNames[m]); }
+$('#modePill').onclick = () => setMode(modeOrder[(modeOrder.indexOf(S.mode) + 1) % modeOrder.length]);
+
+// ---------------------------------------------------------------- composer
+const P = $('#prompt');
+const grow = () => { P.style.height = 'auto'; P.style.height = Math.min(P.scrollHeight, 260) + 'px'; };
+P.oninput = () => { grow(); autocomplete(); };
+P.onkeydown = e => {
+  if (vimKey(e)) return;
+  if ($('#ac').style.display === 'block') { if (acKey(e)) return; }
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); return; }
+  if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); $('#modePill').click(); return; }
+  if (e.key === 'ArrowUp' && !P.value.trim() || (e.key === 'ArrowUp' && S.histIdx >= 0 && P.selectionStart === 0)) { e.preventDefault(); if (S.histIdx < S.history.length - 1) { S.histIdx++; P.value = S.history[S.history.length - 1 - S.histIdx]; grow(); } return; }
+  if (e.key === 'ArrowDown' && S.histIdx >= 0) { e.preventDefault(); S.histIdx--; P.value = S.histIdx < 0 ? '' : S.history[S.history.length - 1 - S.histIdx]; grow(); return; }
+  if (e.key === 'Escape') { const L = cur(); if (L?.snap && L.snap.state !== 'idle' && L.snap.state !== 'error') stop(); }
+};
+P.onpaste = e => { for (const it of e.clipboardData.items) if (it.type.startsWith('image/')) { const f = it.getAsFile(); const r = new FileReader(); r.onload = () => { S.images.push({ mediaType: it.type, data: r.result.split(',')[1] }); renderAtts(); }; r.readAsDataURL(f); e.preventDefault(); } };
+function renderAtts() { $('#atts').innerHTML = S.atts.map((a, i) => `<span class="chip">📎 ${esc(a.name)} <span class="faint">${(a.size / 1024).toFixed(0)}k</span><b onclick="S.atts.splice(${i},1);renderAtts()">×</b></span>`).join('') + S.images.map((im, i) => `<span class="chip"><img src="data:${im.mediaType};base64,${im.data}"> imagem <b onclick="S.images.splice(${i},1);renderAtts()">×</b></span>`).join(''); }
+$('#btnAttach').onclick = async () => {
+  if (!native) { const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.onchange = () => { for (const f of inp.files) readBrowserFile(f); }; inp.click(); return; }
+  const list = await nat('pickFiles'); if (Array.isArray(list)) { for (const a of list) if (!S.atts.find(x => x.path === a.path)) S.atts.push(a); renderAtts(); } };
+// Outside the native window the page never sees a path: images become inline images, other files inline text.
+function readBrowserFile(f) { const r = new FileReader(); if (f.type.startsWith('image/')) { r.onload = () => { S.images.push({ mediaType: f.type, data: r.result.split(',')[1] }); renderAtts(); }; r.readAsDataURL(f); } else { r.onload = () => { P.value += `\n<arquivo nome="${f.name}">\n${r.result.slice(0, 200000)}\n</arquivo>`; grow(); }; r.readAsText(f); } }
+async function send() {
+  let text = P.value.trim(); if (!text && !S.atts.length && !S.images.length) return;
+  if (!S.root) { toggleProjMenu(); return; }
+  if (text.startsWith('/')) { const handled = await slash(text); if (handled) { P.value = ''; grow(); return; } }
+  if (!S.sid) { const s = await api('/api/sessions', { body: {} }); await refreshSessions(S.root); await openSession(S.root, s.id); }
+  const L = cur(); if (L.snap.state !== 'idle' && L.snap.state !== 'error') return toast('O agente está ocupado nesta sessão — abra outra aba');
+  if (!text) text = '(anexos)';
+  S.history.push(text); if (S.history.length > 200) S.history.shift(); localStorage.setItem('hist', JSON.stringify(S.history)); S.histIdx = -1;
+  const body = { text, attachments: S.atts, images: S.images }; S.atts = []; S.images = []; renderAtts(); P.value = ''; grow(); hideAC();
+  const r = await api(`/api/sessions/${S.sid}/send`, { body }); if (r.error) toast(r.error);
+}
+$('#btnSend').onclick = send;
+const stop = () => S.sid && api(`/api/sessions/${S.sid}/stop`, { body: {} });
+$('#btnStop').onclick = stop;
+
+// slash commands
+async function slash(text) {
+  const [cmd, ...rest] = text.slice(1).split(/\s+/); const arg = rest.join(' ');
+  const custom = S.commands.find(c => !c.builtin && c.name === cmd);
+  if (custom) { P.value = custom.prompt.replace(/\$ARGUMENTS/g, arg); grow(); return false; /* send as prompt */ }
+  switch (cmd) {
+    case 'clear': await newSession(S.root); return true;
+    case 'compact': toast('A compactação acontece automaticamente quando o contexto passa de 75%'); return true;
+    case 'model': if (arg) $('#modelSel').value = arg, $('#modelSel').onchange({ target: $('#modelSel') }); else $('#modelSel').focus(); return true;
+    case 'mode': if (modeOrder.includes(arg)) setMode(arg); else $('#modePill').click(); return true;
+    case 'rewind': { const n = parseInt(arg) || cur()?.snap?.turn; if (n) rewind(n); return true; }
+    case 'diff': showPane('git'); return true;
+    case 'cost': { const L = cur(); toast(L ? `${fmtMoney(L.snap.cost)} · ${fmtTok((L.snap.usage?.input || 0) + (L.snap.usage?.cacheRead || 0))} entrada / ${fmtTok(L.snap.usage?.output || 0)} saída` : 'sem sessão'); return true; }
+    case 'vim': await saveSetting({ vim: !S.settings.vim }); applyVim(); return true;
+    case 'help': openPalette(); return true;
+  }
+  return false;
+}
+
+// @ and / autocomplete
+let acItems = [], acIdx = 0, acKind = '';
+function autocomplete() {
+  const v = P.value, pos = P.selectionStart; const before = v.slice(0, pos);
+  const m = before.match(/(^|\s)([@/])([^\s]*)$/);
+  if (!m || (m[2] === '/' && before.trim() !== m[2] + m[3])) return hideAC();
+  acKind = m[2]; const q = m[3].toLowerCase();
+  if (acKind === '@') acItems = S.files.filter(f => f.toLowerCase().includes(q)).slice(0, 40).map(f => ({ v: f, d: f.endsWith('/') ? 'pasta' : '' }));
+  else acItems = S.commands.filter(c => c.name.startsWith(q)).map(c => ({ v: c.name, d: c.description }));
+  if (!acItems.length) return hideAC();
+  acIdx = 0; renderAC();
+}
+function renderAC() { const ac = $('#ac'); ac.innerHTML = acItems.map((it, i) => `<div class="${i === acIdx ? 'on' : ''}" onmousedown="acPick(${i})"><span class="mono">${acKind}${esc(it.v)}</span><span>${esc(it.d || '')}</span></div>`).join(''); ac.style.display = 'block'; const r = $('#box').getBoundingClientRect(); ac.style.left = r.left + 'px'; ac.style.bottom = (innerHeight - r.top + 6) + 'px'; ac.children[acIdx]?.scrollIntoView({ block: 'nearest' }); }
+function hideAC() { $('#ac').style.display = 'none'; }
+function acKey(e) { if (e.key === 'ArrowDown') { acIdx = (acIdx + 1) % acItems.length; renderAC(); } else if (e.key === 'ArrowUp') { acIdx = (acIdx - 1 + acItems.length) % acItems.length; renderAC(); } else if (e.key === 'Tab' || e.key === 'Enter') { acPick(acIdx); } else if (e.key === 'Escape') hideAC(); else return false; e.preventDefault(); return true; }
+window.acPick = i => { const it = acItems[i]; const v = P.value, pos = P.selectionStart; const before = v.slice(0, pos).replace(/([@/])[^\s]*$/, acKind + it.v + (acKind === '@' ? ' ' : ' ')); P.value = before + v.slice(pos); P.selectionStart = P.selectionEnd = before.length; hideAC(); P.focus(); grow(); };
+
+// vim mode (minimal: normal/insert, hjkl, i a o A I x dd, Esc)
+function applyVim() { S.vim = !!S.settings?.vim; $('#box').classList.toggle('vim', S.vim); $('#vimHint').style.display = S.vim ? '' : 'none'; S.vimMode = 'INSERT'; $('#vimMode').textContent = S.vimMode; }
+function vimKey(e) {
+  if (!S.vim) return false;
+  if (S.vimMode === 'INSERT') { if (e.key === 'Escape' && $('#ac').style.display !== 'block') { S.vimMode = 'NORMAL'; $('#vimMode').textContent = 'NORMAL'; e.preventDefault(); return true; } return false; }
+  e.preventDefault(); const v = P.value, p = P.selectionStart; const move = n => { P.selectionStart = P.selectionEnd = Math.max(0, Math.min(v.length, p + n)); };
+  switch (e.key) {
+    case 'h': move(-1); break; case 'l': move(1); break;
+    case 'j': case 'k': { const lines = v.split('\n'); let acc = 0, li = 0, col = p; for (; li < lines.length; li++) { if (col <= lines[li].length) break; col -= lines[li].length + 1; } const t = li + (e.key === 'j' ? 1 : -1); if (t >= 0 && t < lines.length) { for (let i = 0; i < t; i++) acc += lines[i].length + 1; P.selectionStart = P.selectionEnd = acc + Math.min(col, lines[t].length); } break; }
+    case 'i': S.vimMode = 'INSERT'; break; case 'a': move(1); S.vimMode = 'INSERT'; break;
+    case 'A': P.selectionStart = P.selectionEnd = v.indexOf('\n', p) === -1 ? v.length : v.indexOf('\n', p); S.vimMode = 'INSERT'; break;
+    case 'I': P.selectionStart = P.selectionEnd = v.lastIndexOf('\n', p - 1) + 1; S.vimMode = 'INSERT'; break;
+    case 'o': { const e2 = v.indexOf('\n', p) === -1 ? v.length : v.indexOf('\n', p); P.value = v.slice(0, e2) + '\n' + v.slice(e2); P.selectionStart = P.selectionEnd = e2 + 1; S.vimMode = 'INSERT'; break; }
+    case 'x': P.value = v.slice(0, p) + v.slice(p + 1); P.selectionStart = P.selectionEnd = p; break;
+    case 'd': if (S.vimPending === 'd') { const s = v.lastIndexOf('\n', p - 1) + 1; let en = v.indexOf('\n', p); en = en === -1 ? v.length : en + 1; P.value = v.slice(0, s) + v.slice(en); P.selectionStart = P.selectionEnd = s; S.vimPending = ''; } else { S.vimPending = 'd'; return true; } break;
+    case 'Enter': send(); break;
+    case 'Escape': break;
+  }
+  S.vimPending = ''; $('#vimMode').textContent = S.vimMode; grow(); return true;
+}
+
+// ---------------------------------------------------------------- keyboard
+addEventListener('keydown', e => {
+  const inInput = /INPUT|TEXTAREA/.test(document.activeElement?.tagName);
+  if (e.ctrlKey && e.key.toLowerCase() === 'k') { e.preventDefault(); openPalette(); return; }
+  if (e.ctrlKey && e.key.toLowerCase() === 'j') { e.preventDefault(); togglePanel(); return; }
+  if (e.ctrlKey && e.key.toLowerCase() === 'b') { e.preventDefault(); $('#app').classList.toggle('nosb'); return; }
+  if (e.ctrlKey && e.key.toLowerCase() === 'n') { e.preventDefault(); goHome(); return; }
+  if (e.ctrlKey && e.key.toLowerCase() === 'w') { e.preventDefault(); if (S.sid) closeTab(S.sid); return; }
+  if (e.ctrlKey && e.key === 'Tab') { e.preventDefault(); const i = S.open.findIndex(t => t.id === S.sid); const n = S.open[(i + (e.shiftKey ? -1 : 1) + S.open.length) % S.open.length]; if (n) openSession(n.root, n.id); return; }
+  if (e.ctrlKey && e.key.toLowerCase() === 'o') { e.preventDefault(); openFolder(); return; }
+  const L = cur();
+  if (!inInput && L?.snap?.pendingPermission) { const k = e.key.toLowerCase(); if (k === 'y') decide(L.snap.pendingPermission.id, 'allow'); else if (k === 'n') decide(L.snap.pendingPermission.id, 'deny'); else if (k === 'a') decide(L.snap.pendingPermission.id, 'always'); }
+  if (!inInput && L?.snap?.pendingQuestion && /^[1-9]$/.test(e.key)) { const o = L.snap.pendingQuestion.options?.[+e.key - 1]; if (o) answer(L.snap.pendingQuestion.id, o); }
+  if (e.key === 'Escape' && !inInput) { if ($('#pal').classList.contains('show')) $('#pal').classList.remove('show'); else if (L?.snap && L.snap.state !== 'idle' && L.snap.state !== 'error') stop(); }
+  if (e.key === 'Enter' && !inInput && !e.ctrlKey && !$('#pal').classList.contains('show')) P.focus();
+});
+
+// palette
+const paletteItems = () => [
+  { n: 'Nova sessão', k: 'Ctrl N', f: goHome }, { n: 'Abrir pasta…', k: 'Ctrl O', f: openFolder }, { n: 'Fechar aba', k: 'Ctrl W', f: () => S.sid && closeTab(S.sid) },
+  { n: 'Alternar modo de permissão', k: 'Shift Tab', f: () => $('#modePill').click() }, ...modeOrder.map(m => ({ n: 'Modo: ' + modeNames[m], f: () => setMode(m) })),
+  { n: 'Parar o agente', k: 'Esc', f: stop }, { n: 'Voltar um turno', f: () => { const L = cur(); if (L?.snap?.turn) rewind(L.snap.turn); } },
+  { n: 'Painel lateral', k: 'Ctrl J', f: togglePanel }, { n: 'Barra lateral', k: 'Ctrl B', f: () => $('#app').classList.toggle('nosb') },
+  ...['files', 'git', 'tasks', 'term', 'oracle', 'rules', 'journal', 'vices', 'map', 'config'].map(p => ({ n: 'Painel: ' + paneNames[p], f: () => showPane(p) })),
+  { n: 'Tema: sistema', f: () => saveSetting({ theme: 'system' }).then(applyTheme) }, { n: 'Tema: claro', f: () => saveSetting({ theme: 'light' }).then(applyTheme) }, { n: 'Tema: escuro', f: () => saveSetting({ theme: 'dark' }).then(applyTheme) },
+  { n: 'Modo vim', k: '/vim', f: () => slash('/vim') }, { n: 'Regerar mapa do projeto', f: () => api('/api/map?refresh=1').then(() => { toast('Mapa regerado'); loadMap(); }) },
+  ...S.commands.filter(c => !c.builtin).map(c => ({ n: '/' + c.name + ' — ' + c.description, f: () => { P.value = '/' + c.name + ' '; P.focus(); } })),
+];
+let palIdx = 0, palList = [];
+function openPalette() { $('#pal').classList.add('show'); $('#palIn').value = ''; renderPal(); $('#palIn').focus(); }
+function renderPal() { const q = $('#palIn').value.toLowerCase(); palList = paletteItems().filter(i => i.n.toLowerCase().includes(q)); palIdx = Math.min(palIdx, Math.max(0, palList.length - 1)); $('#palList').innerHTML = palList.map((i, k) => `<div class="${k === palIdx ? 'on' : ''}" onmousedown="palRun(${k})">${esc(i.n)}<span>${i.k ? `<span class="kbd">${esc(i.k)}</span>` : ''}</span></div>`).join(''); $('#palList').children[palIdx]?.scrollIntoView({ block: 'nearest' }); }
+$('#palIn').oninput = () => { palIdx = 0; renderPal(); };
+$('#palIn').onkeydown = e => { if (e.key === 'ArrowDown') { palIdx = (palIdx + 1) % palList.length; renderPal(); } else if (e.key === 'ArrowUp') { palIdx = (palIdx - 1 + palList.length) % palList.length; renderPal(); } else if (e.key === 'Enter') palRun(palIdx); else if (e.key === 'Escape') $('#pal').classList.remove('show'); };
+window.palRun = i => { $('#pal').classList.remove('show'); palList[i]?.f(); };
+$('#pal').onclick = e => { if (e.target.id === 'pal') $('#pal').classList.remove('show'); };
+
+// ---------------------------------------------------------------- native: open folder, drag & drop
+async function openFolder() { if (native) infuse.call('log', 'openFolder'); if (!native) { if (!$('#center').classList.contains('home')) goHome(); browseFolders(localStorage.getItem('browsePath') || ''); return; } const p = await nat('pickFolder'); if (native) infuse.call('log', 'pickFolder →', p); if (!p) return; await loadProjects(); S.sid = ''; selectProject(p); renderChat(); renderProjPill(); P.focus(); }
+$('#btnHome').onclick = goHome;
+function goHome() { S.sid = ''; saveOpen(); renderTabs(); renderSidebar(); renderChat(); syncBar(); updateFoot(); P.focus(); }
+const projName = r => { const p = S.projects.find(x => x.root === r); return p?.label || (r || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop(); };
+function renderProjPill() {
+  const el = $('#projPill');
+  if (S.sid) { el.innerHTML = `<span class="nm">${esc(projName(S.root))}</span>`; el.onclick = () => nat('reveal', S.root); el.title = S.root; return; }
+  el.innerHTML = S.root ? `<span class="nm">${esc(projName(S.root))}</span><span style="opacity:.6">⌄</span>` : `<span class="nm">Escolher pasta do projeto</span><span style="opacity:.6">⌄</span>`;
+  el.title = S.root || 'Escolher o projeto desta sessão'; el.onclick = e => { e.stopPropagation(); toggleProjMenu(); };
+  $('#homeSub').textContent = S.root ? S.root : 'Escolha o projeto e descreva o que precisa.';
+}
+function toggleProjMenu() {
+  const m = $('#projMenu'); if (m.classList.contains('show')) { m.classList.remove('show'); return; }
+  m.innerHTML = (S.projects.length ? '<div class="lab">projetos</div>' : '') + S.projects.map(p => `<div data-root="${esc(p.root)}" class="${p.root === S.root ? 'on' : ''}"><span>${esc(projName(p.root))}</span><span class="faint trunc">${esc(p.root)}</span></div>`).join('') + (S.projects.length ? '<hr>' : '') + '<div id="pmOpen"><span>Abrir pasta…</span><span class="faint">Explorador</span></div>';
+  m.querySelectorAll('[data-root]').forEach(d => d.onclick = () => { m.classList.remove('show'); selectProject(d.dataset.root); renderProjPill(); P.focus(); });
+  m.querySelector('#pmOpen').onclick = () => { if (native) { m.classList.remove('show'); openFolder(); } else browseFolders(localStorage.getItem('browsePath') || ''); };
+  const r = $('#projPill').getBoundingClientRect(); m.style.left = r.left + 'px'; m.style.bottom = (innerHeight - r.top + 8) + 'px'; m.classList.add('show');
+}
+addEventListener('click', e => { if (!e.target.closest('#projMenu') && !e.target.closest('#projPill')) $('#projMenu').classList.remove('show'); });
+// In-app folder browser: outside the native window there is no OS dialog, so the page browses the disk itself.
+async function browseFolders(path) {
+  const m = $('#projMenu'); const r = await api('/api/fs?path=' + encodeURIComponent(path));
+  localStorage.setItem('browsePath', r.path || '');
+  const crumbs = r.path ? r.path.split(/[\\/]/).filter(Boolean) : [];
+  m.innerHTML = `<div class="lab">${r.path ? esc(r.path) : 'Abrir pasta'}</div>` +
+    (r.path ? `<div data-go="${esc(r.parent || '')}"><span>↑</span><span class="faint">${esc(r.parent || 'unidades')}</span></div>` : r.roots.map(x => `<div data-go="${esc(x.path)}"><span>${esc(x.name)}</span><span class="faint trunc">${esc(x.path)}</span></div>`).join('')) +
+    `<div class="fslist">${(r.dirs || []).map(x => `<div data-go="${esc(x.path)}"><span>${esc(x.name)}</span></div>`).join('') || (r.path ? '<div class="faint" style="cursor:default">sem subpastas</div>' : '')}</div>` +
+    (r.path ? `<hr><div id="fsUse" class="on"><span>Usar esta pasta</span><span class="faint trunc">${esc(crumbs[crumbs.length - 1] || r.path)}</span></div>` : '');
+  m.querySelectorAll('[data-go]').forEach(d => d.onclick = e => { e.stopPropagation(); browseFolders(d.dataset.go); });
+  const use = m.querySelector('#fsUse'); if (use) use.onclick = async e => { e.stopPropagation(); m.classList.remove('show'); const res = await api('/api/projects/add', { body: { root: r.path } }); if (res.error) return toast(res.error); await loadProjects(); S.sid = ''; selectProject(res.root); renderChat(); renderProjPill(); P.focus(); };
+  m.classList.add('show'); const pr = $('#projPill').getBoundingClientRect(); m.style.left = pr.left + 'px'; m.style.bottom = (innerHeight - pr.top + 8) + 'px';
+}
+let dragDepth = 0;
+addEventListener('dragenter', e => { if (e.dataTransfer.types.includes('Files')) { dragDepth++; $('#drop').classList.add('show'); } });
+addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#drop').classList.remove('show'); } });
+addEventListener('dragover', e => { if (e.dataTransfer.types.includes('Files')) e.preventDefault(); });
+addEventListener('drop', async e => {
+  dragDepth = 0; $('#drop').classList.remove('show');
+  if (!e.dataTransfer.files.length) return; e.preventDefault();
+  const files = [...e.dataTransfer.files];
+  if (native) {
+    const r = await infuse.drop(files); // the host reads the real paths from the drop
+    if (r.projects?.length) { await loadProjects(); S.sid = ''; selectProject(r.projects[0]); renderChat(); }
+    for (const a of r.attachments || []) if (!S.atts.find(x => x.path === a.path)) S.atts.push(a);
+    renderAtts(); if (r.attachments?.length) toast(`${r.attachments.length} anexo(s)`);
+  } else {
+    // outside the native window the page sees no paths: images become inline images, text files inline text
+    for (const f of files) readBrowserFile(f);
+    const dirs = [...e.dataTransfer.items].filter(i => i.webkitGetAsEntry?.()?.isDirectory); if (dirs.length) toast('Para abrir uma pasta aqui use "Abrir pasta…"');
+  }
+});
+
+// ---------------------------------------------------------------- right panel
+const paneNames = { files: 'Arquivos', git: 'Git', tasks: 'Tarefas', term: 'Terminal', oracle: 'Pronto', rules: 'Regras', journal: 'Jornal', vices: 'Vícios', map: 'Mapa', config: 'Configurações' };
+function showPane(p) { S.pane = p; localStorage.setItem('pane', p); if (!S.panelOpen) togglePanel(true); document.querySelectorAll('#ptabs button[data-pane]').forEach(b => b.classList.toggle('active', b.dataset.pane === p)); document.querySelectorAll('.pane').forEach(x => x.classList.toggle('active', x.id === 'pane-' + p)); renderPane(); }
+function togglePanel(force) { S.panelOpen = force === true ? true : !S.panelOpen; localStorage.setItem('panel', S.panelOpen ? '1' : '0'); $('#app').classList.toggle('panel', S.panelOpen); }
+document.querySelectorAll('[data-pane]').forEach(b => b.onclick = () => showPane(b.dataset.pane));
+$('#btnPanel').onclick = () => togglePanel(); $('#btnClosePanel').onclick = () => togglePanel();
+function renderPane() { if (!S.panelOpen) return; ({ files: loadTree, git: loadGit, tasks: renderTasks, term: renderTerm, oracle: loadOracle, rules: loadRules, journal: loadJournal, vices: loadVices, map: loadMap, config: renderConfig })[S.pane]?.(); }
+
+// files
+async function loadTree() {
+  if (!S.root) { $('#tree').innerHTML = '<div class="empty">Sem projeto</div>'; return; }
+  const [t, d] = await Promise.all([api('/api/files/tree'), api('/api/diff')]); const changed = {}; for (const f of d.files || []) changed[f.path] = f.status;
+  const rec = (n, depth) => n.dir ? `<div class="${depth < 1 ? 'open' : ''}"><div class="n d" onclick="this.parentNode.classList.toggle('open')">${esc(n.name)}/</div><div class="c">${(n.children || []).map(c => rec(c, depth + 1)).join('')}</div></div>` : `<div class="n" onclick="openFile('${esc(n.path)}')"><span class="st">${changed[n.path] ? esc(changed[n.path]) : ''}</span>${esc(n.name)}<span class="ln">${n.lines || ''}</span></div>`;
+  $('#tree').innerHTML = rec(t, 0);
+}
+window.openFile = async p => { const [r, d] = await Promise.all([api('/api/files/read?path=' + encodeURIComponent(p)), api('/api/diff?path=' + encodeURIComponent(p))]); $('#fileView').innerHTML = `<div class="row" style="margin-bottom:4px"><span class="mono trunc grow">${esc(p)}</span><button class="btn sm ghost" onclick="nat('reveal', ${JSON.stringify(S.root.replace(/[\\/]$/, '') + '/' + p)})">Explorador</button></div>` + (d.diff ? diffHTML(d.diff) : `<pre class="out sel" style="max-height:420px;overflow:auto">${esc(r.content || r.error || '')}</pre>`); };
+
+// git
+async function loadGit() {
+  if (!S.root || S.pane !== 'git') return;
+  const [d, g] = await Promise.all([api('/api/diff'), api('/api/git', { body: {} })]);
+  const el = $('#git');
+  if (!d.isGit) { el.innerHTML = '<div class="empty">Esta pasta não é um repositório git.</div>'; return; }
+  el.innerHTML = `<div class="row" style="margin-bottom:8px"><b>${esc(g.branch?.trim() || '')}</b><span class="faint">${(d.files || []).length} alteração(ões)</span></div>` +
+    (d.files || []).map(f => `<div class="frow" onclick="showDiff('${esc(f.path)}')"><span class="st ${esc(f.status[0])}">${esc(f.status)}</span><span class="trunc grow">${esc(f.path)}</span><button class="btn sm ghost danger" onclick="event.stopPropagation();discard('${esc(f.path)}')" title="Descartar alterações">↺</button></div>`).join('') +
+    `<div id="diffView" style="margin-top:8px"></div>` + ((d.files || []).length ? `<div class="row" style="margin-top:10px"><input id="commitMsg" class="grow" placeholder="Mensagem do commit" onkeydown="if(event.key==='Enter')commit()"><button class="btn" onclick="commit()">Commit</button></div>` : '') +
+    `<div class="sect">histórico</div><pre class="out sel">${esc(g.log || '')}</pre>`;
+}
+window.showDiff = async p => { const r = await api('/api/diff?path=' + encodeURIComponent(p)); $('#diffView').innerHTML = `<div class="mono" style="margin-bottom:3px">${esc(p)}</div>` + diffHTML(r.diff || ''); };
+window.discard = async p => { if (!confirm(t('Descartar as alterações em ' + p + '?'))) return; await api('/api/git', { body: { action: 'discard', path: p } }); loadGit(); loadTree(); };
+window.commit = async () => { const r = await api('/api/git', { body: { action: 'commit', message: $('#commitMsg').value } }); toast(r.ok ? 'Commit feito' : 'Falhou: ' + (r.output || r.error)); loadGit(); };
+
+// tasks
+function renderTasks() { const L = cur(); const t = L?.snap?.tasks || []; $('#tasks').innerHTML = t.length ? t.map(x => `<div class="task ${x.status}"><span class="st">${x.status === 'done' ? 'feito' : x.status === 'in_progress' ? 'agora' : 'depois'}</span><span>${esc(x.text)}</span></div>`).join('') : '<div class="empty">O agente ainda não listou tarefas nesta sessão.</div>'; }
+
+// terminal
+function renderTerm() { $('#termCwd').textContent = (S.termCwd || S.root || '').replace(S.root, '.') || ''; }
+$('#termIn').onkeydown = async e => {
+  if (e.key !== 'Enter') return; const c = e.target.value; if (!c.trim()) return; e.target.value = '';
+  const t = $('#term'); t.insertAdjacentHTML('beforeend', `<div><span class="cmd">${esc($('#termCwd').textContent)} $ ${esc(c)}</span></div>`); t.scrollTop = t.scrollHeight;
+  if (c.trim() === 'clear') { t.innerHTML = ''; return; }
+  const r = await api('/api/terminal', { body: { command: c, cwd: S.termCwd } });
+  S.termCwd = r.cwd || S.termCwd; renderTerm();
+  t.insertAdjacentHTML('beforeend', `<div class="${r.exit ? 'err' : ''}">${esc(r.output || '')}${r.exit ? `\n[exit ${r.exit}]` : ''}</div>` + (r.notes?.length ? `<div class="note">${r.notes.map(esc).join('\n')}</div>` : '')); t.scrollTop = t.scrollHeight; loadGit();
+};
+
+// oracle (pronto): files, edited in place, saved as you type
+async function loadOracle() {
+  const files = await api('/api/oracle'); const el = $('#oracle');
+  el.innerHTML = `<div class="faint" style="margin-bottom:8px">Critérios de "pronto". O agente lê; não consegue alterar (qualquer ferramenta, qualquer caminho: bloqueado e registrado).</div>` +
+    (files.length ? files : [{ name: 'pronto.md', content: '' }]).map(f => `<div class="row" style="margin:8px 0 4px"><span class="mono">.infuse/oracle/${esc(f.name)}</span><span class="faint" id="osv-${esc(f.name)}"></span></div><textarea class="doc" data-name="${esc(f.name)}" placeholder="Ex.: a página /login autentica com e-mail e senha; o teste e2e login.spec passa; nenhum arquivo acima de 400 linhas.">${esc(f.content)}</textarea>`).join('') +
+    `<div class="row" style="margin-top:10px"><input id="newOracle" placeholder="novo arquivo (ex.: performance.md)" onkeydown="if(event.key==='Enter'){api('/api/oracle',{method:'PUT',body:{name:this.value,content:''}}).then(loadOracle)}"></div>`;
+  el.querySelectorAll('textarea.doc').forEach(t => { const save = debounce(async () => { await api('/api/oracle', { method: 'PUT', body: { name: t.dataset.name, content: t.value } }); const s = $(`#osv-${t.dataset.name.replace(/\./g, '\\.')}`); if (s) { s.textContent = 'salvo'; setTimeout(() => s.textContent = '', 1200); } }, 500); t.oninput = save; });
+}
+
+// rules: inline rows, applied as they change
+let rulesState = null;
+async function loadRules() {
+  const scope = localStorage.getItem('rulesScope') || 'project';
+  const r = await api(`/api/rules?scope=${scope}`); rulesState = { scope, rules: r.rules || [], disable: r.disable || [] };
+  const el = $('#rules'); const actOf = x => x.replace != null ? 'replace' : x.say ? 'say' : x.infuse ? 'infuse' : x.infuseFile ? 'infuseFile' : x.vice ? 'vice' : 'say';
+  el.innerHTML = `<div class="row" style="margin-bottom:6px"><span class="pill"><select id="rulesScope"><option value="project" ${scope === 'project' ? 'selected' : ''}>este projeto</option><option value="global" ${scope === 'global' ? 'selected' : ''}>todos os projetos</option></select></span><span class="faint mono trunc">${esc(r.file)}</span></div>
+  <label class="toggle"><input type="checkbox" id="disHd" ${rulesState.disable.includes('heredoc') ? 'checked' : ''}> desligar a transformação de heredoc</label>
+  <div class="rule" style="color:var(--text3);font-size:10.5px;text-transform:uppercase"><span></span><span>quando</span><span>casa com (regex)</span><span>ação</span><span>valor</span><span></span></div>
+  <div id="ruleRows"></div><button class="btn sm" id="addRule" style="margin-top:6px">+ regra</button>
+  <div class="sect">testar um comando</div><div class="row"><input id="testCmd" class="grow mono" placeholder="cat > a.ts <<EOF …" onkeydown="if(event.key==='Enter')testRule()"></div><pre class="out sel" id="testOut" style="display:none"></pre>`;
+  const rows = $('#ruleRows');
+  const draw = () => { rows.innerHTML = rulesState.rules.map((x, i) => `<div class="rule" data-i="${i}"><input type="checkbox" data-k="enabled" ${x.enabled === false ? '' : 'checked'}><select data-k="when">${['command', 'write', 'list', 'always'].map(w => `<option ${x.when === w ? 'selected' : ''}>${w}</option>`).join('')}</select><input data-k="match" class="mono" value="${esc(x.match || '')}"><select data-k="act">${['say', 'infuse', 'infuseFile', 'replace', 'vice'].map(a => `<option ${actOf(x) === a ? 'selected' : ''}>${a}</option>`).join('')}</select><input data-k="val" value="${esc(x.replace ?? x.say ?? x.infuse ?? x.infuseFile ?? x.vice ?? '')}"><button class="x" data-k="del">×</button></div>`).join(''); };
+  draw();
+  const save = debounce(async () => { const r = await api(`/api/rules?scope=${rulesState.scope}`, { method: 'PUT', body: { rules: rulesState.rules, disable: $('#disHd').checked ? ['heredoc'] : [] } }); if (r.error) toast(r.error); }, 400);
+  rows.oninput = rows.onchange = e => { const row = e.target.closest('.rule'); if (!row) return; const x = rulesState.rules[+row.dataset.i]; const k = e.target.dataset.k;
+    if (k === 'enabled') x.enabled = e.target.checked; else if (k === 'when') x.when = e.target.value; else if (k === 'match') x.match = e.target.value;
+    else if (k === 'act' || k === 'val') { const act = row.querySelector('[data-k=act]').value, val = row.querySelector('[data-k=val]').value; delete x.replace; delete x.say; delete x.infuse; delete x.infuseFile; delete x.vice; if (act === 'replace') x.replace = val; else x[act] = val; }
+    save(); };
+  rows.onclick = e => { if (e.target.dataset.k === 'del') { rulesState.rules.splice(+e.target.closest('.rule').dataset.i, 1); draw(); save(); } };
+  $('#addRule').onclick = () => { rulesState.rules.push({ id: 'r' + Date.now(), when: 'command', match: '', say: '' }); draw(); save(); };
+  $('#disHd').onchange = save; $('#rulesScope').onchange = e => { localStorage.setItem('rulesScope', e.target.value); loadRules(); };
+}
+window.testRule = async () => { const r = await api('/api/rules/test', { body: { command: $('#testCmd').value } }); const o = $('#testOut'); o.style.display = ''; o.textContent = `COMANDO FINAL:\n${r.finalCommand}\n\nO AGENTE RECEBE:\n${(r.lines || []).join('\n') || '(apenas a saída normal)'}`; };
+
+async function loadJournal() { const l = await api('/api/journal'); $('#journal').innerHTML = l.length ? `<table><tr><th>quando</th><th>tipo</th><th>o quê</th></tr>${l.map(e => `<tr><td class="faint">${when(e.ts)}</td><td><span class="tag ${e.kind === 'blocked' ? 'bad' : ''}">${esc(e.kind)}</span></td><td class="mono cell">${esc(e.path || e.command || '')}${e.detail ? ` <span class="faint">${esc(e.detail)}</span>` : ''}</td></tr>`).join('')}</table>` : '<div class="empty">Nenhuma escrita passou pelo filtro ainda.</div>'; }
+async function loadVices() { const l = await api('/api/lessons'); $('#vices').innerHTML = l.length ? `<table><tr><th>quando</th><th>vício</th><th>detalhe</th></tr>${l.map(e => `<tr><td class="faint">${when(e.ts)}</td><td><span class="tag warn">${esc(e.vice)}</span></td><td class="cell">${esc(e.detail)}</td></tr>`).join('')}</table>` : '<div class="empty">Nenhum vício observado.</div>'; }
+async function loadMap() {
+  if (!S.root) return; const m = await api('/api/map'); const nf = Object.keys(m.files || {}).length;
+  const dirs = Object.entries(m.dirs || {}).sort(); $('#map').innerHTML = `<div class="row" style="margin-bottom:8px"><span class="muted">${nf} arquivos · gerado ${when(m.generatedAt)}</span><button class="btn sm" onclick="api('/api/map?refresh=1').then(loadMap)">Regerar</button></div>` +
+    ((m.hotspots || []).length ? `<div class="card" style="margin-bottom:10px;border-color:var(--warn)"><b>Arquivos grandes demais</b><ul style="margin:6px 0 0 18px;padding:0">${m.hotspots.map(h => `<li class="mono">${esc(h.path)} — ${h.lines} linhas</li>`).join('')}</ul></div>` : '') +
+    `<table><tr><th>pasta</th><th>arquivos</th><th>linhas</th><th>subpastas</th></tr>${dirs.map(([p, d]) => `<tr><td class="mono">${esc(p)}</td><td>${(d.files||[]).length}</td><td>${d.lines||0}</td><td class="cell faint">${esc((d.subdirs||[]).join(', '))}</td></tr>`).join('')}</table>`;
+}
+
+// config: inline, applied on change
+async function saveSetting(patch) { const r = await api('/api/settings', { method: 'PUT', body: patch }); if (r.error) toast(r.error); S.settings = { ...S.settings, ...patch }; return r; }
+async function renderConfig() {
+  const r = await api('/api/settings'); S.settings = r.settings; S.providers = r.providers; const s = r.settings; const st = await api('/api/status');
+  const el = $('#config');
+  el.innerHTML = `<div class="sect">provedor</div>
+  <div class="prov"><span class="nm">${esc(s.provider)}</span><span class="tag ${r.hasKey || s.provider === 'mock' ? 'ok' : ''}">${s.provider === 'mock' ? 'demonstração' : r.hasKey ? 'conectado' : 'sem chave'}</span><span class="grow"></span><span class="pill"><select id="c_provider">${r.providers.map(p => `<option ${p === s.provider ? 'selected' : ''}>${p}</option>`).join('')}</select></span></div>
+  <div class="inl"><label>Chave de API</label><input type="password" id="c_key" value="${esc(s.apiKey || '')}" placeholder="cole a chave"><button class="btn sm" id="c_test">Testar e salvar</button><span id="c_keyRes" class="faint"></span></div>
+  <div class="inl"><label>Endpoint (opcional)</label><input type="text" id="c_base" value="${esc(s.baseUrl || '')}" placeholder="${s.provider === 'ollama' ? 'http://127.0.0.1:11434' : s.provider === 'openai' ? 'https://api.openai.com — ou LM Studio, vLLM, OpenRouter, Groq…' : 'padrão do provedor'}"></div>
+  <div class="inl"><label>Modelos disponíveis</label><button class="btn sm" id="c_models">Listar modelos do provedor</button><span id="c_modelsRes" class="faint"></span></div>
+  <div id="c_modelList" style="display:flex;gap:4px;flex-wrap:wrap;margin:0 0 6px 148px"></div>
+  <div class="inl"><label>Modelo principal</label><input type="text" id="c_model" value="${esc(s.model)}" list="models"></div>
+  <div class="inl"><label>Modelo rápido</label><input type="text" id="c_fast" value="${esc(s.fastModel)}" list="models"></div>
+  <datalist id="models">${Object.keys(s.pricing || {}).map(m => `<option>${esc(m)}</option>`).join('')}</datalist>
+  <div class="inl"><label>Raciocínio (tokens)</label><input type="number" id="c_think" value="${s.thinkingBudget || 0}" min="0" step="1000"><span class="faint">0 desliga</span></div>
+  <div class="inl"><label>Máx. tokens de saída</label><input type="number" id="c_max" value="${s.maxTokens}"></div>
+  <div class="inl"><label>Limite da sessão (US$)</label><input type="number" id="c_limit" value="${s.dailyLimitUsd}" step="1"></div>
+  <div class="sect">preços (US$ por milhão de tokens) — <span class="faint">estimativa; confira a tabela do provedor</span></div>
+  <table class="price"><tr><th>prefixo do modelo</th><th>entrada</th><th>saída</th><th></th></tr>${Object.entries(s.pricing || {}).map(([k, v]) => `<tr data-k="${esc(k)}"><td class="mono">${esc(k)}</td><td><input type="number" step="0.01" value="${v[0]}" data-i="0"></td><td><input type="number" step="0.01" value="${v[1]}" data-i="1"></td><td><button class="btn sm ghost" data-del="${esc(k)}">×</button></td></tr>`).join('')}
+  <tr><td><input id="p_new" class="mono" placeholder="novo prefixo" style="width:100%"></td><td><input type="number" id="p_in" step="0.01" placeholder="in"></td><td><input type="number" id="p_out" step="0.01" placeholder="out"></td><td><button class="btn sm" id="p_add">+</button></td></tr></table>
+  <div class="sect">permissões padrão</div>
+  ${['Bash', 'Write', 'Edit', 'WebFetch'].map(t => `<div class="inl"><label>${t}</label><span class="pill"><select data-perm="${t}">${['ask', 'allow', 'deny'].map(v => `<option value="${v}" ${(s.permissions || {})[t] === v ? 'selected' : ''}>${{ ask: 'perguntar', allow: 'permitir', deny: 'negar' }[v]}</option>`).join('')}</select></span></div>`).join('')}
+  <div class="inl"><label>Caminhos protegidos</label><input type="text" id="c_prot" value="${esc((s.protectedPaths || []).join(', '))}" placeholder=".infuse/oracle/**, .env"></div>
+  <div class="sect">janela</div>
+  <div class="inl"><label>Idioma</label><span class="pill"><select id="c_lang"><option value="pt-BR" ${(s.language || 'pt-BR') !== 'en' ? 'selected' : ''}>Português (Brasil)</option><option value="en" ${s.language === 'en' ? 'selected' : ''}>English</option></select></span></div>
+  <div class="inl"><label>Tema</label><span class="pill"><select id="c_theme">${['system', 'light', 'dark'].map(t => `<option value="${t}" ${s.theme === t ? 'selected' : ''}>${{ system: 'seguir o sistema', light: 'claro', dark: 'escuro' }[t]}</option>`).join('')}</select></span></div>
+  <div class="inl"><label class="toggle"><input type="checkbox" id="c_notify" ${s.notify ? 'checked' : ''}> notificações do sistema</label></div>
+  <div class="inl"><label class="toggle"><input type="checkbox" id="c_tray" ${s.hideTray ? '' : 'checked'}> ícone na bandeja</label></div>
+  <div class="inl"><label class="toggle"><input type="checkbox" id="c_closeTray" ${s.closeToTray ? 'checked' : ''}> fechar a janela mantém na bandeja</label></div>
+  <div class="inl"><label class="toggle"><input type="checkbox" id="c_vim" ${s.vim ? 'checked' : ''}> modo vim na caixa de prompt</label></div>
+  <div class="sect">aplicativos nesta máquina</div>
+  <div id="c_apps" class="faint">procurando…</div>
+  <div class="sect">outros agentes (Claude Code, Codex, Gemini)</div>
+  <div class="inl"><span class="muted">shell interposto: </span><span class="tag ${st.shimInstalled ? 'ok' : ''}">${st.shimInstalled ? 'instalado' : 'não instalado'}</span><span class="grow"></span><button class="btn sm" onclick="api('/api/install',{body:{}}).then(r=>{toast(r.error||'Instalado — reinicie o Claude Code');renderConfig()})">Instalar</button><button class="btn sm danger" onclick="api('/api/uninstall',{body:{}}).then(()=>{toast('Removido');renderConfig()})">Remover</button></div>
+  <div class="faint mono">${esc(st.shim || '')}</div>`;
+  const bind = (id, key, map = v => v) => { el.querySelector(id).onchange = e => saveSetting({ [key]: map(e.target.type === 'checkbox' ? e.target.checked : e.target.value) }).then(() => { if (key === 'theme') applyTheme(); if (key === 'vim') applyVim(); }); };
+  bind('#c_provider', 'provider'); bind('#c_base', 'baseUrl'); bind('#c_model', 'model'); bind('#c_fast', 'fastModel'); bind('#c_think', 'thinkingBudget', Number); bind('#c_max', 'maxTokens', Number); bind('#c_limit', 'dailyLimitUsd', Number);
+  el.querySelector('#c_lang').onchange = e => saveSetting({ language: e.target.value }).then(() => location.reload());
+  bind('#c_theme', 'theme'); bind('#c_notify', 'notify'); bind('#c_tray', 'hideTray', v => !v); bind('#c_closeTray', 'closeToTray'); bind('#c_vim', 'vim'); bind('#c_prot', 'protectedPaths', v => v.split(',').map(x => x.trim()).filter(Boolean));
+  el.querySelectorAll('[data-perm]').forEach(sel => sel.onchange = () => saveSetting({ permissions: { ...S.settings.permissions, [sel.dataset.perm]: sel.value } }));
+  el.querySelector('#c_provider').onchange = e => saveSetting({ provider: e.target.value }).then(renderConfig);
+  el.querySelector('#c_test').onclick = async () => { const k = el.querySelector('#c_key').value; const res = el.querySelector('#c_keyRes'); res.textContent = 'testando…'; const r = await api('/api/settings/test', { body: { apiKey: k } }); if (r.ok) { if (k && !k.includes('…')) await saveSetting({ apiKey: k }); res.innerHTML = `<span class="tag ok">ok</span> ${esc(r.model)}`; renderConfig(); } else res.innerHTML = `<span class="tag bad">falhou</span> ${esc(r.error)}`; };
+  el.querySelector('#c_models').onclick = async () => { const res = el.querySelector('#c_modelsRes'); res.textContent = 'consultando…'; const r = await api('/api/providers/models', { body: { provider: el.querySelector('#c_provider').value, apiKey: el.querySelector('#c_key').value, baseUrl: el.querySelector('#c_base').value } });
+    if (!r.ok) { res.innerHTML = `<span class="tag bad">falhou</span> ${esc(r.error)}`; return; } res.textContent = `${r.models.length} modelo(s) — clique para usar como principal`;
+    el.querySelector('#c_modelList').innerHTML = r.models.map(m => `<button class="btn sm ghost mono" data-m="${esc(m)}">${esc(m)}</button>`).join(''); el.querySelectorAll('#c_modelList button').forEach(b => b.onclick = () => saveSetting({ model: b.dataset.m }).then(() => { toast('Modelo principal: ' + b.dataset.m); renderConfig(); })); };
+  api('/api/apps').then(apps => { const box = el.querySelector('#c_apps'); if (!box) return; box.className = ''; box.innerHTML = apps.map(a => `<div class="prov"><span class="nm">${esc(a.name)}</span><span class="tag ${a.found ? 'ok' : ''}">${a.found ? 'encontrado' : 'não encontrado'}</span><span class="faint mono trunc grow">${esc(a.appId || a.path || '')}</span><button class="btn sm" data-app="${a.id}" ${a.found ? '' : 'disabled'}>Abrir</button></div>`).join('');
+    box.querySelectorAll('[data-app]').forEach(b => b.onclick = () => api('/api/apps/open', { body: { id: b.dataset.app } }).then(r => toast(r.ok ? 'Abrindo…' : r.error))); });
+  const savePrice = () => { const pricing = {}; el.querySelectorAll('tr[data-k]').forEach(tr => pricing[tr.dataset.k] = [+tr.querySelector('[data-i="0"]').value, +tr.querySelector('[data-i="1"]').value]); return saveSetting({ pricing }); };
+  el.querySelectorAll('tr[data-k] input').forEach(i => i.onchange = savePrice);
+  el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { b.closest('tr').remove(); savePrice().then(renderConfig); });
+  el.querySelector('#p_add').onclick = () => { const k = el.querySelector('#p_new').value.trim(); if (!k) return; saveSetting({ pricing: { ...S.settings.pricing, [k]: [+el.querySelector('#p_in').value, +el.querySelector('#p_out').value] } }).then(renderConfig); };
+  fillModels();
+}
+function fillModels() { const s = S.settings || {}; const set = new Set([s.model, s.fastModel, 'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', cur()?.snap?.model].filter(Boolean)); $('#modelSel').innerHTML = [...set].map(m => `<option>${esc(m)}</option>`).join(''); const L = cur(); $('#modelSel').value = L?.snap?.model || s.model; }
+
+// ---------------------------------------------------------------- boot
+(async function boot() {
+  const r = await api('/api/settings'); S.settings = r.settings; S.providers = r.providers; S.tools = r.tools; S.mode = S.settings.mode; S.lang = (S.settings.language || '').toLowerCase().startsWith('en') ? 'en' : 'pt'; startTranslation(); applyTheme(); applyVim(); renderMode(); fillModels();
+  $('#app').classList.toggle('panel', S.panelOpen); showPane(S.pane);
+  await loadProjects();
+  const saved = JSON.parse(localStorage.getItem('open') || '{"open":[]}');
+  for (const t of saved.open) if (S.projects.find(p => p.root === t.root) && (S.sessions[t.root] || []).find(s => s.id === t.id)) S.open.push(t);
+  renderTabs();
+  if (saved.sid && S.open.find(t => t.id === saved.sid)) { const t = S.open.find(x => x.id === saved.sid); openSession(t.root, t.id); }
+  else if (S.open.length) openSession(S.open[0].root, S.open[0].id);
+  else if (S.projects.length) { selectProject(S.projects[0].root); renderChat(); }
+  else renderChat();
+  renderProjPill();
+  updateFoot(); P.focus();
+  if (window.infuse) infuse.on('drop', r => {});
+})();
+</script>
+</body>
+</html>

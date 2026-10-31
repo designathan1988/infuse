@@ -1,0 +1,171 @@
+package main
+
+// Bridge between the window's page and the OS: native dialogs, dropped paths, notifications, opening a
+// folder in the file manager. The page calls `infuse.call(method, ...params)`; each window host
+// (WebView2 on Windows, WKWebView/WebKitGTK elsewhere) forwards the call here. Paths never come from
+// text the user types: they come from the OS dialog or from a drop.
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+)
+
+// NativeDialogs is implemented once per OS (dialogs_*.go) and stubbed in tests.
+type NativeDialogs interface {
+	// PickFolder returns "" when the user cancels.
+	PickFolder(title string) (string, error)
+	// PickFiles returns nil when the user cancels.
+	PickFiles(title string) ([]string, error)
+}
+
+// Host is what the window gives the bridge: notifications and the owner window for dialogs.
+type Host interface {
+	Notify(title, body string)
+	Focused() bool
+}
+
+type Bridge struct {
+	Dialogs NativeDialogs
+	Host    Host
+}
+
+type Attachment struct {
+	Path  string `json:"path"`
+	Name  string `json:"name"`
+	Size  int64  `json:"size"`
+	Image bool   `json:"image"`
+}
+
+// DropResult splits dropped paths the way the window uses them: folders become projects, files attachments.
+type DropResult struct {
+	Projects    []string     `json:"projects"`
+	Attachments []Attachment `json:"attachments"`
+}
+
+var imageExt = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+
+func attachmentOf(p string) (Attachment, bool) {
+	st, err := os.Stat(p)
+	if err != nil || st.IsDir() {
+		return Attachment{}, false
+	}
+	_, img := imageExt[strings.ToLower(filepath.Ext(p))]
+	return Attachment{Path: p, Name: filepath.Base(p), Size: st.Size(), Image: img}, true
+}
+
+func (b *Bridge) Classify(paths []string) DropResult {
+	res := DropResult{Projects: []string{}, Attachments: []Attachment{}}
+	for _, p := range paths {
+		p = filepath.Clean(p)
+		st, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		if st.IsDir() {
+			RememberProject(p)
+			res.Projects = append(res.Projects, p)
+		} else if a, ok := attachmentOf(p); ok {
+			res.Attachments = append(res.Attachments, a)
+		}
+	}
+	return res
+}
+
+// Call dispatches one page request. Results are JSON-encodable; nil means "nothing" (e.g. cancelled).
+func (b *Bridge) Call(method string, params []json.RawMessage) (any, error) {
+	strArg := func(i int) string {
+		if i >= len(params) {
+			return ""
+		}
+		var s string
+		_ = json.Unmarshal(params[i], &s)
+		return s
+	}
+	switch method {
+	case "pickFolder":
+		p, err := b.Dialogs.PickFolder("Abrir pasta do projeto")
+		if err != nil || p == "" {
+			return nil, err
+		}
+		p = filepath.Clean(p)
+		RememberProject(p)
+		return p, nil
+	case "pickFiles":
+		list, err := b.Dialogs.PickFiles("Anexar arquivos")
+		if err != nil || len(list) == 0 {
+			return nil, err
+		}
+		out := []Attachment{}
+		for _, p := range list {
+			if a, ok := attachmentOf(p); ok {
+				out = append(out, a)
+			}
+		}
+		return out, nil
+	case "drop":
+		var paths []string
+		if len(params) > 0 {
+			_ = json.Unmarshal(params[0], &paths)
+		}
+		return b.Classify(paths), nil
+	case "notify":
+		if b.Host != nil && !b.Host.Focused() {
+			b.Host.Notify(strArg(0), strArg(1))
+		}
+		return nil, nil
+	case "reveal":
+		return nil, revealInFileManager(strArg(0))
+	case "platform":
+		return map[string]any{"os": runtime.GOOS, "version": version, "native": true}, nil
+	}
+	return nil, fmt.Errorf("método desconhecido: %s", method)
+}
+
+// asEscape quotes a string for AppleScript.
+func asEscape(s string) string { return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) }
+
+func revealInFileManager(p string) error {
+	st, err := os.Stat(p)
+	if err != nil {
+		return err
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		if st.IsDir() {
+			cmd = exec.Command("explorer.exe", p)
+		} else {
+			cmd = exec.Command("explorer.exe", "/select,", p)
+		}
+	case "darwin":
+		cmd = exec.Command("open", "-R", p)
+	default:
+		if !st.IsDir() {
+			p = filepath.Dir(p)
+		}
+		cmd = exec.Command("xdg-open", p)
+	}
+	return cmd.Start()
+}
+
+// bridgeScript is injected before the page loads. `post` is the host's message channel.
+const bridgeScript = `(function(){
+  if (window.infuse) return;
+  var seq = 0, pending = {}, listeners = {};
+  window.infuse = {
+    native: true,
+    call: function(method){ var params = Array.prototype.slice.call(arguments, 1);
+      return new Promise(function(res, rej){ var id = ++seq; pending[id] = {res: res, rej: rej};
+        window.__infusePost(JSON.stringify({id: id, method: method, params: params})); }); },
+    drop: function(files){ var id = ++seq; return new Promise(function(res, rej){ pending[id] = {res: res, rej: rej};
+        window.__infusePostFiles(JSON.stringify({id: id, method: 'drop', params: []}), files); }); },
+    on: function(ev, fn){ (listeners[ev] = listeners[ev] || []).push(fn); },
+    _done: function(id, ok, v){ var p = pending[id]; if (!p) return; delete pending[id]; ok ? p.res(v) : p.rej(new Error(v)); },
+    _emit: function(ev, data){ (listeners[ev] || []).forEach(function(fn){ try { fn(data) } catch (e) {} }); }
+  };
+})();`

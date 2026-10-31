@@ -1,0 +1,81 @@
+//go:build windows
+
+package main
+
+import (
+	"os"
+	"os/exec"
+	"syscall"
+
+	"golang.org/x/sys/windows"
+)
+
+func detach(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.DETACHED_PROCESS,
+	}
+}
+
+var (
+	kernel32             = windows.NewLazySystemDLL("kernel32.dll")
+	procGetConsoleWindow = kernel32.NewProc("GetConsoleWindow")
+	procAttachConsole    = kernel32.NewProc("AttachConsole")
+)
+
+// noConsoleWindow keeps console children (bash, git) from opening a console window of their own when
+// this process has none: the binary is a GUI-subsystem program (-H windowsgui).
+func noConsoleWindow(cmd *exec.Cmd) {
+	if h, _, _ := procGetConsoleWindow.Call(); h != 0 {
+		return
+	}
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.HideWindow = true
+	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NO_WINDOW
+}
+
+// attachParentConsole: a GUI-subsystem binary gets no console. When run from a terminal (CLI use, or as
+// bash.exe in an interactive shell), borrow the parent's console so output appears and children inherit
+// it. Handles already inherited (pipes from an agent's Bash tool) are left untouched.
+func attachParentConsole() {
+	if r, _, _ := procAttachConsole.Call(^uintptr(0)); r == 0 { // ATTACH_PARENT_PROCESS
+		return
+	}
+	valid := func(h windows.Handle) bool {
+		if h == 0 || h == windows.InvalidHandle {
+			return false
+		}
+		t, err := windows.GetFileType(h)
+		return err == nil && t != windows.FILE_TYPE_UNKNOWN
+	}
+	if !valid(windows.Handle(os.Stdout.Fd())) {
+		if f, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
+			os.Stdout = f
+		}
+	}
+	if !valid(windows.Handle(os.Stderr.Fd())) {
+		if f, err := os.OpenFile("CONOUT$", os.O_WRONLY, 0); err == nil {
+			os.Stderr = f
+		}
+	}
+	if !valid(windows.Handle(os.Stdin.Fd())) {
+		if f, err := os.OpenFile("CONIN$", os.O_RDWR, 0); err == nil {
+			os.Stdin = f
+		}
+	}
+}
+
+func processAlive(pid int) bool {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return false
+	}
+	defer windows.CloseHandle(h)
+	var code uint32
+	if err := windows.GetExitCodeProcess(h, &code); err != nil {
+		return false
+	}
+	return code == 259 // STILL_ACTIVE
+}

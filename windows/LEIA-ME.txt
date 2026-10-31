@@ -1,0 +1,85 @@
+infuse 0.5 - ambiente de desenvolvimento com agente de IA, dentro do filtro
+=========================================================================
+
+Um unico arquivo: infuse.exe. Nao precisa instalar nada.
+
+COMO COMECAR
+------------
+1. Clique duas vezes em infuse.exe. A aplicacao abre na sua propria janela
+   (sem navegador, sem janela preta). Fica tambem um icone na bandeja do sistema
+   (Abrir / Sair).
+   (Na primeira vez o Windows pode avisar "protegeu o seu computador": clique em
+   "Mais informacoes" e "Executar assim mesmo".)
+
+2. Configuracoes (canto inferior esquerdo, ou a aba "Config" do painel):
+   - Provedor: anthropic, openai (tambem LM Studio/vLLM/OpenRouter pelo
+     endpoint), google (Gemini) ou ollama (local, sem chave).
+   - Chave de API: cole e clique em "Testar e salvar". "Listar modelos do
+     provedor" mostra os modelos da sua conta; clique num para usa-lo.
+   - Tudo e aplicado ao mudar; nao ha botao Salvar.
+   - Idioma: Portugues ou English.
+   Sem chave, escolha o provedor "mock" para ver a interface funcionando com um
+   agente de demonstracao (peca "demo", "heredoc", "oraculo" ou "pergunta").
+
+3. "+ Nova sessao": escolha o projeto no seletor abaixo da caixa de texto
+   ("Abrir pasta..." abre o Explorador de Arquivos) ou arraste a pasta para a
+   janela. Descreva o que precisa e Enter. Esc interrompe.
+   Aprovacao de ferramenta: Y (sim) / A (sempre nesta sessao) / N (nao).
+   Shift+Tab alterna o modo de permissao. Ctrl+K abre a paleta de comandos.
+   "voltar aqui" num turno restaura os arquivos e a conversa.
+
+O QUE VOCE TEM
+--------------
+AGENTE COMPLETO, DENTRO DO FILTRO
+  O agente le, escreve e executa no seu projeto com as ferramentas Bash, Read,
+  Write, Edit, Glob, Grep, LS, WebFetch, lista de tarefas e perguntas a voce.
+  Tudo passa pelo filtro por construcao:
+  - heredoc nunca chega ao bash (o arquivo e escrito corretamente);
+  - cada listagem volta com o mapa da pasta; cada escrita volta com quem
+    depende do arquivo; suas regras injetam instrucoes no momento certo;
+  - a pasta .infuse\oracle e os caminhos protegidos sao SOMENTE LEITURA para o
+    agente, no executor de ferramentas - nao por instrucao. Tentativas ficam
+    registradas no Jornal;
+  - tudo que foi escrito fica no Jornal; vicios, na aba Vicios.
+
+PERMISSOES (seletor no topo)
+  Perguntar        - pede antes de executar comandos, escrever e acessar a web
+  Aceitar edicoes  - escrita livre; comandos ainda perguntam
+  Modo plano       - o agente so le e propoe; nao escreve nem executa
+  Sem perguntas    - nada e perguntado (use com criterio)
+  "Permitir sempre nesta sessao" libera aquela ferramenta/comando ate fechar.
+
+REVERTER
+  Cada turno tem "reverter ate aqui": restaura os arquivos como estavam antes
+  daquele turno e remove a conversa a partir dele. Funciona com ou sem git.
+
+PAINEL DIREITO
+  Arquivos    arvore do projeto e visualizacao
+  Alteracoes  status do git, diff por arquivo, descartar, commit
+  Tarefas     a lista que o agente mantem
+  Pronto      defina o que e "pronto" em termos observaveis; o agente le e
+              nao consegue alterar
+  Regras      quem define o que o filtro faz e voce (por formulario; "Testar"
+              mostra o que o filtro faria com um comando)
+  Jornal      tudo que passou pelo filtro
+  Vicios      vicios detectados, com contagem
+  Mapa        o projeto como ele e: exportacoes, dependentes, arquivos grandes
+  Memoria     notas persistentes do projeto; mostra tambem CLAUDE.md/AGENTS.md
+              encontrados (compatibilidade)
+
+CUSTO
+  O custo estimado aparece no topo; a tabela de precos e editavel em
+  Configuracoes. Ha um limite de gasto por sessao (padrao US$ 20).
+  O contexto e compactado automaticamente ao se aproximar do limite.
+
+CLAUDE CODE (opcional)
+  Se voce continuar usando o Claude Code desktop, o filtro pode ser instalado
+  nele em Configuracoes > Integracao com o Claude Code.
+
+O QUE AINDA NAO ESTA NESTA VERSAO (ver SPEC.md e docs/PROMPT-infuse-studio.md)
+  subagentes e revisor independente, cliente MCP, busca na web, bases de
+  arquitetura, executor do oraculo com evidencia, janela nativa, multi-provedor.
+
+Tudo fica no seu computador. A interface responde apenas em 127.0.0.1.
+Dados: %USERPROFILE%\.infuse\settings.json (inclui a chave de API) e, em cada
+projeto, a pasta .infuse\ (sessoes, checkpoints, regras, oraculo, jornal).
