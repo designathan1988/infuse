@@ -24,3 +24,24 @@ func TestSearchSessionsLooksInsideConversations(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestConcurrentLoadsShareOneSession(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	s := newSession(root)
+	s.save()
+	id := s.ID
+	sessionsMu.Lock()
+	delete(sessions, id) // as after a restart: only on disk
+	sessionsMu.Unlock()
+	got := make(chan *Session, 50)
+	for i := 0; i < 50; i++ {
+		go func() { x, _ := loadSession(root, id); got <- x }()
+	}
+	first := <-got
+	for i := 1; i < 50; i++ {
+		if x := <-got; x != first {
+			t.Fatal("two in-memory copies of the same session: events would go to one, the agent to the other")
+		}
+	}
+}

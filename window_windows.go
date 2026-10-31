@@ -238,7 +238,7 @@ window.addEventListener('unhandledrejection', function(e){ window.__infusePost(J
 	windowLog("window up: %s", url)
 	w.chromium.Resize()
 	w.chromium.Navigate(url)
-	if !LoadSettings().HideTray {
+	if !LoadSettings().HideTray && os.Getenv("INFUSE_WINDOW_HIDDEN") == "" {
 		w.addTray("")
 	}
 	w.chromium.Focus()
@@ -460,6 +460,10 @@ func (w *winWindow) applyTheme() {
 }
 
 func (w *winWindow) restorePlacement() {
+	if os.Getenv("INFUSE_WINDOW_HIDDEN") != "" { // automated end-to-end runs: full size, never shown
+		procSetWindowPos.Call(w.hwnd, 0, 0, 0, 1440, 900, 0x0010|0x0004) // SWP_NOACTIVATE|SWP_NOZORDER
+		return
+	}
 	var sp savedPlacement
 	wp := windowPlacement{ShowCmd: swShowNormal}
 	wp.Length = uint32(unsafe.Sizeof(wp))

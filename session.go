@@ -138,9 +138,14 @@ func loadSession(root, id string) (*Session, error) {
 	if s.Cwd == "" {
 		s.Cwd = root
 	}
+	// Several requests can load the same session at once (opening it fires a few); the first one stored
+	// wins, so every caller — the event stream included — holds the same object the agent runs on.
 	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+	if existing, ok := sessions[id]; ok {
+		return existing, nil
+	}
 	sessions[id] = s
-	sessionsMu.Unlock()
 	return s, nil
 }
 
@@ -1153,6 +1158,11 @@ func (s *Session) SuggestNext(ctx context.Context) (string, error) {
 	out := strings.Trim(strings.TrimSpace(msgText(Message{Content: res.Content})), "\"'“”")
 	if out == "-" || out == "" || strings.Contains(out, "\n") || len([]rune(out)) > 120 {
 		return "", nil
+	}
+	for i := len(msgs) - 1; i >= 0 && i >= len(msgs)-12; i-- { // never suggest what the user already sent
+		if msgs[i].Role == "user" && strings.EqualFold(strings.TrimSpace(msgText(msgs[i])), out) {
+			return "", nil
+		}
 	}
 	return out, nil
 }
