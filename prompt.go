@@ -68,6 +68,9 @@ func buildSystemPrompt(s *Session, rules *RuleSet) string {
 	if l := lessonsSummary(s.Root); l != "" {
 		b.WriteString("\n## Vícios já observados neste projeto (não repita)\n" + l + "\n")
 	}
+	if lock := instructionsPrompt(s.Root); lock != "" {
+		b.WriteString(lock + "\n")
+	}
 	if inst := loadInstructions(s.Root); inst != "" {
 		b.WriteString("\n## Instruções do usuário e do projeto\n" + inst + "\n")
 	}
@@ -178,8 +181,14 @@ func loadInstructions(root string) string {
 		filepath.Join(root, "AGENTS.md"),
 		filepath.Join(root, ".claude", "CLAUDE.md"),
 	} {
-		if t := readIfExists(p); t != "" {
-			parts = append(parts, "<!-- "+p+" -->\n"+t)
+		t := readIfExists(p)
+		if t == "" && strings.HasPrefix(p, root) { // deleted from the working tree: the committed version still rules
+			if rel, err := filepath.Rel(root, p); err == nil && contains(loadProjectRules(root).Missing, filepath.ToSlash(rel)) {
+				t = gitHeadFile(root, filepath.ToSlash(rel))
+			}
+		}
+		if t != "" {
+			parts = append(parts, "<!-- "+p+" -->\n"+resolveInstructionImports(root, filepath.Dir(p), t, 0))
 		}
 	}
 	return strings.Join(parts, "\n\n")

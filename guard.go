@@ -35,11 +35,11 @@ type Guard struct {
 
 // infuse's own records (other sessions' transcripts, the journal, snapshots, checkpoints) are not the
 // project: the agent neither reads nor writes them, by any tool.
-var internalRels = []string{".infuse/sessions", ".infuse/checkpoints", ".infuse/tree", ".infuse/journal.jsonl", ".infuse/watcher.json", ".infuse/architecture.json", ".infuse/conventions.json"}
+var internalRels = []string{".infuse/sessions", ".infuse/checkpoints", ".infuse/tree", ".infuse/journal.jsonl", ".infuse/watcher.json", ".infuse/architecture.json", ".infuse/conventions.json", ".infuse/project-rules.json"}
 
 // agentVisibleInternal lists what of .infuse/ the agent may read: pinned docs, the conventions, the
 // project map and its own captures.
-var agentVisibleInternal = []string{".infuse/docs/", ".infuse/conventions.md", ".infuse/map/MAP.md", ".infuse/shots/", ".infuse/recordings/", ".infuse/skills/", ".infuse/architecture.json"}
+var agentVisibleInternal = []string{".infuse/docs/", ".infuse/conventions.md", ".infuse/map/MAP.md", ".infuse/shots/", ".infuse/recordings/", ".infuse/skills/", ".infuse/architecture.json", ".infuse/project-rules.json"}
 
 // hiddenInternal reports whether rel (relative to the project) is infuse's own file the agent may not read.
 func hiddenInternal(rel string) bool {
@@ -59,6 +59,10 @@ func newGuard(root string, protected []string) *Guard {
 	base := []string{oracleRel + "/**", oracleRel, evidenceRel + "/**", evidenceRel, memoryRel + "/**", memoryRel}
 	for _, r := range internalRels {
 		base = append(base, r+"/**", r)
+	}
+	base = append(base, instructionNames...) // the project's instructions: followed, not edited
+	for _, ref := range loadProjectRules(root).Reference {
+		base = append(base, ref+"/**", ref)
 	}
 	return &Guard{Root: root, Protected: append(base, protected...)}
 }

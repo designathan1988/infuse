@@ -60,7 +60,7 @@ func TestArchFunctions(t *testing.T) {
 	wantArch(t, root, "src/b.ts", "", longFunc("calcular", 30), "")
 	legacy := longFunc("antiga", 80)
 	wantArch(t, root, "src/c.ts", legacy, strings.Replace(legacy, "x + 3", "x + 33", 1), "") // existing debt does not block
-	wantArch(t, root, "src/c.ts", legacy, longFunc("antiga", 81), "função antiga")         // but may not grow
+	wantArch(t, root, "src/c.ts", legacy, longFunc("antiga", 81), "função antiga")           // but may not grow
 	var ifs strings.Builder
 	ifs.WriteString("function decide(a, b) {\n")
 	for i := 0; i < 16; i++ {

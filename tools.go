@@ -275,9 +275,18 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		return "", false
 	}
 	var sb strings.Builder
+	shown := start - 1
 	for i := start - 1; i < end; i++ {
+		if sb.Len() > maxToolOutput-2000 { // a long file is read in parts, never with its middle cut out
+			break
+		}
 		fmt.Fprintf(&sb, "%6d\t%s\n", i+1, lines[i])
+		shown = i + 1
 	}
+	if shown < end {
+		fmt.Fprintf(&sb, "\n[continua: o arquivo tem %d linhas; leia a partir daqui com Read offset=%d]\n", len(lines), shown+1)
+	}
+	tc.S.noteCoverage(abs, len(lines), start, shown)
 	tc.S.markRead(abs)
 	out := sb.String()
 	if m := LoadMap(tc.Root); m != nil {

@@ -91,12 +91,13 @@ type Session struct {
 	lastError     string
 	mapTimer      *time.Timer
 	settings      Settings
-	inflight      []Block      // results of the current reply's tool calls, before they join the transcript
-	pendingImages []Block      // images the agent opened with Read, sent with the next tool results
-	askMu         sync.Mutex   // one question to the user at a time (parallel subagents may each need one)
-	gate          researchGate // research gate and report requirement of the current turn
-	docs          docLedger    // what the agent read as documentation in this session (docgate.go)
-	procs         []*bgProc    // background processes (procs.go)
+	inflight      []Block               // results of the current reply's tool calls, before they join the transcript
+	pendingImages []Block               // images the agent opened with Read, sent with the next tool results
+	askMu         sync.Mutex            // one question to the user at a time (parallel subagents may each need one)
+	gate          researchGate          // research gate and report requirement of the current turn
+	docs          docLedger             // what the agent read as documentation in this session (docgate.go)
+	procs         []*bgProc             // background processes (procs.go)
+	cover         map[string]*readCover // lines of each file actually shown to the agent (instructions_gate.go)
 	procSeq       int
 }
 
@@ -357,6 +358,18 @@ func thinkingBudget(effort string, fallback int) int {
 func (s *Session) isProtected(abs string) bool {
 	_, ok := newGuard(s.Root, s.settings.ProtectedPaths).protects(s.Root, abs)
 	return ok
+}
+
+func bashCommand(input json.RawMessage) string {
+	var in struct{ Command string }
+	_ = json.Unmarshal(input, &in)
+	return in.Command
+}
+
+func toolPath(input json.RawMessage) string {
+	var in struct{ Path, FilePath string }
+	_ = json.Unmarshal(input, &in)
+	return firstNonEmpty(in.Path, in.FilePath)
 }
 
 func (s *Session) markRead(abs string) { s.mu.Lock(); s.readFiles[abs] = true; s.mu.Unlock() }
@@ -672,8 +685,9 @@ func (s *Session) run(ctx context.Context) {
 		return
 	}
 	rules := LoadRules(s.Root)
-	mcpFor(s.Root).ensure(ctx) // approved connectors start before the first request
-	var breaker loopBreaker    // stops a turn that keeps repeating the same failure
+	mcpFor(s.Root).ensure(ctx)           // approved connectors start before the first request
+	s.ensureCompiledRules(ctx, provider) // the instructions' meaning, as quote-checked rules
+	var breaker loopBreaker              // stops a turn that keeps repeating the same failure
 	stopHooks := 0
 	var tripped error
 	breakerTrips := 0 // the breaker warns once, then ends the turn
@@ -898,6 +912,17 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	if inv, _ := isResearch(b.Name, b.Input); inv && b.Name != "Read" || b.Name == "Read" && isSourceRead(b.Input) {
 		s.noteResearch(b.Name, b.Input)
 	}
+	if c := tool.Category(); (c == "write" || c == "exec") && !(b.Name == "Bash" && helpCommand(bashCommand(b.Input))) {
+		if why := s.requiredReading(); why != "" { // the documents the instructions point to, read in full
+			s.emit("gate", map[string]any{"message": why})
+			return why, true
+		}
+	}
+	if why := s.loopCheck(b.Name, tool.Category(), toolPath(b.Input), b.Name == "Agent" && strings.Contains(string(b.Input), `"explore"`)); why != "" {
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})
+		s.emit("gate", map[string]any{"message": why})
+		return why, true
+	}
 	if tool.Category() == "write" { // the protocol: plan, docs before use, conventions, size
 		if why := s.protocolCheckWrite(b.Name, b.Input); why != "" {
 			Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})
@@ -947,6 +972,11 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	}
 	out, isErr := s.runToolChecked(ctx, rules, tool, b)
 	s.gateRecord(b.Name, tool.Category(), out, isErr)
+	if b.Name == "Bash" {
+		s.recordRun(bashCommand(b.Input), !isErr)
+	} else if tool.Category() == "write" && !isErr {
+		s.noteWrite()
+	}
 	s.noteRead(b.Name, b.Input, out, isErr)
 	if b.Name == "Bash" && !isErr {
 		var in struct{ Command string }

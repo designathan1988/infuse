@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type researchGate struct {
@@ -34,6 +35,13 @@ type researchGate struct {
 	researched     []string // what research calls looked at in this turn (queries, addresses, doc files)
 	obligationAsks int      // times the turn was refused an end
 	reviewed       bool     // the mandatory review ran in this turn
+
+	runs      map[string]*runCount // commands run in this turn, for the measure-and-tweak loop
+	ran       []ranCommand         // every command of the turn with its outcome
+	writes    int                  // changes made in this turn
+	loopKey   string               // the command of a detected loop
+	loopSince time.Time
+	studied   int // investigations since the loop was detected
 }
 
 func (g *researchGate) reset() { *g = researchGate{} }

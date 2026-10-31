@@ -168,6 +168,10 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) string 
 	if strings.Contains(rel, ".infuse/") || strings.HasSuffix(rel, ".md") && !strings.Contains(rel, "/src/") {
 		return "" // infuse's own files and prose documents are not code
 	}
+	// 0. the project's instructions: not edited, references not written, the declared measurements used
+	if why := s.instructionWriteCheck(relTo(s.workRoot(), p), before); why != "" {
+		return why
+	}
 	// 1. a plan for this turn
 	s.mu.Lock()
 	planned := s.gate.planned
@@ -427,6 +431,9 @@ func (s *Session) turnObligation(ctx context.Context) string {
 	}
 	if len(problems) > 0 {
 		return "[infuse] O turno não pode terminar: o verificador do projeto acusa problemas em arquivos alterados neste turno. Corrija:\n" + truncate(strings.Join(problems, "\n\n"), 4000)
+	}
+	if why := s.missingVerification(); why != "" {
+		return why
 	}
 	if why := s.missingReport(); why != "" {
 		return why
