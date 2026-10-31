@@ -1,4 +1,4 @@
-package main
+package oracle
 
 // The executor: "done" is decided by running the oracle, never by the agent's word (SPEC §4.6).
 //
@@ -17,6 +17,13 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"infuse/internal/core"
+	"infuse/internal/journal"
+	"infuse/internal/platform/process"
+	"infuse/internal/security"
+	"infuse/internal/lang"
+	"infuse/internal/projectmap"
+	"infuse/internal/workspace"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -78,14 +85,14 @@ type Verdict struct {
 	Session  string        `json:"session,omitempty"`
 }
 
-func oracleSpecFile(root string) string {
-	return filepath.Join(root, infuseDirName, "oracle", "checks.json")
+func SpecFile(root string) string {
+	return filepath.Join(root, core.InfuseDirName, "oracle", "checks.json")
 }
-func evidenceDir(root string) string { return filepath.Join(root, infuseDirName, "evidence") }
+func EvidenceDir(root string) string { return filepath.Join(root, core.InfuseDirName, "evidence") }
 
 func LoadOracleSpec(root string) (OracleSpec, error) {
 	var s OracleSpec
-	err := readJSON(oracleSpecFile(root), &s)
+	err := core.ReadJSON(SpecFile(root), &s)
 	if errors.Is(err, os.ErrNotExist) {
 		return s, nil
 	}
@@ -106,14 +113,14 @@ func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verd
 	if err != nil {
 		return v, fmt.Errorf("checks.json inválido: %w", err)
 	}
-	dir := filepath.Join(evidenceDir(evidenceRoot), v.Run)
+	dir := filepath.Join(EvidenceDir(evidenceRoot), v.Run)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return v, err
 	}
 	finish := func() (Verdict, error) {
 		v.Finished = time.Now().UnixMilli()
-		_ = writeJSON(filepath.Join(dir, "verdict.json"), v)
-		Journal(evidenceRoot, JournalEntry{Kind: "oracle", Detail: fmt.Sprintf("veredito %s (%s) — evidência em .infuse/evidence/%s", v.Verdict, v.Summary, v.Run)})
+		_ = core.WriteJSON(filepath.Join(dir, "verdict.json"), v)
+		journal.Journal(evidenceRoot, journal.JournalEntry{Kind: "oracle", Detail: fmt.Sprintf("veredito %s (%s) — evidência em .infuse/evidence/%s", v.Verdict, v.Summary, v.Run)})
 		return v, nil
 	}
 	if len(spec.Checks) == 0 {
@@ -174,19 +181,19 @@ func runCheckCommand(ctx context.Context, dir, command string, timeoutSec int) c
 	}
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, FindRealBash(), "-c", command)
-	noConsoleWindow(cmd)
+	cmd := exec.CommandContext(cctx, core.FindRealBash(), "-c", command)
+	process.NoConsoleWindow(cmd)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "CI=1", "INFUSE_ORACLE=1")
-	buf := newCapWriter(512 << 10)
+	buf := core.NewCapWriter(512 << 10)
 	cmd.Stdout, cmd.Stderr = buf, buf
 	err := cmd.Run()
-	code := exitCode(err)
+	code := core.ExitCode(err)
 	if cctx.Err() == context.DeadlineExceeded {
 		code = -1
 		_, _ = buf.Write([]byte(fmt.Sprintf("\n[tempo esgotado após %ds]", timeoutSec)))
 	}
-	return cmdResult{redactSecrets(buf.String()), code}
+	return cmdResult{security.RedactSecrets(buf.String()), code}
 }
 
 func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResult {
@@ -227,7 +234,7 @@ func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResul
 			return r
 		}
 		ok, why := textOK(res.out)
-		r.Passed, r.Detail = ok, firstNonEmpty(why, fmt.Sprintf("exit %d", res.exit))
+		r.Passed, r.Detail = ok, core.FirstNonEmpty(why, fmt.Sprintf("exit %d", res.exit))
 	case "http":
 		cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
@@ -253,7 +260,7 @@ func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResul
 			return r
 		}
 		ok, why := textOK(string(b))
-		r.Passed, r.Detail = ok, firstNonEmpty(why, fmt.Sprintf("HTTP %d", resp.StatusCode))
+		r.Passed, r.Detail = ok, core.FirstNonEmpty(why, fmt.Sprintf("HTTP %d", resp.StatusCode))
 	case "file":
 		p := filepath.Join(snap, filepath.FromSlash(c.Path))
 		b, err := os.ReadFile(p)
@@ -271,21 +278,21 @@ func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResul
 			return r
 		}
 		ok, why := textOK(string(b))
-		r.Passed, r.Detail = ok, firstNonEmpty(why, fmt.Sprintf("%d bytes", len(b)))
+		r.Passed, r.Detail = ok, core.FirstNonEmpty(why, fmt.Sprintf("%d bytes", len(b)))
 	case "maxLines":
-		re := globToRegex(c.Glob)
+		re := lang.GlobToRegex(c.Glob)
 		var over []string
 		_ = filepath.WalkDir(snap, func(p string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
 			if d.IsDir() {
-				if ignoredDirs[d.Name()] || d.Name() == ".git" {
+				if projectmap.IgnoredDirs[d.Name()] || d.Name() == ".git" {
 					return filepath.SkipDir
 				}
 				return nil
 			}
-			rel := filepath.ToSlash(relTo(snap, p))
+			rel := filepath.ToSlash(core.RelTo(snap, p))
 			if !re.MatchString(rel) {
 				return nil
 			}
@@ -311,12 +318,12 @@ func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResul
 // of the files plus a sha256 manifest. Returns the folder to run in, its id, and a cleanup.
 func takeSnapshot(workDir, evDir string) (string, string, func(), error) {
 	snap := filepath.Join(os.TempDir(), "infuse-oracle-"+filepath.Base(evDir))
-	if exists(filepath.Join(workDir, ".git")) {
+	if core.Exists(filepath.Join(workDir, ".git")) {
 		idx := filepath.Join(os.TempDir(), "infuse-index-"+filepath.Base(evDir))
 		defer os.Remove(idx)
 		git := func(args ...string) (string, error) {
 			cmd := exec.Command("git", args...)
-			noConsoleWindow(cmd)
+			process.NoConsoleWindow(cmd)
 			cmd.Dir = workDir
 			cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+idx)
 			out, err := cmd.CombinedOutput()
@@ -337,12 +344,12 @@ func takeSnapshot(workDir, evDir string) (string, string, func(), error) {
 		if err != nil {
 			return "", "", nil, errors.New("git commit-tree falhou: " + commit)
 		}
-		if out, err := gitRun(workDir, "worktree", "add", "--detach", snap, commit); err != nil {
+		if out, err := workspace.GitRun(workDir, "worktree", "add", "--detach", snap, commit); err != nil {
 			return "", "", nil, errors.New("git worktree add falhou: " + strings.TrimSpace(out))
 		}
 		linkDependencies(workDir, snap)
 		_ = os.WriteFile(filepath.Join(evDir, "snapshot.txt"), []byte("git commit "+commit+"\ntree "+tree+"\n"), 0o644)
-		return snap, "git:" + commit[:12], func() { _, _ = gitRun(workDir, "worktree", "remove", "--force", snap) }, nil
+		return snap, "git:" + commit[:12], func() { _, _ = workspace.GitRun(workDir, "worktree", "remove", "--force", snap) }, nil
 	}
 	h := sha256.New()
 	var manifest strings.Builder
@@ -350,9 +357,9 @@ func takeSnapshot(workDir, evDir string) (string, string, func(), error) {
 		if err != nil {
 			return nil
 		}
-		rel := relTo(workDir, p)
+		rel := core.RelTo(workDir, p)
 		if d.IsDir() {
-			if rel != "" && (ignoredDirs[d.Name()] || d.Name() == infuseDirName) {
+			if rel != "" && (projectmap.IgnoredDirs[d.Name()] || d.Name() == core.InfuseDirName) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -384,10 +391,10 @@ func takeSnapshot(workDir, evDir string) (string, string, func(), error) {
 func linkDependencies(from, snap string) {
 	for _, d := range []string{"node_modules", ".venv", "venv"} {
 		src := filepath.Join(from, d)
-		if st, err := os.Stat(src); err == nil && st.IsDir() && !exists(filepath.Join(snap, d)) {
+		if st, err := os.Stat(src); err == nil && st.IsDir() && !core.Exists(filepath.Join(snap, d)) {
 			if err := os.Symlink(src, filepath.Join(snap, d)); err != nil && isWindows() {
 				cmd := exec.Command("cmd", "/c", "mklink", "/J", filepath.Join(snap, d), src) // junction: no privilege needed
-				noConsoleWindow(cmd)
+				process.NoConsoleWindow(cmd)
 				_ = cmd.Run()
 			}
 		}
@@ -398,11 +405,11 @@ func isWindows() bool { return filepath.Separator == '\\' }
 
 // ListVerdicts returns the most recent runs of a project, newest first.
 func ListVerdicts(root string, n int) []Verdict {
-	entries, _ := os.ReadDir(evidenceDir(root))
+	entries, _ := os.ReadDir(EvidenceDir(root))
 	var out []Verdict
 	for i := len(entries) - 1; i >= 0 && len(out) < n; i-- {
 		var v Verdict
-		if entries[i].IsDir() && readJSON(filepath.Join(evidenceDir(root), entries[i].Name(), "verdict.json"), &v) == nil {
+		if entries[i].IsDir() && core.ReadJSON(filepath.Join(EvidenceDir(root), entries[i].Name(), "verdict.json"), &v) == nil {
 			out = append(out, v)
 		}
 	}

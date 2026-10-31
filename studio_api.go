@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -386,13 +385,6 @@ func fileTree(root, dir string, depth int) *treeNode {
 	return n
 }
 
-func gitRun(root string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
-	noConsoleWindow(cmd)
-	cmd.Dir = root
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
 
 func gitDiff(root, path string) map[string]any {
 	if path != "" {

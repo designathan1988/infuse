@@ -166,6 +166,15 @@ func EffectiveSettings(root string) Settings {
 	return s
 }
 
+// RootLanguage is the language the user reads infuse in, for code that has a project folder but no
+// session.
+func RootLanguage(root string) string {
+	if l := EffectiveSettings(root).Language; l != "" {
+		return l
+	}
+	return "pt-BR"
+}
+
 func (s Settings) priceFor(model string) (float64, float64) {
 	best := ""
 	for prefix := range s.Pricing {

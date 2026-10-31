@@ -1,5 +1,7 @@
 package main
 
+import "infuse/internal/config"
+
 // Messages of the tools: tool outputs and refusals, background processes, subagents and the review,
 // the report and the contract, missions, memory, connectors, web search, skills, the agent's browser.
 // English is what the model reads; pt-BR is what the user reads.
@@ -13,12 +15,7 @@ func (tc *ToolContext) SayErr(err error) string {
 }
 
 // rootLang is the language the user reads infuse in, for code that has a project folder but no session.
-func rootLang(root string) string {
-	if l := EffectiveSettings(root).Language; l != "" {
-		return l
-	}
-	return "pt-BR"
-}
+func rootLang(root string) string { return config.RootLanguage(root) }
 
 func init() {
 	registerMessages(map[string]map[string]string{

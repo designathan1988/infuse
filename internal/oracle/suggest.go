@@ -1,4 +1,4 @@
-package main
+package oracle
 
 // Ready-made criteria for "Pronto?", read from what the project already declares (package.json scripts,
 // go.mod, Cargo.toml, pyproject, .NET, Maven/Gradle, Makefile) so the user adds them with one click
@@ -6,6 +6,9 @@ package main
 
 import (
 	"encoding/json"
+	"infuse/internal/config"
+	"infuse/internal/core"
+	"infuse/internal/projectmap"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,8 +19,8 @@ import (
 type CheckSuggestion struct {
 	Title    string      `json:"title"` // what must be true, in plain words (in the user's language)
 	Why      string      `json:"why"`
-	TitleMsg Msg         `json:"titleMsg"` // the same, as messages of the catalog
-	WhyMsg   Msg         `json:"whyMsg"`
+	TitleMsg core.Msg         `json:"titleMsg"` // the same, as messages of the catalog
+	WhyMsg   core.Msg         `json:"whyMsg"`
 	Check    OracleCheck `json:"check"`
 	Setup    string      `json:"setup,omitempty"` // preparation the check needs in the snapshot (install dependencies)
 }
@@ -39,8 +42,8 @@ var reMakeTest = regexp.MustCompile(`(?m)^test\s*:`)
 // SuggestChecks lists criteria that fit the project at root, leaving out those already in the spec.
 func SuggestChecks(root string) []CheckSuggestion {
 	var out []CheckSuggestion
-	lang := rootLang(root)
-	add := func(title, why Msg, c OracleCheck, setup string) {
+	lang := config.RootLanguage(root)
+	add := func(title, why core.Msg, c OracleCheck, setup string) {
 		out = append(out, CheckSuggestion{Title: title.Render(lang), Why: why.Render(lang), TitleMsg: title, WhyMsg: why, Check: c, Setup: setup})
 	}
 
@@ -72,24 +75,24 @@ func SuggestChecks(root string) []CheckSuggestion {
 			return pm + " run " + script
 		}
 		if s := pkg.Scripts["test"]; s != "" && !strings.Contains(s, "no test specified") {
-			add(M("suggest.tests_pass"), M("suggest.why_script", "command", run("test")), cmdCheck("testes", "The tests pass", run("test")), setup)
+			add(core.M("suggest.tests_pass"), core.M("suggest.why_script", "command", run("test")), cmdCheck("testes", "The tests pass", run("test")), setup)
 		} else if hasFileMatching(root, `\.test\.(m?js|cjs)$`) {
-			add(M("suggest.tests_pass"), M("suggest.why_node_test"), cmdCheck("testes", "The tests pass", "node --test"), setup)
+			add(core.M("suggest.tests_pass"), core.M("suggest.why_node_test"), cmdCheck("testes", "The tests pass", "node --test"), setup)
 		}
 		if pkg.Scripts["build"] != "" {
-			add(M("suggest.builds"), M("suggest.why_run_ok", "command", run("build")), cmdCheck("build", "The project builds", run("build")), setup)
+			add(core.M("suggest.builds"), core.M("suggest.why_run_ok", "command", run("build")), cmdCheck("build", "The project builds", run("build")), setup)
 		}
 		if pkg.Scripts["lint"] != "" {
-			add(M("suggest.lint"), M("suggest.why_run_ok", "command", run("lint")), cmdCheck("lint", "No lint errors", run("lint")), setup)
+			add(core.M("suggest.lint"), core.M("suggest.why_run_ok", "command", run("lint")), cmdCheck("lint", "No lint errors", run("lint")), setup)
 		}
 		_, ts := pkg.DevDependencies["typescript"]
 		if _, d := pkg.Dependencies["typescript"]; d {
 			ts = true
 		}
 		if pkg.Scripts["typecheck"] != "" {
-			add(M("suggest.types"), M("suggest.why_run", "command", run("typecheck")), cmdCheck("tipos", "No type errors", run("typecheck")), setup)
+			add(core.M("suggest.types"), core.M("suggest.why_run", "command", run("typecheck")), cmdCheck("tipos", "No type errors", run("typecheck")), setup)
 		} else if ts && hasPath(root, "tsconfig.json") {
-			add(M("suggest.types"), M("suggest.why_tsc"), cmdCheck("tipos", "No type errors", "npx tsc --noEmit"), setup)
+			add(core.M("suggest.types"), core.M("suggest.why_tsc"), cmdCheck("tipos", "No type errors", "npx tsc --noEmit"), setup)
 		}
 		port := ""
 		deps := map[string]string{}
@@ -110,17 +113,17 @@ func SuggestChecks(root string) []CheckSuggestion {
 		if port != "" {
 			c := OracleCheck{ID: "pagina", Kind: "http", URL: "http://localhost:" + port + "/", Description: "The home page opens"}
 			c.Expect.Status = 200
-			add(M("suggest.home_opens"), M("suggest.why_page", "url", "http://localhost:"+port+"/"), c, "")
+			add(core.M("suggest.home_opens"), core.M("suggest.why_page", "url", "http://localhost:"+port+"/"), c, "")
 		}
 	}
 	if hasPath(root, "go.mod") {
-		add(M("suggest.builds"), M("suggest.why_run", "command", "go build ./..."), cmdCheck("build", "The project builds", "go build ./..."), "")
-		add(M("suggest.tests_pass"), M("suggest.why_run", "command", "go test ./..."), cmdCheck("testes", "The tests pass", "go test ./..."), "")
-		add(M("suggest.vet"), M("suggest.why_vet"), cmdCheck("vet", "No go vet problems", "go vet ./..."), "")
+		add(core.M("suggest.builds"), core.M("suggest.why_run", "command", "go build ./..."), cmdCheck("build", "The project builds", "go build ./..."), "")
+		add(core.M("suggest.tests_pass"), core.M("suggest.why_run", "command", "go test ./..."), cmdCheck("testes", "The tests pass", "go test ./..."), "")
+		add(core.M("suggest.vet"), core.M("suggest.why_vet"), cmdCheck("vet", "No go vet problems", "go vet ./..."), "")
 	}
 	if hasPath(root, "Cargo.toml") {
-		add(M("suggest.builds"), M("suggest.why_run", "command", "cargo build"), cmdCheck("build", "The project builds", "cargo build"), "")
-		add(M("suggest.tests_pass"), M("suggest.why_run", "command", "cargo test"), cmdCheck("testes", "The tests pass", "cargo test"), "")
+		add(core.M("suggest.builds"), core.M("suggest.why_run", "command", "cargo build"), cmdCheck("build", "The project builds", "cargo build"), "")
+		add(core.M("suggest.tests_pass"), core.M("suggest.why_run", "command", "cargo test"), cmdCheck("testes", "The tests pass", "cargo test"), "")
 	}
 	if hasPath(root, "pyproject.toml") || hasPath(root, "requirements.txt") || hasPath(root, "setup.py") {
 		setup := ""
@@ -128,34 +131,34 @@ func SuggestChecks(root string) []CheckSuggestion {
 			setup = "python -m pip install -r requirements.txt"
 		}
 		if hasPath(root, "tests") || hasPath(root, "pytest.ini") || hasFileMatching(root, `(^|/)test_[^/]+\.py$`) {
-			add(M("suggest.tests_pass"), M("suggest.why_run", "command", "python -m pytest"), cmdCheck("testes", "The tests pass", "python -m pytest -q"), setup)
+			add(core.M("suggest.tests_pass"), core.M("suggest.why_run", "command", "python -m pytest"), cmdCheck("testes", "The tests pass", "python -m pytest -q"), setup)
 		}
-		add(M("suggest.python_valid"), M("suggest.why_compileall"), cmdCheck("sintaxe", "Every Python file is valid", "python -m compileall -q ."), "")
+		add(core.M("suggest.python_valid"), core.M("suggest.why_compileall"), cmdCheck("sintaxe", "Every Python file is valid", "python -m compileall -q ."), "")
 	}
 	if hasFileMatching(root, `\.(sln|csproj)$`) {
-		add(M("suggest.builds"), M("suggest.why_run", "command", "dotnet build"), cmdCheck("build", "The project builds", "dotnet build"), "")
-		add(M("suggest.tests_pass"), M("suggest.why_run", "command", "dotnet test"), cmdCheck("testes", "The tests pass", "dotnet test"), "")
+		add(core.M("suggest.builds"), core.M("suggest.why_run", "command", "dotnet build"), cmdCheck("build", "The project builds", "dotnet build"), "")
+		add(core.M("suggest.tests_pass"), core.M("suggest.why_run", "command", "dotnet test"), cmdCheck("testes", "The tests pass", "dotnet test"), "")
 	}
 	if hasPath(root, "pom.xml") {
-		add(M("suggest.tests_pass"), M("suggest.why_run", "command", "mvn -q test"), cmdCheck("testes", "The tests pass", "mvn -q test"), "")
+		add(core.M("suggest.tests_pass"), core.M("suggest.why_run", "command", "mvn -q test"), cmdCheck("testes", "The tests pass", "mvn -q test"), "")
 	}
 	if hasPath(root, "build.gradle") || hasPath(root, "build.gradle.kts") {
 		g := "gradle"
 		if hasPath(root, "gradlew") {
 			g = "./gradlew"
 		}
-		add(M("suggest.tests_pass"), M("suggest.why_run", "command", g+" test"), cmdCheck("testes", "The tests pass", g+" test"), "")
+		add(core.M("suggest.tests_pass"), core.M("suggest.why_run", "command", g+" test"), cmdCheck("testes", "The tests pass", g+" test"), "")
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "Makefile")); err == nil && reMakeTest.Match(b) {
-		add(M("suggest.tests_pass"), M("suggest.why_run", "command", "make test"), cmdCheck("testes", "The tests pass", "make test"), "")
+		add(core.M("suggest.tests_pass"), core.M("suggest.why_run", "command", "make test"), cmdCheck("testes", "The tests pass", "make test"), "")
 	}
 	if ext := mainExtension(root); ext != "" {
 		c := OracleCheck{ID: "tamanho", Kind: "maxLines", Glob: "**/*" + ext, Max: 400, Description: "No file is too large"}
-		add(M("suggest.no_large_file"), M("suggest.why_size", "ext", ext), c, "")
+		add(core.M("suggest.no_large_file"), core.M("suggest.why_size", "ext", ext), c, "")
 	}
 	if hasPath(root, "README.md") {
 		c := OracleCheck{ID: "readme", Kind: "file", Path: "README.md", Description: "The README exists"}
-		add(M("suggest.readme"), M("suggest.why_readme"), c, "")
+		add(core.M("suggest.readme"), core.M("suggest.why_readme"), c, "")
 	}
 
 	// drop what is already in the spec and repeated titles
@@ -192,9 +195,9 @@ func hasFileMatching(root, pattern string) bool {
 		if err != nil {
 			return nil
 		}
-		rel := filepath.ToSlash(relTo(root, p))
+		rel := filepath.ToSlash(core.RelTo(root, p))
 		if d.IsDir() {
-			if p != root && (ignoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".") || strings.Count(rel, "/") >= 3) {
+			if p != root && (projectmap.IgnoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".") || strings.Count(rel, "/") >= 3) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -216,7 +219,7 @@ func mainExtension(root string) string {
 			return nil
 		}
 		if d.IsDir() {
-			if p != root && (ignoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
+			if p != root && (projectmap.IgnoredDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
 				return filepath.SkipDir
 			}
 			return nil

@@ -12,7 +12,9 @@ import (
 	"infuse/internal/journal"
 	"infuse/internal/lang"
 	"infuse/internal/llm"
+	"infuse/internal/oracle"
 	"infuse/internal/projectmap"
+	"infuse/internal/workspace"
 	"infuse/internal/platform/process"
 	"infuse/internal/security"
 	"os/exec"
@@ -170,6 +172,22 @@ func firstNonZero(a, b float64) float64            { return core.FirstNonZero(a,
 func sortedKeys[M ~map[string]V, V any](m M) []string { return core.SortedKeys(m) }
 func exitCode(err error) int                         { return core.ExitCode(err) }
 func randomHex(n int) string                         { return core.RandomHex(n) }
+func gitRun(root string, args ...string) (string, error) { return workspace.GitRun(root, args...) }
+
+type OracleCheck = oracle.OracleCheck
+type OracleSpec = oracle.OracleSpec
+type CheckResult = oracle.CheckResult
+type Verdict = oracle.Verdict
+type CheckSuggestion = oracle.CheckSuggestion
+
+func LoadOracleSpec(root string) (OracleSpec, error) { return oracle.LoadOracleSpec(root) }
+func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verdict, error) {
+	return oracle.RunOracle(ctx, evidenceRoot, workDir, session)
+}
+func ListVerdicts(root string, n int) []Verdict { return oracle.ListVerdicts(root, n) }
+func oracleSpecFile(root string) string         { return oracle.SpecFile(root) }
+func evidenceDir(root string) string            { return oracle.EvidenceDir(root) }
+func SuggestChecks(root string) []CheckSuggestion { return oracle.SuggestChecks(root) }
 func shellQuote(s string) string                     { return filter.ShellQuote(s) }
 func detach(cmd *exec.Cmd)                           { process.Detach(cmd) }
 func noConsoleWindow(cmd *exec.Cmd)                  { process.NoConsoleWindow(cmd) }
