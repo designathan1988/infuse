@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"infuse/internal/mcp"
 	"os"
 	"strings"
 	"testing"
@@ -22,10 +23,10 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func fakeMCPReply(req rpcMessage) map[string]any {
+func fakeMCPReply(req mcp.RPCMessage) map[string]any {
 	switch req.Method {
 	case "initialize":
-		return map[string]any{"protocolVersion": mcpProtocol, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "fake", "version": "1"}}
+		return map[string]any{"protocolVersion": mcp.Protocol, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": map[string]any{"name": "fake", "version": "1"}}
 	case "tools/list":
 		return map[string]any{"tools": []any{
 			map[string]any{"name": "echo", "description": "repete o texto", "inputSchema": map[string]any{"type": "object", "properties": map[string]any{"text": map[string]any{"type": "string"}}}, "annotations": map[string]any{"readOnlyHint": true}},
@@ -45,7 +46,7 @@ func fakeMCPReply(req rpcMessage) map[string]any {
 func fakeMCPStdio(in io.Reader, out io.Writer) {
 	sc := bufio.NewScanner(in)
 	for sc.Scan() {
-		var req rpcMessage
+		var req mcp.RPCMessage
 		if json.Unmarshal(sc.Bytes(), &req) != nil || req.ID == nil {
 			continue
 		}
@@ -58,24 +59,24 @@ func TestMCPStdioServerNeedsApprovalThenServesTools(t *testing.T) {
 	testHome(t)
 	root := t.TempDir()
 	exe, _ := os.Executable()
-	cfg := mcpServerConfig{Command: exe, Args: []string{"-test.run=^$"}, Env: map[string]string{"INFUSE_FAKE_MCP": "1"}}
+	cfg := mcp.ServerConfig{Command: exe, Args: []string{"-test.run=^$"}, Env: map[string]string{"INFUSE_FAKE_MCP": "1"}}
 	if err := editMCP(root, "project", func(sv map[string]mcpServerConfig) { sv["fake"] = cfg }); err != nil {
 		t.Fatal(err)
 	}
 	m := mcpFor(root)
-	defer m.restart(context.Background(), "project", "fake")
-	m.ensure(context.Background())
-	if len(m.tools()) != 0 {
+	defer m.Restart(context.Background(), "project", "fake")
+	m.Ensure(context.Background())
+	if len(m.Tools()) != 0 {
 		t.Fatal("an unapproved server started")
 	}
-	if st := m.status(); len(st) != 1 || st[0].Approved {
+	if st := m.Status(); len(st) != 1 || st[0].Approved {
 		t.Fatalf("%+v", st)
 	}
-	_ = approveMCP(root, "project", "fake", cfg)
-	m.ensure(context.Background())
-	tools := m.tools()
+	_ = mcp.Approve(root, "project", "fake", cfg)
+	m.Ensure(context.Background())
+	tools := m.Tools()
 	if len(tools) != 2 {
-		t.Fatalf("tools: %d %+v", len(tools), m.status())
+		t.Fatalf("tools: %d %+v", len(tools), m.Status())
 	}
 	s := newSession(root)
 	echo, ok := s.lookupTool("mcp__fake__echo")
@@ -98,8 +99,8 @@ func TestMCPStdioServerNeedsApprovalThenServesTools(t *testing.T) {
 	}
 	// a changed configuration needs approval again
 	_ = editMCP(root, "project", func(sv map[string]mcpServerConfig) { c := sv["fake"]; c.Args = append(c.Args, "-x"); sv["fake"] = c })
-	m.ensure(context.Background())
-	if len(m.tools()) != 0 {
+	m.Ensure(context.Background())
+	if len(m.Tools()) != 0 {
 		t.Fatal("a changed configuration ran without a new approval")
 	}
 }
@@ -107,7 +108,7 @@ func TestMCPStdioServerNeedsApprovalThenServesTools(t *testing.T) {
 func TestMCPStreamableHTTP(t *testing.T) {
 	testHome(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req rpcMessage
+		var req mcp.RPCMessage
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.ID == nil {
 			w.WriteHeader(202)
@@ -128,11 +129,11 @@ func TestMCPStreamableHTTP(t *testing.T) {
 		_, _ = w.Write(b)
 	}))
 	defer srv.Close()
-	c := &mcpClient{name: "remoto", scope: "global", cfg: mcpServerConfig{Type: "http", URL: srv.URL}}
-	if err := c.start(context.Background(), t.TempDir()); err != nil {
+	c := mcp.NewClient("remoto", "global", mcp.ServerConfig{Type: "http", URL: srv.URL})
+	if err := c.Start(context.Background(), t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := c.call(context.Background(), "tools/call", map[string]any{"name": "echo", "arguments": map[string]string{"text": "web"}})
+	raw, err := c.Call(context.Background(), "tools/call", map[string]any{"name": "echo", "arguments": map[string]string{"text": "web"}})
 	if err != nil || !strings.Contains(string(raw), "eco: web") {
 		t.Fatal(err, string(raw))
 	}

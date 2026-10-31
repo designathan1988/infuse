@@ -4,6 +4,7 @@ package main
 // permissions, checkpoints, compaction. The UI only reads this through events and the API.
 
 import (
+	"infuse/internal/mcp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -674,7 +675,7 @@ func (s *Session) run(ctx context.Context) {
 		return
 	}
 	rules := LoadRules(s.Root)
-	mcpFor(s.Root).ensure(ctx)           // approved connectors start before the first request
+	mcp.For(s.Root).Ensure(ctx)           // approved connectors start before the first request
 	s.ensureCompiledRules(ctx, provider) // the instructions' meaning, as quote-checked rules
 	s.ensureKnowledge(ctx, provider)     // the project's documents, read to the last line
 	s.compileBans(ctx, provider)         // what the user forbade, in the user's words, checked

@@ -8,6 +8,7 @@ package main
 //   general — any tool except Agent itself.
 
 import (
+	"infuse/internal/mcp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -53,7 +54,7 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 		kind = "general"
 	}
 	rules := LoadRules(s.Root)
-	mcpFor(s.Root).ensure(ctx)
+	mcp.For(s.Root).Ensure(ctx)
 	allowed := func(name string) bool {
 		if subagentAllows(kind, name) {
 			return true

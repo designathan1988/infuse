@@ -14,6 +14,7 @@ import (
 	"infuse/internal/journal"
 	"infuse/internal/lang"
 	"infuse/internal/llm"
+	"infuse/internal/mcp"
 	"infuse/internal/oracle"
 	"infuse/internal/projectmap"
 	"infuse/internal/workspace"
@@ -207,6 +208,18 @@ func ListVerdicts(root string, n int) []Verdict { return oracle.ListVerdicts(roo
 func oracleSpecFile(root string) string         { return oracle.SpecFile(root) }
 func evidenceDir(root string) string            { return oracle.EvidenceDir(root) }
 func SuggestChecks(root string) []CheckSuggestion { return oracle.SuggestChecks(root) }
+
+type mcpServerConfig = mcp.ServerConfig
+type mcpStatus = mcp.Status
+
+func mcpFor(root string) *mcp.Manager { return mcp.For(root) }
+func mcpToolName(server, tool string) string {
+	return mcp.ToolName(server, tool)
+}
+func editMCP(root, scope string, f func(map[string]mcpServerConfig)) error {
+	return mcp.Edit(root, scope, f)
+}
+func closeAllMCP() { mcp.CloseAll() }
 
 type ConventionRules = knowledge.ConventionRules
 type Tally = knowledge.Tally

@@ -5,6 +5,7 @@ package main
 // scheduled tasks, usage totals.
 
 import (
+	"infuse/internal/mcp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -228,7 +229,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		return true
 	// ---------------------------------------------------------------- MCP connectors
 	case path == "/api/mcp" && r.Method == http.MethodGet:
-		sendJSON(w, 200, mcpFor(root).status())
+		sendJSON(w, 200, mcp.For(root).Status())
 		return true
 	case strings.HasPrefix(path, "/api/mcp/"):
 		scope, name := str("scope"), str("name")
@@ -249,14 +250,14 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 				}
 			}
 			if err == nil && boolean("approve") { // added by the user from the app: approved in the same click
-				err = approveMCP(root, scope, name, cfg)
+				err = mcp.Approve(root, scope, name, cfg)
 			}
 		case "approve":
-			cfg, ok := loadMCPFile(mcpFilePath(root, scope)).Servers[name]
+			cfg, ok := mcp.LoadFile(mcp.FilePath(root, scope)).Servers[name]
 			if !ok {
 				err = errors.New("servidor não encontrado")
 			} else {
-				err = approveMCP(root, scope, name, cfg)
+				err = mcp.Approve(root, scope, name, cfg)
 			}
 		case "toggle":
 			err = editMCP(root, scope, func(sv map[string]mcpServerConfig) {
@@ -276,8 +277,8 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 			sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
 			return true
 		}
-		m.restart(r.Context(), scope, name)
-		sendJSON(w, 200, map[string]any{"ok": true, "servers": m.status()})
+		m.Restart(r.Context(), scope, name)
+		sendJSON(w, 200, map[string]any{"ok": true, "servers": m.Status()})
 		return true
 	// ---------------------------------------------------------------- structured memory (the user's curation)
 	case path == "/api/memory/items" && r.Method == http.MethodGet:
