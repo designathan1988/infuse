@@ -1,0 +1,35 @@
+/* pages — split from index.html; the only place area styles live. */
+/* ---------------- popovers, dialogs, pages */
+.menu{position:fixed;z-index:60;background:var(--surface);border-radius:10px;box-shadow:var(--pop);min-width:240px;max-width:460px;display:flex;flex-direction:column;overflow:hidden}
+.menu .mbody{flex:1 1 auto;min-height:0;overflow:auto;padding:5px} .menu .mhead:empty,.menu .mfoot:empty{display:none}
+.menu .mhead{flex:none;padding:4px 5px 0;border-bottom:1px solid var(--border)} .menu .mfoot{flex:none;padding:5px;border-top:1px solid var(--border)}
+.mh.plain{text-transform:none;letter-spacing:0;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+.mi{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap} .mi:hover,.mi.k{background:var(--s2)} .mi .d{color:var(--text3);font-size:12px;margin-left:auto;padding-left:16px;overflow:hidden;text-overflow:ellipsis;max-width:260px;flex:none} .mi .two{flex:1} .mi.danger{color:var(--bad)}
+.mi .ck{width:14px;flex:none} .mi.col{align-items:flex-start} .mi .two{display:flex;flex-direction:column;min-width:0} .mi .two small{color:var(--text3);font-size:11.5px;white-space:normal;max-width:300px}
+.mi.hassub .d{font-size:14px;padding-left:24px}
+.mh{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);padding:8px 10px 3px} .ms{border-top:1px solid var(--border);margin:4px 0}
+.overlay{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.22);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh}
+.dlg:focus,.menu:focus,.box:focus{outline:none}
+.dlg{width:580px;max-width:92vw;max-height:74vh;display:flex;flex-direction:column;background:var(--surface);border-radius:14px;box-shadow:var(--pop);overflow:hidden}
+.dlg .dh{padding:14px 18px 8px;font-weight:600;font-size:14px} .dlg .db{overflow:auto;padding:0 8px 10px} .dlg input.q{width:100%;padding:14px 18px;font-size:15px;border-bottom:1px solid var(--border)}
+.dlg .it{display:flex;gap:10px;align-items:center;padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px} .dlg .it.k,.dlg .it:hover{background:var(--s2)} .dlg .it .d{margin-left:auto;color:var(--text3);font-size:11.5px;white-space:nowrap}
+.dlg .ctx{margin:4px 12px 8px;padding:6px 10px;border-radius:7px;background:var(--s2);width:calc(100% - 24px);font-size:12.5px}
+.page{flex:1;display:flex;min-width:0;min-height:0;background:var(--bg)} .page .pnav{width:220px;flex:none;padding:18px 10px;border-right:1px solid var(--border)} .page .pnav .nav{margin-bottom:2px}
+.page .pcontent{flex:1;overflow:auto;padding:26px 36px 60px} .page .inner{max-width:780px}
+.page h1{font-size:20px;font-weight:600;margin:0 0 4px} .page h2{font-size:13px;font-weight:600;margin:28px 0 8px} .page .lead{color:var(--text2);margin:0 0 18px;font-size:13px}
+.set{display:flex;align-items:center;gap:16px;padding:12px 0;border-bottom:1px solid var(--border)} .set .l{flex:1;min-width:0} .set .l b{display:block;font-weight:500;font-size:13px} .set .l span{color:var(--text3);font-size:12px}
+.set select,.set input[type=text],.set input[type=number],.set input[type=password]{background:var(--s2);border-radius:7px;padding:5px 9px;font-size:12.5px;min-width:200px}
+.prov{padding:12px 0;border-bottom:1px solid var(--border)} .prov .top{display:flex;align-items:center;gap:10px} .prov .nm{font-weight:500;font-size:13px} .prov .ex{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.prov .ex .f{display:flex;gap:8px;align-items:center} .prov .ex input{flex:1;background:var(--s2);border-radius:7px;padding:6px 10px;font-size:12.5px;font-family:var(--mono)}
+.mlist{display:flex;flex-wrap:wrap;gap:4px} .mlist span{font-family:var(--mono);font-size:11.5px;padding:2px 8px;border-radius:6px;background:var(--s2);color:var(--text2)}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px} .tbl td,.tbl th{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left} .tbl th{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:600} .tbl input{width:90px;font-family:var(--mono);font-size:12px;padding:2px 4px;border-radius:4px} .tbl input:focus{background:var(--s2)}
+.big{font-size:26px;font-weight:600;letter-spacing:-.3px}
+.taskrow{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;cursor:pointer} .taskrow:hover{background:var(--s2)}
+.editdoc{background:var(--surface);border-radius:12px;box-shadow:0 0 0 1px var(--border);padding:16px 18px}
+.editdoc input.name{font-size:18px;font-weight:600;width:100%;margin-bottom:6px} .editdoc textarea{width:100%;min-height:160px;resize:vertical;font-size:13.5px;line-height:1.55}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);align-items:center}
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:10px;opacity:0;transition:opacity .15s;z-index:95;pointer-events:none;font-size:12.5px;max-width:70vw}
+#toast.show{opacity:1}
+#drop{position:fixed;inset:8px;z-index:90;background:rgba(76,111,214,.08);border:2px dashed var(--accent);border-radius:16px;display:none;align-items:center;justify-content:center;font-size:15px;color:var(--accent);pointer-events:none} #drop.show{display:flex}
+.empty{padding:30px 18px;text-align:center;color:var(--text3);font-size:12.5px;line-height:1.6}
+.sc{display:grid;grid-template-columns:1fr auto;gap:6px 18px;font-size:13px;padding:6px 18px 16px} .sc .kbd{justify-self:end}

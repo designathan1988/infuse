@@ -36,6 +36,8 @@ func uiFile(w http.ResponseWriter, name string) {
 		w.Header().Set("content-type", "text/javascript; charset=utf-8")
 	case strings.HasSuffix(name, ".css"):
 		w.Header().Set("content-type", "text/css; charset=utf-8")
+	case strings.HasSuffix(name, ".json"):
+		w.Header().Set("content-type", "application/json; charset=utf-8")
 	}
 	w.Header().Set("cache-control", "no-cache")
 	_, _ = w.Write(b)
