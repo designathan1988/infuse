@@ -21,3 +21,13 @@ func TestLocalizeByTemplate(t *testing.T) {
 		t.Fatal("changed a text with no translation")
 	}
 }
+
+func TestLocalizeTranslatesTheReasonInsideAMessage(t *testing.T) {
+	registerTranslations("pt-BR", map[string]string{
+		"[infuse] Outer: %s Rules: x.json.": "[infuse] Externa: %s Regras: x.json.",
+		"the function %s is too long":       "a função %s é longa demais",
+	})
+	if got := localize("pt-BR", "[infuse] Outer: the function calc is too long Rules: x.json."); got != "[infuse] Externa: a função calc é longa demais Regras: x.json." {
+		t.Fatal(got)
+	}
+}

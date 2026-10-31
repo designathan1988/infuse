@@ -95,21 +95,31 @@ func localize(lang, text string) string {
 		compiledMsgs[lang] = msgs
 	}
 	i18nMu.Unlock()
-	one := func(s string) (string, bool) {
+	var one func(s string, depth int) (string, bool)
+	one = func(s string, depth int) (string, bool) {
 		for _, m := range msgs {
 			if sub := m.re.FindStringSubmatch(s); sub != nil {
-				return fillTemplate(m.trans, sub[1:]), true
+				args := sub[1:]
+				if depth < 3 { // a message inside a message (a reason inside a refusal) is translated too
+					args = append([]string{}, args...)
+					for i, a := range args {
+						if t, ok := one(a, depth+1); ok {
+							args[i] = t
+						}
+					}
+				}
+				return fillTemplate(m.trans, args), true
 			}
 		}
 		return s, false
 	}
-	if t, ok := one(text); ok {
+	if t, ok := one(text, 0); ok {
 		return t
 	}
 	parts := strings.Split(text, "\n")
 	changed := false
 	for i, p := range parts {
-		if t, ok := one(p); ok {
+		if t, ok := one(p, 0); ok {
 			parts[i], changed = t, true
 		}
 	}

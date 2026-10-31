@@ -26,7 +26,7 @@ func TestPtProtocolMessages(t *testing.T) {
 	// a refusal with an inner reason (a convention), and the reason on its own
 	reason := fmt.Sprintf("the project indents with %s (%.0f%% of the files) and this code uses %s.", "2 spaces", 95.0, "tabs")
 	conv := fmt.Sprintf("[infuse] Blocked: %s Rewrite it following the project's convention (.infuse/conventions.md).", reason)
-	if got := localize("pt-BR", conv); got != "[infuse] Bloqueado: "+reason+" Reescreva seguindo a convenção do projeto (.infuse/conventions.md)." {
+	if got := localize("pt-BR", conv); got != "[infuse] Bloqueado: o projeto indenta com 2 spaces (95% dos arquivos) e este código usa tabs. Reescreva seguindo a convenção do projeto (.infuse/conventions.md)." { // the inner reason is translated too
 		t.Fatal(got)
 	}
 	if got := localize("pt-BR", reason); got != "o projeto indenta com 2 spaces (95% dos arquivos) e este código usa tabs." {
