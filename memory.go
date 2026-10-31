@@ -66,7 +66,7 @@ func saveMemory(file string, items []MemoryItem) error {
 func normalizeMemory(it *MemoryItem) error {
 	it.Text = strings.TrimSpace(it.Text)
 	if it.Text == "" {
-		return fmt.Errorf("empty text")
+		return errMsg(M("memory.empty_text"))
 	}
 	if _, ok := memoryTypes[it.Type]; !ok {
 		it.Type = "fato"
@@ -102,6 +102,15 @@ func sortMemory(items []MemoryItem) {
 // memoryPrompt is the memory section of the system prompt: session, project and global items, the most
 // important first, cut at the budget (what does not fit is named, so it can be listed with the tool).
 func memoryPrompt(s *Session) string {
+	items, left := memoryItems(s)
+	if left > 0 {
+		items += M("memory.overflow", "count", left).String() + "\n"
+	}
+	return items
+}
+
+// memoryItems is the memory's lines that fit the budget, and how many did not fit.
+func memoryItems(s *Session) (string, int) {
 	type scoped struct {
 		MemoryItem
 		scope string
@@ -119,7 +128,7 @@ func memoryPrompt(s *Session) string {
 		all = append(all, scoped{it, "global"})
 	}
 	if len(all) == 0 {
-		return ""
+		return "", 0
 	}
 	sort.SliceStable(all, func(i, j int) bool {
 		a, b := all[i], all[j]
@@ -141,10 +150,7 @@ func memoryPrompt(s *Session) string {
 		}
 		b.WriteString(line)
 	}
-	if left > 0 {
-		fmt.Fprintf(&b, "(%d lower-priority item(s) did not fit; list them with Memory action=list)\n", left)
-	}
-	return b.String()
+	return b.String(), left
 }
 
 // ---------------------------------------------------------------- the agent's tool
@@ -166,20 +172,24 @@ func (memoryTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 	s := tc.S
 	switch in.Action {
 	case "list":
-		if p := memoryPrompt(s); p != "" {
-			return p, false
+		items, left := memoryItems(s)
+		if left > 0 {
+			items += tc.Say(M("memory.overflow", "count", left)) + "\n"
 		}
-		return "memory is empty", false
+		if items != "" {
+			return items, false
+		}
+		return tc.Say(M("memory.empty")), false
 	case "add":
 		it := MemoryItem{Type: in.Type, Text: in.Text, Priority: in.Priority, Origin: "agente", Session: s.ID}
 		if err := normalizeMemory(&it); err != nil {
-			return err.Error(), true
+			return tc.SayErr(err), true
 		}
 		if err := s.editMemory(in.Scope, func(items []MemoryItem) []MemoryItem { return append(items, it) }); err != nil {
 			return err.Error(), true
 		}
 		s.emit("memory", map[string]any{"action": "add", "item": it})
-		return fmt.Sprintf("recorded: %s", it.ID), false
+		return tc.Say(M("memory.recorded", "id", it.ID)), false
 	case "remove":
 		found := false
 		for _, scope := range []string{"session", "project", "global"} {
@@ -196,12 +206,12 @@ func (memoryTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 			})
 		}
 		if !found {
-			return fmt.Sprintf("item not found: %s", in.ID), true
+			return tc.Say(M("memory.not_found", "id", in.ID)), true
 		}
 		s.emit("memory", map[string]any{"action": "remove", "id": in.ID})
-		return fmt.Sprintf("removed: %s", in.ID), false
+		return tc.Say(M("memory.removed", "id", in.ID)), false
 	}
-	return fmt.Sprintf("unknown action: %s", in.Action), true
+	return tc.Say(M("tool.unknown_action", "action", in.Action)), true
 }
 
 // editMemory changes the items of one scope (session, project — the default — or global).

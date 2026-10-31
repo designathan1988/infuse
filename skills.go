@@ -8,7 +8,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -117,10 +116,10 @@ func (skillTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 			}
 			_, _, body := parseSkill(string(b))
 			tc.S.markRead(filepath.Join(s.Dir, "SKILL.md"))
-			return fmt.Sprintf("Skill %s (folder: %s)\n\n%s", s.Name, s.Dir, clip(body)), false
+			return tc.Say(M("skill.head", "name", s.Name, "folder", s.Dir)) + "\n\n" + tc.clip(body), false
 		}
 	}
-	return fmt.Sprintf("skill not found: %s", in.Name), true
+	return tc.Say(M("skill.not_found", "name", in.Name)), true
 }
 
 func init() { registerTool(skillTool{}) }

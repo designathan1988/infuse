@@ -31,8 +31,9 @@ type Mission struct {
 	MaxTurns   int           `json:"maxTurns"`
 	StartCost  float64       `json:"startCost"`
 	StartTurn  int           `json:"startTurn"`
-	State      string        `json:"state"` // running | aprovada | orcamento | impasse | parada
-	Reason     string        `json:"reason,omitempty"`
+	State      string        `json:"state"`            // running | aprovada | orcamento | impasse | parada
+	Reason     string        `json:"reason,omitempty"` // why it ended, in the user's language (written from ReasonMsg)
+	ReasonMsg  Msg           `json:"reasonMsg,omitempty"`
 	Started    int64         `json:"started"`
 	Ended      int64         `json:"ended,omitempty"`
 	Steps      []MissionStep `json:"steps"`
@@ -48,17 +49,63 @@ type Impasse struct {
 	Needs    string   `json:"needs"`
 }
 
-// The "[Missão]" tag and the "Objetivo: " label are markers the interface (ui/app.js) and sentinel.go
-// look for; they stay as they are until those readers change with them.
-const missionBrief = `[Missão] Mission: work on your own until the goal below is met. At the end of each turn infuse runs the Done? criteria on a copy of the project; if they fail, you receive the reasons and continue. If you conclude that it is not possible to finish (missing access, information or a decision from the user), call the Impasse tool with what you tried and the evidence: that ends the mission and is a valid result.
+// missionNote is the structured content of a message infuse sends for a mission (Message.Kind
+// "mission", on its text block's Data): the interface and the sentinel read the goal and the verdict
+// here, never in the text.
+type missionNote struct {
+	Goal     string  `json:"goal"`
+	Turn     int     `json:"turn,omitempty"` // a continuation: the mission's turn about to start
+	MaxTurns int     `json:"maxTurns,omitempty"`
+	Spent    float64 `json:"spent,omitempty"`
+	Budget   float64 `json:"budget,omitempty"`
+	Verdict  string  `json:"verdict,omitempty"` // the Done? verdict that sent the agent back
+}
 
-Objetivo: `
+// missionNoteOf is the mission data of a message, when it is one of infuse's mission messages.
+func missionNoteOf(m Message) (missionNote, bool) {
+	var n missionNote
+	if m.Kind != "mission" {
+		return n, false
+	}
+	for _, b := range m.Content {
+		if b.Type == "text" && len(b.Meta) > 0 && json.Unmarshal(b.Meta, &n) == nil {
+			return n, true
+		}
+	}
+	return n, false
+}
+
+// sendMission starts a turn with a mission message: English for the model, the user's language on
+// screen, marked as a mission and carrying its data.
+func (s *Session) sendMission(m Msg, note missionNote) error {
+	text := m.String()
+	if err := s.Send(text, nil, nil); err != nil {
+		return err
+	}
+	raw, _ := json.Marshal(note)
+	s.mu.Lock()
+	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) {
+		if i := s.TurnStarts[s.Turn-1]; i < len(s.Messages) && s.Messages[i].Role == "user" && len(s.Messages[i].Content) > 0 {
+			c := append([]Block{}, s.Messages[i].Content...) // a copy: the turn already running holds the old one
+			b := s.textBlockLocked(m)
+			b.Meta = raw
+			c[0] = b
+			s.Messages[i].Content, s.Messages[i].Kind = c, "mission"
+		}
+	}
+	if s.Turn == 1 && s.Title == truncate(strings.SplitN(strings.TrimSpace(text), "\n", 2)[0], 60) {
+		s.Title = truncate(note.Goal, 60) // the session is named by the goal, not by the instructions
+	}
+	s.mu.Unlock()
+	s.emit("session", s.snapshot())
+	return nil
+}
 
 // StartMission begins a mission on the session with the goal as the first message.
 func (s *Session) StartMission(goal string, budget float64, maxTurns int) error {
 	goal = strings.TrimSpace(goal)
 	if goal == "" {
-		return fmt.Errorf("descreva o objetivo da missão")
+		return userError(s.uiLang(), M("mission.no_goal"))
 	}
 	if budget <= 0 {
 		budget = 2
@@ -69,18 +116,22 @@ func (s *Session) StartMission(goal string, budget float64, maxTurns int) error 
 	s.mu.Lock()
 	if s.State != "idle" && s.State != "error" {
 		s.mu.Unlock()
-		return fmt.Errorf("o agente está ocupado")
+		return userError(s.uiLang(), M("mission.busy"))
 	}
 	s.Mission = &Mission{Goal: goal, BudgetUSD: budget, MaxTurns: maxTurns, StartCost: s.Cost, StartTurn: s.Turn, State: "running", Started: time.Now().UnixMilli(), Steps: []MissionStep{}, lastCostAt: s.Cost, NoPrice: !s.settings.hasPrice(s.Model)}
 	s.mu.Unlock()
 	s.emit("mission", s.missionSnapshot())
-	return s.Send(missionBrief+goal, nil, nil)
+	return s.sendMission(M("mission.brief", "goal", goal), missionNote{Goal: goal})
 }
 
 func (s *Session) missionSnapshot() *Mission {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.Mission.clone()
+	c := s.Mission.clone()
+	if c != nil && !c.ReasonMsg.Empty() {
+		c.Reason = c.ReasonMsg.Render(s.uiLang())
+	}
+	return c
 }
 
 // clone copies a mission for the UI (the original keeps changing under the session's lock).
@@ -93,10 +144,20 @@ func (m *Mission) clone() *Mission {
 	return &c
 }
 
+// endMission ends the running mission with a reason given as text (already in the user's language).
 func (s *Session) endMission(state, reason string) {
+	s.endMissionWith(state, Msg{}, reason)
+}
+
+// endMissionMsg ends the running mission with a reason from the catalog.
+func (s *Session) endMissionMsg(state string, reason Msg) {
+	s.endMissionWith(state, reason, reason.Render(s.uiLang()))
+}
+
+func (s *Session) endMissionWith(state string, reason Msg, text string) {
 	s.mu.Lock()
 	if s.Mission != nil && s.Mission.State == "running" {
-		s.Mission.State, s.Mission.Reason, s.Mission.Ended = state, reason, time.Now().UnixMilli()
+		s.Mission.State, s.Mission.Reason, s.Mission.ReasonMsg, s.Mission.Ended = state, text, reason, time.Now().UnixMilli()
 	}
 	s.mu.Unlock()
 	s.save()
@@ -105,7 +166,7 @@ func (s *Session) endMission(state, reason string) {
 
 // StopMission is the user's stop.
 func (s *Session) StopMission() {
-	s.endMission("parada", "parada pelo usuário")
+	s.endMissionMsg("parada", M("mission.end_stopped"))
 	s.Stop()
 }
 
@@ -148,32 +209,35 @@ func (s *Session) missionStep() {
 	s.mu.Unlock()
 	s.emit("mission", s.missionSnapshot())
 
+	usd := func(v float64) string { return fmt.Sprintf("%.2f", v) }
 	switch {
 	case step.Verdict == "aprovado":
-		s.endMission("aprovada", "os critérios do Pronto? passaram")
+		s.endMissionMsg("aprovada", M("mission.end_passed"))
 		return
 	case spent >= m.BudgetUSD:
-		s.endMission("orcamento", fmt.Sprintf("orçamento atingido: US$ %.2f de US$ %.2f", spent, m.BudgetUSD))
+		s.endMissionMsg("orcamento", M("mission.end_budget", "spent", usd(spent), "budget", usd(m.BudgetUSD)))
 		return
 	case turns >= m.MaxTurns:
-		s.endMission("orcamento", fmt.Sprintf("limite de %d turnos atingido", m.MaxTurns))
+		s.endMissionMsg("orcamento", M("mission.end_turns", "max", m.MaxTurns))
 		return
 	}
-	var next strings.Builder
-	fmt.Fprintf(&next, "[Missão — turn %d of %d · US$ %.2f of US$ %.2f] ", turns+1, m.MaxTurns, spent, m.BudgetUSD)
+	var body Msg
 	switch step.Verdict {
 	case "sem-criterios":
-		next.WriteString("There are no executable criteria in Done?, so infuse has no way to confirm the end. If the goal is met, report it with Report and call Impasse explaining that criteria are missing to confirm it; otherwise, continue.")
+		body = M("mission.no_criteria")
 	case "erro":
-		fmt.Fprintf(&next, "The criteria could not run: %s\nFix what prevents the verification or call Impasse.", step.Summary)
+		body = M("mission.cannot_verify", "error", step.Summary)
 	default:
-		fmt.Fprintf(&next, "Done? rejected the current work. Criteria that failed:\n%s\nFix it and continue. Do not change the criteria or the tests to make them pass.", step.Summary)
+		body = M("mission.rejected", "failing", step.Summary)
 	}
+	auditor := Msg{} // renders as nothing when the auditor had nothing to say
 	if step.Auditor != "" {
-		fmt.Fprintf(&next, "\n\nNote from the flow auditor (advice, not an order): %s", step.Auditor)
+		auditor = M("mission.auditor", "note", step.Auditor)
 	}
-	if err := s.Send(next.String(), nil, nil); err != nil {
-		s.endMission("parada", "não foi possível continuar: "+err.Error())
+	next := M("mission.next", "turn", turns+1, "max", m.MaxTurns, "spent", usd(spent), "budget", usd(m.BudgetUSD), "body", body, "auditor", auditor)
+	note := missionNote{Goal: m.Goal, Turn: turns + 1, MaxTurns: m.MaxTurns, Spent: spent, Budget: m.BudgetUSD, Verdict: step.Verdict}
+	if err := s.sendMission(next, note); err != nil {
+		s.endMissionMsg("parada", M("mission.end_cannot_continue", "error", errArg(err)))
 	}
 }
 
@@ -250,10 +314,10 @@ func (impasseTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	}
 	s.mu.Unlock()
 	if !running {
-		return "there is no mission running; explain the impasse to the user in your answer", false
+		return tc.Say(M("impasse.no_mission")), false
 	}
-	s.endMission("impasse", im.Reason)
-	return "Mission ended at an impasse. The user sees the reason, what was tried and what is needed. End the turn with a short summary.", false
+	s.endMission("impasse", im.Reason) // the agent's own words, shown as it wrote them
+	return tc.Say(M("impasse.recorded")), false
 }
 
 func init() { registerTool(impasseTool{}) }

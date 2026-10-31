@@ -54,17 +54,32 @@ func (l *procLog) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// since returns the output after offset (what was dropped is announced) and the new offset.
+// since returns the output kept after offset and the new offset (older output may have been dropped).
 func (l *procLog) since(off int64) (string, int64) {
+	text, to, _ := l.sinceDropped(off)
+	return text, to
+}
+
+// sinceDropped is since, plus how many older bytes were dropped before what it returns.
+func (l *procLog) sinceDropped(off int64) (string, int64, int64) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	first := l.total - int64(len(l.buf))
-	prefix := ""
+	var dropped int64
 	if off < first {
-		prefix = fmt.Sprintf("[… %d older bytes discarded …]\n", first-off)
+		dropped = first - off
 		off = first
 	}
-	return prefix + string(l.buf[off-first:]), l.total
+	return string(l.buf[off-first:]), l.total, dropped
+}
+
+// sinceFor is since for the agent: what was dropped is said, as a message of the call.
+func (l *procLog) sinceFor(tc *ToolContext, off int64) (string, int64) {
+	text, to, dropped := l.sinceDropped(off)
+	if dropped > 0 {
+		text = tc.Say(M("proc.discarded", "bytes", dropped)) + "\n" + text
+	}
+	return text, to
 }
 
 var allProcs sync.Map // every running process of every session, for shutdown
@@ -127,7 +142,7 @@ func (s *Session) proc(id string) *bgProc {
 func (s *Session) stopProc(id string) error {
 	p := s.proc(id)
 	if p == nil {
-		return fmt.Errorf("process %s does not exist in this session", id)
+		return errMsg(M("proc.no_such", "id", id))
 	}
 	s.mu.Lock()
 	running := p.State == "running"
@@ -160,11 +175,12 @@ func (s *Session) procListLocked() []map[string]any {
 
 func (s *Session) emitProcs() { s.emit("procs", s.procList()) }
 
-// procNotes tells the agent, once, about processes that ended since it last looked.
-func (s *Session) procNotes() string {
+// procNoteMsgs tells the agent, once, about processes that ended since it last looked. Whoever adds them
+// to a tool result records them with that call (s.say).
+func (s *Session) procNoteMsgs() []Msg {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var notes []string
+	var notes []Msg
 	for _, p := range s.procs {
 		if p.State != "running" && !p.told {
 			p.told = true
@@ -173,11 +189,20 @@ func (s *Session) procNotes() string {
 				code = *p.Exit
 			}
 			if p.State == "stopped" {
-				notes = append(notes, fmt.Sprintf("[infuse] the background process %s (%s) was stopped.", p.ID, truncate(p.Command, 80)))
+				notes = append(notes, M("proc.note_stopped", "id", p.ID, "command", truncate(p.Command, 80)))
 			} else {
-				notes = append(notes, fmt.Sprintf("[infuse] the background process %s (%s) finished on its own, exit code %d. Read its output with BashOutput.", p.ID, truncate(p.Command, 80), code))
+				notes = append(notes, M("proc.note_exited", "id", p.ID, "command", truncate(p.Command, 80), "code", code))
 			}
 		}
+	}
+	return notes
+}
+
+// procNotes is procNoteMsgs in the model's words, for a caller that has no call to record them with.
+func (s *Session) procNotes() string {
+	var notes []string
+	for _, m := range s.procNoteMsgs() {
+		notes = append(notes, m.String())
 	}
 	return strings.Join(notes, "\n")
 }
@@ -205,12 +230,12 @@ func (bashOutputTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 	_ = json.Unmarshal(input, &in)
 	p := tc.S.proc(in.ID)
 	if p == nil {
-		return fmt.Sprintf("process not found: %s. Processes in this session: %s", in.ID, tc.S.procIDs()), true
+		return tc.Say(M("proc.not_found", "id", in.ID, "list", tc.S.procIDs())), true
 	}
 	tc.S.mu.Lock()
 	from := p.read
 	tc.S.mu.Unlock()
-	text, to := p.out.since(from)
+	text, to := p.out.sinceFor(tc, from)
 	tc.S.mu.Lock()
 	p.read = to
 	state, exit := p.State, p.Exit
@@ -221,7 +246,7 @@ func (bashOutputTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 	if in.Filter != "" {
 		re, err := regexp.Compile(in.Filter)
 		if err != nil {
-			return fmt.Sprintf("invalid filter: %s", err.Error()), true
+			return tc.Say(M("proc.bad_filter", "error", err.Error())), true
 		}
 		var keep []string
 		for _, l := range strings.Split(text, "\n") {
@@ -231,17 +256,20 @@ func (bashOutputTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 		}
 		text = strings.Join(keep, "\n")
 	}
-	head := "running"
-	if state != "running" {
-		head = state
-		if exit != nil {
-			head += fmt.Sprintf(" (exit code %d)", *exit)
-		}
+	head := M("proc.head_running", "id", in.ID)
+	switch {
+	case state == "running":
+	case exit != nil && state == "stopped":
+		head = M("proc.head_stopped", "id", in.ID, "code", *exit)
+	case exit != nil:
+		head = M("proc.head_exited", "id", in.ID, "code", *exit)
+	default:
+		head = M("proc.head_ended", "id", in.ID)
 	}
 	if strings.TrimSpace(text) == "" {
-		text = "(no new output)"
+		text = tc.Say(M("proc.no_output"))
 	}
-	return fmt.Sprintf("[%s · %s]\n%s", in.ID, head, clip(text)), false
+	return tc.Say(head) + "\n" + tc.clip(text), false
 }
 
 type killShellTool struct{}
@@ -256,12 +284,13 @@ func (killShellTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	var in struct{ ID string }
 	_ = json.Unmarshal(input, &in)
 	if err := tc.S.stopProc(in.ID); err != nil {
-		return err.Error(), true
+		return tc.SayErr(err), true
 	}
-	return fmt.Sprintf("process %s stopped", in.ID), false
+	return tc.Say(M("proc.stopped", "id", in.ID)), false
 }
 
-func (s *Session) procIDs() string {
+// procIDs lists the session's processes with their states (a message: none, or the list).
+func (s *Session) procIDs() Msg {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var ids []string
@@ -269,9 +298,9 @@ func (s *Session) procIDs() string {
 		ids = append(ids, p.ID+" ("+p.State+")")
 	}
 	if len(ids) == 0 {
-		return "none"
+		return M("proc.none")
 	}
-	return strings.Join(ids, ", ")
+	return M("proc.list", "ids", strings.Join(ids, ", "))
 }
 
 func init() {

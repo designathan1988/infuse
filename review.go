@@ -94,7 +94,7 @@ func PRStatus(dir string) map[string]any {
 
 func ghRun(dir string, args ...string) (string, error) {
 	if !ghAvailable() {
-		return "", errors.New("GitHub CLI (gh) não encontrado: instale em https://cli.github.com e rode `gh auth login`")
+		return "", userError(rootLang(dir), M("gh.missing"))
 	}
 	cmd := exec.Command("gh", args...)
 	noConsoleWindow(cmd)
@@ -149,7 +149,7 @@ func OpenInEditor(id, path string) error {
 			return cmd.Start()
 		}
 	}
-	return errors.New("editor não encontrado")
+	return userError(rootLang(""), M("editor.not_found"))
 }
 
 // WriteUserFile saves an edit made in the file pane. mtime (ms) guards against overwriting a change
@@ -157,7 +157,7 @@ func OpenInEditor(id, path string) error {
 func WriteUserFile(root, rel, content string, mtime int64, force bool) (int64, error) {
 	abs := filepath.Join(root, filepath.FromSlash(rel))
 	if r, err := filepath.Rel(root, abs); err != nil || strings.HasPrefix(r, "..") {
-		return 0, errors.New("fora do projeto")
+		return 0, userError(rootLang(root), M("file.outside"))
 	}
 	if st, err := os.Stat(abs); err == nil && !force && mtime > 0 && st.ModTime().UnixMilli() > mtime {
 		return st.ModTime().UnixMilli(), errConflict
@@ -173,7 +173,8 @@ func WriteUserFile(root, rel, content string, mtime int64, force bool) (int64, e
 	return st.ModTime().UnixMilli(), nil
 }
 
-var errConflict = errors.New("o arquivo mudou no disco")
+// errConflict: the file changed on disk since the pane loaded it (answered as a conflict, not as text).
+var errConflict = errMsg(M("file.changed_on_disk"))
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
@@ -183,7 +184,7 @@ func jsonMarshalImpl(v any) ([]byte, error) { return json.Marshal(v) }
 func FailedCILogs(dir string) (string, error) {
 	branch := strings.TrimSpace(gitOutput(dir, "branch", "--show-current"))
 	if branch == "" {
-		return "", errors.New("não há branch atual")
+		return "", userError(rootLang(dir), M("ci.no_branch"))
 	}
 	list, err := ghRun(dir, "run", "list", "--branch", branch, "--limit", "10", "--json", "databaseId,conclusion,name,headSha")
 	if err != nil {
@@ -208,5 +209,5 @@ func FailedCILogs(dir string) (string, error) {
 			return fmt.Sprintf("Workflow: %s (run %d, commit %.8s)\n\n%s", r.Name, r.ID, r.HeadSha, logs), nil
 		}
 	}
-	return "", errors.New("nenhuma execução de CI com falha neste branch")
+	return "", userError(rootLang(dir), M("ci.no_failure"))
 }

@@ -97,17 +97,17 @@ func TestAgentBrowserForReal(t *testing.T) {
 	run(`{"action":"wait_for","text":"Salvo: Jônathan Teste"}`)
 	run(`{"action":"scroll","dy":300}`)
 	rec := run(`{"action":"record_stop"}`)
-	for _, want := range []string{"quadros-chave", "console.error: falha simulada", "/faltando → 404", "ação: click"} {
+	for _, want := range []string{"keyframes", M("browser.ev_console", "type", "error", "text", "falha simulada").String(), "/faltando → 404", M("browser.ev_action", "action", "click").String()} {
 		if !strings.Contains(rec, want) {
 			t.Fatalf("recording without %q:\n%s", want, rec)
 		}
 	}
-	if !strings.Contains(rec, "Imagem 2") {
+	if !strings.Contains(rec, "Image 2 ·") {
 		t.Fatalf("one keyframe only:\n%s", rec)
 	}
 	run(`{"action":"scroll","dy":-2000}`)
 	// select, double and right click, keyboard combinations
-	if r := run(`{"action":"select","selector":"label=Cor","value":"Verde"}`); !strings.Contains(r, "selecionado: Verde") || js(`document.getElementById('cor').value`) != "g" {
+	if r := run(`{"action":"select","selector":"label=Cor","value":"Verde"}`); !strings.Contains(r, M("browser.selected", "option", "Verde").String()) || js(`document.getElementById('cor').value`) != "g" {
 		t.Fatal(r)
 	}
 	run(`{"action":"click","selector":"#duplo","count":2}`)
@@ -151,7 +151,7 @@ func TestAgentBrowserForReal(t *testing.T) {
 	for in, want := range map[string]string{
 		`{"action":"network","only_issues":true}`: "404",
 		`{"action":"console"}`:                    "falha simulada",
-		`{"action":"performance"}`:                "tempos (ms)",
+		`{"action":"performance"}`:                "timings (ms)",
 		`{"action":"a11y"}`:                       `button "Salvar"`,
 		`{"action":"storage"}`:                    "escuro",
 		`{"action":"dom","selector":"#cor"}`:      "Verde",

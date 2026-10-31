@@ -45,21 +45,29 @@ func TestSentinelAsksBeforeEditingTestsToMakeThemPass(t *testing.T) {
 		}
 	}()
 	out, isErr := s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "1", Name: "Write", Input: json.RawMessage(`{"path":"src/soma.test.js","content":"test('x', () => {})"}`)})
-	if !isErr || !strings.Contains(out, "test file") {
+	if !isErr || !strings.Contains(out, M("sentinel.test_edit").String()) {
 		t.Fatalf("%v %s", isErr, out)
 	}
 
+	user := func(text string) Message { return Message{Role: "user", Content: []Block{{Type: "text", Text: text}}} }
+	// infuse's mission messages carry the goal and the verdict as data: the sentinel reads those, not the text
+	mission := func(m Msg, n missionNote) Message {
+		raw, _ := json.Marshal(n)
+		return Message{Role: "user", Kind: "mission", Content: []Block{{Type: "text", Text: m.String(), Meta: raw}}}
+	}
+	goal := "adicione uma função e um teste para ela em hello.test.js"
 	// requests that are not about making failing tests pass: no sentinel
-	for _, req := range []string{"escreva testes para soma.js", "[Missão] Ao fim de cada turno o infuse roda os critérios; se falharem, você continua.\n\nObjetivo: adicione uma função e um teste para ela em hello.test.js", "add a test for the parser"} {
-		s.Messages[0].Content[0].Text = req
+	for _, req := range []Message{user("escreva testes para soma.js"), mission(M("mission.brief", "goal", goal), missionNote{Goal: goal}), user("add a test for the parser")} {
+		s.Messages[0] = req
 		if why := s.sentinel(write, json.RawMessage(`{"path":"src/soma.test.js"}`)); why != "" {
-			t.Fatalf("flagged %q", req)
+			t.Fatalf("flagged %q", msgText(req))
 		}
 	}
-	for _, req := range []string{"os testes estão falhando, faça passar", "fix the failing tests", "corrija os testes", "make the tests pass", "[Missão — turno 2 de 5] O Pronto? reprovou o trabalho atual", "o CI falhou"} {
-		s.Messages[0].Content[0].Text = req
+	rejected := mission(M("mission.next", "turn", 2, "max", 5, "spent", "0.10", "budget", "2.00", "body", M("mission.rejected", "failing", "testes: exit 1"), "auditor", Msg{}), missionNote{Goal: goal, Turn: 2, MaxTurns: 5, Verdict: "reprovado"})
+	for _, req := range []Message{user("os testes estão falhando, faça passar"), user("fix the failing tests"), user("corrija os testes"), user("make the tests pass"), rejected, user("o CI falhou")} {
+		s.Messages[0] = req
 		if s.sentinel(write, json.RawMessage(`{"path":"src/soma.test.js"}`)) == "" {
-			t.Fatalf("not flagged %q", req)
+			t.Fatalf("not flagged %q", msgText(req))
 		}
 	}
 }

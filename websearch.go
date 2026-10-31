@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -97,7 +96,7 @@ func bingTarget(link string) string {
 func WebSearch(ctx context.Context, q string, max int) ([]SearchResult, string, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
-		return nil, "", errors.New("empty search")
+		return nil, "", errMsg(M("search.empty"))
 	}
 	if max <= 0 || max > 20 {
 		max = 8
@@ -119,12 +118,12 @@ func WebSearch(ctx context.Context, q string, max int) ([]SearchResult, string, 
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 		resp.Body.Close()
 		if resp.StatusCode >= 400 {
-			lastErr = fmt.Errorf("%s answered HTTP %d", e.name, resp.StatusCode)
+			lastErr = errMsg(M("search.http", "engine", e.name, "status", resp.StatusCode))
 			continue
 		}
 		res := e.parse(string(b))
 		if len(res) == 0 {
-			lastErr = fmt.Errorf("%s returned no results", e.name)
+			lastErr = errMsg(M("search.no_results", "engine", e.name))
 			continue
 		}
 		if len(res) > max {
@@ -154,13 +153,13 @@ func (webSearchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.Query, Detail: "pesquisa na web"})
 	res, engine, err := WebSearch(ctx, in.Query, in.Max)
 	if err != nil {
-		return fmt.Sprintf("search failed: %s", err.Error()), true
+		return tc.Say(M("search.failed", "error", errArg(err))), true
 	}
 	var b strings.Builder
 	for i, r := range res {
 		fmt.Fprintf(&b, "%d. %s\n   %s\n   %s\n", i+1, r.Title, r.URL, r.Snippet)
 	}
-	return clip(externalContent(engine+": "+in.Query, b.String())), false
+	return tc.clip(externalContent(engine+": "+in.Query, b.String())), false
 }
 
 func init() { registerTool(webSearchTool{}) }

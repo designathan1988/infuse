@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"regexp"
-	"strings"
 )
 
 var (
@@ -21,22 +20,38 @@ var (
 		`|reprovou`)
 )
 
-const sentinelTestEdit = "a change to a test file in a request to make the tests pass"
-
-// turnRequest is the text the user typed to start the current turn.
-func (s *Session) turnRequest() string {
+// turnStart is the message that started the current turn.
+func (s *Session) turnStart() (Message, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.Turn < 1 || s.Turn-1 >= len(s.TurnStarts) || s.TurnStarts[s.Turn-1] >= len(s.Messages) {
-		return ""
+		return Message{}, false
 	}
-	return msgText(s.Messages[s.TurnStarts[s.Turn-1]])
+	return s.Messages[s.TurnStarts[s.Turn-1]], true
 }
 
-// sentinel returns why an action needs the user's eyes, or "".
-func (s *Session) sentinel(tool Tool, input json.RawMessage) string {
-	if tool.Category() != "write" {
+// turnRequest is what the user asked for in the current turn: the text they typed, or, when infuse
+// started the turn for a mission, the mission's goal (from the message's data, not its text).
+func (s *Session) turnRequest() string {
+	m, ok := s.turnStart()
+	if !ok {
 		return ""
+	}
+	if n, ok := missionNoteOf(m); ok {
+		return n.Goal
+	}
+	return msgText(m)
+}
+
+// sentinel returns why an action needs the user's eyes, in the model's words, or "".
+func (s *Session) sentinel(tool Tool, input json.RawMessage) string {
+	return s.sentinelMsg(tool, input).String()
+}
+
+// sentinelMsg returns why an action needs the user's eyes (empty: it does not).
+func (s *Session) sentinelMsg(tool Tool, input json.RawMessage) Msg {
+	if tool.Category() != "write" {
+		return Msg{}
 	}
 	var in struct {
 		Path     string `json:"path"`
@@ -48,19 +63,14 @@ func (s *Session) sentinel(tool Tool, input json.RawMessage) string {
 		p = in.FilePath
 	}
 	if p == "" || !reTestFile.MatchString(filepath.ToSlash(p)) {
-		return ""
+		return Msg{}
 	}
-	req := s.turnRequest()
-	if strings.HasPrefix(req, "[Missão]") || strings.HasPrefix(req, "[Mission]") { // infuse's own mission instructions are not the user's request
-		for _, goal := range []string{"Objetivo: ", "Goal: "} {
-			if k := strings.Index(req, goal); k >= 0 {
-				req = req[k+len(goal):]
-				break
-			}
-		}
+	m, _ := s.turnStart()
+	if n, ok := missionNoteOf(m); ok && n.Verdict == "reprovado" { // the mission came back because Done? failed: the request is to make it pass
+		return M("sentinel.test_edit")
 	}
-	if reMakePass.MatchString(req) {
-		return sentinelTestEdit
+	if reMakePass.MatchString(s.turnRequest()) {
+		return M("sentinel.test_edit")
 	}
-	return ""
+	return Msg{}
 }

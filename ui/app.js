@@ -398,6 +398,10 @@ function onEvent(L, ev) {
     case 'gate': toast(t('infuse interveio: ') + String(d.display || d.message || '').replace(/^\[infuse\] /, '').split('\n')[0].slice(0, 140)); break;
     case 'subagent': L.sub = d.state === 'done' ? null : { ...(L.sub || {}), ...d, steps: (L.sub?.steps || 0) + (d.state === 'tool' ? 1 : 0) }; vs.forEach(renderLive); break;
     case 'mission': L.snap.mission = d; vs.forEach(renderRail); break;
+    case 'report': { // infuse's check of a Report call: data attached to that call, drawn by reportCard
+      for (const m of L.snap.messages) for (const b of m.content || []) if (b.type === 'tool_use' && b.id === d.callId) b.meta = d;
+      vs.forEach(renderChat); break;
+    }
     case 'cwd': L.snap.cwd = d; break;
     case 'checkpoint': (L.snap.checkpoints[d.turn] = L.snap.checkpoints[d.turn] || []).push({ path: d.path }); break;
     case 'map': paneRefresh('map'); paneRefresh('files'); break;
@@ -469,20 +473,21 @@ function renderChat(v) {
       if (m.content.some(b => b.type === 'tool_result')) return; // tool results (and images tools attached) are shown in their tool blocks
       const texts = m.content.filter(b => b.type === 'text'), imgs = m.content.filter(b => b.type === 'image');
       if (!texts.length && !imgs.length) return;
-      const main = texts[0]?.text || '';
-      if (main.startsWith('[Revisão independente]')) { out += reviewBlock(main.slice(22).trim(), i); return; }
-      if (main.startsWith('[Conversa resumida]') || main.startsWith('[Contexto compactado')) { out += `<div class="marker" title="${esc(main.slice(0, 600))}">${t('Conversa resumida')}</div>`; return; }
+      // what an infuse message is comes from its kind and its data, never from its words
+      const main = texts[0]?.display || texts[0]?.text || '';
+      if (m.kind === 'review') { out += reviewBlock(texts.slice(1).map(b => b.text).join('\n\n').trim(), i); return; }
+      if (m.kind === 'compaction') { out += `<div class="marker" title="${esc(main.slice(0, 600))}">${t('Conversa resumida')}</div>`; return; }
       const attached = texts.slice(1).map(b => (b.text.match(/path="([^"]+)"/) || [])[1]).filter(Boolean);
-      const mission = main.startsWith('[Missão]') ? main.slice(main.indexOf('Objetivo: ') + 10) : null;
-      out += `<div class="umsg${(s.pinnedMsgs || []).includes(i) ? ' pinned' : ''}" data-mi="${i}"><div class="u sel">${mission != null ? `<span class="tag warn" style="margin-right:6px">${t('Missão')}</span>${esc(mission)}` : esc(main)}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div>${msgBar(s, m, i, true)}</div>`;
+      const mission = missionOf(m);
+      const body = mission ? `<span class="tag warn" style="margin-right:6px">${esc(missionTag(mission))}</span>${esc(mission.turn ? main : mission.goal)}` : esc(main);
+      out += `<div class="umsg${(s.pinnedMsgs || []).includes(i) ? ' pinned' : ''}" data-mi="${i}"><div class="u sel">${body}${attached.length ? `<div class="att">${attached.map(p => `<span class="chipx" data-path="${esc(p)}">📎 <span>${esc(baseName(p))}</span></span>`).join('')}</div>` : ''}${imgs.map(b => `<img src="data:${b.mediaType};base64,${b.data}">`).join('')}</div>${msgBar(s, m, i, true)}</div>`;
     } else {
-      if (m.content.length === 2 && m.content[0]?.text === 'Entendido, continuo a partir desse estado.') return;
-      if (msgText(m) === 'Revisão recebida.') return;
+      if (m.kind === 'review_ack' || m.kind === 'compaction') return;
       let inner = '';
       for (const [bi, b] of m.content.entries()) {
         if (b.type === 'text' && b.text?.trim()) inner += `<div class="md sel">${md(b.text.trim())}</div>`;
         else if (b.type === 'thinking' && b.thinking?.trim()) inner += thinkBlock(`${v.sid}:${i}:${bi}`, b.thinking, false, b.ms);
-        else if (b.type === 'tool_use') inner += toolBlock(b.id, b.name, b.input, results[b.id], false);
+        else if (b.type === 'tool_use') inner += toolBlock(b.id, b.name, b.input, results[b.id], false, b.meta);
       }
       const toolsOnly = !m.content.some(b => b.type === 'text' && b.text?.trim()); // calls with no words: they continue the group above
       if (inner) out += `<div class="a${toolsOnly ? ' toolsonly' : ''}${(s.pinnedMsgs || []).includes(i) ? ' pinned' : ''}" data-mi="${i}">${inner}${m.content.some(b => b.type === 'text' && b.text?.trim()) ? msgFoot(m, i) : ''}</div>`; // a message with nothing visible leaves no gap
@@ -537,6 +542,10 @@ function turnSummary(s, msgs, from, to) {
   const bits = [dur != null && `${t('Trabalhou por')} ${fmtDur(dur)}`, tools && `${tools} ${t(tools === 1 ? 'ferramenta' : 'ferramentas')}`, tokens && `${fmtTok(tokens)} tokens`].filter(Boolean).join('<span class="dotsep">·</span>');
   return `<div class="turnsum"><span class="ok">✓</span><span class="meta">${bits}</span><span class="grow"></span>${texts ? `<button class="btn sm ghost" data-copy-turn="${from}:${to}" title="${esc(t('Copiar todas as respostas deste turno'))}">${I.copy} ${t('Copiar')}</button>` : ''}</div>`;
 }
+// A mission's message (kind "mission") carries its data on the text block: the goal, and for the turns
+// infuse starts after a verdict, the turn, the limits and the verdict.
+function missionOf(m) { if (m?.kind !== 'mission') return null; const b = (m.content || []).find(x => x.type === 'text' && x.meta); return b ? b.meta : { goal: '' }; }
+function missionTag(n) { return n.turn ? `${t('Missão')} · ${t('turno')} ${n.turn}/${n.maxTurns}` : t('Missão'); }
 // Independent review: a reviewer with a clean context reads the diff, the plan and the criteria.
 function reviewBlock(text, i) {
   return `<div class="report review"><div class="rh"><b>${t('Revisão independente')}</b><span class="faint">${t('um revisor com contexto limpo leu o diff, o plano e os critérios')}</span><span class="grow"></span><button class="ib" data-copy-msg="${i}" title="${esc(t('Copiar'))}">${I.copy}</button></div><div class="md sel">${md(text)}</div><div class="rnext"><span class="grow faint">${t('O agente vê estes achados na próxima mensagem.')}</span><button class="btn sm pri" data-fixreview>${t('Pedir correções')}</button></div></div>`;
@@ -602,7 +611,7 @@ function missionCard(L) {
     <div class="faint trunc" title="${esc(m.goal)}">${esc(m.goal)}</div>
     <div class="bar100" style="margin:6px 0 3px"><i style="width:${pct}%"></i></div><div class="faint">${t('turno')} ${Math.min(turns, m.maxTurns)}/${m.maxTurns} · ${money(spent)} ${t('de')} ${money(m.budgetUSD)}</div>
     ${m.noPrice && m.state === 'running' ? `<div class="faint" style="margin-top:4px">${t('Modelo sem preço na tabela: o orçamento em dólares não é medido, vale o limite de turnos (Configurações › Modelos e custos).')}</div>` : ''}
-    ${m.reason ? `<div style="margin-top:6px">${esc(t(m.reason))}</div>` : ''}
+    ${m.reason ? `<div style="margin-top:6px">${esc(m.reason)}</div>` : ''}
     ${m.impasse ? `<div class="mimp"><b>${t('Impasse')}:</b> ${esc(m.impasse.reason)}${(m.impasse.tried || []).length ? `<div>${t('Tentou')}: ${m.impasse.tried.map(esc).join('; ')}</div>` : ''}${m.impasse.evidence ? `<div class="mono">${esc(m.impasse.evidence)}</div>` : ''}<div><b>${t('Precisa de')}:</b> ${esc(m.impasse.needs)}</div></div>` : ''}
     ${last?.auditor ? `<div class="maud" title="${esc(t('Auditor de fluxo: conselho do modelo rápido, não um veredito'))}">${esc(last.auditor)}</div>` : ''}
     ${(m.steps || []).length ? `<details class="odet"><summary>${t('Linha do tempo')} (${m.steps.length})</summary>${m.steps.map(st => `<div class="mstep"><span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[st.verdict] || 'warn'}">${esc(t(st.verdict || '—'))}</span><span class="faint">${t('turno')} ${st.turn} · ${new Date(st.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${money(st.cost)}</span><div class="mono faint">${esc(st.summary || '')}</div>${st.auditor ? `<div class="maud">${esc(st.auditor)}</div>` : ''}</div>`).join('')}</details>` : ''}
@@ -662,9 +671,8 @@ function bindScroll(v) {
 }
 // Chapters: one per turn, titled by what the user asked; hover lists them, a click goes to the exact point.
 function chapterTitle(m) {
-  let tx = msgText(m).trim();
-  if (tx.startsWith('[Missão]')) { const k = tx.indexOf('Objetivo: '); tx = (k >= 0 ? t('Missão') + ': ' + tx.slice(k + 10) : t('Missão')); }
-  else if (tx.startsWith('[Missão — ')) tx = tx.slice(1, tx.indexOf(']'));
+  const n = missionOf(m);
+  const tx = n ? (n.turn ? missionTag(n) : `${t('Missão')}: ${n.goal}`) : msgText(m).trim();
   return tx.split('\n')[0].slice(0, 90) || t('(sem texto)');
 }
 function renderToc(v) {
@@ -693,7 +701,7 @@ function speakMsg(btn, text) {
   u.onend = u.onerror = () => btn.classList.remove('on'); btn.classList.add('on'); speechSynthesis.speak(u);
 }
 function turnOf(s, msgIndex) { const k = s.turnStarts.indexOf(msgIndex); return k >= 0 ? k + 1 : 0; }
-function msgText(m) { return (m.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n').trim(); }
+function msgText(m) { return (m.content || []).filter(b => b.type === 'text').map(b => b.display || b.text).join('\n\n').trim(); }
 function copyText(txt, what) { navigator.clipboard.writeText(txt).then(() => toast(t(what || 'Copiado')), () => toast('Não foi possível copiar')); }
 // The whole conversation as Markdown: prompts, answers, and each tool call with its input and result.
 function transcriptMarkdown(L) {
@@ -823,15 +831,17 @@ function thinkBlock(key, text, live, ms) {
   const words = text.trim().split(/\s+/).length;
   return `<div class="tool think2${open ? ' open' : ''}"><div class="h" data-fold="${esc(key)}"><span class="chev">›</span><b>${live ? t('Pensando…') : ms ? `${t('Pensou por')} ${fmtDur(ms)}` : t('Raciocínio')}</b><span class="s faint">${words} ${t('palavras')}</span><button class="ib mini" data-copy-think title="${esc(t('Copiar raciocínio'))}">${I.copy}</button></div><div class="b"><pre class="thinktext">${esc(text)}</pre></div></div>`;
 }
-// The agent's report, with infuse's check of each claim (from the tool result, one line per claim, in order).
+// The agent's report, with infuse's check of each claim: the data infuse attached to the Report call
+// (status code and evidence of each claim, in order, and the sources), never the text of its result.
 const CLAIM = { confirmado: ['✓', 'ok', 'confirmado pela execução'], parcial: ['◐', 'warn', 'parcial'], 'nao-confirmado': ['✗', 'bad', 'não confirmado'], 'sem-evidencia': ['?', '', 'sem evidência'] };
-function reportCard(inp, result) {
-  const lines = String(result?.content || '').split('\n').filter(l => l.startsWith('- ['));
-  const rows = (inp.claims || []).map((c, k) => { const m = (lines[k] || '').match(/^- \[([a-z-]+)\] .* — (.*)$/); const st = m ? m[1] : ''; const [ic, cls, lab] = CLAIM[st] || ['…', '', 'conferindo']; return `<div class="rrow"><span class="rst ${cls}" title="${esc(t(lab))}">${ic}</span><span class="grow"><span>${esc(c.text)}</span>${c.ref ? ` <code>${esc(c.ref)}</code>` : ''}${m ? `<span class="faint rev">${esc(m[2])}</span>` : ''}</span></div>`; }).join('');
-  const bad = lines.filter(l => l.startsWith('- [nao-confirmado]')).length;
-  const srcs = (String(result?.content || '').split('Fontes consultadas neste turno:\n')[1] || '').split('\n').filter(l => l.startsWith('- ')).map(l => l.slice(2));
-  const srcHTML = srcs.length ? `<details class="odet"><summary>${t('Fontes consultadas')} (${srcs.length})</summary>${srcs.map(x => /^https?:/.test(x) ? `<div class="mono" style="font-size:11.5px"><a href="#" data-url="${esc(x)}">${esc(x)}</a></div>` : `<div class="faint" style="font-size:11.5px">${esc(x)}</div>`).join('')}</details>` : '';
-  return `<div class="report"><div class="rh"><b>${t('Relatório')}</b><span class="faint">${t(result ? 'conferido pelo infuse com o que de fato rodou' : 'conferindo…')}</span>${bad ? `<span class="tag bad">${bad} ${t('não confirmada(s)')}</span>` : ''}</div>${inp.summary ? `<div class="md sel">${md(inp.summary)}</div>` : ''}${rows}${srcHTML}${inp.next ? `<div class="rnext"><span class="faint">${t('Próximo passo')}</span><span class="grow">${esc(inp.next)}</span><button class="btn sm" data-next="${esc(inp.next)}">${t('Usar')}</button></div>` : ''}</div>`;
+const SRC = { search: 'pesquisa', doc: 'documentação fixada' };
+function reportCard(inp, result, chk) {
+  const checked = chk?.claims || [];
+  const rows = (inp.claims || []).map((c, k) => { const v = checked[k]; const [ic, cls, lab] = CLAIM[v?.status] || ['…', '', 'conferindo']; return `<div class="rrow"><span class="rst ${cls}" title="${esc(t(lab))}">${ic}</span><span class="grow"><span>${esc(c.text)}</span>${c.ref ? ` <code>${esc(c.ref)}</code>` : ''}${v?.display ? `<span class="faint rev">${esc(v.display)}</span>` : ''}</span></div>`; }).join('');
+  const bad = chk?.unconfirmed || 0;
+  const srcs = chk?.sources || [];
+  const srcHTML = srcs.length ? `<details class="odet"><summary>${t('Fontes consultadas')} (${srcs.length})</summary>${srcs.map(x => x.kind === 'page' ? `<div class="mono" style="font-size:11.5px"><a href="#" data-url="${esc(x.ref)}">${esc(x.ref)}</a></div>` : `<div class="faint" style="font-size:11.5px">${esc(t(SRC[x.kind] || x.kind))}: ${esc(x.ref)}</div>`).join('')}</details>` : '';
+  return `<div class="report"><div class="rh"><b>${t('Relatório')}</b><span class="faint">${t(chk ? 'conferido pelo infuse com o que de fato rodou' : 'conferindo…')}</span>${bad ? `<span class="tag bad">${bad} ${t('não confirmada(s)')}</span>` : ''}</div>${inp.summary ? `<div class="md sel">${md(inp.summary)}</div>` : ''}${rows}${srcHTML}${inp.next ? `<div class="rnext"><span class="faint">${t('Próximo passo')}</span><span class="grow">${esc(inp.next)}</span><button class="btn sm" data-next="${esc(inp.next)}">${t('Usar')}</button></div>` : ''}</div>`;
 }
 // A subagent in the conversation, as Claude Code shows it: its steps appear one by one while it works
 // (what it says, each tool with what it touched, running/ok/error and the time), each step opens to its
@@ -851,7 +861,7 @@ function agentTrailHTML(a, bid) {
     if (st.kind === 'text') return `<div class="astep txt md sel">${md(st.text || '')}</div>`;
     let inp = {}; try { inp = JSON.parse(st.input || '{}'); } catch { }
     const k = `${bid}:s${i}`, open = S.fold[k] ?? (S.viewMode === 'verbose');
-    return `<div class="tool astep${open ? ' open' : ''}"><div class="h" data-fold="${esc(k)}"><span class="chev">›</span><span class="dot ${st.state === 'running' ? 'run' : st.state === 'error' ? 'err' : ''}"></span><b>${esc(t(toolLabel[st.tool] || st.tool))}</b><span class="s">${esc(toolSummary(st.tool, inp))}</span>${st.state !== 'running' && st.ms != null ? `<span class="tdur faint">${fmtDur(st.ms)}</span>` : ''}</div><div class="b">${st.output ? `<pre class="res">${esc(st.output)}</pre>` : `<div class="faint">${t('sem saída')}</div>`}</div></div>`;
+    return `<div class="tool astep${open ? ' open' : ''}"><div class="h" data-fold="${esc(k)}"><span class="chev">›</span><span class="dot ${st.state === 'running' ? 'run' : st.state === 'error' ? 'err' : ''}"></span><b>${esc(t(toolLabel[st.tool] || st.tool))}</b><span class="s">${esc(toolSummary(st.tool, inp))}</span>${st.state !== 'running' && st.ms != null ? `<span class="tdur faint">${fmtDur(st.ms)}</span>` : ''}</div><div class="b">${st.output ? `<pre class="res">${esc(st.display || st.output)}</pre>` : `<div class="faint">${t('sem saída')}</div>`}</div></div>`;
   }).join('');
   const tail = a.state === 'running' ? `<div class="astep faint"><span class="spin sm"></span>${t('trabalhando…')}</div>`
     : a.result ? `<div class="astep concl"><div class="lab">${t('Conclusão')}</div><div class="md sel">${md(a.result)}</div></div>` : '';
@@ -887,9 +897,9 @@ function refreshAgentBlocks(v) {
 }
 function bindFolds(root) { $$('[data-fold]', root).forEach(x => x.onclick = e => { if (e.target.closest('[data-path]')) return; const box = x.parentNode; const open = !box.classList.contains('open'); box.classList.toggle('open', open); S.fold[x.dataset.fold] = open; }); }
 function stickToEnd(v) { if (v.stick !== false) toBottom(v); }
-function toolBlock(id, name, input, result, running) {
+function toolBlock(id, name, input, result, running, meta) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
-  if (name === 'Report' && inp && Array.isArray(inp.claims)) return reportCard(inp, result);
+  if (name === 'Report' && inp && Array.isArray(inp.claims)) return reportCard(inp, result, meta);
   if (inp?._streaming && ['Write', 'Edit', 'MultiEdit', 'Bash'].includes(name)) { // being written right now
     const p = inp.path || inp.file_path || '';
     let body = '', what = '';

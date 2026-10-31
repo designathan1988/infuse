@@ -62,7 +62,18 @@ func TestIndependentReviewIsRecordedForTheAgent(t *testing.T) {
 		t.Fatal(err, out)
 	}
 	n := len(s.Messages)
-	if n < 2 || !strings.HasPrefix(msgText(s.Messages[n-2]), reviewMarker) || msgText(s.Messages[n-1]) != reviewAck {
+	if n < 2 {
 		t.Fatalf("%+v", s.Messages)
+	}
+	// what the messages are is data (Kind); the model reads the heading and the findings in English
+	review, ack := s.Messages[n-2], s.Messages[n-1]
+	if review.Kind != "review" || ack.Kind != "review_ack" || len(review.Content) != 2 {
+		t.Fatalf("%+v", s.Messages)
+	}
+	if review.Content[0].Text != M("review.header").String() || review.Content[1].Text != out || ack.Content[0].Text != M("review.ack").String() {
+		t.Fatalf("%+v", s.Messages)
+	}
+	if s.uiLang() != "en" && review.Content[0].Display != M("review.header").Render(s.uiLang()) {
+		t.Fatalf("the heading is not shown in the user's language: %+v", review.Content[0])
 	}
 }
