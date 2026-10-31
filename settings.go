@@ -11,10 +11,10 @@ import (
 type Settings struct {
 	Provider       string                `json:"provider"` // default connection id (connections.go)
 	Connections    map[string]Connection `json:"connections"`
-	Effort         string                `json:"effort"` // default effort: low | medium | high | max
-	WorktreeDir    string                `json:"worktreeDir"`  // where session worktrees go, relative to the project
-	BranchPrefix   string                `json:"branchPrefix"` // prefix of worktree branches
-	APIKey         string                `json:"apiKey,omitempty"` // legacy (0.5): migrated to the OS secret store
+	Effort         string                `json:"effort"`            // default effort: low | medium | high | max
+	WorktreeDir    string                `json:"worktreeDir"`       // where session worktrees go, relative to the project
+	BranchPrefix   string                `json:"branchPrefix"`      // prefix of worktree branches
+	APIKey         string                `json:"apiKey,omitempty"`  // legacy (0.5): migrated to the OS secret store
 	BaseURL        string                `json:"baseUrl,omitempty"` // legacy (0.5)
 	Model          string                `json:"model"`
 	FastModel      string                `json:"fastModel"`

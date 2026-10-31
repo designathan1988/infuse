@@ -36,9 +36,9 @@ type credentialW struct {
 }
 
 const (
-	credTypeGeneric        = 1
+	credTypeGeneric         = 1
 	credPersistLocalMachine = 2
-	errorNotFound          = syscall.Errno(1168)
+	errorNotFound           = syscall.Errno(1168)
 )
 
 type osSecrets struct{}

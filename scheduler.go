@@ -99,7 +99,9 @@ func SaveTask(t ScheduledTask) (ScheduledTask, error) {
 	return t, writeJSON(filepath.Join(scheduledDir(), t.Name+".json"), t)
 }
 
-func DeleteTask(name string) error { return os.Remove(filepath.Join(scheduledDir(), taskSlug(name)+".json")) }
+func DeleteTask(name string) error {
+	return os.Remove(filepath.Join(scheduledDir(), taskSlug(name)+".json"))
+}
 
 // nextRun computes the next time the task fires after `from` (0 for manual or paused tasks).
 func nextRun(t ScheduledTask, from time.Time) int64 {
