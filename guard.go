@@ -35,11 +35,11 @@ type Guard struct {
 
 // infuse's own records (other sessions' transcripts, the journal, snapshots, checkpoints) are not the
 // project: the agent neither reads nor writes them, by any tool.
-var internalRels = []string{".infuse/sessions", ".infuse/checkpoints", ".infuse/tree", ".infuse/journal.jsonl", ".infuse/watcher.json"}
+var internalRels = []string{".infuse/sessions", ".infuse/checkpoints", ".infuse/tree", ".infuse/journal.jsonl", ".infuse/watcher.json", ".infuse/architecture.json", ".infuse/conventions.json"}
 
 // agentVisibleInternal lists what of .infuse/ the agent may read: pinned docs, the conventions, the
 // project map and its own captures.
-var agentVisibleInternal = []string{".infuse/docs/", ".infuse/conventions.md", ".infuse/map/MAP.md", ".infuse/shots/", ".infuse/recordings/", ".infuse/skills/"}
+var agentVisibleInternal = []string{".infuse/docs/", ".infuse/conventions.md", ".infuse/map/MAP.md", ".infuse/shots/", ".infuse/recordings/", ".infuse/skills/", ".infuse/architecture.json"}
 
 // hiddenInternal reports whether rel (relative to the project) is infuse's own file the agent may not read.
 func hiddenInternal(rel string) bool {

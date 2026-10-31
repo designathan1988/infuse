@@ -197,7 +197,14 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) string 
 			return "[infuse] Bloqueado: " + why + " Reescreva seguindo a convenção do projeto (.infuse/conventions.md)."
 		}
 	}
-	// 4. size
+	// 4. architecture: placement, god functions, tables, styles from tokens, one store, one home per
+	// constant, no copies, no import cycles, JSON with its schema (arch*.go)
+	if s.settings.EnforceArchitecture == nil || *s.settings.EnforceArchitecture {
+		if why := archCheck(s.Root, s.workRoot(), relTo(s.workRoot(), p), before, after); why != "" {
+			return why + " Regras do projeto: .infuse/architecture.json."
+		}
+	}
+	// 5. size
 	limit := s.settings.MaxFileLines
 	if limit == 0 {
 		limit = 400

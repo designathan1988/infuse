@@ -9,38 +9,39 @@ import (
 // Settings is the canonical configuration. Global file: ~/.infuse/settings.json.
 // A project may override a subset in <project>/.infuse/settings.json.
 type Settings struct {
-	Provider           string                `json:"provider"` // default connection id (connections.go)
-	Connections        map[string]Connection `json:"connections"`
-	Effort             string                `json:"effort"`            // default effort: low | medium | high | max
-	WorktreeDir        string                `json:"worktreeDir"`       // where session worktrees go, relative to the project
-	BranchPrefix       string                `json:"branchPrefix"`      // prefix of worktree branches
-	APIKey             string                `json:"apiKey,omitempty"`  // legacy (0.5): migrated to the OS secret store
-	BaseURL            string                `json:"baseUrl,omitempty"` // legacy (0.5)
-	Model              string                `json:"model"`
-	FastModel          string                `json:"fastModel"`
-	MaxTokens          int                   `json:"maxTokens"`
-	ContextLimit       int                   `json:"contextLimit"`
-	ThinkingBudget     int                   `json:"thinkingBudget"`
-	Mode               string                `json:"mode"`        // default | acceptEdits | plan | bypass
-	Permissions        map[string]string     `json:"permissions"` // tool → ask | allow | deny
-	ProtectedPaths     []string              `json:"protectedPaths"`
-	Pricing            map[string][2]float64 `json:"pricing"` // model prefix → [input, output] USD per MTok
-	DailyLimitUSD      float64               `json:"dailyLimitUsd"`
-	Language           string                `json:"language"`
-	HideTray           bool                  `json:"hideTray"`                     // no tray icon
-	CloseToTray        bool                  `json:"closeToTray"`                  // closing the window keeps the app in the tray
-	Notify             bool                  `json:"notify"`                       // OS notification when the agent needs you or finishes
-	Vim                bool                  `json:"vim"`                          // vim keys in the prompt box
-	Theme              string                `json:"theme"`                        // system | light | dark
-	ShowThinking       *bool                 `json:"showThinking,omitempty"`       // reasoning blocks open by default (nil = yes)
-	PromptSuggest      *bool                 `json:"promptSuggestions,omitempty"`  // gray next-message suggestion in the prompt box (nil = yes)
-	Diagnostics        *bool                 `json:"diagnostics,omitempty"`        // check each written file with the project's checker (nil = yes)
-	EnforceConventions *bool                 `json:"enforceConventions,omitempty"` // refuse writes that break the project's conventions (nil = yes)
-	RequireReview      *bool                 `json:"requireReview,omitempty"`      // independent review at the end of each turn with changes (nil = yes)
-	MaxFileLines       int                   `json:"maxFileLines,omitempty"`       // refuse code files longer than this (0 = 400, -1 = no limit)
-	BrowserViewport    string                `json:"browserViewport,omitempty"`    // agent browser window, e.g. 1440x900
-	BrowserScale       float64               `json:"browserScale,omitempty"`       // pixel density of its captures (0 = 2)
-	BrowserGestures    string                `json:"browserGestures,omitempty"`    // human (default) | slow | instant
+	Provider            string                `json:"provider"` // default connection id (connections.go)
+	Connections         map[string]Connection `json:"connections"`
+	Effort              string                `json:"effort"`            // default effort: low | medium | high | max
+	WorktreeDir         string                `json:"worktreeDir"`       // where session worktrees go, relative to the project
+	BranchPrefix        string                `json:"branchPrefix"`      // prefix of worktree branches
+	APIKey              string                `json:"apiKey,omitempty"`  // legacy (0.5): migrated to the OS secret store
+	BaseURL             string                `json:"baseUrl,omitempty"` // legacy (0.5)
+	Model               string                `json:"model"`
+	FastModel           string                `json:"fastModel"`
+	MaxTokens           int                   `json:"maxTokens"`
+	ContextLimit        int                   `json:"contextLimit"`
+	ThinkingBudget      int                   `json:"thinkingBudget"`
+	Mode                string                `json:"mode"`        // default | acceptEdits | plan | bypass
+	Permissions         map[string]string     `json:"permissions"` // tool → ask | allow | deny
+	ProtectedPaths      []string              `json:"protectedPaths"`
+	Pricing             map[string][2]float64 `json:"pricing"` // model prefix → [input, output] USD per MTok
+	DailyLimitUSD       float64               `json:"dailyLimitUsd"`
+	Language            string                `json:"language"`
+	HideTray            bool                  `json:"hideTray"`                      // no tray icon
+	CloseToTray         bool                  `json:"closeToTray"`                   // closing the window keeps the app in the tray
+	Notify              bool                  `json:"notify"`                        // OS notification when the agent needs you or finishes
+	Vim                 bool                  `json:"vim"`                           // vim keys in the prompt box
+	Theme               string                `json:"theme"`                         // system | light | dark
+	ShowThinking        *bool                 `json:"showThinking,omitempty"`        // reasoning blocks open by default (nil = yes)
+	PromptSuggest       *bool                 `json:"promptSuggestions,omitempty"`   // gray next-message suggestion in the prompt box (nil = yes)
+	Diagnostics         *bool                 `json:"diagnostics,omitempty"`         // check each written file with the project's checker (nil = yes)
+	EnforceConventions  *bool                 `json:"enforceConventions,omitempty"`  // refuse writes that break the project's conventions (nil = yes)
+	RequireReview       *bool                 `json:"requireReview,omitempty"`       // independent review at the end of each turn with changes (nil = yes)
+	MaxFileLines        int                   `json:"maxFileLines,omitempty"`        // refuse code files longer than this (0 = 400, -1 = no limit)
+	EnforceArchitecture *bool                 `json:"enforceArchitecture,omitempty"` // architecture rules on every write (nil = on)
+	BrowserViewport     string                `json:"browserViewport,omitempty"`     // agent browser window, e.g. 1440x900
+	BrowserScale        float64               `json:"browserScale,omitempty"`        // pixel density of its captures (0 = 2)
+	BrowserGestures     string                `json:"browserGestures,omitempty"`     // human (default) | slow | instant
 }
 
 func defaultSettings() Settings {
