@@ -1,4 +1,4 @@
-package main
+package desktop
 
 // The application icon, drawn at runtime: a filter cone over a dark disc, neutral greys. One source for
 // the window, the tray and the taskbar; no asset pipeline.
@@ -13,7 +13,7 @@ import (
 
 var iconCache sync.Map // size → []byte
 
-func iconPNG(size int) []byte {
+func IconPNG(size int) []byte {
 	if b, ok := iconCache.Load(size); ok {
 		return b.([]byte)
 	}

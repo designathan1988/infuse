@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package desktop
 
 // Linux: the GTK file chooser (through zenity, which is GTK) or KDE's dialog under Plasma.
 
@@ -45,4 +45,4 @@ func (d linuxDialogs) PickFiles(title string) ([]string, error) {
 	return strings.Split(out, "\n"), nil
 }
 
-func osDialogs(owner func() uintptr) NativeDialogs { return linuxDialogs{} }
+func OSDialogs(owner func() uintptr) NativeDialogs { return linuxDialogs{} }

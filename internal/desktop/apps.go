@@ -1,4 +1,4 @@
-package main
+package desktop
 
 // Other agent apps on this machine, detected and launched from the window. MSIX desktop apps (the modern
 // ChatGPT and Claude installs) have no discoverable .exe: they appear in the Start-app list
@@ -8,6 +8,8 @@ package main
 import (
 	"fmt"
 	"os"
+	"infuse/internal/core"
+	"infuse/internal/platform/process"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -27,8 +29,8 @@ type App struct {
 	Note  string `json:"note,omitempty"`
 }
 
-// cliPackages: the official npm packages, for "Instalar" when a CLI is missing.
-var cliPackages = map[string]string{"claude-cli": "@anthropic-ai/claude-code", "codex-cli": "@openai/codex", "gemini-cli": "@google/gemini-cli"}
+// CliPackages: the official npm packages, for "Instalar" when a CLI is missing.
+var CliPackages = map[string]string{"claude-cli": "@anthropic-ai/claude-code", "codex-cli": "@openai/codex", "gemini-cli": "@google/gemini-cli"}
 
 type startApp struct {
 	Name  string
@@ -136,7 +138,7 @@ func findCLI(name, home string) string {
 		cands = []string{name + ".exe", name + ".cmd", name + ".bat"}
 	}
 	for _, c := range cands {
-		if p, err := exec.LookPath(c); err == nil && !strings.Contains(strings.ToLower(p), infuseDirName) {
+		if p, err := exec.LookPath(c); err == nil && !strings.Contains(strings.ToLower(p), core.InfuseDirName) {
 			return p
 		}
 		for _, dir := range []string{filepath.Join(home, "AppData", "Roaming", "npm"), filepath.Join(home, ".npm-global", "bin"), filepath.Join(home, ".npm-global"), filepath.Join(home, ".local", "bin"), "/usr/local/bin", "/opt/homebrew/bin"} {
@@ -187,7 +189,7 @@ func LaunchApp(id, workdir string) (string, error) {
 			cmd.Dir = workdir
 		}
 	}
-	noConsoleWindow(cmd)
+	process.NoConsoleWindow(cmd)
 	if err := cmd.Start(); err != nil {
 		return "", err
 	}

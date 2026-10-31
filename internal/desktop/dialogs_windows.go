@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package desktop
 
 // The Explorer-style open dialog: IFileOpenDialog, FOS_PICKFOLDERS for folders, FOS_ALLOWMULTISELECT
 // for files. COM through vtable calls, no dependencies. Slot numbers come from shobjidl.h (IUnknown 0–2,
@@ -194,7 +194,7 @@ func hresultErr(step string, hr uintptr) error {
 	return fmt.Errorf("diálogo do sistema (%s) falhou: HRESULT 0x%08X", step, uint32(hr))
 }
 
-func osDialogs(owner func() uintptr) NativeDialogs { return winDialogs{owner: owner} }
+func OSDialogs(owner func() uintptr) NativeDialogs { return winDialogs{owner: owner} }
 
 var (
 	procGetWindowThreadProcessID   = user32.NewProc("GetWindowThreadProcessId")

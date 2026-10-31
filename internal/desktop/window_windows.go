@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package desktop
 
 // The application window on Windows: a top-level window hosting WebView2 (the Edge runtime that ships
 // with Windows). Its own window procedure gives it: remembered size and position, a title bar that
@@ -9,6 +9,8 @@ package main
 
 import (
 	"encoding/json"
+	"infuse/internal/config"
+	"infuse/internal/core"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -179,7 +181,7 @@ type savedPlacement struct {
 // main thread, and init pins the main goroutine to it.
 func init() { runtime.LockOSThread() }
 
-func placementFile() string { return filepath.Join(InfuseHome(), "window.json") }
+func placementFile() string { return filepath.Join(core.InfuseHome(), "window.json") }
 
 // RunWindow opens the application window on url and blocks until it closes.
 func RunWindow(url string) {
@@ -195,7 +197,7 @@ func RunWindow(url string) {
 
 	w := &winWindow{}
 	mainWin = w
-	w.bridge = &Bridge{Dialogs: osDialogs(func() uintptr { return w.hwnd }), Host: w}
+	w.bridge = &Bridge{Dialogs: OSDialogs(func() uintptr { return w.hwnd }), Host: w}
 	w.icon = makeIcon(32)
 
 	var inst windows.Handle
@@ -217,7 +219,7 @@ func RunWindow(url string) {
 	w.restorePlacement()
 
 	w.chromium = edge.NewChromium()
-	w.chromium.DataPath = filepath.Join(InfuseHome(), "webview")
+	w.chromium.DataPath = filepath.Join(core.InfuseHome(), "webview")
 	w.chromium.SetPermission(edge.CoreWebView2PermissionKindClipboardRead, edge.CoreWebView2PermissionStateAllow)
 	if !w.chromium.Embed(w.hwnd) {
 		fatalBox("O Microsoft Edge WebView2 Runtime não está disponível neste computador.\n\nInstale-o em https://go.microsoft.com/fwlink/p/?LinkId=2124703 e abra o infuse de novo.")
@@ -238,7 +240,7 @@ window.addEventListener('unhandledrejection', function(e){ window.__infusePost(J
 	windowLog("window up: %s", url)
 	w.chromium.Resize()
 	w.chromium.Navigate(url)
-	if !LoadSettings().HideTray && os.Getenv("INFUSE_WINDOW_HIDDEN") == "" {
+	if !config.LoadSettings().HideTray && os.Getenv("INFUSE_WINDOW_HIDDEN") == "" {
 		w.addTray("")
 	}
 	w.chromium.Focus()
@@ -289,7 +291,7 @@ func wndProc(hwnd, msg, wp, lp uintptr) uintptr {
 		}
 	case wmClose:
 		w.savePlacement()
-		if !w.quitting && LoadSettings().CloseToTray && w.trayOn {
+		if !w.quitting && config.LoadSettings().CloseToTray && w.trayOn {
 			procShowWindow.Call(hwnd, swHide)
 			return 0
 		}
@@ -367,7 +369,7 @@ func (w *winWindow) Notify(title, body string) {
 				go func() { windowsSleep(10000); close(timer) }()
 				<-timer
 				w.dispatch(func() {
-					if LoadSettings().HideTray {
+					if config.LoadSettings().HideTray {
 						w.removeTray()
 					}
 				})
@@ -467,7 +469,7 @@ func (w *winWindow) restorePlacement() {
 	var sp savedPlacement
 	wp := windowPlacement{ShowCmd: swShowNormal}
 	wp.Length = uint32(unsafe.Sizeof(wp))
-	if readJSON(placementFile(), &sp) == nil && sp.W >= 400 && sp.H >= 300 {
+	if core.ReadJSON(placementFile(), &sp) == nil && sp.W >= 400 && sp.H >= 300 {
 		r := rect{sp.X, sp.Y, sp.X + sp.W, sp.Y + sp.H}
 		if mon, _, _ := procMonitorFromRect.Call(uintptr(unsafe.Pointer(&r)), 0); mon != 0 { // still on a screen
 			wp.NormalPos = r
@@ -499,7 +501,7 @@ func (w *winWindow) savePlacement() {
 		return
 	}
 	r := wp.NormalPos
-	_ = writeJSON(placementFile(), savedPlacement{X: r.Left, Y: r.Top, W: r.Right - r.Left, H: r.Bottom - r.Top, Maximized: wp.ShowCmd == swShowMaximized})
+	_ = core.WriteJSON(placementFile(), savedPlacement{X: r.Left, Y: r.Top, W: r.Right - r.Left, H: r.Bottom - r.Top, Maximized: wp.ShowCmd == swShowMaximized})
 }
 
 // ---- messages from the page
@@ -555,7 +557,7 @@ type pageCall struct {
 
 // windowLog records bridge traffic and page errors in ~/.infuse/window.log (the window has no console).
 func windowLog(format string, a ...any) {
-	f, err := os.OpenFile(filepath.Join(InfuseHome(), "window.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(filepath.Join(core.InfuseHome(), "window.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return
 	}
@@ -573,11 +575,11 @@ func (w *winWindow) onMessage(args unsafe.Pointer) {
 	windows.CoTaskMemFree(unsafe.Pointer(p))
 	var c pageCall
 	if json.Unmarshal([]byte(raw), &c) != nil || c.ID == 0 || c.Method == "" {
-		windowLog("message ignored: %s", truncate(raw, 200))
+		windowLog("message ignored: %s", core.Truncate(raw, 200))
 		return
 	}
 	if c.Method == "log" { // page-side errors and traces
-		windowLog("page: %s", truncate(raw, 1000))
+		windowLog("page: %s", core.Truncate(raw, 1000))
 		return
 	}
 	windowLog("call %d %s", c.ID, c.Method)
@@ -595,7 +597,7 @@ func (w *winWindow) onMessage(args unsafe.Pointer) {
 			b, _ := json.Marshal(res)
 			js = fmt.Sprintf("window.infuse && infuse._done(%d,true,%s)", c.ID, b)
 		}
-		windowLog("result %d %s → %s", c.ID, c.Method, truncate(js, 300))
+		windowLog("result %d %s → %s", c.ID, c.Method, core.Truncate(js, 300))
 		w.dispatch(func() { w.chromium.Eval(js) })
 	}()
 }
@@ -637,7 +639,7 @@ func droppedPaths(args unsafe.Pointer) []string {
 // ---- icon: drawn at runtime (PNG handed to CreateIconFromResourceEx), neutral greys.
 
 func makeIcon(size int) uintptr {
-	png := iconPNG(size)
+	png := IconPNG(size)
 	h, _, _ := procCreateIconFromResEx.Call(uintptr(unsafe.Pointer(&png[0])), uintptr(len(png)), 1, 0x00030000, uintptr(size), uintptr(size), 0)
 	return h
 }

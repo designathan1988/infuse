@@ -9,6 +9,7 @@ import (
 	"infuse/internal/filter"
 	"regexp"
 	"infuse/internal/core"
+	"infuse/internal/desktop"
 	"infuse/internal/journal"
 	"infuse/internal/lang"
 	"infuse/internal/llm"
@@ -172,6 +173,23 @@ func firstNonZero(a, b float64) float64            { return core.FirstNonZero(a,
 func sortedKeys[M ~map[string]V, V any](m M) []string { return core.SortedKeys(m) }
 func exitCode(err error) int                         { return core.ExitCode(err) }
 func randomHex(n int) string                         { return core.RandomHex(n) }
+
+type App = desktop.App
+type Bridge = desktop.Bridge
+type DropResult = desktop.DropResult
+
+var imageExt = desktop.ImageExt
+var cliPackages = desktop.CliPackages
+
+func DetectApps() []App                    { return desktop.DetectApps() }
+func LaunchApp(id, workdir string) (string, error) { return desktop.LaunchApp(id, workdir) }
+func revealInFileManager(path string) error { return desktop.RevealInFileManager(path) }
+func iconPNG(size int) []byte              { return desktop.IconPNG(size) }
+func RunWindow(url string)                 { desktop.RunWindow(url) }
+func osDialogs(owner func() uintptr) desktop.NativeDialogs {
+	return desktop.OSDialogs(owner)
+}
+func attachmentOf(p string) (Attachment, bool) { return desktop.AttachmentOf(p) }
 func gitRun(root string, args ...string) (string, error) { return workspace.GitRun(root, args...) }
 
 type OracleCheck = oracle.OracleCheck

@@ -1,6 +1,6 @@
 //go:build !windows && cgo
 
-package main
+package desktop
 
 // macOS (WKWebView) and Linux (WebKitGTK) through webview_go. The bridge is bound as `__infuseCall`;
 // dropped paths come from the page (WebKit exposes no filesystem path for dropped files, so on these
@@ -30,7 +30,7 @@ func RunWindow(url string) {
 	w := webview.New(false)
 	defer w.Destroy()
 	host := otherWindow{w}
-	b := &Bridge{Dialogs: osDialogs(nil), Host: host}
+	b := &Bridge{Dialogs: OSDialogs(nil), Host: host}
 	w.SetTitle("infuse")
 	w.SetSize(1280, 820, webview.HintNone)
 	_ = w.Bind("__infuseCall", func(raw string) (any, error) {

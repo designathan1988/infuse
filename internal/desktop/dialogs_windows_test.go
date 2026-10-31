@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package desktop
 
 import "testing"
 
@@ -16,7 +16,7 @@ func TestDialogOptions(t *testing.T) {
 }
 
 func TestOSDialogsIsNative(t *testing.T) {
-	if _, ok := osDialogs(nil).(winDialogs); !ok {
+	if _, ok := OSDialogs(nil).(winDialogs); !ok {
 		t.Fatal("windows must use IFileOpenDialog")
 	}
 }

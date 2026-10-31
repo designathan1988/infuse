@@ -1,6 +1,6 @@
 //go:build !windows && !cgo
 
-package main
+package desktop
 
 // Without cgo there is no WKWebView/WebKitGTK binding; this build serves the UI only (`infuse serve`).
 

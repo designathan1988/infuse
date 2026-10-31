@@ -1,4 +1,4 @@
-package main
+package desktop
 
 // Bridge between the window's page and the OS: native dialogs, dropped paths, notifications, opening a
 // folder in the file manager. The page calls `infuse.call(method, ...params)`; each window host
@@ -7,6 +7,8 @@ package main
 
 import (
 	"encoding/json"
+	"infuse/internal/config"
+	"infuse/internal/core"
 	"fmt"
 	"os"
 	"os/exec"
@@ -54,22 +56,22 @@ type Bridge struct {
 // DropResult splits dropped paths the way the window uses them: folders become projects, files attachments.
 type DropResult struct {
 	Projects    []string     `json:"projects"`
-	Attachments []Attachment `json:"attachments"`
+	Attachments []core.Attachment `json:"attachments"`
 }
 
-var imageExt = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+var ImageExt = map[string]string{".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 
-func attachmentOf(p string) (Attachment, bool) {
+func AttachmentOf(p string) (core.Attachment, bool) {
 	st, err := os.Stat(p)
 	if err != nil || st.IsDir() {
-		return Attachment{}, false
+		return core.Attachment{}, false
 	}
-	_, img := imageExt[strings.ToLower(filepath.Ext(p))]
-	return Attachment{Path: p, Name: filepath.Base(p), Size: st.Size(), Image: img}, true
+	_, img := ImageExt[strings.ToLower(filepath.Ext(p))]
+	return core.Attachment{Path: p, Name: filepath.Base(p), Size: st.Size(), Image: img}, true
 }
 
 func (b *Bridge) Classify(paths []string) DropResult {
-	res := DropResult{Projects: []string{}, Attachments: []Attachment{}}
+	res := DropResult{Projects: []string{}, Attachments: []core.Attachment{}}
 	for _, p := range paths {
 		p = filepath.Clean(p)
 		st, err := os.Stat(p)
@@ -77,9 +79,9 @@ func (b *Bridge) Classify(paths []string) DropResult {
 			continue
 		}
 		if st.IsDir() {
-			RememberProject(p)
+			config.RememberProject(p)
 			res.Projects = append(res.Projects, p)
-		} else if a, ok := attachmentOf(p); ok {
+		} else if a, ok := AttachmentOf(p); ok {
 			res.Attachments = append(res.Attachments, a)
 		}
 	}
@@ -103,16 +105,16 @@ func (b *Bridge) Call(method string, params []json.RawMessage) (any, error) {
 			return nil, err
 		}
 		p = filepath.Clean(p)
-		RememberProject(p)
+		config.RememberProject(p)
 		return p, nil
 	case "pickFiles":
 		list, err := b.Dialogs.PickFiles("Anexar arquivos")
 		if err != nil || len(list) == 0 {
 			return nil, err
 		}
-		out := []Attachment{}
+		out := []core.Attachment{}
 		for _, p := range list {
-			if a, ok := attachmentOf(p); ok {
+			if a, ok := AttachmentOf(p); ok {
 				out = append(out, a)
 			}
 		}
@@ -129,10 +131,10 @@ func (b *Bridge) Call(method string, params []json.RawMessage) (any, error) {
 		}
 		return nil, nil
 	case "reveal":
-		return nil, revealInFileManager(strArg(0))
+		return nil, RevealInFileManager(strArg(0))
 	case "platform":
 		_, browser := b.Host.(BrowserHost)
-		return map[string]any{"os": runtime.GOOS, "version": version, "native": true, "browser": browser}, nil
+		return map[string]any{"os": runtime.GOOS, "core.Version": core.Version, "native": true, "browser": browser}, nil
 	case "browser":
 		bh, ok := b.Host.(BrowserHost)
 		if !ok {
@@ -150,7 +152,7 @@ func (b *Bridge) Call(method string, params []json.RawMessage) (any, error) {
 // asEscape quotes a string for AppleScript.
 func asEscape(s string) string { return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) }
 
-func revealInFileManager(p string) error {
+func RevealInFileManager(p string) error {
 	st, err := os.Stat(p)
 	if err != nil {
 		return err

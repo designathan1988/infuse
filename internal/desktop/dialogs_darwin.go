@@ -1,6 +1,6 @@
 //go:build darwin
 
-package main
+package desktop
 
 // macOS: NSOpenPanel, driven through AppleScript's `choose folder` / `choose file` (which present
 // NSOpenPanel), so the binary needs no Objective-C glue for dialogs.
@@ -40,4 +40,4 @@ return out`
 	return paths, nil
 }
 
-func osDialogs(owner func() uintptr) NativeDialogs { return macDialogs{} }
+func OSDialogs(owner func() uintptr) NativeDialogs { return macDialogs{} }

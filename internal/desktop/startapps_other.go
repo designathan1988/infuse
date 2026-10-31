@@ -1,5 +1,5 @@
 //go:build !windows
 
-package main
+package desktop
 
 func startApps() []startApp { return nil }

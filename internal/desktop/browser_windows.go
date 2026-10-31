@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package desktop
 
 // The browser pane inside the window. Each tab is its own WebView2 in a child window placed exactly
 // over the pane's rectangle (sent by the page), so every site opens: an iframe is refused by most sites
@@ -9,6 +9,7 @@ package main
 
 import (
 	"encoding/json"
+	"infuse/internal/core"
 	"errors"
 	"path/filepath"
 	"time"
@@ -226,7 +227,7 @@ func (w *winWindow) newBrowserTab(id string) (*browserTab, error) {
 		return nil, errors.New("não foi possível criar a área do navegador")
 	}
 	ch := edge.NewChromium()
-	ch.DataPath = filepath.Join(InfuseHome(), "browser") // the sites' cookies and storage, apart from the app's
+	ch.DataPath = filepath.Join(core.InfuseHome(), "browser") // the sites' cookies and storage, apart from the app's
 	if !ch.Embed(hwnd) {
 		procDestroyWindow.Call(hwnd)
 		return nil, errors.New("WebView2 indisponível")

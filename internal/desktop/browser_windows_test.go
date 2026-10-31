@@ -1,6 +1,6 @@
 //go:build windows
 
-package main
+package desktop
 
 import (
 	"os"
@@ -17,13 +17,18 @@ var procPeekMessageW = user32.NewProc("PeekMessageW")
 
 // The native browser pane, in a window that is never shown: a site that refuses iframes
 // (X-Frame-Options) loads, its address and title come back as events, and back/close work.
+func testDesktopHome(t *testing.T) {
+	t.Helper()
+	t.Setenv("INFUSE_HOME", t.TempDir())
+}
+
 func TestNativeBrowserLoadsAnySite(t *testing.T) {
 	if os.Getenv("INFUSE_LIVE") == "" {
 		t.Skip("INFUSE_LIVE not set (needs WebView2 and the network)")
 	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	testHome(t)
+	testDesktopHome(t)
 	_ = windows.CoInitializeEx(0, windows.COINIT_APARTMENTTHREADED)
 	cls, _ := windows.UTF16PtrFromString("STATIC")
 	hwnd, _, _ := procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(cls)), 0, wsOverlappedWin, 0, 0, 1000, 700, 0, 0, 0, 0) // no WS_VISIBLE

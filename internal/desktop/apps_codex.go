@@ -1,9 +1,10 @@
-package main
+package desktop
 
 // The Codex desktop app (MSIX) ships its CLI at <package>\app\resources\codex.exe. The package folder is
 // versioned, so it is looked up from the package registry each time, never hard-coded.
 
 import (
+	"infuse/internal/platform/process"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -15,7 +16,7 @@ func bundledCodex() string {
 		return ""
 	}
 	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", "(Get-AppxPackage -Name OpenAI.Codex | Select-Object -First 1).InstallLocation")
-	noConsoleWindow(cmd)
+	process.NoConsoleWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
