@@ -384,6 +384,7 @@ function onEvent(L, ev) {
       vs.forEach(v => { if (!v._liveRaf) v._liveRaf = requestAnimationFrame(() => { v._liveRaf = 0; renderLive(v); }); }); break;
     case 'message': L.snap.messages.push(d.message); L.snap.usage = d.totalUsage; L.snap.cost = d.cost; L.lastIn = d.lastInput; L.lastOut = d.usage?.output || 0; L.text = ''; L.think = ''; L.tools = {}; re(); vs.forEach(renderRail); break;
     case 'tool_run': L.running = d; vs.forEach(renderLive); break;
+    case 'stream_reset': L.text = ''; L.think = ''; L.tools = {}; vs.forEach(renderLive); break;
     case 'tool_result': L.running = null; L.snap.messages.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: d.id, content: d.output, display: d.display, is_error: d.isError, ms: d.ms }], ts: Date.now() }); vs.forEach(renderChat); refreshChanges(L); break;
     case 'permission': L.snap.pendingPermission = d; vs.forEach(renderChat); attention(L, 'infuse precisa de você', t('Aprovar ') + d.tool + '?'); break;
     case 'question': L.snap.pendingQuestion = d; vs.forEach(renderChat); attention(L, 'infuse tem uma pergunta', d.question); break;

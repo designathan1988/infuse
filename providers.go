@@ -265,7 +265,9 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 		emit(StreamEvent{Kind: "tool_end", ID: c.id, Name: c.name, Index: i})
 	}
 	if len(calls) > 0 {
-		res.StopReason = "tool_use"
+		if res.StopReason != "length" { // cut at the limit: the calls may be half-written (see truncatedReply)
+			res.StopReason = "tool_use"
+		}
 	} else if res.StopReason == "" || res.StopReason == "stop" {
 		res.StopReason = "end_turn"
 	}

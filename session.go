@@ -66,6 +66,7 @@ type SessionData struct {
 	Mode        string                   `json:"mode,omitempty"`     // permission mode; "" = settings
 	Effort      string                   `json:"effort,omitempty"`   // low | medium | high | max
 	Archived    bool                     `json:"archived,omitempty"`
+	Working     bool                     `json:"working,omitempty"`  // a turn was in progress when last saved (resumed at startup)
 	Worktree    string                   `json:"worktree,omitempty"` // absolute path when the session has its own worktree
 	Branch      string                   `json:"branch,omitempty"`
 	Plan        string                   `json:"plan,omitempty"`       // the latest plan proposed in plan mode
@@ -657,6 +658,7 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
+	s.Working = true
 	s.mu.Unlock()
 	if work := s.workRoot(); !exists(filepath.Join(work, ".git")) && !exists(filepath.Join(s.Root, ".git")) {
 		snapshotTurn(s.Root, work, s.ID, s.Turn) // the base of "Alterações", whatever changes the files
@@ -701,28 +703,37 @@ func (s *Session) run(ctx context.Context) {
 	var breaker loopBreaker              // stops a turn that keeps repeating the same failure
 	stopHooks := 0
 	var tripped error
-	breakerTrips := 0 // the breaker warns once, then ends the turn
-	for iter := 0; iter < 200; iter++ {
+	breakerTrips := 0 // the breaker warns, then demands research, then ends the turn
+	var watch progressWatch
+	maxOut := 0                          // raised when a reply is cut at the output limit
+	contextRetries := 0                  // compactions in a row because the context did not fit
+	for iter := 0; iter < 5000; iter++ { // a safety ceiling only: the watchdog decides when work stalled
+		if note, stop := s.stalled(&watch, iter); stop != "" {
+			s.fail(errors.New(stop))
+			return
+		} else if note != "" {
+			s.mu.Lock()
+			s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: note}}, TS: time.Now().UnixMilli()})
+			s.mu.Unlock()
+			s.emit("gate", map[string]any{"message": note})
+		}
 		if ctx.Err() != nil {
 			s.finish("cancelado")
 			return
 		}
 		if s.needsCompaction() {
-			if err := s.compact(ctx, provider); err != nil {
-				s.fail(fmt.Errorf("compactação: %w", err))
-				return
-			}
+			s.compactResilient(ctx, provider)
 		}
 		s.setState("thinking")
 		budget := thinkingBudget(s.effort(), s.settings.ThinkingBudget)
-		maxTok := s.settings.MaxTokens
+		maxTok := max(outputLimit(s.Model, s.settings.MaxTokens), maxOut)
 		if budget > 0 && maxTok <= budget+1024 {
 			maxTok = budget + 8000
 		}
 		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules), Messages: repairTranscript(s.copyMessages()), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
 		started := time.Now()
 		var thinkFrom, thinkTo time.Time // how long the model spent in its reasoning, from the stream
-		res, err := provider.Stream(ctx, req, func(ev StreamEvent) {
+		res, err := s.streamResilient(ctx, provider, req, func(ev StreamEvent) {
 			if ev.Kind == "thinking" && thinkFrom.IsZero() {
 				thinkFrom = time.Now()
 			} else if ev.Kind != "thinking" && !thinkFrom.IsZero() && thinkTo.IsZero() {
@@ -735,8 +746,21 @@ func (s *Session) run(ctx context.Context) {
 				s.finish("cancelado")
 				return
 			}
+			if errors.Is(err, errContextTooLong) { // the provider measured more than estimated: compact and go on
+				if contextRetries++; contextRetries > 3 {
+					s.fail(fmt.Errorf("the conversation does not fit the model's context even after compacting: %w", err))
+					return
+				}
+				s.compactResilient(ctx, provider)
+				continue
+			}
+			contextRetries = 0
 			s.fail(err)
 			return
+		}
+		cutNote, cut := truncatedReply(&res) // a reply cut at the output limit is continued, never run half-written
+		if cut {
+			maxOut = min(max(maxTok*2, 32000), 128000)
 		}
 		if !thinkFrom.IsZero() {
 			if thinkTo.IsZero() {
@@ -774,6 +798,13 @@ func (s *Session) run(ctx context.Context) {
 				s.fail(fmt.Errorf("limite de gasto diário atingido: US$ %.2f de US$ %.2f (Configurações > Modelos e custos)", spent, lim))
 				return
 			}
+		}
+		if cut {
+			s.mu.Lock()
+			s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: cutNote}}, TS: time.Now().UnixMilli()})
+			s.mu.Unlock()
+			s.emit("gate", map[string]any{"message": cutNote})
+			continue
 		}
 		if res.StopReason != "tool_use" {
 			if why := s.turnObligation(ctx); why != "" { // the protocol decides when the turn may end
@@ -815,7 +846,7 @@ func (s *Session) run(ctx context.Context) {
 				continue
 			}
 			toolStart := time.Now()
-			out, isErr := s.runTool(ctx, rules, b)
+			out, isErr := s.safeRunTool(ctx, rules, b)
 			out = redactSecrets(out) // credentials never reach the model, the transcript or the UI
 			ms := time.Since(toolStart).Milliseconds()
 			results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms, Display: displayIfLocalized(s.uiLang(), out)})
@@ -845,6 +876,19 @@ func (s *Session) run(ctx context.Context) {
 			s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
 			s.inflight = nil
 			s.mu.Unlock()
+			if tripped != nil && breakerTrips == 1 && ctx.Err() == nil { // the second time: research outside the project first
+				breakerTrips++
+				breaker = loopBreaker{}
+				note := "[infuse] " + tripped.Error() + ", for the second time. Before any other change or command, research outside the project: WebSearch with the exact error, WebFetch on the official documentation of what is failing. Then state the cause in the plan."
+				tripped = nil
+				s.mu.Lock()
+				s.gate.fails, s.gate.needWeb = 2, true // the research gate now accepts only outside research
+				last := &s.Messages[len(s.Messages)-1]
+				last.Content = append(last.Content, Block{Type: "text", Text: note})
+				s.mu.Unlock()
+				s.emit("gate", map[string]any{"message": note})
+				continue
+			}
 			if tripped != nil && breakerTrips == 0 && ctx.Err() == nil {
 				// the first time, the agent is sent back with an order to change approach; only insisting ends the turn
 				breakerTrips++
@@ -1063,6 +1107,7 @@ func (s *Session) copyMessages() []Message {
 func (s *Session) finish(reason string) {
 	s.mu.Lock()
 	s.cancel = nil
+	s.Working = false
 	s.mu.Unlock()
 	s.setState("idle")
 	s.emit("done", map[string]any{"reason": reason, "cost": s.Cost, "usage": s.Usage})
@@ -1081,6 +1126,7 @@ func (s *Session) finish(reason string) {
 
 func (s *Session) fail(err error) {
 	s.mu.Lock()
+	s.Working = false
 	s.lastError = err.Error()
 	s.cancel = nil
 	s.mu.Unlock()

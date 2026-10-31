@@ -83,6 +83,7 @@ func StartUI(window bool) {
 	})
 	go func() { _ = http.Serve(ln, mux) }()
 	StartScheduler()
+	go resumeInterruptedSessions() // turns that infuse stopped by closing or restarting go on
 	// the token travels in the URL fragment, which never leaves the window (not sent in requests)
 	if window {
 		RunWindow(url + "/#token=" + token)
