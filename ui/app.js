@@ -9,7 +9,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 const money = v => 'US$ ' + (v || 0).toFixed(v && v < 1 ? 3 : 2);
-const ktok = n => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n || 0);
+const ktok = n => n >= 1e6 ? +(n / 1e6).toFixed(n % 1e6 ? 2 : 0) + 'M' : n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n || 0);
 const baseName = p => (p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
 const ago = ts => { if (!ts) return ''; const s = (Date.now() - ts) / 1000; if (s < 60) return t('agora'); if (s < 3600) return Math.floor(s / 60) + ' min'; if (s < 86400) return Math.floor(s / 3600) + ' h'; if (s < 7 * 86400) return Math.floor(s / 86400) + ' d'; return new Date(ts).toLocaleDateString(); };
 const I = {
@@ -456,9 +456,9 @@ function renderChat(v) {
   if (!L?.snap) { chat.innerHTML = ''; return; }
   const s = L.snap, msgs = s.messages, results = {};
   for (const m of msgs) for (const b of m.content || []) if (b.type === 'tool_result') results[b.tool_use_id] = b;
-  const starts = new Set(s.turnStarts); let turn = 0; let out = '';
+  const starts = new Set(s.turnStarts); let turn = 0; let out = ''; const parts = []; const cut = key => { if (out) parts.push([key, out]); out = ''; };
   msgs.forEach((m, i) => {
-    if (starts.has(i)) { turn++; out += `<div class="turnsep" data-turn="${turn}"><span class="l"></span><button class="btn sm" data-rw="${turn}" title="${esc(t('Restaurar código e/ou conversa a antes deste turno'))}">↶ ${t('voltar aqui')}</button></div>`; }
+    if (starts.has(i)) { turn++; cut('pre:' + i); out += `<div class="turnsep" data-turn="${turn}"><span class="l"></span><button class="btn sm" data-rw="${turn}" title="${esc(t('Restaurar código e/ou conversa a antes deste turno'))}">↶ ${t('voltar aqui')}</button></div>`; }
     if (m.role === 'user') {
       if (m.content.some(b => b.type === 'tool_result')) return; // tool results (and images tools attached) are shown in their tool blocks
       const texts = m.content.filter(b => b.type === 'text'), imgs = m.content.filter(b => b.type === 'image');
@@ -478,18 +478,22 @@ function renderChat(v) {
         else if (b.type === 'thinking' && b.thinking?.trim()) inner += thinkBlock(`${v.sid}:${i}:${bi}`, b.thinking, false, b.ms);
         else if (b.type === 'tool_use') inner += toolBlock(b.id, b.name, b.input, results[b.id], false);
       }
-      if (inner) out += `<div class="a${(s.pinnedMsgs || []).includes(i) ? ' pinned' : ''}" data-mi="${i}">${inner}${m.content.some(b => b.type === 'text' && b.text?.trim()) ? msgFoot(m, i) : ''}</div>`; // a message with nothing visible leaves no gap
+      const toolsOnly = !m.content.some(b => b.type === 'text' && b.text?.trim()); // calls with no words: they continue the group above
+      if (inner) out += `<div class="a${toolsOnly ? ' toolsonly' : ''}${(s.pinnedMsgs || []).includes(i) ? ' pinned' : ''}" data-mi="${i}">${inner}${m.content.some(b => b.type === 'text' && b.text?.trim()) ? msgFoot(m, i) : ''}</div>`; // a message with nothing visible leaves no gap
     }
+    cut('m:' + i);
     const next = i + 1;
-    if (turn && (starts.has(next) || (next === msgs.length && !['thinking', 'tool', 'waiting_permission', 'waiting_user', 'compacting'].includes(s.state)))) out += turnSummary(s, msgs, s.turnStarts[turn - 1], i);
+    if (turn && (starts.has(next) || (next === msgs.length && !['thinking', 'tool', 'waiting_permission', 'waiting_user', 'compacting'].includes(s.state)))) { out += turnSummary(s, msgs, s.turnStarts[turn - 1], i); cut('sum:' + i); }
   });
-  out += '<div class="live"></div>';
-  if (s.pendingPermission) out += permCard(s.pendingPermission);
-  if (s.pendingQuestion) out += questionCard(s.pendingQuestion);
-  if (s.error && s.state === 'error') out += `<div class="errbox">${esc(s.error)}</div>`;
-  if (!msgs.length) out = `<div class="empty" style="padding-top:14vh">${t('Sessão vazia. Descreva a feature, a correção ou a dúvida.')}</div>` + out;
+  cut('tail');
+  if (!msgs.length) parts.unshift(['empty', `<div class="empty" style="padding-top:14vh">${t('Sessão vazia. Descreva a feature, a correção ou a dúvida.')}</div>`]);
+  parts.push(['live', '<div class="live"></div>']); // kept as it is: renderLive patches its inside
+  if (s.pendingPermission) parts.push(['perm', permCard(s.pendingPermission)]);
+  if (s.pendingQuestion) parts.push(['question', questionCard(s.pendingQuestion)]);
+  if (s.error && s.state === 'error') parts.push(['error', `<div class="errbox">${esc(s.error)}</div>`]);
   const sc = $('.scroller', v.el); if (v._jump !== v.sid) v.stick = true;
-  chat.innerHTML = out; bindChat(v, chat); renderLive(v);
+  if (chat.dataset.sid !== v.sid) { chat.innerHTML = ''; chat.dataset.sid = v.sid; } // another session: start clean
+  patchParts(v, chat, parts); renderLive(v);
   if (v.stick !== false) toBottom(v); v._jump = v.sid; renderToc(v); updateJump(v);
 }
 const fmtClock = ts => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -738,17 +742,41 @@ function liveCodeHTML(text, cls) {
 document.addEventListener('click', e => { if (e.target.closest('.agentsgo')) togglePane('agents', true); });
 function renderLive(v) {
   if (!v.el) return; const el = $('.live', v.el); const L = v.sid && S.live[v.sid]; if (!el || !L) return;
+  const parts = [];
+  if (L.think) parts.push(['think', thinkBlock(`${L.id}:live`, L.think, true)]);
+  if (L.text) parts.push(['text', `<div class="a"><div class="md sel">${md(L.text)}<span class="cursor"></span></div></div>`]);
+  for (const [id, tl] of Object.entries(L.tools)) { const inp = partialJSON(tl.input); parts.push(['tool:' + id, toolBlock(id, tl.name, inp, null, L.running?.id === id)]); }
   let out = '';
-  if (L.think) out += thinkBlock(`${L.id}:live`, L.think, true);
-  if (L.text) out += `<div class="a"><div class="md sel">${md(L.text)}<span class="cursor"></span></div></div>`;
-  for (const [id, tl] of Object.entries(L.tools)) { const inp = partialJSON(tl.input); out += toolBlock(id, tl.name, inp, null, L.running?.id === id); }
   const working = (L.snap?.agents || []).filter(a => a.state === 'running');
   if (working.length && busy(L)) out += `<div class="status sub agentsgo" title="${esc(t('Abrir o painel Agentes'))}"><span class="spin"></span><span>${working.length === 1 ? t('1 subagente trabalhando') : working.length + ' ' + t('subagentes trabalhando')}: ${working.map(a => `<b>${esc(a.title)}</b> · ${a.steps} ${t('passos')}${a.tool ? ' · ' + esc(a.tool) : ''}`).join(' &nbsp;|&nbsp; ')}</span></div>`;
   const st = L.snap?.state;
   if (st === 'thinking' || st === 'tool' || st === 'compacting') out += `<div class="status"><span class="spin"></span><span>${st === 'tool' ? t('executando ') + esc(L.running?.name || '') : st === 'compacting' ? t('compactando contexto') : t('pensando')}</span><span class="faint el" data-el="${L.id}"></span></div>`;
-  el.innerHTML = out; bindChat(v, el);
-  $$('.livecode', el).forEach(c => { c.scrollTop = c.scrollHeight; });
+  if (out) parts.push(['status', `<div>${out}</div>`]);
+  patchParts(v, el, parts);
   if (v.stick !== false) toBottom(v); updateJump(v);
+}
+// Updates a container part by part (keyed): an unchanged part keeps its element, so nothing flashes,
+// folds stay as they are and a code view keeps its scroll (following the end only if it was there).
+function patchParts(v, el, parts) {
+  const have = new Map([...el.children].map(c => [c.dataset.k, c]));
+  let prev = null;
+  for (const [key, html] of parts) {
+    let node = have.get(key);
+    if (!node || node._html !== html) {
+      const n = document.createElement('div'); n.dataset.k = key; n.className = 'lk'; n.innerHTML = html; n._html = html;
+      if (node) {
+        const codes = $$('.livecode', node).map(c => ({ end: c.scrollHeight - c.scrollTop - c.clientHeight < 8, top: c.scrollTop }));
+        node.replaceWith(n);
+        $$('.livecode', n).forEach((c, i) => { const was = codes[i]; c.scrollTop = !was || was.end ? c.scrollHeight : was.top; });
+      } else {
+        if (prev) prev.after(n); else el.prepend(n);
+        $$('.livecode', n).forEach(c => { c.scrollTop = c.scrollHeight; });
+      }
+      bindChat(v, n); node = n;
+    }
+    have.delete(key); prev = node;
+  }
+  have.forEach(n => n.remove());
 }
 setInterval(() => { for (const el of $$('[data-el]')) { const L = S.live[el.dataset.el]; if (L?.started) el.textContent = Math.round((Date.now() - L.started) / 1000) + 's'; } }, 500);
 
@@ -814,7 +842,7 @@ function agentHead(a) {
 }
 function agentBlock(id, inp, result) {
   const a = findAgentRun(inp), running = a ? a.state === 'running' : !result;
-  const open = S.fold[id] ?? running; // open while it works, as a live view; folded once done
+  const open = S.fold[id] ?? true; // the steps stay in view, while it works and after; the caret folds them
   const dot = running ? 'run' : result?.is_error || a?.state === 'failed' ? 'err' : '';
   return `<div class="tool agentblk${open ? ' open' : ''}" data-agentblk="${esc(id)}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${esc(t('Subagente'))}</b><span class="tag">${esc(t(inp.kind || 'general'))}</span><span class="s">${esc(inp.description || String(inp.prompt || '').slice(0, 80))}</span><span class="tdur faint asteps">${agentHead(a)}</span></div>
     <div class="b"><details class="atask"><summary>${t('Tarefa dada ao subagente')}</summary><div class="md sel">${md(String(inp.prompt || ''))}</div></details><div class="atrail">${agentTrailHTML(a, id)}</div></div></div>`;
@@ -848,7 +876,7 @@ function toolBlock(id, name, input, result, running) {
     else if (name === 'Edit') { body = (inp.old_string != null ? liveCodeHTML(inp.old_string, 'old') : '') + (inp.new_string != null ? liveCodeHTML(inp.new_string, 'new') : ''); what = t('editando'); }
     else if (name === 'MultiEdit') { body = liveCodeHTML(inp._open === 'old_string' ? inp.old_string : inp.new_string, inp._open === 'old_string' ? 'old' : 'new'); what = t('editando'); }
     else { body = liveCodeHTML(inp.command, 'cmd'); what = t('montando o comando'); }
-    const open = S.fold[id] ?? true;
+    const open = S.fold[id] ?? (S.viewMode === 'verbose'); // the same default as the finished block: no open-then-close
     return `<div class="tool live${open ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot run"></span><b>${esc(t({ Write: 'Escrevendo', Edit: 'Editando', MultiEdit: 'Editando', Bash: 'Preparando comando' }[name]))}</b><span class="s mono">${esc(p ? relPath(p) : '')}</span><span class="tdur faint">${esc(what)}</span></div><div class="b">${body}</div></div>`;
   }
   if (name === 'Agent' && inp && !inp._streaming) return agentBlock(id, inp, result);
@@ -863,13 +891,14 @@ function toolBlock(id, name, input, result, running) {
   if (name === 'TodoWrite' && Array.isArray(inp?.todos || inp?.tasks)) body += (inp.todos || inp.tasks).map(x => `<div>${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text || x.content || '')}</div>`).join('');
   if (result) { const o = String(result.content || ''); const k = o.indexOf('\n[infuse'); const main = k >= 0 ? o.slice(0, k) : o, inf = k >= 0 ? o.slice(k + 1) : ''; body += `<div class="lab">${t('resultado')}<button class="ib mini" data-copy-tool="out" title="${esc(t('Copiar resultado'))}">${I.copy}</button></div><pre class="res">${esc(main.length > 20000 ? main.slice(0, 20000) + '\n…' : main)}</pre>` + (inf ? `<div class="lab">${t('infundido')}</div><pre class="inf">${esc(inf)}</pre>` : ''); }
   const dot = running ? 'run' : result ? (result.is_error ? 'err' : '') : 'pend';
-  const open = S.fold[id] ?? (S.viewMode === 'verbose' || !!result?.is_error);
+  const open = S.fold[id] ?? (S.viewMode === 'verbose'); // an error does not open the block by itself: its first line shows in the header
+  const errLine = result?.is_error ? String(result.content || '').split('\n').find(l => l.trim()) || '' : '';
   const fullPath = isPath ? (inp.path || inp.file_path) : '';
   const shown = isPath ? relPath(fullPath) : '';
   const summ = isPath ? `<span class="s"><span class="path" data-path="${esc(shown)}" title="${esc(fullPath)}">${esc(shown)}</span></span>` : `<span class="s">${esc(toolSummary(name, inp))}</span>`;
   const mcp = name.startsWith('mcp__') ? name.slice(5).split('__') : null; // connector tools: "Conector server · tool"
   if (shot) body = `<img class="shot" src="/api/shot?name=${encodeURIComponent(shot[1])}&root=${encodeURIComponent(curRoot())}" alt="">` + body;
-  return `<div class="tool${open || shot ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${mcp ? `${esc(t('Conector'))} ${esc(mcp[0])}` : esc(t(toolLabel[name] || name))}</b>${mcp ? `<span class="s mono">${esc(mcp[1] || '')}</span>` : ''}${summ}${lineCounts(name, inp)}${result?.ms != null ? `<span class="tdur faint" title="${esc(t('tempo de execução'))}">${fmtDur(result.ms)}</span>` : ''}</div><div class="b">${body}</div></div>`;
+  return `<div class="tool${open || shot ? ' open' : ''}"><div class="h" data-fold="${esc(id)}"><span class="chev">›</span><span class="dot ${dot}"></span><b>${mcp ? `${esc(t('Conector'))} ${esc(mcp[0])}` : esc(t(toolLabel[name] || name))}</b>${mcp ? `<span class="s mono">${esc(mcp[1] || '')}</span>` : ''}${summ}${errLine ? `<span class="terr" title="${esc(errLine)}">${esc(errLine.replace(/^\[infuse\]\s*/, '').slice(0, 120))}</span>` : ''}${lineCounts(name, inp)}${result?.ms != null ? `<span class="tdur faint" title="${esc(t('tempo de execução'))}">${fmtDur(result.ms)}</span>` : ''}</div><div class="b">${body}</div></div>`;
 }
 const diffHTML = text => `<div class="diff">${text.split('\n').map(l => `<div class="${l.startsWith('+') && !l.startsWith('+++') ? 'a1' : l.startsWith('-') && !l.startsWith('---') ? 'd1' : /^(@@|---|\+\+\+|diff )/.test(l) ? 'hh' : ''}">${esc(l) || ' '}</div>`).join('')}</div>`;
 function permCard(p) {
@@ -960,10 +989,10 @@ function renderComposer(v) {
   sendBtn.innerHTML = sendBtn.classList.contains('stop') ? I.stop : I.up; sendBtn.title = t(sendBtn.classList.contains('stop') ? 'Parar (Esc)' : isBusy ? 'Pôr na fila (Enter)' : 'Enviar (Enter)');
   const q = $('.queue', v.el); q.innerHTML = '';
   (L?.queue || []).forEach((m, i) => { const row = h(`<div class="qi"><span>⏎ ${esc(m.text)}</span><span class="faint">${t('na fila')}</span><button class="ib" style="width:20px;height:20px">${I.close}</button></div>`); $('button', row).onclick = () => { L.queue.splice(i, 1); renderComposer(v); }; q.appendChild(row); });
-  const ring = $('.ring', v.el); const pct = L ? Math.min(100, Math.round(((L.lastIn || 0) / (S.settings.contextLimit || 200000)) * 100)) : 0;
+  const ring = $('.ring', v.el); const pct = L ? Math.min(100, Math.round(((L.lastIn || 0) / ctxLimit(L)) * 100)) : 0;
   const c = 2 * Math.PI * 8;
   ring.innerHTML = L ? `<svg width="18" height="18" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" stroke="var(--s3)"/><circle cx="10" cy="10" r="8" stroke="${pct > 80 ? 'var(--warn)' : 'var(--text2)'}" stroke-dasharray="${c * pct / 100} ${c}" transform="rotate(-90 10 10)"/></svg>` : '';
-  ring.title = L ? `${t('Contexto')}: ${pct}% · ${ktok(L.lastIn)} / ${ktok(S.settings.contextLimit || 200000)}` : '';
+  ring.title = L ? `${t('Contexto')}: ${pct}% · ${ktok(L.lastIn)} / ${ktok(ctxLimit(L))}` : '';
   $('.box', v.el).classList.toggle('vim', !!S.settings.vim);
   renderAtts(v);
 }
@@ -1163,14 +1192,14 @@ function vimKey(v, e) {
 function renderRail(v) {
   if (!v.el) return; const el = $('.rail', v.el); const L = v.sid && S.live[v.sid]; if (!L?.snap) { el.innerHTML = ''; return; }
   const c = L.changes || {}; const files = c.files || [];
-  const pct = Math.min(100, Math.round(((L.lastIn || 0) / (S.settings.contextLimit || 200000)) * 100));
+  const pct = Math.min(100, Math.round(((L.lastIn || 0) / ctxLimit(L)) * 100));
   const tasks = L.snap.tasks || [];
   el.innerHTML = `
   ${planCard(L)}
   <div class="card" data-card="changes"><div class="ch">${t('Alterações')}<span class="r mono">${c.isGit === false && !c.local ? t('sem git') : `<span class="add">+${c.added || 0}</span> <span class="del">−${c.removed || 0}</span>`}</span></div>${c.local ? `<div class="segrow">${scopeSwitch()}</div>` : ''}
     ${files.length ? files.slice(0, 8).map(f => `<div class="li${f.status === 'D' ? ' gone' : ''}" data-f="${esc(f.path)}"><span class="n" title="${esc(f.path)}">${esc(f.path)}</span>${chgTag(f)}<span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`).join('') + (files.length > 8 ? `<div class="faint" style="padding:3px 4px">+${files.length - 8} ${t('arquivos')}</div>` : '') : `<div class="faint">${t('Nenhuma alteração')}</div>`}
     <div class="prline"></div></div>
-  <div class="card ctxcard" data-card="context" style="cursor:pointer"><div class="ch">${t('Contexto')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(S.settings.contextLimit || 200000)} tokens · ${money(L.snap.cost)}</div></div>
+  <div class="card ctxcard" data-card="context" style="cursor:pointer"><div class="ch">${t('Contexto')}<span class="r">${pct}%</span></div><div class="bar100"><i style="width:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(ctxLimit(L))} tokens · ${money(L.snap.cost)}</div></div>
   <div class="card" data-card="env"><div class="ch">${t('Ambiente')}</div><div class="kv"><span>${t('Onde')}</span><span>${t('Este computador')}</span></div><div class="kv"><span>${t('Pasta')}</span><span title="${esc(L.snap.workRoot)}">${esc(baseName(L.snap.workRoot || L.root))}</span></div>${L.snap.branch ? `<div class="kv"><span>${t('Branch')}</span><span class="mono">${esc(L.snap.branch)}</span></div>` : ''}${L.snap.worktree ? `<div class="kv"><span>${t('Worktree')}</span><span>${t('isolado')}</span></div>` : ''}<div class="kv"><span>${t('Modelo')}</span><span class="mono">${esc(L.snap.model || '')}</span></div></div>
   ${(L.snap.pinnedMsgs || []).length ? `<div class="card pins" data-card="pins"><div class="ch">${t('Mensagens fixadas')}<span class="r">${L.snap.pinnedMsgs.length}</span></div>${L.snap.pinnedMsgs.map(i => `<div class="li pinli" data-goto="${i}"><span class="n">${esc(msgText(L.snap.messages[i] || { content: [] }).split('\n')[0].slice(0, 80) || '…')}</span></div>`).join('')}</div>` : ''}
   ${runningCard(L)}
@@ -1234,6 +1263,8 @@ function renderRunBadges(v) {
   const n = { agents: (L?.snap?.agents || []).filter(a => a.state === 'running').length, procs: (L?.snap?.procs || []).filter(p => p.state === 'running').length };
   for (const k of ['agents', 'procs']) { const b = $(`.vbar [data-a="${k}"] i`, v.el); if (b) { b.textContent = n[k] || ''; b.parentElement.classList.toggle('working', !!n[k]); } }
 }
+// the session's context: its model's window (or less, if set), from the server
+const ctxLimit = L => L?.snap?.contextLimit || S.settings.contextLimit || 1000000;
 function renderChangesBadge(v) {
   renderRunBadges(v);
   const L = v.sid && S.live[v.sid]; const b = $('.chg', v.el); if (!b) return;

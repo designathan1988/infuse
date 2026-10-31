@@ -77,6 +77,9 @@ func (tc *ToolContext) resolvePath(p string, forWrite bool) (string, error) {
 			return "", fmt.Errorf("caminho fora do projeto: %s", p)
 		}
 	}
+	if !forWrite && err == nil && !strings.HasPrefix(rel, "..") && hiddenInternal(rel) {
+		return "", fmt.Errorf("%s é um arquivo interno do infuse (sessões, jornal, histórico), não do projeto. O agente lê do .infuse/ só a documentação fixada (.infuse/docs), as convenções, o mapa (.infuse/map/MAP.md) e as próprias capturas", toPosix(rel))
+	}
 	if forWrite && tc.S.isProtected(abs) {
 		Journal(tc.Root, JournalEntry{Kind: "blocked", Path: toPosix(rel), Detail: "tentativa de escrita em caminho protegido"})
 		Lesson(tc.Root, "protected-path-write", "tentativa de escrever em "+toPosix(rel))
@@ -657,7 +660,11 @@ func (lsTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (
 		return err.Error(), true
 	}
 	var sb strings.Builder
+	here := relTo(tc.Root, abs)
 	for _, e := range entries {
+		if hiddenInternal(filepath.ToSlash(filepath.Join(here, e.Name()))) {
+			continue // infuse's own records are not listed as part of the project
+		}
 		if e.IsDir() {
 			sb.WriteString(e.Name() + "/\n")
 		} else {

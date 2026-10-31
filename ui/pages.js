@@ -77,7 +77,7 @@ async function openSettings(section = 'general') {
     el.append(setRow('Modelo rápido', 'Usado para resumir e compactar o contexto', selectEl(opts.length ? opts : [['', '—']], s.provider + '|' + s.fastModel, v => save({ fastModel: v.split('|')[1] }))));
     el.append(setRow('Esforço padrão', 'Raciocínio estendido em novas sessões', selectEl([['low', 'Baixo'], ['medium', 'Médio'], ['high', 'Alto'], ['max', 'Máximo']], s.effort || 'medium', v => save({ effort: v }))));
     el.append(setRow('Máximo de tokens de saída', 'Por resposta do modelo', inputEl(s.maxTokens, v => save({ maxTokens: v }), 'number')));
-    el.append(setRow('Limite de contexto', 'Tokens; a conversa é compactada em 75%', inputEl(s.contextLimit, v => save({ contextLimit: v }), 'number')));
+    el.append(setRow('Limite de contexto', 'Em branco ou 0: a janela do próprio modelo (1 milhão de tokens nos modelos Claude 5 e DeepSeek V4). Um número menor limita o contexto. A conversa é compactada em 75% do limite.', inputEl(s.contextLimit || '', v => save({ contextLimit: +v || 0 }), 'number')));
     el.append(setRow('Limite de gasto diário (US$)', 'Soma de todas as sessões no dia; o agente para ao ultrapassar; 0 desliga', inputEl(s.dailyLimitUsd, v => save({ dailyLimitUsd: v }), 'number')));
     const u = await api('/api/usage', { root: '' });
     el.append(h(`<h2>${t('Gasto')}</h2>`), h(`<div class="row" style="gap:36px;margin-bottom:8px"><div><div class="faint">${t('Hoje')}</div><div class="big">${money(u.today)}</div></div><div><div class="faint">${t('Este mês')}</div><div class="big">${money(u.month)}</div></div><div><div class="faint">${t('Tokens')}</div><div class="big">${ktok(u.tokens?.input)} / ${ktok(u.tokens?.output)}</div></div></div>`));

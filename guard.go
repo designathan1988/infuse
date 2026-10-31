@@ -33,8 +33,34 @@ type Guard struct {
 	Protected []string // globs relative to root
 }
 
+// infuse's own records (other sessions' transcripts, the journal, snapshots, checkpoints) are not the
+// project: the agent neither reads nor writes them, by any tool.
+var internalRels = []string{".infuse/sessions", ".infuse/checkpoints", ".infuse/tree", ".infuse/journal.jsonl", ".infuse/watcher.json"}
+
+// agentVisibleInternal lists what of .infuse/ the agent may read: pinned docs, the conventions, the
+// project map and its own captures.
+var agentVisibleInternal = []string{".infuse/docs/", ".infuse/conventions.md", ".infuse/map/MAP.md", ".infuse/shots/", ".infuse/recordings/", ".infuse/skills/"}
+
+// hiddenInternal reports whether rel (relative to the project) is infuse's own file the agent may not read.
+func hiddenInternal(rel string) bool {
+	rel = strings.TrimPrefix(toPosix(rel), "./")
+	if rel != ".infuse" && !strings.HasPrefix(rel, ".infuse/") {
+		return false
+	}
+	for _, ok := range agentVisibleInternal {
+		if rel == strings.TrimSuffix(ok, "/") || strings.HasPrefix(rel, ok) {
+			return false
+		}
+	}
+	return true
+}
+
 func newGuard(root string, protected []string) *Guard {
-	return &Guard{Root: root, Protected: append([]string{oracleRel + "/**", oracleRel, evidenceRel + "/**", evidenceRel, memoryRel + "/**", memoryRel}, protected...)}
+	base := []string{oracleRel + "/**", oracleRel, evidenceRel + "/**", evidenceRel, memoryRel + "/**", memoryRel}
+	for _, r := range internalRels {
+		base = append(base, r+"/**", r)
+	}
+	return &Guard{Root: root, Protected: append(base, protected...)}
 }
 
 // protects reports whether p (absolute, or relative to cwd) is agent-proof. A symlink counts as its target.

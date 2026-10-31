@@ -281,7 +281,7 @@ func (s *Session) snapshot() map[string]any {
 		"pendingQuestion": s.pendingAsk, "error": s.lastError, "compactions": s.Compactions, "mode": s.mode(),
 		"provider": s.providerID(), "effort": s.effort(), "archived": s.Archived, "worktree": s.Worktree, "branch": s.Branch,
 		"workRoot": s.workRoot(), "plan": s.Plan, "mission": s.Mission.clone(), "pinnedMsgs": s.PinnedMsgs, "created": s.Created, "updated": s.Updated, "lastInput": s.LastInput,
-		"procs": s.procListLocked(), "agents": s.Agents,
+		"procs": s.procListLocked(), "agents": s.Agents, "contextLimit": s.contextLimitLocked(),
 	}
 }
 
@@ -676,6 +676,7 @@ func (s *Session) run(ctx context.Context) {
 	var breaker loopBreaker    // stops a turn that keeps repeating the same failure
 	stopHooks := 0
 	var tripped error
+	breakerTrips := 0 // the breaker warns once, then ends the turn
 	for iter := 0; iter < 200; iter++ {
 		if ctx.Err() != nil {
 			s.finish("cancelado")
@@ -693,7 +694,7 @@ func (s *Session) run(ctx context.Context) {
 		if budget > 0 && maxTok <= budget+1024 {
 			maxTok = budget + 8000
 		}
-		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules), Messages: s.copyMessages(), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
+		req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, rules), Messages: repairTranscript(s.copyMessages()), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
 		started := time.Now()
 		var thinkFrom, thinkTo time.Time // how long the model spent in its reasoning, from the stream
 		res, err := provider.Stream(ctx, req, func(ev StreamEvent) {
@@ -819,6 +820,19 @@ func (s *Session) run(ctx context.Context) {
 			s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
 			s.inflight = nil
 			s.mu.Unlock()
+			if tripped != nil && breakerTrips == 0 && ctx.Err() == nil {
+				// the first time, the agent is sent back with an order to change approach; only insisting ends the turn
+				breakerTrips++
+				breaker = loopBreaker{}
+				note := "[infuse] " + tripped.Error() + ". Repetir a mesma ação não vai dar outro resultado. Leia a mensagem de bloqueio ou de erro acima e mude a abordagem: outra forma de fazer a alteração, outro arquivo, dividir o que está grande, ou pesquisar a causa. Se repetir de novo, o turno termina."
+				tripped = nil
+				s.mu.Lock() // in the same message as the results: the roles keep alternating
+				last := &s.Messages[len(s.Messages)-1]
+				last.Content = append(last.Content, Block{Type: "text", Text: note})
+				s.mu.Unlock()
+				s.emit("gate", map[string]any{"message": note})
+				continue
+			}
 			if tripped != nil {
 				Lesson(s.Root, "loop-errático", tripped.Error())
 				s.fail(tripped)
@@ -1042,7 +1056,7 @@ func (s *Session) needsCompaction() bool {
 	defer s.mu.Unlock()
 	// Estimate: 4 chars per token over the serialized messages.
 	b, _ := json.Marshal(s.Messages)
-	return len(b)/4 > int(float64(s.settings.ContextLimit)*0.75)
+	return len(b)/4 > int(float64(s.contextLimitLocked())*0.75)
 }
 
 func (s *Session) compact(ctx context.Context, p Provider) error {
@@ -1051,10 +1065,12 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 	if len(msgs) < 4 {
 		return nil
 	}
-	keep := msgs[len(msgs)-2:] // the latest exchange stays verbatim
-	older := msgs[:len(msgs)-2]
+	// the latest exchange stays verbatim; both are fresh slices: appending the request below must not
+	// write over the exchange that is kept (a shared backing array lost the agent's tool calls once)
+	keep := append([]Message{}, msgs[len(msgs)-2:]...)
+	older := append([]Message{}, msgs[:len(msgs)-2]...)
 	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: "Resuma a conversa acima para continuar o trabalho sem perder nada essencial: objetivo, decisões tomadas, arquivos criados ou alterados (com caminhos), o que foi tentado e rejeitado, erros encontrados, estado atual e próximos passos. Seja específico e conciso."}}})
-	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: older, MaxTokens: 4000}, func(StreamEvent) {})
+	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: repairTranscript(older), MaxTokens: 4000}, func(StreamEvent) {})
 	if err != nil {
 		return err
 	}
@@ -1314,7 +1330,7 @@ func (s *Session) ContextBreakdown() map[string]any {
 		}
 	}
 	total := sys + tools + user + assistant + calls + results + images
-	limit := s.settings.ContextLimit
+	limit := s.contextLimit()
 	return map[string]any{
 		"limit": limit, "total": total,
 		"categories": []map[string]any{

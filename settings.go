@@ -53,7 +53,7 @@ func defaultSettings() Settings {
 		Model:          "claude-sonnet-5-5",
 		FastModel:      "claude-haiku-5-5",
 		MaxTokens:      16000,
-		ContextLimit:   200000,
+		ContextLimit:   0, // the model's own window (models.go)
 		Mode:           "default",
 		Permissions:    map[string]string{"Bash": "ask", "Write": "ask", "Edit": "ask", "WebFetch": "ask"},
 		ProtectedPaths: []string{".infuse/oracle/**"},
@@ -110,8 +110,8 @@ func LoadSettings() Settings {
 	if s.MaxTokens <= 0 {
 		s.MaxTokens = 16000
 	}
-	if s.ContextLimit <= 0 {
-		s.ContextLimit = 200000
+	if s.ContextLimit < 0 || s.ContextLimit == 200000 { // 200000 was a fixed default, never a choice: the model decides
+		s.ContextLimit = 0
 	}
 	if s.Model == "" {
 		s.Model = defaultSettings().Model

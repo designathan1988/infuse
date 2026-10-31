@@ -207,7 +207,10 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) string 
 		if before == "" {
 			nb = 0
 		}
-		if na > limit && (nb <= limit || na > nb) {
+		if na > limit && nb > limit && na > nb { // a file already too big may not grow
+			return fmt.Sprintf("[infuse] Bloqueado: %s já tem %d linhas, acima do limite do projeto (%d), e esta alteração o faria crescer para %d. Um arquivo grande não pode crescer. Faça assim: mova a parte que você está mudando para um arquivo novo na mesma pasta, com uma responsabilidade clara, e importe-o daqui — a alteração vai no arquivo novo. Ou faça a mudança sem aumentar este arquivo.", rel, nb, limit, na)
+		}
+		if na > limit && nb <= limit {
 			return fmt.Sprintf("[infuse] Bloqueado: %s ficaria com %d linhas (limite do projeto: %d). Divida a responsabilidade em arquivos menores dentro da estrutura existente.", rel, na, limit)
 		}
 	}
