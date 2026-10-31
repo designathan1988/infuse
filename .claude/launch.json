@@ -26,6 +26,19 @@
         "INFUSE_UI_DIR": "ui",
         "INFUSE_TOKEN": "dev-preview-only"
       }
+    },
+    {
+      "name": "infuse-ui-rebuild",
+      "runtimeExecutable": "build/infuse-dev2.exe",
+      "runtimeArgs": [
+        "serve",
+        "7472"
+      ],
+      "port": 7472,
+      "env": {
+        "INFUSE_UI_DIR": "C:\\Users\\Jonathan\\Documents\\infuse-ui-rebuild\\ui",
+        "INFUSE_TOKEN": "dev-preview-only"
+      }
     }
   ]
 }

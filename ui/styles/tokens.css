@@ -1,5 +1,6 @@
 /* tokens — split from index.html; the only place area styles live. */
 :root {
+  color-scheme: light;
   --bg:#fbfbfa; --sb:#f4f4f2; --surface:#ffffff; --s2:#f1f1ef; --s3:#e8e8e5; --border:#e5e5e2; --border2:#d3d3cf;
   --text:#1f1f1d; --text2:#66665f; --text3:#99998f; --accent:#4c6fd6; --accent-soft:#eef2fc;
   --ok:#2c7a46; --ok-soft:#e8f4ec; --warn:#a0620c; --warn-soft:#fbf3e2; --bad:#b83a3e; --bad-soft:#fbeaea;
@@ -12,6 +13,7 @@
   --r:8px; --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 28px rgba(0,0,0,.08); --pop:0 12px 40px rgba(0,0,0,.16),0 0 0 1px var(--border);
 }
 :root.dark {
+  color-scheme: dark;
   --bg:#1c1c1b; --sb:#171716; --surface:#232322; --s2:#2a2a28; --s3:#333331; --border:#2e2e2c; --border2:#43433f;
   --text:#ececea; --text2:#a8a8a1; --text3:#74746d; --accent:#8aa6f4; --accent-soft:#252c40;
   --ok:#80d197; --ok-soft:#1d2f23; --warn:#e3b65c; --warn-soft:#33291a; --bad:#f19497; --bad-soft:#3a2021;
