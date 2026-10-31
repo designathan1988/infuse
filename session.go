@@ -77,18 +77,19 @@ type Session struct {
 	SessionData
 	State string `json:"state"` // idle | thinking | tool | waiting_permission | waiting_user | compacting | error
 
-	mu          sync.Mutex
-	subs        map[chan Event]struct{}
-	seq         int
-	cancel      context.CancelFunc
-	pendingPerm *permRequest
-	pendingAsk  *askRequest
-	readFiles   map[string]bool
-	allowAlways map[string]bool
-	lastError   string
-	mapTimer    *time.Timer
-	settings    Settings
-	inflight    []Block // results of the current reply's tool calls, before they join the transcript
+	mu            sync.Mutex
+	subs          map[chan Event]struct{}
+	seq           int
+	cancel        context.CancelFunc
+	pendingPerm   *permRequest
+	pendingAsk    *askRequest
+	readFiles     map[string]bool
+	allowAlways   map[string]bool
+	lastError     string
+	mapTimer      *time.Timer
+	settings      Settings
+	inflight      []Block // results of the current reply's tool calls, before they join the transcript
+	pendingImages []Block // images the agent opened with Read, sent with the next tool results
 }
 
 var (
@@ -675,8 +676,17 @@ func (s *Session) run(ctx context.Context) {
 			return
 		}
 		var results []Block
+		pre := s.runReadsInParallel(ctx, rules, res.Content) // several reads in one reply run at once
 		for _, b := range res.Content {
 			if b.Type != "tool_use" {
+				continue
+			}
+			if r, ok := pre[b.ID]; ok {
+				results = append(results, r)
+				s.emit("tool_result", map[string]any{"id": b.ID, "name": b.Name, "output": r.Content, "isError": r.IsError, "ms": r.Ms})
+				if err := breaker.record(b.Name, b.Input, r.IsError); err != nil {
+					tripped = err
+				}
 				continue
 			}
 			toolStart := time.Now()
@@ -719,6 +729,8 @@ func (s *Session) run(ctx context.Context) {
 			return
 		}
 		s.mu.Lock()
+		results = append(results, s.pendingImages...) // images opened with Read, after the tool results
+		s.pendingImages = nil
 		s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
 		s.inflight = nil
 		s.mu.Unlock()

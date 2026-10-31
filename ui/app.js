@@ -552,10 +552,10 @@ function renderLive(v) {
 }
 setInterval(() => { for (const el of $$('[data-el]')) { const L = S.live[el.dataset.el]; if (L?.started) el.textContent = Math.round((Date.now() - L.started) / 1000) + 's'; } }, 500);
 
-const toolLabel = { Bash: 'Executou', Read: 'Leu', Write: 'Escreveu', Edit: 'Editou', Glob: 'Procurou arquivos', Grep: 'Buscou', LS: 'Listou', WebFetch: 'Buscou na web', TodoWrite: 'Atualizou tarefas', AskUserQuestion: 'Perguntou' };
+const toolLabel = { Bash: 'Executou', Read: 'Leu', Write: 'Escreveu', Edit: 'Editou', Glob: 'Procurou arquivos', Grep: 'Buscou', LS: 'Listou', WebFetch: 'Buscou na web', TodoWrite: 'Atualizou tarefas', AskUserQuestion: 'Perguntou', MultiEdit: 'Editou', WebSearch: 'Pesquisou na web', Agent: 'Subagente', Memory: 'Memória', Contract: 'Critérios do pedido', Report: 'Relatório' };
 function toolSummary(name, inp) {
   if (!inp) return ''; if (inp._partial !== undefined) return inp._partial.slice(-90);
-  switch (name) { case 'Bash': return inp.command || ''; case 'Read': case 'Write': case 'Edit': return inp.path || inp.file_path || ''; case 'Glob': return inp.pattern || ''; case 'Grep': return `${inp.pattern || ''}${inp.path ? ' · ' + inp.path : ''}`; case 'LS': return inp.path || '.'; case 'WebFetch': return inp.url || ''; case 'TodoWrite': return `${(inp.todos || inp.tasks || []).length} ${t('itens')}`; case 'AskUserQuestion': return inp.question || ''; default: return JSON.stringify(inp).slice(0, 120); }
+  switch (name) { case 'Bash': return inp.command || ''; case 'Read': case 'Write': case 'Edit': case 'MultiEdit': return inp.path || inp.file_path || ''; case 'WebSearch': return inp.query || ''; case 'Agent': return `${inp.kind || ''} · ${inp.description || (inp.prompt || '').slice(0, 80)}`; case 'Memory': return `${inp.action || ''}${inp.text ? ' · ' + inp.text : ''}`; case 'Contract': return inp.goal || ''; case 'Glob': return inp.pattern || ''; case 'Grep': return `${inp.pattern || ''}${inp.path ? ' · ' + inp.path : ''}`; case 'LS': return inp.path || '.'; case 'WebFetch': return inp.url || ''; case 'TodoWrite': return `${(inp.todos || inp.tasks || []).length} ${t('itens')}`; case 'AskUserQuestion': return inp.question || ''; default: return JSON.stringify(inp).slice(0, 120); }
 }
 function lineCounts(name, inp) {
   if (name === 'Write' && inp?.content != null) return `<span class="cnt add">+${inp.content.split('\n').length}</span>`;
@@ -585,10 +585,11 @@ function reportCard(inp, result) {
 function toolBlock(id, name, input, result, running) {
   let inp = input; if (typeof inp === 'string') { try { inp = JSON.parse(inp); } catch { inp = {}; } }
   if (name === 'Report' && inp && Array.isArray(inp.claims)) return reportCard(inp, result);
-  const isPath = ['Read', 'Write', 'Edit'].includes(name) && (inp?.path || inp?.file_path);
+  const isPath = ['Read', 'Write', 'Edit', 'MultiEdit'].includes(name) && (inp?.path || inp?.file_path);
   let body = '';
   if (name === 'Bash' && inp?.command) body += `<div class="lab">${t('comando')}<button class="ib mini" data-copy-tool="in" title="${esc(t('Copiar comando'))}">${I.copy}</button></div><pre class="inp">${esc(inp.command)}</pre>`;
   else if (name === 'Write' && inp?.content != null) body += diffHTML(inp.content.split('\n').map(l => '+' + l).join('\n'));
+  else if (name === 'MultiEdit' && Array.isArray(inp?.edits)) body += inp.edits.map(e => diffHTML((e.old_string || '').split('\n').map(l => '-' + l).join('\n') + '\n' + (e.new_string || '').split('\n').map(l => '+' + l).join('\n'))).join('');
   else if (name === 'Edit' && inp?.old_string != null) body += diffHTML(inp.old_string.split('\n').map(l => '-' + l).join('\n') + '\n' + (inp.new_string || '').split('\n').map(l => '+' + l).join('\n'));
   else if (inp && Object.keys(inp).length && name !== 'TodoWrite') body += `<div class="lab">${t('entrada')}</div><pre>${esc(JSON.stringify(inp, null, 2))}</pre>`;
   if (name === 'TodoWrite' && Array.isArray(inp?.todos || inp?.tasks)) body += (inp.todos || inp.tasks).map(x => `<div>${x.status === 'done' ? '☑' : x.status === 'in_progress' ? '◐' : '☐'} ${esc(x.text || x.content || '')}</div>`).join('');

@@ -7,6 +7,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -214,6 +215,16 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if err != nil {
 		return err.Error(), true
 	}
+	if mt := imageType(abs); mt != "" { // the model sees the image itself
+		if len(b) > 5<<20 {
+			return fmt.Sprintf("imagem grande demais para enviar ao modelo (%d bytes; máximo 5 MB)", len(b)), true
+		}
+		tc.S.mu.Lock()
+		tc.S.pendingImages = append(tc.S.pendingImages, Block{Type: "image", MediaType: mt, Data: base64.StdEncoding.EncodeToString(b)})
+		tc.S.mu.Unlock()
+		tc.S.markRead(abs)
+		return fmt.Sprintf("imagem %s (%d bytes) anexada a esta resposta para você ver", relTo(tc.Root, abs), len(b)), false
+	}
 	if bytes.IndexByte(b, 0) >= 0 {
 		return fmt.Sprintf("arquivo binário (%d bytes)", len(b)), true
 	}
@@ -313,6 +324,81 @@ func (editTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	lines := append([]string{fmt.Sprintf("Editado: %s (%d substituição(ões))", relTo(tc.Root, abs), map[bool]int{true: n, false: 1}[in.ReplaceAll])}, tc.afterWrite(abs)...)
 	return strings.Join(lines, "\n"), false
+}
+
+// ---------------------------------------------------------------- MultiEdit
+
+type multiEditTool struct{}
+
+func (multiEditTool) Category() string { return "write" }
+func (multiEditTool) Spec() ToolSpec {
+	return ToolSpec{Name: "MultiEdit", Description: "Aplica várias substituições exatas num mesmo arquivo, em ordem, de uma vez: ou todas valem, ou nenhuma é gravada. Cada old_string precisa ocorrer exatamente uma vez no texto já com as edições anteriores (ou use replace_all). Leia o arquivo antes.",
+		InputSchema: schema(`{"type":"object","properties":{"path":{"type":"string"},"edits":{"type":"array","items":{"type":"object","properties":{"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"}},"required":["old_string","new_string"]}}},"required":["path","edits"]}`)}
+}
+
+func (multiEditTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
+	var in struct {
+		Path  string `json:"path"`
+		Edits []struct {
+			OldString  string `json:"old_string"`
+			NewString  string `json:"new_string"`
+			ReplaceAll bool   `json:"replace_all"`
+		} `json:"edits"`
+	}
+	_ = json.Unmarshal(input, &in)
+	abs, err := tc.resolvePath(in.Path, true)
+	if err != nil {
+		return err.Error(), true
+	}
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		return err.Error(), true
+	}
+	if !tc.S.wasRead(abs) {
+		return "leia o arquivo com Read antes de editá-lo", true
+	}
+	if len(in.Edits) == 0 {
+		return "nenhuma edição", true
+	}
+	content := string(b)
+	total := 0
+	for i, e := range in.Edits {
+		n := strings.Count(content, e.OldString)
+		if e.OldString == "" || n == 0 {
+			return fmt.Sprintf("edição %d: old_string não encontrado (nada foi gravado)", i+1), true
+		}
+		if n > 1 && !e.ReplaceAll {
+			return fmt.Sprintf("edição %d: old_string ocorre %d vezes; torne-o único ou use replace_all (nada foi gravado)", i+1, n), true
+		}
+		if e.ReplaceAll {
+			content = strings.ReplaceAll(content, e.OldString, e.NewString)
+			total += n
+		} else {
+			content = strings.Replace(content, e.OldString, e.NewString, 1)
+			total++
+		}
+	}
+	tc.S.checkpointBeforeWrite(abs)
+	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		return err.Error(), true
+	}
+	lines := append([]string{fmt.Sprintf("Editado: %s (%d edições, %d substituição(ões))", relTo(tc.Root, abs), len(in.Edits), total)}, tc.afterWrite(abs)...)
+	return strings.Join(lines, "\n"), false
+}
+
+// imageType is the media type of an image the model can see, by extension.
+func imageType(p string) string {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------- Glob
@@ -654,7 +740,7 @@ func (askTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) 
 }
 
 func init() {
-	for _, t := range []Tool{bashTool{}, readTool{}, writeTool{}, editTool{}, globTool{}, grepTool{}, lsTool{}, webFetchTool{}, todoTool{}, askTool{}} {
+	for _, t := range []Tool{bashTool{}, readTool{}, writeTool{}, editTool{}, multiEditTool{}, globTool{}, grepTool{}, lsTool{}, webFetchTool{}, todoTool{}, askTool{}} {
 		registerTool(t)
 	}
 }
