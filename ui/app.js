@@ -381,6 +381,7 @@ function onEvent(L, ev) {
     case 'error': L.snap.error = d; L.snap.pendingPermission = null; L.snap.pendingQuestion = null; re(); attention(L, 'infuse: erro', String(d)); break;
     case 'tasks': L.snap.tasks = d; vs.forEach(renderRail); paneRefresh('tasks'); break;
     case 'memory': paneRefresh('memory'); break;
+    case 'gate': toast(t('infuse interveio: ') + String(d.message || '').replace(/^\[infuse\] /, '').split('\n')[0].slice(0, 140)); break;
     case 'subagent': L.sub = d.state === 'done' ? null : { ...(L.sub || {}), ...d, steps: (L.sub?.steps || 0) + (d.state === 'tool' ? 1 : 0) }; vs.forEach(renderLive); break;
     case 'mission': L.snap.mission = d; vs.forEach(renderRail); break;
     case 'cwd': L.snap.cwd = d; break;
@@ -658,7 +659,7 @@ function permCard(p) {
   let inp = {}; try { inp = typeof p.input === 'string' ? JSON.parse(p.input) : p.input || {}; } catch { }
   const verb = p.category === 'exec' ? 'executar um comando' : p.category === 'write' ? 'alterar um arquivo' : p.category === 'net' ? 'acessar a web' : p.category === 'mcp' ? 'usar um conector (roda fora do filtro)' : p.category === 'memory' ? 'registrar na memória' : 'usar uma ferramenta';
   const detail = p.tool === 'Bash' ? `<pre class="cmd">${esc(inp.command || '')}</pre>` : p.tool === 'Edit' ? `<div class="mono" style="margin-top:8px">${esc(inp.path)}</div>` + diffHTML((inp.old_string || '').split('\n').map(l => '-' + l).join('\n') + '\n' + (inp.new_string || '').split('\n').map(l => '+' + l).join('\n')) : p.tool === 'Write' ? `<div class="mono" style="margin-top:8px">${esc(inp.path)}</div>` + diffHTML((inp.content || '').split('\n').slice(0, 200).map(l => '+' + l).join('\n')) : p.tool === 'WebFetch' ? `<pre class="cmd">${esc(inp.url || '')}</pre>` : `<pre class="cmd">${esc(JSON.stringify(inp, null, 2))}</pre>`;
-  return `<div class="pcard"><div class="hd"><b>${esc(p.tool)}</b><span class="muted">${t('quer')} ${t(verb)}</span></div>${p.reason ? `<div class="sentinel">${t('Sentinela:')} ${esc(t(p.reason))}. ${t('O infuse pergunta mesmo no modo "aceitar tudo": mudar o teste em vez do código faz o teste passar sem resolver o problema.')}</div>` : ''}${detail}
+  return `<div class="pcard"><div class="hd"><b>${esc(p.tool)}</b><span class="muted">${t('quer')} ${t(verb)}</span></div>${p.reason ? `<div class="sentinel">${t('Sentinela:')} ${esc(t(p.reason))}. ${t('O infuse pergunta mesmo no modo "aceitar tudo": enfraquecer o teste faz ele passar sem resolver o problema.')}</div>` : ''}${detail}
   <div class="opts"><div class="opt" data-perm="allow" data-id="${p.id}">${t('Sim')}<span class="kbd">Y</span></div><div class="opt" data-perm="always" data-id="${p.id}">${t('Sim, e não perguntar de novo nesta sessão')}${p.tool === 'Bash' ? ` <span class="faint">(${esc((inp.command || '').trim().split(/\s+/).slice(0, 2).join(' '))})</span>` : ''}<span class="kbd">A</span></div><div class="opt" data-perm="all" data-id="${p.id}">${t('Sim, e aceitar tudo daqui em diante')}<span class="kbd">T</span></div><div class="opt" data-perm="deny" data-id="${p.id}">${t('Não, e dizer ao agente o que fazer diferente')}<span class="kbd">N</span></div></div></div>`;
 }
 function questionCard(q) {

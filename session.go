@@ -89,9 +89,10 @@ type Session struct {
 	lastError     string
 	mapTimer      *time.Timer
 	settings      Settings
-	inflight      []Block    // results of the current reply's tool calls, before they join the transcript
-	pendingImages []Block    // images the agent opened with Read, sent with the next tool results
-	askMu         sync.Mutex // one question to the user at a time (parallel subagents may each need one)
+	inflight      []Block      // results of the current reply's tool calls, before they join the transcript
+	pendingImages []Block      // images the agent opened with Read, sent with the next tool results
+	askMu         sync.Mutex   // one question to the user at a time (parallel subagents may each need one)
+	gate          researchGate // research gate and report requirement of the current turn
 }
 
 var (
@@ -593,6 +594,7 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 		s.Model = s.settings.Model
 	}
 	s.lastError = ""
+	s.gate.reset()
 	s.Turn++
 	s.TurnStarts = append(s.TurnStarts, len(s.Messages))
 	blocks := userBlocks(text, atts, imgs)
@@ -719,6 +721,14 @@ func (s *Session) run(ctx context.Context) {
 			}
 		}
 		if res.StopReason != "tool_use" {
+			if why := s.missingReport(); why != "" {
+				s.mu.Lock()
+				s.gate.reportAsks++
+				s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: why}}, TS: time.Now().UnixMilli()})
+				s.mu.Unlock()
+				s.emit("gate", map[string]any{"message": why})
+				continue
+			}
 			if stopHooks < 3 { // a Stop hook can send the agent back to work, with its reason
 				if o := s.runHooks(ctx, "Stop", "", map[string]any{"stop_hook_active": stopHooks > 0}); o.Block {
 					stopHooks++
@@ -839,7 +849,37 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	if o := s.runHooks(ctx, "PreToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput}); o.Block {
 		return "bloqueado por um hook: " + o.Message, true
 	}
+	if why := s.gateCheck(b.Name, tool.Category(), b.Input); why != "" { // research before another attempt
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: firstLine(why)})
+		s.emit("gate", map[string]any{"message": why})
+		return why, true
+	}
+	var shortcutWarn []string
+	if tool.Category() == "write" && s.mode() != "plan" {
+		if p, before, after, ok := editedContent(s.workRoot(), s.Cwd, b.Name, b.Input); ok {
+			ask, warn := detectShortcuts(p, before, after)
+			shortcutWarn = warn
+			if len(ask) > 0 {
+				why := "atalho que enfraquece os testes: " + strings.Join(ask, ", ")
+				s.mu.Lock()
+				silenced := s.allowAlways["sentinel:"+why]
+				s.mu.Unlock()
+				if !silenced {
+					Journal(s.Root, JournalEntry{Kind: "sentinel", Path: p, Detail: why})
+					if !s.askPermissionWhy(ctx, tool, b.Input, why) {
+						Lesson(s.Root, "atalho-em-teste", why+" em "+p)
+						return "o usuário recusou: " + why + ". Resolva o problema no código, sem enfraquecer o teste.", true
+					}
+				}
+			}
+		}
+	}
 	out, isErr := s.runToolChecked(ctx, rules, tool, b)
+	s.gateRecord(b.Name, tool.Category(), out, isErr)
+	if len(shortcutWarn) > 0 && !isErr {
+		Lesson(s.Root, "atalho", strings.Join(shortcutWarn, ", "))
+		out += "\n[atalho] Esta edição introduziu: " + strings.Join(shortcutWarn, ", ") + ". Isso esconde problemas em vez de resolvê-los; trate o erro de verdade ou explique por que é necessário."
+	}
 	if o := s.runHooks(ctx, "PostToolUse", b.Name, map[string]any{"tool_name": b.Name, "tool_input": toolInput, "tool_response": out}); o.Message != "" {
 		out += "\n[hook] " + o.Message
 	}
