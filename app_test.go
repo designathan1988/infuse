@@ -233,18 +233,13 @@ func TestTerminalEcho(t *testing.T) {
 		t.Skip("pty unavailable: " + err.Error())
 	}
 	defer CloseTerminal(term.ID)
-	_, _ = term.pty.Write([]byte("echo infuse-term-$((40+2))\r"))
+	_, _ = term.Write([]byte("echo infuse-term-$((40+2))\r"))
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
-		term.mu.Lock()
-		out := string(term.backlog)
-		term.mu.Unlock()
-		if strings.Contains(out, "infuse-term-42") {
+		if strings.Contains(term.Output(), "infuse-term-42") {
 			return
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	term.mu.Lock()
-	defer term.mu.Unlock()
-	t.Fatalf("no echo from the shell; got %q", string(term.backlog))
+	t.Fatalf("no echo from the shell; got %q", term.Output())
 }

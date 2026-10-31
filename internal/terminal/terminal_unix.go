@@ -1,6 +1,6 @@
 //go:build !windows
 
-package main
+package terminal
 
 // macOS/Linux: the shell runs under `script`, which allocates a pty, so no cgo or extra library is needed.
 // Resizing is not forwarded (script keeps its initial size).
@@ -19,7 +19,7 @@ type scriptPTY struct {
 	out io.ReadCloser
 }
 
-func startPTY(cwd string, cols, rows int) (ptyProcess, error) {
+func startPTY(cwd string, cols, rows int) (PTY, error) {
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/bash"

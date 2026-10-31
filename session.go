@@ -1156,9 +1156,9 @@ func (s *Session) finish(reason string) {
 	s.cancel = nil
 	s.Working = false
 	s.mu.Unlock()
-	s.setState("idle")
+	s.save() // the terminal state is observed only after the document is durable
 	s.emit("done", map[string]any{"reason": reason, "cost": s.Cost, "usage": s.Usage})
-	s.save()
+	s.setState("idle")
 	s.mu.Lock()
 	running := s.Mission != nil && s.Mission.State == "running"
 	s.mu.Unlock()
@@ -1177,9 +1177,9 @@ func (s *Session) fail(err error) {
 	s.lastError = err.Error()
 	s.cancel = nil
 	s.mu.Unlock()
+	s.save()
 	s.emit("error", err.Error())
 	s.setState("error")
-	s.save()
 	s.endMission("parada", "erro: "+err.Error())
 }
 

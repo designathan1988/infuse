@@ -720,7 +720,7 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 			return true
 		}
 		if run := str("run"); run != "" { // e.g. an agent CLI: started by the shell, so it runs in the project folder
-			_, _ = t.pty.Write([]byte(run + "\r"))
+			_, _ = t.Write([]byte(run + "\r"))
 		}
 		sendJSON(w, 200, map[string]any{"id": t.ID, "cwd": t.Cwd})
 		return true
@@ -735,10 +735,10 @@ func appAPI(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 		case "stream":
 			streamTerminal(w, r, t)
 		case "input":
-			_, _ = t.pty.Write([]byte(str("data")))
+			_, _ = t.Write([]byte(str("data")))
 			sendJSON(w, 200, map[string]any{"ok": true})
 		case "resize":
-			_ = t.pty.Resize(num("cols"), num("rows"))
+			_ = t.Resize(num("cols"), num("rows"))
 			sendJSON(w, 200, map[string]any{"ok": true})
 		case "close":
 			CloseTerminal(t.ID)

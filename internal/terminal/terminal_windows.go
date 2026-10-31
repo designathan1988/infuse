@@ -1,10 +1,11 @@
 //go:build windows
 
-package main
+package terminal
 
 // ConPTY: a pseudo console hosting the real bash (Git Bash) or, without it, PowerShell.
 
 import (
+	"infuse/internal/core"
 	"os"
 	"strings"
 	"syscall"
@@ -22,7 +23,7 @@ type conPTY struct {
 	thread  windows.Handle
 }
 
-func startPTY(cwd string, cols, rows int) (ptyProcess, error) {
+func startPTY(cwd string, cols, rows int) (PTY, error) {
 	var inR, inW, outR, outW windows.Handle
 	if err := windows.CreatePipe(&inR, &inW, nil, 0); err != nil {
 		return nil, err
@@ -71,8 +72,8 @@ func startPTY(cwd string, cols, rows int) (ptyProcess, error) {
 }
 
 func shellCommandLine() string {
-	bash := FindRealBash()
-	if strings.HasSuffix(strings.ToLower(bash), ".exe") && exists(bash) {
+	bash := core.FindRealBash()
+	if strings.HasSuffix(strings.ToLower(bash), ".exe") && core.Exists(bash) {
 		return `"` + bash + `" --login -i`
 	}
 	return "powershell.exe -NoLogo"

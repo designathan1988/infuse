@@ -134,9 +134,3 @@ func errString(err error) string {
 	return err.Error()
 }
 
-// randomHex returns n random bytes as hex (identifiers that must not collide).
-func randomHex(n int) string {
-	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
-}

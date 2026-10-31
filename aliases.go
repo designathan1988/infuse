@@ -169,6 +169,7 @@ func contains(list []string, v string) bool        { return core.Contains(list, 
 func firstNonZero(a, b float64) float64            { return core.FirstNonZero(a, b) }
 func sortedKeys[M ~map[string]V, V any](m M) []string { return core.SortedKeys(m) }
 func exitCode(err error) int                         { return core.ExitCode(err) }
+func randomHex(n int) string                         { return core.RandomHex(n) }
 func shellQuote(s string) string                     { return filter.ShellQuote(s) }
 func detach(cmd *exec.Cmd)                           { process.Detach(cmd) }
 func noConsoleWindow(cmd *exec.Cmd)                  { process.NoConsoleWindow(cmd) }
