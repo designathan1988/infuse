@@ -17,11 +17,11 @@ export function mountEffect(ctx) {
   });
 }
 
-function renderHome(ctx) {
+export function renderHome(ctx) {
   const L = ctx.v.sid ? liveOf(ctx.v.sid) : null;
   const snap = L?.snap.get();
   const hs = $('.hsub', ctx.el);
-  if (hs) hs.textContent = snap ? '' : (ctx.v.draft.root || t('home.pickFolder'));
+  if (hs) hs.textContent = snap ? '' : (ctx.v.draft.root ? '' : t('home.pickFolder'));
 }
 
 function renderQueue(ctx) {

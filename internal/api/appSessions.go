@@ -82,7 +82,12 @@ func sessionsOfEveryProject(archived bool) []map[string]any {
 			if d.Archived != archived {
 				continue
 			}
-			out = append(out, map[string]any{"id": d.ID, "root": d.Root, "title": d.Title, "updated": d.Updated, "created": d.Created,
+			// a session file may carry another spelling of the same folder; the sidebar groups by this root
+			root := p.Root
+			if config.RootKey(d.Root) != config.RootKey(p.Root) {
+				root = d.Root
+			}
+			out = append(out, map[string]any{"id": d.ID, "root": root, "title": d.Title, "updated": d.Updated, "created": d.Created,
 				"cost": d.Cost, "branch": d.Branch, "worktree": d.Worktree, "archived": d.Archived, "state": agent.LiveState(d.ID), "model": d.Model, "pinned": d.Pinned})
 		}
 	}

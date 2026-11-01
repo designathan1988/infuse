@@ -319,6 +319,13 @@ type mockProvider struct{}
 func (m *mockProvider) Name() string { return "mock" }
 
 func (m *mockProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
+	if req.ForceTool != "" { // a forced structured answer (askJSON): the empty answer is valid and honest
+		in := json.RawMessage("{}")
+		emit(StreamEvent{Kind: "tool_start", ID: "tu_f", Name: req.ForceTool})
+		emit(StreamEvent{Kind: "tool_input", ID: "tu_f", Text: "{}"})
+		emit(StreamEvent{Kind: "tool_end", ID: "tu_f", Name: req.ForceTool})
+		return ModelResult{Content: []Block{{Type: "tool_use", ID: "tu_f", Name: req.ForceTool, Input: in}}, StopReason: "tool_use", Usage: Usage{Input: 300, Output: 5}}, nil
+	}
 	last := req.Messages[len(req.Messages)-1]
 	say := func(s string) (ModelResult, error) {
 		for _, ch := range strings.SplitAfter(s, " ") {

@@ -72,6 +72,20 @@
     "keyUrl": "https://console.x.ai"
   },
   {
+    "id": "claudedesk",
+    "kind": "claudedesk",
+    "label": "Claude Code (ponte)",
+    "local": true,
+    "needKey": false
+  },
+  {
+    "id": "codexdesk",
+    "kind": "codexdesk",
+    "label": "Codex (ponte)",
+    "local": true,
+    "needKey": false
+  },
+  {
     "id": "ollama",
     "kind": "ollama",
     "label": "Ollama",

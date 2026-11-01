@@ -268,7 +268,10 @@ export async function boot() {
   });
 
   if (!cache.settings.get().provider) setTimeout(() => toast(t('boot.connectProvider')), 600);
-  setInterval(() => reloadSessions().catch(() => { }), 60000); // safety net; SSE drives the real updates
+  setInterval(() => reloadSessions().catch(() => { }), 20000); // safety net; SSE drives the real updates
+  // sessions created elsewhere (the scheduler, another window, the API) appear as soon as the user looks
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) reloadSessions().catch(() => { }); });
+  window.addEventListener('focus', () => reloadSessions().catch(() => { }));
 }
 window.addEventListener('error', e => console.error('page error:', e.message, e.filename + ':' + e.lineno));
 window.addEventListener('unhandledrejection', e => console.error('unhandled rejection:', e.reason));

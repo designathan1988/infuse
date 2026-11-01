@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/config"
 	"infuse/internal/store"
 	"os"
 	"path/filepath"
@@ -90,6 +91,7 @@ type Session struct {
 	cover         map[string]*readCover // lines of each file actually shown to the agent (instructions_gate.go)
 	callMsgs      map[string][]Msg      // infuse's messages recorded per tool call (msgs.go)
 	procSeq       int
+	permWaitNs    int64 // time the current tool spent waiting for the user's approval, subtracted from its duration
 }
 
 var (
@@ -120,6 +122,7 @@ func newSessionID(root string) string {
 }
 
 func newSession(root string) *Session {
+	root = config.CanonRoot(root) // one spelling per folder: mixed separators must not split the sidebar
 	s := &Session{
 		SessionData: SessionData{
 			ID: newSessionID(root), Root: root, Created: time.Now().UnixMilli(), Updated: time.Now().UnixMilli(),
@@ -138,6 +141,7 @@ func newSession(root string) *Session {
 }
 
 func loadSession(root, id string) (*Session, error) {
+	root = config.CanonRoot(root)
 	sessionsMu.Lock()
 	if s, ok := sessions[id]; ok {
 		sessionsMu.Unlock()

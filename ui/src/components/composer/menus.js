@@ -6,6 +6,7 @@ import { menu } from '../menu.js';
 import { toast } from '../toast.js';
 import { MODE_INFO, EFFORT_INFO, vopts } from './options.js';
 import { attachFiles } from './attachments.js';
+import { renderHome } from './effect.js';
 
 export function plusMenu(ctx, anchor) {
   const P = ctx.P;
@@ -25,6 +26,7 @@ export function folderMenu(ctx, anchor) {
       label: p.label || p.root.replace(/^.*[\\/]/, ''), d: p.root, check: p.root === ctx.v.draft.root,
       f: () => {
         ctx.v.draft.root = p.root; pref('lastRoot', p.root);
+        renderHome(ctx);
         api('/api/projectmode', { root: p.root }).then(r => { if (r.mode) { ctx.v.draft.mode = r.mode; ctx.renderUnder(); } }).catch(() => { });
         ctx.renderUnder();
       }
@@ -40,6 +42,7 @@ export async function pickFolder(ctx) {
   if (p) {
     await reloadSessions();
     ctx.v.draft.root = p; pref('lastRoot', p);
+    renderHome(ctx);
     ctx.renderUnder();
   }
 }

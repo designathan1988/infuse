@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/platform/process"
 	"io"
 	"net/http"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -31,6 +33,8 @@ func ListModels(ctx context.Context, name string, cfg ProviderConfig) ([]string,
 		names, err = ollamaModels(ctx, client, cfg)
 	case "mock":
 		names = []string{"mock"}
+	case "claudedesk", "codexdesk":
+		names, err = bridgeModels(ctx, name, cfg)
 	default:
 		return nil, fmt.Errorf("provedor desconhecido: %s", name)
 	}
@@ -39,6 +43,37 @@ func ListModels(ctx context.Context, name string, cfg ProviderConfig) ([]string,
 	}
 	sort.Strings(names)
 	return names, nil
+}
+
+// bridgeModels proves the CLI is installed (one --version run, no tokens) and lists what it offers.
+func bridgeModels(ctx context.Context, name string, cfg ProviderConfig) ([]string, error) {
+	kind := "claude"
+	if name == "codexdesk" {
+		kind = "codex"
+	}
+	cli := cfg.BaseURL
+	if cli == "" {
+		if kind == "codex" {
+			cli = FindCodexCLI()
+		} else {
+			cli = FindClaudeCLI()
+		}
+	}
+	if cli == "" {
+		label := "o Claude Code"
+		if kind == "codex" {
+			label = "o Codex"
+		}
+		return nil, fmt.Errorf("%s não foi encontrado nesta máquina; instale o aplicativo ou o CLI e tente de novo", label)
+	}
+	c, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(c, cli, "--version")
+	process.NoConsoleWindow(cmd)
+	if _, err := cmd.Output(); err != nil && c.Err() != nil {
+		return nil, fmt.Errorf("não foi possível executar %s: %v", cli, err)
+	}
+	return BridgeModels(kind), nil
 }
 
 func fetchJSON(ctx context.Context, client *http.Client, provider, url string, headers map[string]string) ([]byte, error) {

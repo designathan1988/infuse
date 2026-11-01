@@ -245,9 +245,18 @@ func (s *Session) executeTools(ctx context.Context, st *runState, res ModelResul
 			continue
 		}
 		toolStart := time.Now()
+		s.Mu.Lock()
+		s.permWaitNs = 0 // only this tool's approval wait is subtracted
+		s.Mu.Unlock()
 		out, isErr := s.safeRunTool(ctx, st.rules, b)
 		out = redactSecrets(out) // credentials never reach the model, the transcript or the UI
-		ms := time.Since(toolStart).Milliseconds()
+		s.Mu.Lock()
+		ms := time.Since(toolStart).Milliseconds() - s.permWaitNs/int64(time.Millisecond)
+		s.permWaitNs = 0
+		s.Mu.Unlock()
+		if ms < 0 {
+			ms = 0
+		}
 		display := displayFor(s.uiLang(), out, s.takeCallMsgs(b.ID))
 		results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr, Ms: ms, Display: display})
 		s.Mu.Lock()

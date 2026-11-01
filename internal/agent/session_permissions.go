@@ -65,6 +65,12 @@ func (s *Session) askPermission(ctx context.Context, tool Tool, input json.RawMe
 func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.RawMessage, key string, reason Msg) bool {
 	s.askMu.Lock()
 	defer s.askMu.Unlock()
+	asked := time.Now()
+	defer func() { // the user's decision time is not the tool's run time
+		s.Mu.Lock()
+		s.permWaitNs += time.Since(asked).Nanoseconds()
+		s.Mu.Unlock()
+	}()
 	req := &permRequest{ID: fmt.Sprintf("p%d", time.Now().UnixNano()), Tool: tool.Spec().Name, Input: input, Category: tool.Category(), Reason: reason.Render(s.uiLang()), reply: make(chan string, 1)}
 	s.Mu.Lock()
 	s.pendingPerm = req

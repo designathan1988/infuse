@@ -11,7 +11,8 @@ export const TOOL_LABELS = {
   Bash: 'tool.ran', Read: 'tool.read', Write: 'tool.wrote', Edit: 'tool.edited', Glob: 'tool.globbed',
   Grep: 'tool.grepped', LS: 'tool.listed', WebFetch: 'tool.fetched', WebSearch: 'tool.searched',
   TodoWrite: 'tool.todos', AskUserQuestion: 'tool.asked', MultiEdit: 'tool.edited', Browser: 'tool.browser',
-  Skill: 'tool.skill', Agent: 'tool.subagent', Memory: 'tool.memory', Contract: 'tool.contract', Report: 'tool.report'
+  Skill: 'tool.skill', Agent: 'tool.subagent', Memory: 'tool.memory', Contract: 'tool.contract', Report: 'tool.report',
+  Diagnosis: 'tool.diagnosis'
 };
 
 export function toolSummary(name, inp) {
@@ -32,6 +33,8 @@ export function toolSummary(name, inp) {
     case 'WebFetch': return inp.url || '';
     case 'TodoWrite': return `${(inp.todos || inp.tasks || []).length} ${t('common.items')}`;
     case 'AskUserQuestion': return inp.question || '';
+    case 'Diagnosis': return inp.problem || '';
+    case 'Report': return inp.summary || '';
     default: return JSON.stringify(inp).slice(0, 120);
   }
 }
@@ -72,7 +75,8 @@ export function partialJSON(src) {
   return out;
 }
 
-const lineCounts = (name, inp) => {
+const lineCounts = (name, inp, result) => {
+  if (result?.is_error) return ''; // a refused write changed nothing: no +/− to show
   if (name === 'Write' && inp?.content != null) return `<span class="cnt add">+${inp.content.split('\n').length}</span>`;
   if (name === 'Edit' && inp?.old_string != null) return `<span class="cnt"><span class="add">+${(inp.new_string || '').split('\n').length}</span> <span class="del">−${inp.old_string.split('\n').length}</span></span>`;
   return '';
@@ -177,5 +181,5 @@ export function toolBlock(id, name, input, result, running, meta, curRoot) {
   const mcp = name.startsWith('mcp__') ? name.slice(5).split('__') : null;
   const shot = name === 'Browser' && result && String(result.content || '').match(/\.infuse\/shots\/([\w.-]+\.png)/);
   if (shot) body = `<img class="shot" src="/api/shot?name=${encodeURIComponent(shot[1])}&root=${encodeURIComponent(curRoot)}" alt="${esc(t('common.screenshot'))}">` + body;
-  return `<div class="tool-block${open || shot ? ' open' : ''}" data-foldable><div class="tool-head" data-fold="${esc(id)}" role="button" tabindex="0" aria-expanded="${!!open}"><span class="chev" aria-hidden="true">›</span><span class="dot ${dot}"></span><b>${mcp ? `${esc(t('common.connector'))} ${esc(mcp[0])}` : esc(t(TOOL_LABELS[name] || name))}</b>${mcp ? `<span class="sum mono">${esc(mcp[1] || '')}</span>` : ''}${summ}${errLine ? `<span class="tool-err" title="${esc(errLine)}">${esc(errLine.replace(/^\[infuse\]\s*/, '').slice(0, 120))}</span>` : ''}${lineCounts(name, inp)}${result?.ms != null ? `<span class="tdur faint" title="${esc(t('common.runTime'))}">${fmtDur(result.ms)}</span>` : ''}</div><div class="tool-body">${body}</div></div>`;
+  return `<div class="tool-block${open || shot ? ' open' : ''}" data-foldable><div class="tool-head" data-fold="${esc(id)}" role="button" tabindex="0" aria-expanded="${!!open}"><span class="chev" aria-hidden="true">›</span><span class="dot ${dot}"></span><b>${mcp ? `${esc(t('common.connector'))} ${esc(mcp[0])}` : esc(t(TOOL_LABELS[name] || name))}</b>${mcp ? `<span class="sum mono">${esc(mcp[1] || '')}</span>` : ''}${summ}${errLine ? `<span class="tool-err" title="${esc(errLine)}">${esc(errLine.replace(/^\[infuse\]\s*/, '').slice(0, 120))}</span>` : ''}${lineCounts(name, inp, result)}${result?.ms != null ? `<span class="tdur faint" title="${esc(t('common.runTime'))}">${fmtDur(result.ms)}</span>` : ''}</div><div class="tool-body">${body}</div></div>`;
 }

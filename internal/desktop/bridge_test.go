@@ -126,7 +126,7 @@ func TestRememberProjectKeepsOrder(t *testing.T) {
 	RememberProject("/b")
 	RememberProject("/a") // seen again: stays where it is
 	l := loadProjects()
-	if len(l) != 2 || l[0].Root != "/b" || l[1].Root != "/a" {
+	if len(l) != 2 || filepath.ToSlash(l[0].Root) != "/b" || filepath.ToSlash(l[1].Root) != "/a" {
 		t.Fatalf("%+v", l)
 	}
 }

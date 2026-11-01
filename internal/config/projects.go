@@ -30,6 +30,12 @@ func RootKey(root string) string {
 	return p
 }
 
+// CanonRoot is the stored form of a project path: one separator style, no duplicate or trailing
+// separators, so the same folder never appears twice with different spellings.
+func CanonRoot(root string) string {
+	return filepath.Clean(root)
+}
+
 func dedupeProjects(list []ProjectEntry) []ProjectEntry {
 	out := make([]ProjectEntry, 0, len(list))
 	seen := map[string]bool{}
@@ -49,6 +55,9 @@ func LoadProjects() []ProjectEntry {
 	if err != nil || list.Items == nil {
 		return []ProjectEntry{}
 	}
+	for i := range list.Items { // legacy entries may carry mixed separators; rewrite them once
+		list.Items[i].Root = CanonRoot(list.Items[i].Root)
+	}
 	items := dedupeProjects(list.Items)
 	if len(items) != len(list.Items) {
 		_ = SaveProjects(items)
@@ -63,6 +72,7 @@ func SaveProjects(list []ProjectEntry) error {
 // RememberProject records projects the filter has seen, for the panel. A known project keeps the
 // position the user gave it; a new one goes first.
 func RememberProject(root string) {
+	root = CanonRoot(root)
 	key := RootKey(root)
 	list := LoadProjects()
 	for i := range list {

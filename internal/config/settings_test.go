@@ -5,6 +5,7 @@ import (
 	"infuse/internal/core"
 	"infuse/internal/store"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -39,7 +40,8 @@ func TestProjectsFileMovesToEnvelope(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := LoadProjects()
-	if len(got) != 2 || got[0].Root != "C:/a" {
+	// one spelling per folder: mixed separators are canonicalized, never duplicated
+	if len(got) != 2 || filepath.ToSlash(got[0].Root) != "C:/a" {
 		t.Fatalf("%+v", got)
 	}
 	if err := SaveProjects(got); err != nil {

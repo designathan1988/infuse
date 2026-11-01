@@ -44,5 +44,6 @@ export function ago(ts) {
   if (s < 60) return t('time.now');
   if (s < 3600) return t('time.minAgo', { n: Math.floor(s / 60) });
   if (s < 86400) return t('time.hourAgo', { n: Math.floor(s / 3600) });
-  return t('time.dayAgo', { n: Math.round(s / 86400) });
+  const d = Math.round(s / 86400);
+  return d === 1 ? t('time.dayAgoOne') : t('time.dayAgo', { n: d });
 }

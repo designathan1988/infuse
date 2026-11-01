@@ -158,11 +158,15 @@ function renderPinned(ctx, pinned) {
   ctx.host.appendChild(g);
 }
 
+// Same folder, one group: slash style and (on Windows) letter case must not split the sidebar.
+const rootKey = r => String(r || '').replace(/[\\/]+/g, '/').toLowerCase().replace(/\/+$/, '');
+
 function renderFolders(ctx, list, q, sb) {
   const roots = cache.projects.get().map(p => p.root);
-  for (const s of list) if (!roots.includes(s.root)) roots.push(s.root);
+  const keys = roots.map(rootKey);
+  for (const s of list) if (!keys.includes(rootKey(s.root))) { roots.push(s.root); keys.push(rootKey(s.root)); }
   for (const root of roots) {
-    const items = list.filter(s => s.root === root);
+    const items = list.filter(s => rootKey(s.root) === rootKey(root));
     if (q && !items.length && !root.toLowerCase().includes(q)) continue;
     ctx.host.appendChild(renderGroup(ctx, root, items, q, sb));
   }
