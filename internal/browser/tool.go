@@ -31,6 +31,7 @@ type Host interface {
 	Say(core.Msg) string
 	SayErr(error) string
 	NoteScreenshot(url, html string) // what the capture looked at and showed, for the visual-evidence gate
+	ShowURL(string)                  // surface the page in the user's Browser pane
 }
 
 type Tool struct{}
@@ -149,6 +150,16 @@ func (a *action) where() string {
 	var w string
 	_ = json.Unmarshal(v, &w)
 	return w
+}
+
+// showURL tells the UI the page the agent opened, so the user can watch the same server.
+func (a *action) showURL() {
+	v, _ := a.p.b.eval(a.ctx, `location.href`)
+	var u string
+	_ = json.Unmarshal(v, &u)
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		a.h.ShowURL(u)
+	}
 }
 
 // locateErr finds an element; the error says why not (no selector, not found, not visible).

@@ -21,7 +21,9 @@ func (s *Session) precheckShellWrites(ctx context.Context, intents []shellWriteI
 	for _, in := range intents {
 		rel := filepath.ToSlash(relTo(s.workRoot(), in.Abs))
 		if rel == "" || strings.HasPrefix(rel, "..") {
-			continue // outside the work root: the turn audit cannot see it either
+			// The filter writes a heredoc in-process, outside the shell sandbox: an out-of-root
+			// target would bypass both the sandbox and the turn audit.
+			return M("gate.heredoc_outside", "file", in.Abs)
 		}
 		if b := s.banViolationPath(rel); !b.Empty() {
 			return b
@@ -34,17 +36,15 @@ func (s *Session) precheckShellWrites(ctx context.Context, intents []shellWriteI
 			return why
 		}
 		if why := cheatWriteCheck(s.workRoot(), rel, before, in.Content); !why.Empty() {
-			if why.ID != "cheat.test_infra" {
+			if why.ID != "cheat.test_infra" || (before != "" && !s.agentFile(rel)) {
 				return why
 			}
-			if !s.askPermissionWhy(ctx, bashTool{}, nil, "cheat:"+rel, why) {
-				return M("perm.user_refused", "why", why)
-			}
+		}
+		if reTestFile.MatchString(rel) && before != "" && !s.agentFile(rel) && testWeakeningEdit(before, in.Content) {
+			return M("sentinel.test_edit_blocked", "file", rel)
 		}
 		if why, changed := baselineChange(rel, before, in.Content); changed {
-			if !s.askPermissionWhy(ctx, bashTool{}, nil, "baseline:"+rel, why) {
-				return M("perm.user_refused", "why", why)
-			}
+			return why
 		}
 		if lines := unjustifiedSuppressions(before, in.Content); len(lines) > 0 {
 			return M("shortcut.justify", "lines", strings.Join(lines, "\n"))

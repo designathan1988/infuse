@@ -163,13 +163,23 @@ func (s *Session) request(ctx context.Context, st *runState) (ModelResult, reque
 		}
 	}
 	s.recordReply(res, started)
-	if lim := s.settings.DailyLimitUSD; lim > 0 { // the day's total across every session, from the ledger
+	if lim := s.settings.DailyLimitUSD; lim > 0 && !s.freeProvider() { // the day's total across every session
 		if spent := todaySpend(); spent > lim {
 			s.failMsg(M("session.daily_limit", "spent", fmt.Sprintf("%.2f", spent), "limit", fmt.Sprintf("%.2f", lim)))
 			return res, requestStop
 		}
 	}
 	return res, requestOK
+}
+
+// freeProvider reports a provider that cannot spend money (the deterministic demonstration provider);
+// the daily limit must never block a free run.
+func (s *Session) freeProvider() bool {
+	id := s.Provider
+	if id == "" {
+		id = s.settings.Provider
+	}
+	return id == "mock" || s.settings.Connections[id].Kind == "mock"
 }
 
 func (s *Session) recordReply(res ModelResult, started time.Time) {

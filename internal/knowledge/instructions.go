@@ -110,6 +110,9 @@ func readInstructionFiles(root string) (ProjectRules, []string) {
 // addRequired records p as a document to read in full, when it is an existing, small document.
 func (r *ProjectRules) addRequired(root, p string, seen map[string]bool) {
 	p = strings.TrimSuffix(strings.TrimPrefix(filepath.ToSlash(p), "./"), "/")
+	if p == ".infuse" || strings.HasPrefix(p, ".infuse/") {
+		return // infuse's own records are not readable project documents
+	}
 	fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(p)))
 	if err != nil || fi.IsDir() || !docExts[strings.ToLower(filepath.Ext(p))] || fi.Size() >= 400<<10 || seen[p] || core.Contains(r.Files, p) || len(r.Required) >= 24 {
 		return

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"infuse/internal/shellparse"
 	"path/filepath"
 	"strings"
 	"time"
@@ -130,18 +131,12 @@ func (s *Session) writeGuards(ctx context.Context, tool Tool, b Block) (string, 
 		return s.refuse(b.ID, "", why)
 	}
 	if why := cheatWriteCheck(s.workRoot(), rel, before, after); !why.Empty() {
-		if why.ID != "cheat.test_infra" {
+		if why.ID != "cheat.test_infra" || !s.agentFile(rel) {
 			return s.refuse(b.ID, "", why)
 		}
-		// the test infrastructure may have to change: the user decides, every time
-		if !s.askPermissionWhy(ctx, tool, b.Input, "cheat:"+rel, why) {
-			return s.say(b.ID, M("perm.user_refused", "why", why)), true
-		}
 	}
-	if why, changed := baselineChange(rel, before, after); changed { // B9: a verdict container is the user's call
-		if !s.askPermissionWhy(ctx, tool, b.Input, "baseline:"+rel, why) {
-			return s.say(b.ID, M("perm.user_refused", "why", why)), true
-		}
+	if why, changed := baselineChange(rel, before, after); changed { // the verdict container is the user's, never the agent's
+		return s.refuse(b.ID, "", why)
 	}
 	// B5: a checker cannot be silenced without the reason on the same line
 	if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
@@ -165,6 +160,9 @@ func (s *Session) commandGuards(ctx context.Context, tool Tool, b Block) (string
 	if b.Name == "Bash" { // docs before commands: options the agent has not read about are refused
 		var in struct{ Command string }
 		_ = json.Unmarshal(b.Input, &in)
+		if shellparse.DestructiveGit(in.Command) {
+			return s.refuse(b.ID, in.Command, M("gate.destructive_git"))
+		}
 		if why := s.commandDocCheck(in.Command); !why.Empty() {
 			return s.refuse(b.ID, in.Command, why)
 		}
@@ -201,23 +199,14 @@ func (s *Session) shortcutGuard(ctx context.Context, tool Tool, b Block) ([]Msg,
 	if len(ask) == 0 {
 		return warn, "", false
 	}
+	rel := relTo(s.workRoot(), p)
+	if s.agentFile(rel) {
+		return warn, "", false // a test this session created may still be fixed by the agent
+	}
 	why := M("shortcut.weakens_tests", "items", ask)
-	key := "shortcut"
-	for _, a := range ask {
-		key += ":" + a.ID
-	}
-	s.Mu.Lock()
-	silenced := s.allowAlways["sentinel:"+key]
-	s.Mu.Unlock()
-	if silenced {
-		return warn, "", false
-	}
 	Journal(s.Root, JournalEntry{Kind: "sentinel", Path: p, Detail: why.Render(s.uiLang())})
-	if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
-		Lesson(s.Root, "shortcut-in-test", why.String()+" in "+p)
-		return warn, s.say(b.ID, M("shortcut.user_refused", "why", why)), true
-	}
-	return warn, "", false
+	Lesson(s.Root, "shortcut-in-test", why.String()+" in "+p)
+	return warn, s.say(b.ID, M("sentinel.test_edit_blocked", "file", rel)), true
 }
 
 func (s *Session) recordToolOutcome(tool Tool, b Block, out string, isErr bool) {
@@ -281,21 +270,14 @@ func (s *Session) runToolChecked(ctx context.Context, rules *RuleSet, tool Tool,
 	if decision == "allow" && tool.Category() == "read" && s.mode() != "bypass" && s.readsOutside(b.Input) {
 		decision = "ask"
 	}
-	// sentinels: deterministic checks that ask the user even when the mode would allow the action
+	// Sentinels are deterministic integrity gates: a detected change to user-owned tests is refused,
+	// never offered as a permission card the user has to babysit. Files this session created are its
+	// own and are not flagged by sentinelMsg.
 	if decision != "deny" {
 		if why := s.sentinelMsg(tool, b.Input); !why.Empty() {
-			key := "sentinel:" + why.ID + ":" + toolPath(b.Input)
-			s.Mu.Lock()
-			silenced := s.allowAlways[key]
-			s.Mu.Unlock()
-			if !silenced {
-				Journal(s.Root, JournalEntry{Kind: "sentinel", Detail: why.Render(s.uiLang())})
-				if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
-					Lesson(s.Root, "test-changed", why.String())
-					return s.say(b.ID, M("perm.user_refused", "why", why)), true
-				}
-				decision = "allow"
-			}
+			Journal(s.Root, JournalEntry{Kind: "sentinel", Path: toolPath(b.Input), Detail: why.Render(s.uiLang())})
+			Lesson(s.Root, "test-changed", why.String())
+			return s.say(b.ID, M("sentinel.test_edit_blocked", "file", toolPath(b.Input))), true
 		}
 	}
 	switch decision {

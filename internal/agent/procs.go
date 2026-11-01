@@ -292,7 +292,7 @@ func (bashOutputTool) Run(ctx context.Context, tc *ToolContext, input json.RawMe
 
 type killShellTool struct{}
 
-func (killShellTool) Category() string { return "exec" }
+func (killShellTool) Category() string { return "ui" } // stopping a runaway process must not wait for a diagnosis
 func (killShellTool) Spec() ToolSpec {
 	return ToolSpec{Name: "KillShell", Description: "Stops a background process and everything it started.",
 		InputSchema: schema(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`)}

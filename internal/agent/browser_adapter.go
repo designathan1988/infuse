@@ -26,6 +26,9 @@ func (tc *ToolContext) Clip(s string) string { return tc.clip(s) }
 // "verified" by a screenshot of some other page (or of another state of the same page).
 func (tc *ToolContext) NoteScreenshot(url, html string) { tc.S.noteScreenshotAt(url, html) }
 
+// ShowURL makes the page the agent is using visible in the user's Browser pane.
+func (tc *ToolContext) ShowURL(u string) { tc.S.emit("browser", map[string]string{"url": u}) }
+
 type browserToolAdapter struct{}
 
 func (browserToolAdapter) Category() string { return browser.Tool{}.Category() }

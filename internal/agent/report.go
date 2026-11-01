@@ -224,15 +224,18 @@ func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	for i, c := range in.Criteria {
 		fmt.Fprintf(&list, "%d. %s\n", i+1, c)
 	}
-	// the question is the user's alone: written in their language; the answer is the option they chose
-	lang := tc.S.uiLang()
-	confirm := M("contract.confirm").Render(lang)
-	ans, ok := tc.S.askUser(ctx, M("contract.question", "goal", in.Goal, "criteria", strings.TrimRight(list.String(), "\n")).Render(lang), []string{confirm})
-	if !ok {
-		return tc.Say(M("ask.no_answer")), true
-	}
-	if strings.TrimSpace(ans) != confirm {
-		return tc.Say(M("contract.changes", "answer", ans)), false
+	// The user's confirmation is the point of the Contract. In bypass the user already delegated the
+	// decision, so the criteria are recorded without another card; every other mode asks in their words.
+	if tc.S.mode() != "bypass" {
+		lang := tc.S.uiLang()
+		confirm := M("contract.confirm").Render(lang)
+		ans, ok := tc.S.askUser(ctx, M("contract.question", "goal", in.Goal, "criteria", strings.TrimRight(list.String(), "\n")).Render(lang), []string{confirm})
+		if !ok {
+			return tc.Say(M("ask.no_answer")), true
+		}
+		if strings.TrimSpace(ans) != confirm {
+			return tc.Say(M("contract.changes", "answer", ans)), false
+		}
 	}
 	request := tc.S.turnRequest()
 	for _, c := range in.Criteria {

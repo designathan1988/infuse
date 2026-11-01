@@ -139,7 +139,7 @@ func (s *Session) requiredReading() Msg {
 	r := loadProjectRules(s.Root)
 	var missing []Msg
 	for _, p := range r.Required {
-		abs := filepath.Join(s.Root, filepath.FromSlash(p))
+		abs := filepath.Join(s.workRoot(), filepath.FromSlash(p))
 		seen, total, next := s.readProgress(abs)
 		if total == 0 || seen >= total {
 			continue

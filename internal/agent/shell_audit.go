@@ -65,6 +65,35 @@ func (s *Session) auditShellWrites() Msg {
 	return M("gate.shell_write", "items", strings.Join(violations, "\n"))
 }
 
+// restoreShellChange puts back the user's test or test infrastructure after a shell write tried to
+// alter it. The turn is still refused; the restored file is what the next turn sees.
+func (s *Session) restoreShellChange(abs, before string) {
+	if before == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(abs, []byte(before), 0o644)
+	Journal(s.Root, JournalEntry{Kind: "gate", Path: relTo(s.workRoot(), abs), Detail: "restored after a shell change to a user test or test infrastructure"})
+}
+
+// shellTestGuard applies the user-test rule to a shell change and restores a weakened test.
+func (s *Session) shellTestGuard(rel, abs, before, after string, newFile, deleted bool) Msg {
+	if newFile && (reTestFile.MatchString(rel) || reTestInfra.MatchString(rel)) {
+		s.markAgentFile(rel) // the agent created this test or its infrastructure through the shell
+		return Msg{}
+	}
+	if !reTestFile.MatchString(rel) || s.agentFile(rel) || before == "" {
+		return Msg{}
+	}
+	if deleted || testWeakeningEdit(before, after) {
+		s.restoreShellChange(abs, before)
+		return M("sentinel.test_edit_blocked", "file", rel)
+	}
+	return Msg{}
+}
+
 // shellChangeViolation runs the write-time policy on one change made outside the write tools.
 func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 	rel := filepath.ToSlash(ch.Path)
@@ -77,27 +106,44 @@ func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 			before = b
 		}
 	}
+	abs := filepath.Join(s.workRoot(), filepath.FromSlash(rel))
 	if ch.Deleted { // a deletion is measured against what it removed
+		if m := s.shellTestGuard(rel, abs, before, "", false, true); !m.Empty() {
+			return m
+		}
 		if why := s.largeRemoval(rel, before, ""); !why.Empty() {
 			return why
 		}
 		return Msg{}
 	}
-	abs := filepath.Join(s.workRoot(), filepath.FromSlash(rel))
 	after, err := os.ReadFile(abs)
 	if err != nil {
 		return Msg{}
 	}
-	if why := s.largeRemoval(rel, before, string(after)); !why.Empty() {
+	afterText := string(after)
+	if m := s.shellTestGuard(rel, abs, before, afterText, ch.New, false); !m.Empty() {
+		return m
+	}
+	if why := s.largeRemoval(rel, before, afterText); !why.Empty() {
 		return why
 	}
-	if _, changed := baselineChange(rel, before, string(after)); changed {
+	if _, changed := baselineChange(rel, before, afterText); changed {
 		return M("work.baseline_shell", "file", rel, "kind", baselineKind(rel))
 	}
-	if why := cheatWriteCheck(s.workRoot(), rel, before, string(after)); !why.Empty() {
+	if why := cheatWriteCheck(s.workRoot(), rel, before, afterText); !why.Empty() {
+		if why.ID == "cheat.test_infra" && !s.agentFile(rel) && before != "" {
+			s.restoreShellChange(abs, before)
+		}
 		return why
 	}
-	if lines := unjustifiedSuppressions(before, string(after)); len(lines) > 0 {
+	return s.shellStyleViolation(rel, abs, before, after)
+}
+
+// shellStyleViolation judges the shape of a shell-written file: suppressions, base placement,
+// conventions, architecture and size.
+func (s *Session) shellStyleViolation(rel, abs, before string, after []byte) Msg {
+	text := string(after)
+	if lines := unjustifiedSuppressions(before, text); len(lines) > 0 {
 		return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
 	}
 	ext := strings.ToLower(filepath.Ext(abs))
@@ -108,16 +154,16 @@ func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 		return why
 	}
 	if s.settings.EnforceConventions == nil || *s.settings.EnforceConventions {
-		if why := conventionViolation(s.Root, abs, before, string(after)); !why.Empty() {
+		if why := conventionViolation(s.Root, abs, before, text); !why.Empty() {
 			return M("protocol.convention", "why", why)
 		}
 	}
 	if s.settings.EnforceArchitecture == nil || *s.settings.EnforceArchitecture {
-		if why := archCheck(s.Root, s.workRoot(), rel, before, string(after)); !why.Empty() {
+		if why := archCheck(s.Root, s.workRoot(), rel, before, text); !why.Empty() {
 			return M("protocol.architecture", "why", why)
 		}
 	}
-	return s.sizeViolation(rel, ext, before, string(after))
+	return s.sizeViolation(rel, ext, before, text)
 }
 
 func (s *Session) planned() bool {

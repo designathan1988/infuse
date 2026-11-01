@@ -259,6 +259,10 @@
     "en": "User's answer: {answer}",
     "pt-BR": "Resposta do usuário: {answer}"
   },
+  "ask.bypass": {
+    "en": "[infuse] This session is in accept-all mode: the user delegated the decision. Decide yourself and continue; do not ask for confirmation.",
+    "pt-BR": "[infuse] Esta sessão está no modo aceitar tudo: o usuário delegou a decisão. Decida você e continue; não peça confirmação."
+  },
   "ask.no_answer": {
     "en": "the user did not answer",
     "pt-BR": "o usuário não respondeu"
@@ -756,8 +760,8 @@
     "pt-BR": "[infuse] Bloqueado: este comando de teste esconde a própria falha (`|| true`, `; exit 0` ou `set +e`): `{command}`. Um teste é julgado pelo código de saída real — rode como está e corrija o que falhar."
   },
   "cheat.test_infra": {
-    "en": "[infuse] Blocked: {file} configures how the tests run and what counts as passing. Changing it to make tests pass is gaming the check. If it truly must change, say why to the user; they decide.",
-    "pt-BR": "[infuse] Bloqueado: {file} configura como os testes rodam e o que conta como aprovado. Alterá-lo para os testes passarem é burlar a verificação. Se precisar mesmo mudar, diga ao usuário por quê; ele decide."
+    "en": "[infuse] Blocked: {file} configures how the tests run and what counts as passing. Changing it to make tests pass is gaming the check. The agent must not change it; the user changes it themselves if it truly must change.",
+    "pt-BR": "[infuse] Bloqueado: {file} configura como os testes rodam e o que conta como aprovado. Alterá-lo para os testes passarem é burlar a verificação. O agente não deve alterá-lo; o usuário o altera se realmente precisar."
   },
   "ci.no_branch": {
     "en": "there is no current branch",
@@ -1982,6 +1986,14 @@
   "fork.no_message": {
     "en": "no such message",
     "pt-BR": "mensagem inexistente"
+  },
+  "gate.heredoc_outside": {
+    "en": "[infuse] Blocked: the heredoc would write {file}, outside the work root. A heredoc is written directly by infuse, so it must stay inside the sandboxed tree.",
+    "pt-BR": "[infuse] Bloqueado: o heredoc escreveria {file}, fora da raiz de trabalho. O heredoc é gravado diretamente pelo infuse, então precisa ficar dentro da árvore isolada."
+  },
+  "gate.destructive_git": {
+    "en": "[infuse] Blocked: git clean, reset --hard, checkout -- ., restore, branch/tag deletion and forced push can erase work, including the protected records. Use a targeted operation instead.",
+    "pt-BR": "[infuse] Bloqueado: git clean, reset --hard, checkout -- ., restore, exclusão de branch/tag e push forçado podem apagar trabalho, inclusive os registros protegidos. Use uma operação pontual."
   },
   "gate.intervened": {
     "en": "infuse stepped in: ",
@@ -4222,6 +4234,10 @@
   "sentinel.test_edit": {
     "en": "a change to a test file in a request to make the tests pass",
     "pt-BR": "uma alteração em arquivo de teste num pedido para fazer os testes passarem"
+  },
+  "sentinel.test_edit_blocked": {
+    "en": "[infuse] Blocked: {file} is an existing test and the change would remove or alter its checks. Changing a user's test to make it pass is gaming the verification. Fix the code, or add a new test; an existing test is changed only by the user.",
+    "pt-BR": "[infuse] Bloqueado: {file} é um teste existente e a alteração removeria ou mudaria suas verificações. Alterar o teste do usuário para ele passar é burlar a verificação. Corrija o código ou adicione um teste novo; um teste existente só é alterado pelo usuário."
   },
   "session.busy": {
     "en": "the agent is busy",

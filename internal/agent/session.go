@@ -66,6 +66,7 @@ type SessionData struct {
 	Pinned      bool                     `json:"pinned,omitempty"`     // shown at the top of the sidebar
 	Mission     *Mission                 `json:"mission,omitempty"`    // the session's mission, running or ended
 	PinnedMsgs  []int                    `json:"pinnedMsgs,omitempty"` // messages the user pinned (indices)
+	AgentFiles  map[string]bool          `json:"agentFiles,omitempty"` // files this session created itself
 }
 
 type Session struct {
@@ -88,18 +89,18 @@ type Session struct {
 	lastOracleErr string // the failing checks of that run, for the mission's next message
 
 	localInstrSeen map[string]bool // folder instruction files already shown in this session
-	mapTimer      *time.Timer
-	settings      Settings
-	inflight      []Block               // results of the current reply's tool calls, before they join the transcript
-	pendingImages []Block               // images the agent opened with Read, sent with the next tool results
-	askMu         sync.Mutex            // one question to the user at a time (parallel subagents may each need one)
-	gate          researchGate          // research gate and report requirement of the current turn
-	docs          docLedger             // what the agent read as documentation in this session (docgate.go)
-	procs         []*bgProc             // background processes (procs.go)
-	cover         map[string]*readCover // lines of each file actually shown to the agent (instructions_gate.go)
-	callMsgs      map[string][]Msg      // infuse's messages recorded per tool call (msgs.go)
-	procSeq       int
-	permWaitNs    int64 // time the current tool spent waiting for the user's approval, subtracted from its duration
+	mapTimer       *time.Timer
+	settings       Settings
+	inflight       []Block               // results of the current reply's tool calls, before they join the transcript
+	pendingImages  []Block               // images the agent opened with Read, sent with the next tool results
+	askMu          sync.Mutex            // one question to the user at a time (parallel subagents may each need one)
+	gate           researchGate          // research gate and report requirement of the current turn
+	docs           docLedger             // what the agent read as documentation in this session (docgate.go)
+	procs          []*bgProc             // background processes (procs.go)
+	cover          map[string]*readCover // lines of each file actually shown to the agent (instructions_gate.go)
+	callMsgs       map[string][]Msg      // infuse's messages recorded per tool call (msgs.go)
+	procSeq        int
+	permWaitNs     int64 // time the current tool spent waiting for the user's approval, subtracted from its duration
 }
 
 var (

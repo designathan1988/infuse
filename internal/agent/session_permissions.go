@@ -110,6 +110,12 @@ func (s *Session) ResolvePermission(id, decision string) bool {
 }
 
 func (s *Session) askUser(ctx context.Context, question string, options []string) (string, bool) {
+	if s.mode() == "bypass" { // accept-all means no user card, including high-stakes acceptance
+		if len(options) > 0 {
+			return options[0], true
+		}
+		return "", true
+	}
 	s.askMu.Lock()
 	defer s.askMu.Unlock()
 	req := &askRequest{ID: fmt.Sprintf("q%d", time.Now().UnixNano()), Question: question, Options: options, reply: make(chan string, 1)}

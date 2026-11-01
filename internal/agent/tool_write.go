@@ -28,9 +28,14 @@ func (writeTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 		return tc.SayErr(err), true
 	}
 	tc.S.checkpointBeforeWrite(abs)
+	_, statErr := os.Stat(abs)
+	created := os.IsNotExist(statErr)
 	_ = os.MkdirAll(filepath.Dir(abs), 0o755)
 	if err := os.WriteFile(abs, []byte(in.Content), 0o644); err != nil {
 		return err.Error(), true
+	}
+	if created {
+		tc.S.markAgentFile(relTo(tc.S.workRoot(), abs))
 	}
 	lines := append([]string{tc.Say(M("write.done", "file", relTo(tc.Root, abs), "bytes", len(in.Content)))}, tc.afterWrite(abs)...)
 	return strings.Join(lines, "\n"), false

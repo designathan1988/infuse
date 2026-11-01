@@ -11,6 +11,16 @@ import (
 
 // A heredoc's content is known before the command runs: the write policy must judge it then, not only
 // at the end of the turn.
+// The filter writes heredoc bodies itself, outside the shell sandbox, so an out-of-root target is
+// refused before it can bypass both the sandbox and the turn audit.
+func TestHeredocOutsideTheWorkRootIsRefused(t *testing.T) {
+	s, _ := shellProject(t)
+	in := shellWriteIntent{Abs: filepath.Join(t.TempDir(), "outside.txt"), Content: "escaped\n"}
+	if why := s.precheckShellWrites(context.Background(), []shellWriteIntent{in}); why.ID != "gate.heredoc_outside" {
+		t.Fatalf("heredoc outside the root: %q", why.Render("en"))
+	}
+}
+
 func TestHeredocIsJudgedBeforeItRuns(t *testing.T) {
 	s, root := shellProject(t)
 	s.gate.planned = false

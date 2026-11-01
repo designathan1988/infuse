@@ -77,6 +77,36 @@ func TestGatedWritesAreNotAuditedTwice(t *testing.T) {
 	}
 }
 
+// The shell is not a way around the user's tests: a weakening change is refused and the original
+// bytes are put back; an added test is legitimate.
+func TestShellTamperingWithATestIsRestored(t *testing.T) {
+	s, root := shellProject(t)
+	testPath := filepath.Join(root, "src", "sum.test.js")
+	original := "test('sums', () => { assert(1 + 1 === 2); });\n"
+	writeFile(t, root, "src/sum.test.js", original)
+	snapshotTurn(s.Root, s.workRoot(), s.ID, 2)
+	s.Turn = 2
+	writeFile(t, root, "src/sum.test.js", "test.skip('sums', () => {});\n")
+	why := s.auditShellWrites()
+	if why.Empty() || !strings.Contains(why.Render("en"), "src/sum.test.js") {
+		t.Fatalf("a shell test change was not refused: %q", why.Render("en"))
+	}
+	if b, _ := os.ReadFile(testPath); string(b) != original {
+		t.Fatalf("the test was not restored: %q", b)
+	}
+
+	snapshotTurn(s.Root, s.workRoot(), s.ID, 3)
+	s.Turn = 3
+	writeFile(t, root, "src/sum.test.js", original+"test('adds zero', () => { assert(0 + 0 === 0); });\n")
+	if why := s.auditShellWrites(); !why.Empty() {
+		t.Fatalf("an added test through the shell was refused: %q", why.Render("en"))
+	}
+	writeFile(t, root, "src/extra.test.js", "test('extra', () => {});\n")
+	if why := s.auditShellWrites(); !why.Empty() || !s.agentFile("src/extra.test.js") {
+		t.Fatalf("a new shell test was not accepted as the agent's: %q", why.Render("en"))
+	}
+}
+
 // Deleting a file is a change the audit sees, but not content to judge.
 func TestShellDeletionEndsTheTurnClean(t *testing.T) {
 	s, root := shellProject(t)

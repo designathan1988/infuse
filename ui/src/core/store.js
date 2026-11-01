@@ -233,6 +233,18 @@ const EVENT_HANDLERS = {
   cwd: fieldHandler('cwd'), checkpoint: onCheckpoint,
   map: () => { bus.emit('pane-refresh', 'map'); bus.emit('pane-refresh', 'files'); },
   compacted: () => bus.emit('compacted'),
+  browser: (L, d) => {
+    const raw = d && d.url;
+    if (!raw) return;
+    let u;
+    try { u = new URL(raw); } catch { return; }
+    const local = u.hostname === 'localhost' || u.hostname === '0.0.0.0' || u.hostname === '[::1]' || u.hostname.startsWith('127.');
+    if (!local) return;
+    import('../panes/index.js').then(p => {
+      p.togglePane('browser', true);
+      setTimeout(() => p.paneCall('browser', 'go', u.href), 300);
+    });
+  },
 };
 
 async function drainQueue(L) {
@@ -345,7 +357,9 @@ export async function decide(L, id, d) {
     bus.emit('api-error', r?.error instanceof Error ? r.error : new Error(t('perm.failed')));
     return;
   }
-  const s = { ...L.snap.get() }; s.pendingPermission = null; L.snap.set(s);
+  const s = { ...L.snap.get() };
+  if (s.pendingPermission?.id === id) s.pendingPermission = null;
+  L.snap.set(s);
 }
 export async function answer(L, id, a) {
   const r = await api(`/api/sessions/${L.id}/answer`, { body: { id, answer: a }, root: L.root }).catch(e => ({ error: e }));
@@ -353,7 +367,9 @@ export async function answer(L, id, a) {
     bus.emit('api-error', r?.error instanceof Error ? r.error : new Error(t('question.answerFailed')));
     return;
   }
-  const s = { ...L.snap.get() }; s.pendingQuestion = null; L.snap.set(s);
+  const s = { ...L.snap.get() };
+  if (s.pendingQuestion?.id === id) s.pendingQuestion = null;
+  L.snap.set(s);
 }
 export async function setSessionOpts(L, patch) {
   const r = await api(`/api/session/${L.id}/settings`, { body: patch, root: L.root }).catch(() => null);

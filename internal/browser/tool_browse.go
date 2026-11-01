@@ -42,6 +42,7 @@ func (a *action) browse() (string, bool) {
 			return a.h.Say(core.M("browser.open_failed_url", "url", u, "error", nav.ErrorText)), true
 		}
 		a.p.b.waitLoad(a.ctx)
+		a.showURL()
 		return a.h.Say(core.M("browser.opened", "where", a.where())), false
 	case "back", "reload":
 		if a.in.Action == "back" {
@@ -51,6 +52,7 @@ func (a *action) browse() (string, bool) {
 		}
 		sleepCtx(a.ctx, 400*time.Millisecond)
 		a.p.b.waitLoad(a.ctx)
+		a.showURL()
 		if a.in.Action == "back" {
 			return a.h.Say(core.M("browser.went_back", "where", a.where())), false
 		}

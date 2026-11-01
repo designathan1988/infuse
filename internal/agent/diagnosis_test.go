@@ -51,6 +51,66 @@ var goodDiag = map[string]any{
 	},
 }
 
+// An empty project cannot cite a file; the bootstrap diagnosis must still unblock the first write.
+func TestEmptyProjectAllowsABootstrapDiagnosis(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	s.Mode = "bypass"
+	out, isErr := diagnose(s, map[string]any{
+		"problem":    "the project folder is empty and no application exists yet",
+		"root_cause": "there is no code or documentation in the folder to build on",
+		"approach":   "write a short SPEC.md, then create the application and test it",
+		"why_cause":  "the missing specification is the first thing blocking every later step",
+	})
+	if isErr || !s.gate.diagnosed {
+		t.Fatalf("bootstrap diagnosis refused: %s", out)
+	}
+	s.gate.planned = true
+	if out, isErr := s.runTool(context.Background(), &RuleSet{}, writeCall("w", "SPEC.md", "# Application\n")); isErr {
+		t.Fatalf("the first write stayed blocked: %s", out)
+	}
+}
+
+// Files that cannot supply a quote do not create an impossible evidence requirement.
+func TestProjectWithoutQuotableTextCanBootstrap(t *testing.T) {
+	for _, fixture := range []struct{ name, body string }{
+		{"logo.png", "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"},
+		{"main.py", "x = 1\n"},
+		{"README.md", "hi\n"},
+	} {
+		testHome(t)
+		root := t.TempDir()
+		if err := os.WriteFile(filepath.Join(root, fixture.name), []byte(fixture.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s := newSession(root)
+		s.Mode = "bypass"
+		out, isErr := diagnose(s, map[string]any{
+			"problem":    "the project has no usable code or documentation yet",
+			"root_cause": "the only files cannot supply a meaningful quoted piece of evidence",
+			"approach":   "bootstrap the project with a specification and then build the application",
+			"why_cause":  "without a stated requirement there is nothing concrete to diagnose against",
+		})
+		if isErr || !s.gate.diagnosed {
+			t.Fatalf("%s: bootstrap diagnosis refused: %s", fixture.name, out)
+		}
+	}
+}
+
+// A project with files keeps the two-evidence rule.
+func TestNonEmptyProjectStillRequiresEvidence(t *testing.T) {
+	s, _ := diagProject(t)
+	out, isErr := diagnose(s, map[string]any{
+		"problem":    "the GPU reaches 100% in every view of the game",
+		"root_cause": "the renderer draws everything within fixed radii without an occlusion test",
+		"approach":   "implement occlusion culling on the GPU and screen-error LOD, step P11",
+		"why_cause":  "the cost follows what appears on screen, not the drawn radius",
+	})
+	if !isErr || !strings.Contains(out, "at least 2") {
+		t.Fatalf("a non-empty project accepted an evidence-free diagnosis: %s", out)
+	}
+}
+
 func TestNoChangeOrMeasurementBeforeADiagnosis(t *testing.T) {
 	s, _ := diagProject(t)
 	s.gate.planned = true
