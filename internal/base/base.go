@@ -14,12 +14,13 @@ import (
 )
 
 type Base struct {
-	Name         string   `json:"name"`
-	Description  string   `json:"description,omitempty"`
-	Folders      []string `json:"folders"` // where the project's own code may live, relative to the root
-	DataDir      string   `json:"dataDir,omitempty"`
-	Tokens       string   `json:"tokens,omitempty"`
-	MaxFileLines int      `json:"maxFileLines,omitempty"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description,omitempty"`
+	Folders      []string          `json:"folders"`         // where the project's own code may live, relative to the root
+	Roles        map[string]string `json:"roles,omitempty"` // folder → its responsibility (module meaning)
+	DataDir      string            `json:"dataDir,omitempty"`
+	Tokens       string            `json:"tokens,omitempty"`
+	MaxFileLines int               `json:"maxFileLines,omitempty"`
 }
 
 func file(root string) string { return filepath.Join(root, core.InfuseDirName, "base.json") }
@@ -155,6 +156,17 @@ func (b *Base) Summary() string {
 	}
 	if b.Tokens != "" {
 		parts = append(parts, "design tokens live in: "+b.Tokens)
+	}
+	if len(b.Roles) > 0 {
+		var roles []string
+		for _, f := range b.Folders {
+			if role := b.Roles[f]; role != "" {
+				roles = append(roles, f+" ("+role+")")
+			}
+		}
+		if len(roles) > 0 {
+			parts = append(parts, "responsibilities: "+strings.Join(roles, ", "))
+		}
 	}
 	if b.MaxFileLines > 0 {
 		parts = append(parts, fmt.Sprintf("files stay under %d lines", b.MaxFileLines))

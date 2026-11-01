@@ -107,6 +107,9 @@ internal/
   weaker defaults. Prohibitions become typed session bans (tool/command/path/action) enforced by the
   same banCheck used for the user's own prohibitions. Multi-step work additionally needs a
   user-confirmed Contract bound to the current request before the first write.
+- Criteria can be marked as needing the user's acceptance: after the executor and the reviewer pass, the
+  turn asks the user once (accept/reject); a rejection ends the turn visibly and is journaled, never
+  "done". The toggle is in the Done? criteria pane.
 - `.infuse/policy.json` and `.infuse/base.json` are protected by the guard; a project policy may only
   add protections, never remove the filter's own gates.
 - Every turn snapshot records a dependency fingerprint (lockfiles plus the installed entrypoints under
@@ -118,7 +121,9 @@ internal/
 - A failed instruction recompilation keeps the previous compiled rules in force but marks them stale
   (`project-rules.json` `stale:true`); the prompt labels them and the compile-failure message says so.
 - The base states intended vs. actual: the prompt lists declared folders that do not exist yet and
-  code folders that sit outside the base, alongside the base's rules.
+  code folders that sit outside the base, alongside the base's rules. Each folder also carries its
+  responsibility (entry point, transport, domain, data owner, tokens…), so the map answers "what lives
+  here" and not only "how large is it".
 
 ## i18n
 

@@ -67,7 +67,7 @@ async function baseSection(el, root) {
       <div class="rules-help-title">${t('base.current')}</div>
       <p class="lead">${esc(view.name || t('base.none'))}</p>
       <div class="faint mono">${esc(view.file || '')}</div>
-      ${view.summary ? `<div class="faint mt-4">${esc(view.summary)}</div>` : ''}
+      ${(view.folders || []).length ? `<div class="faint mt-4">${esc(t('base.folders'))}: ${esc(view.folders.join(', '))}</div>` : ''}
       <div class="row mt-6"><select class="field-select starter" aria-label="${esc(t('base.choose'))}">${options}</select><button class="btn pri apply">${t('base.apply')}</button></div>
     </div>`);
   el.append(card);

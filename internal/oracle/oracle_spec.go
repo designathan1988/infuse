@@ -48,10 +48,11 @@ type OracleCheck struct {
 
 type OracleSpec struct {
 	store.Versioned
-	Setup     string        `json:"setup,omitempty"`            // runs in the snapshot before the checks
-	Server    string        `json:"server,omitempty"`           // HTTP checks talk to this server, started in the snapshot
-	ServerSec int           `json:"serverTimeoutSec,omitempty"` // how long to wait for it (default 60)
-	Checks    []OracleCheck `json:"checks"`
+	Setup             string        `json:"setup,omitempty"`             // runs in the snapshot before the checks
+	Server            string        `json:"server,omitempty"`            // HTTP checks talk to this server, started in the snapshot
+	ServerSec         int           `json:"serverTimeoutSec,omitempty"`  // how long to wait for it (default 60)
+	RequireAcceptance bool          `json:"requireAcceptance,omitempty"` // a high-stakes delivery also needs the user's acceptance
+	Checks            []OracleCheck `json:"checks"`
 }
 
 type CheckResult struct {

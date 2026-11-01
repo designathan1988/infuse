@@ -30,10 +30,11 @@ type researchGate struct {
 	needWeb    bool     // local reading was not enough: only outside research opens it
 	reportAsks int      // times the agent was sent back for a Report in this turn
 
-	planned        bool     // a plan (TodoWrite) was registered in this turn
-	researched     []string // what research calls looked at in this turn (queries, addresses, doc files)
-	obligationAsks int      // times the turn was refused an end
-	reviewed       bool     // the mandatory review ran in this turn
+	planned         bool     // a plan (TodoWrite) was registered in this turn
+	researched      []string // what research calls looked at in this turn (queries, addresses, doc files)
+	obligationAsks  int      // times the turn was refused an end
+	reviewed        bool     // the mandatory review ran in this turn
+	acceptanceAsked bool     // the user was already asked to accept this turn's delivery
 
 	runs      map[string]*runCount // commands run in this turn, for the measure-and-tweak loop
 	ran       []ranCommand         // every command of the turn with its outcome

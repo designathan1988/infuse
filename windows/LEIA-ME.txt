@@ -59,7 +59,9 @@ AGENTE COMPLETO, DENTRO DO FILTRO
     de recusas, arquitetura, convencoes, permissoes, proibicoes e criterio de
     pronto. O filtro e o nucleo antifraude nao sao configuraveis ali;
   - trabalho com mais de uma etapa exige que voce confirme a releitura do
-    pedido (Contract) antes da primeira alteracao;
+    pedido (Contract) antes da primeira alteracao; nos criterios do Pronto voce
+    pode marcar "esta entrega precisa da minha aceitacao" e o turno pede o seu
+    aceite mesmo quando os criterios passam;
   - todo processo do agente roda em um Job Object e termina junto com o infuse;
     no Linux os comandos tambem rodam sob um ruleset Landlock (leitura livre,
     escrita so no projeto e na area temporaria do sandbox);

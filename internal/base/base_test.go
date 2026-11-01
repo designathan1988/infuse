@@ -3,6 +3,7 @@ package base
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -14,6 +15,9 @@ func TestStarterAndCustomBases(t *testing.T) {
 	b := Load(root)
 	if b == nil || b.Name != "web" || !b.Declares("src/components/a.js") {
 		t.Fatalf("%+v", b)
+	}
+	if b.Roles["src/components"] != "UI components" || !strings.Contains(b.Summary(), "responsibilities:") {
+		t.Fatalf("module roles: %+v %q", b.Roles, b.Summary())
 	}
 	if CheckWrite(root, "src/components/a.js", true) != "" {
 		t.Fatal("a declared folder was refused")

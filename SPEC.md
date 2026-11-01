@@ -95,7 +95,8 @@ What escapes: what the model thinks (touches nothing) and the final message it w
 > compaction, git, subagents with an independent reviewer, the MCP client, web search, the desktop
 > bridges and the `infuse claude|codex|gemini` launcher. The behaviour policy is one versioned document
 > edited in the Regras surface (permissions/prohibitions, work method, architecture, conventions, done),
-> and multi-step work needs a user-confirmed Contract before the first write. OS containment is partial:
+> and multi-step work needs a user-confirmed Contract before the first write; criteria can require the
+> user's acceptance of a high-stakes delivery even when the executor passes. OS containment is partial:
 > every agent process runs in a Job Object on Windows, and Linux commands run under a Landlock ruleset;
 > a deny-write OS sandbox for Git Bash on Windows is blocked by the MSYS2 runtime and remains the open
 > item, together with the FUSE/WinFsp mount.

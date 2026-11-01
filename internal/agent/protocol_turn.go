@@ -66,6 +66,44 @@ func (s *Session) turnObligation(ctx context.Context) Msg {
 			}
 		}
 	}
+	if why := s.acceptanceGate(ctx, changed); !why.Empty() {
+		return why
+	}
+	return Msg{}
+}
+
+// acceptanceGate asks the user to accept a high-stakes delivery (criteria marked requireAcceptance).
+// It asks once per turn; a rejection ends the turn visibly instead of letting it pass as done.
+func (s *Session) acceptanceGate(ctx context.Context, changed []CheckpointFile) Msg {
+	if len(changed) == 0 {
+		return Msg{}
+	}
+	spec, err := LoadOracleSpec(s.Root)
+	if err != nil || !spec.RequireAcceptance {
+		return Msg{}
+	}
+	s.Mu.Lock()
+	asked := s.gate.acceptanceAsked
+	s.gate.acceptanceAsked = true
+	s.Mu.Unlock()
+	if asked {
+		return Msg{}
+	}
+	var files []string
+	for _, c := range changed {
+		files = append(files, c.Path)
+	}
+	answer, ok := s.askUser(ctx, M("turn.acceptanceQuestion", "files", strings.Join(firstN(files, 6), ", ")).Render(s.uiLang()), []string{M("turn.accept").Render(s.uiLang()), M("turn.reject").Render(s.uiLang())})
+	if !ok {
+		return M("ask.no_answer")
+	}
+	if answer == M("turn.accept").Render(s.uiLang()) {
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "delivery accepted by the user"})
+		s.emitMsg("gate", M("turn.accepted"))
+		return Msg{}
+	}
+	Journal(s.Root, JournalEntry{Kind: "gate", Detail: "delivery rejected by the user"})
+	s.emitMsg("gate", M("turn.rejected"))
 	return Msg{}
 }
 

@@ -3,6 +3,7 @@
     "name": "api",
     "description": "HTTP service: transport, domain, storage and contracts in separate layers.",
     "folders": ["cmd", "internal/api", "internal/domain", "internal/store", "internal/config", "internal/platform", "tests"],
+    "roles": {"cmd": "entry point", "internal/api": "transport", "internal/domain": "domain rules", "internal/store": "data owner", "internal/config": "configuration", "internal/platform": "platform adapters", "tests": "tests"},
     "dataDir": "internal/store",
     "tokens": "",
     "maxFileLines": 400
@@ -11,6 +12,7 @@
     "name": "web",
     "description": "Browser application: components, pages, core primitives, styles from tokens.",
     "folders": ["src", "src/core", "src/components", "src/pages", "src/panes", "ui", "ui/css", "ui/tokens", "tests", "public"],
+    "roles": {"src": "source", "src/core": "shared primitives", "src/components": "UI components", "src/pages": "pages", "src/panes": "panels", "ui": "styles", "ui/tokens": "design tokens", "tests": "tests", "public": "static assets"},
     "dataDir": "src/data",
     "tokens": "ui/tokens",
     "maxFileLines": 400
@@ -19,6 +21,7 @@
     "name": "cli",
     "description": "Command-line tool: command dispatch, one file per command, shared core.",
     "folders": ["cmd", "internal", "internal/commands", "internal/core", "tests"],
+    "roles": {"cmd": "entry point", "internal/commands": "one command per file", "internal/core": "shared core", "tests": "tests"},
     "dataDir": "internal/data",
     "tokens": "",
     "maxFileLines": 400
@@ -27,6 +30,7 @@
     "name": "interactive",
     "description": "Interactive application: engine, state, input, rendering, assets and tests separated.",
     "folders": ["src", "src/engine", "src/state", "src/input", "src/render", "src/ui", "assets", "tests"],
+    "roles": {"src/engine": "simulation/engine", "src/state": "state owner", "src/input": "input", "src/render": "rendering", "src/ui": "interface", "assets": "assets", "tests": "tests"},
     "dataDir": "src/data",
     "tokens": "src/ui/tokens",
     "maxFileLines": 400

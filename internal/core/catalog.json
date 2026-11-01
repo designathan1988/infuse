@@ -1527,6 +1527,10 @@
     "en": "Project created at {path}.",
     "pt-BR": "Projeto criado em {path}."
   },
+  "base.folders": {
+    "en": "Folders",
+    "pt-BR": "Pastas"
+  },
   "base.desc.api": {
     "en": "HTTP service: transport, domain, storage and contracts in separate layers.",
     "pt-BR": "Serviço HTTP: transporte, domínio, armazenamento e contratos em camadas separadas."
@@ -5630,6 +5634,34 @@
   "oracle.anchor": {
     "en": "the criteria do not match the copy the user saved outside the project: {error}",
     "pt-BR": "os critérios não correspondem à cópia que o usuário salvou fora do projeto: {error}"
+  },
+  "oracle.requireAcceptance": {
+    "en": "This delivery needs my acceptance",
+    "pt-BR": "Esta entrega precisa da minha aceitação"
+  },
+  "oracle.requireAcceptanceDesc": {
+    "en": "The turn asks you to accept the result before it can end, even when the criteria pass.",
+    "pt-BR": "O turno pede a sua aceitação do resultado antes de terminar, mesmo quando os critérios passam."
+  },
+  "turn.acceptanceQuestion": {
+    "en": "[infuse] The criteria pass. This delivery is marked as needing your acceptance — files changed: {files}. Accept it?",
+    "pt-BR": "[infuse] Os critérios passaram. Esta entrega está marcada como dependente da sua aceitação — arquivos alterados: {files}. Aceita?"
+  },
+  "turn.accept": {
+    "en": "Accept delivery",
+    "pt-BR": "Aceitar entrega"
+  },
+  "turn.reject": {
+    "en": "Reject and describe what to change",
+    "pt-BR": "Rejeitar e descrever o que mudar"
+  },
+  "turn.accepted": {
+    "en": "[infuse] Delivery accepted by the user.",
+    "pt-BR": "[infuse] Entrega aceita pelo usuário."
+  },
+  "turn.rejected": {
+    "en": "[infuse] The user rejected this delivery. The turn ends unverified; the user will say what must change.",
+    "pt-BR": "[infuse] O usuário rejeitou esta entrega. O turno termina não verificado; o usuário dirá o que deve mudar."
   },
   "oracle.dependencies": {
     "en": "the dependency manifests or installed runners changed while the checks ran; the verdict is not usable",

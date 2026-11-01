@@ -50,6 +50,11 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/core/i18n.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/core/fmt.js",
     "status": 200,
     "method": "GET"
@@ -65,17 +70,27 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/i18n.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/core/api.js",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/src/components/view.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/panes/index.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/sidebar.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/menu.js",
     "status": 200,
     "method": "GET"
   },
@@ -90,22 +105,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/sidebar.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/components/dialog.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/panes/index.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/menu.js",
     "status": 200,
     "method": "GET"
   },
@@ -120,17 +120,17 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/components/open-in.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/transcript.js",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/src/components/rail.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/open-in.js",
     "status": 200,
     "method": "GET"
   },
@@ -145,17 +145,17 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/core/messages.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/core/markdown.js",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/src/components/cards-shared.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/messages.js",
     "status": 200,
     "method": "GET"
   },
@@ -170,12 +170,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/wire.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/context.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/context.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/wire.js",
     "status": 200,
     "method": "GET"
   },
@@ -185,17 +185,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/keys.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/menus.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
     "status": 200,
     "method": "GET"
   },
@@ -205,7 +195,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
     "status": 200,
     "method": "GET"
   },
@@ -216,6 +206,16 @@
   },
   {
     "url": "http://127.0.0.1:7471/src/components/composer/under.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/keys.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/menus.js",
     "status": 200,
     "method": "GET"
   },
@@ -280,12 +280,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/pages/shell.js",
+    "url": "http://127.0.0.1:7471/api/projects",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/projects",
+    "url": "http://127.0.0.1:7471/src/pages/shell.js",
     "status": 200,
     "method": "GET"
   },
@@ -325,22 +325,22 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/pages/settings/providers.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/pages/settings/code.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/pages/settings/models.js",
+    "url": "http://127.0.0.1:7471/src/pages/settings/providers.js",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/src/pages/settings/apps.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/pages/settings/models.js",
     "status": 200,
     "method": "GET"
   },
@@ -455,22 +455,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/fmt.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/i18n.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/icons.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/core/api.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/core/fmt.js",
     "status": 200,
     "method": "GET"
   },
@@ -480,7 +470,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/store.js",
+    "url": "http://127.0.0.1:7471/src/components/toast.js",
     "status": 200,
     "method": "GET"
   },
@@ -495,7 +485,17 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/toast.js",
+    "url": "http://127.0.0.1:7471/src/core/i18n.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/core/store.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/core/icons.js",
     "status": 200,
     "method": "GET"
   },
@@ -520,16 +520,6 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/open-in.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/session-actions.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/components/rail.js",
     "status": 200,
     "method": "GET"
@@ -540,7 +530,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/mount.js",
+    "url": "http://127.0.0.1:7471/src/components/session-actions.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/open-in.js",
     "status": 200,
     "method": "GET"
   },
@@ -550,17 +545,22 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/components/composer/mount.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/core/markdown.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/messages.js",
+    "url": "http://127.0.0.1:7471/src/components/cards-shared.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/cards-shared.js",
+    "url": "http://127.0.0.1:7471/src/core/messages.js",
     "status": 200,
     "method": "GET"
   },
@@ -590,12 +590,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/autocomplete.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/autocomplete.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
     "status": 200,
     "method": "GET"
   },
@@ -605,12 +605,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/under.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/attachments.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/attachments.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/under.js",
     "status": 200,
     "method": "GET"
   },
@@ -680,12 +680,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/sessions/1793545332656/events?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "url": "http://127.0.0.1:7471/api/session/1793545332656/bans?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/session/1793545332656/bans?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "url": "http://127.0.0.1:7471/api/sessions/1793545332656/events?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
     "status": 200,
     "method": "GET"
   },
@@ -695,12 +695,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "url": "http://127.0.0.1:7471/src/pages/shell.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/pages/shell.js",
+    "url": "http://127.0.0.1:7471/api/sessions/all",
     "status": 200,
     "method": "GET"
   },
@@ -745,7 +745,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/pages/settings/providers.js",
+    "url": "http://127.0.0.1:7471/src/pages/settings/permissions.js",
     "status": 200,
     "method": "GET"
   },
@@ -755,17 +755,17 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/pages/settings/code.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/pages/settings/permissions.js",
+    "url": "http://127.0.0.1:7471/src/pages/settings/providers.js",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/src/pages/settings/integration.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/pages/settings/code.js",
     "status": 200,
     "method": "GET"
   },
@@ -795,7 +795,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/vendor/xterm.css",
+    "url": "http://127.0.0.1:7471/css/base.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/css/components.css",
     "status": 200,
     "method": "GET"
   },
@@ -805,17 +810,12 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/vendor/xterm.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/css/layout.css",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/css/base.css",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/css/components.css",
     "status": 200,
     "method": "GET"
   },
@@ -865,22 +865,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/sidebar.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/view.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/toast.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/menu.js",
+    "url": "http://127.0.0.1:7471/src/core/store.js",
     "status": 200,
     "method": "GET"
   },
@@ -890,17 +875,27 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/store.js",
+    "url": "http://127.0.0.1:7471/src/components/sidebar.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/toast.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/view.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/menu.js",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/src/components/dialog.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/session-actions.js",
     "status": 200,
     "method": "GET"
   },
@@ -915,17 +910,17 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/components/session-actions.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/transcript.js",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/src/components/rail.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/markdown.js",
     "status": 200,
     "method": "GET"
   },
@@ -940,12 +935,17 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/core/messages.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/toolblock.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/messages.js",
+    "url": "http://127.0.0.1:7471/src/core/markdown.js",
     "status": 200,
     "method": "GET"
   },
@@ -960,7 +960,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/wire.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/effect.js",
     "status": 200,
     "method": "GET"
   },
@@ -970,7 +970,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/effect.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/wire.js",
     "status": 200,
     "method": "GET"
   },
@@ -980,12 +980,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/keys.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/menus.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
     "status": 200,
     "method": "GET"
   },
@@ -1000,7 +995,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/menus.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/keys.js",
     "status": 200,
     "method": "GET"
   },
