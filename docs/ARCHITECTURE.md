@@ -207,8 +207,10 @@ internal/
   base/protected-path policy, are journaled, and resolve junctions/symlinks before checking that the
   target stays inside the root. `.infuse`, protected globs and out-of-base code are refused. The mount
   runs in the infuse process (medium integrity), so its in-process policy is the write perimeter for
-  tools that use it; Studio sessions are not mounted automatically yet, and a pre-existing hard link
-  can alias a file outside the root.
+  tools that use it. Sessions deliberately use the real tree: the mount denies `.infuse` writes that
+  infuse itself must perform, and a privileged bypass would split the agent's view from the tree; the
+  OS sandbox is the mandatory perimeter for agent commands. A pre-existing hard link can alias a file
+  outside the root.
 - The Contract is a hard gate for work with more than one planned step; single-step work proceeds
   without it, and the gate can be turned off in Regras.
 - Compatibility route families (`/api/session/<id>` and `/api/sessions/<id>`) are kept so older pages

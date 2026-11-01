@@ -384,13 +384,16 @@ the feature index and base starter files below were added after that commit.
    a file outside the root; the private runtime costs a ~119 MB copy once per Git version (old versions
    pruned); caches are redirected to `~/.infuse/sandbox/cache`. On Linux Landlock is implemented and
    fail-closed but was cross-built only (no Linux host was available for a live smoke test).
-2. **The WinFsp mount is a CLI surface, not yet wired into Studio sessions.** `infuse mount
-   <drive|dir> [project] [--timeout seconds]` exposes the project through WinFsp (cgofuse's no-cgo
-   host). Every write is journaled and passes the base/protected-path policy; `.infuse`, protected
-   globs and out-of-base code are refused, and junctions/symlinks are resolved before the containment
-   check. The filesystem runs in the infuse process at medium integrity, so its in-process policy is
-   the perimeter; a pre-existing hard link can alias a file outside the root, and automatic mounting
-   of every session (with relocation rather than refusal) remains a product decision.
+2. **The WinFsp mount is an explicit CLI surface; sessions use the real tree by design.** `infuse
+   mount <drive|dir> [project] [--timeout seconds]` exposes the project through WinFsp (cgofuse's
+   no-cgo host). Every write is journaled and passes the base/protected-path policy; `.infuse`,
+   protected globs and out-of-base code are refused, and junctions/symlinks are resolved before the
+   containment check. The filesystem runs in the infuse process at medium integrity, so its in-process
+   policy is the perimeter; a pre-existing hard link can alias a file outside the root. Auto-mounting
+   the session root is rejected: the mount denies `.infuse` writes that infuse itself needs, and a
+   privileged bypass would split the agent's view from the tree; the OS sandbox is the mandatory agent
+   perimeter. Out-of-base writes are refused, not relocated: an arbitrary path has no deterministic
+   base destination.
 3. **Approvals/verdict keys** fall back to a private file (`~/.infuse/signing.key`, `oracle-hmac.key`)
    when the OS vault is unavailable. On Windows the fallback file holds a DPAPI blob (same user, same
    machine; a copied file signs nothing) and legacy plain keys are migrated on first use; on Unix the

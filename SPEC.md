@@ -32,7 +32,7 @@ runs commands. These are the only points that catch everything, in every agent.
 
 | Point | Mechanism | Infused on the way in | Transformed on the way out |
 |---|---|---|---|
-| **Project directory** | mount (FUSE / WinFsp) when available; instant watcher always | directory map; native per-folder context files (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`, generated) | relocation to the base's place; oracle paths rejected; vice recorded |
+| **Project directory** | mount (FUSE / WinFsp) when available; instant watcher always | directory map; native per-folder context files (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`, generated) | out-of-base code refused (no deterministic relocation target); oracle/protected paths rejected; vice recorded |
 | **Shell** | interposed shell on PATH, invoked by every agent's Bash tool | command output + oracle state + untouched dependents | heredoc → file write; vice patterns → remedy in the response |
 | **Launcher** | `infuse claude` / `infuse codex` / `infuse gemini` | environment mounted before the agent opens | — |
 
@@ -107,8 +107,13 @@ What escapes: what the model thinks (touches nothing) and the final message it w
 > denied. The sandbox contains mistakes and file tampering, not a hostile same-user process using
 > Explorer/COM brokers, and leaves network access open. The WinFsp mount is delivered as
 > `infuse mount <drive|dir> [project]`: writes through the mounted view are journaled and pass the
-> base/protected-path policy before reaching disk. Wiring the mount into every Studio session
-> automatically is a product decision left open; sessions currently use the real project tree.
+> base/protected-path policy before reaching disk. Sessions use the real project tree by design: the
+> mount denies `.infuse` writes, and infuse itself must write the oracle, journal and evidence there.
+> Auto-mounting the session root would either break those writes or require a privileged bypass that
+> splits the agent's view from the tree. The mandatory write perimeter for agent commands is the OS
+> sandbox; the mount is the explicit filesystem view for other tools. Out-of-base writes are refused
+> rather than relocated because the base has no deterministic destination for an arbitrary path, and
+> refusal keeps the correct path the cheapest one.
 
 
 1. **Minimal filter** — launcher + interposed shell (heredoc → write) + map v0 + write watcher. ← this one
