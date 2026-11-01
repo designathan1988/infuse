@@ -63,6 +63,14 @@
     "en": "New session from here",
     "pt-BR": "Nova sessão a partir daqui"
   },
+  "action.pin": {
+    "en": "Pin this message",
+    "pt-BR": "Fixar esta mensagem"
+  },
+  "action.unpin": {
+    "en": "Unpin this message",
+    "pt-BR": "Desafixar esta mensagem"
+  },
   "action.remove": {
     "en": "Remove",
     "pt-BR": "Remover"
@@ -106,6 +114,10 @@
   "agent.no_screenshot": {
     "en": "[infuse] The turn cannot end: it changed what a screen shows ({files}) and nobody looked at it afterwards. Open it with the Browser tool, take a screenshot of each changed screen and state, look at the images, and fix what is wrong before reporting.",
     "pt-BR": "[infuse] O turno não pode terminar: ele mudou o que uma tela mostra ({files}) e ninguém olhou depois. Abra com a ferramenta Browser, fotografe cada tela e estado alterados, olhe as imagens e corrija o que estiver errado antes de relatar."
+  },
+  "agent.screenshot_origin": {
+    "en": "[infuse] The screenshot was taken at {got}, but the criteria measure {expected}: open the project's own server and capture the changed screen there.",
+    "pt-BR": "[infuse] A captura foi feita em {got}, mas os critérios medem {expected}: abra o servidor do próprio projeto e fotografe a tela alterada ali."
   },
   "agent.starting": {
     "en": "starting the subagent…",
@@ -854,6 +866,10 @@
   "common.of": {
     "en": "of",
     "pt-BR": "de"
+  },
+  "common.quit": {
+    "en": "Quit",
+    "pt-BR": "Sair"
   },
   "common.open": {
     "en": "Open",
@@ -1663,6 +1679,14 @@
     "en": "[infuse] This turn changed {count} file(s) and ended without a Report. Before finishing, report with the Report tool: every claim with the evidence it rests on (the command you ran, the file you changed). infuse checks each one against what actually happened.",
     "pt-BR": "[infuse] Este turno alterou {count} arquivo(s) e terminou sem Report. Antes de encerrar, relate com a ferramenta Report: cada afirmação com a evidência em que se apoia (o comando que você rodou, o arquivo alterado). O infuse confere cada uma com o que de fato aconteceu."
   },
+  "gate.shell_write": {
+    "en": "[infuse] Blocked: files changed outside the write tools (a shell command, an MCP tool, a generator or a subagent) break the project's rules. Fix them with Write or Edit, which check as they save:\n{items}",
+    "pt-BR": "[infuse] Bloqueado: arquivos alterados fora das ferramentas de escrita (um comando de shell, uma ferramenta MCP, um gerador ou um subagente) quebram as regras do projeto. Corrija com Write ou Edit, que conferem ao salvar:\n{items}"
+  },
+  "gate.shell_write_plan": {
+    "en": "[infuse] Blocked: files were changed outside the write tools before a plan existed ({files}). Record the plan for this request with TodoWrite — every task with the proof that shows it works — and fix what the audit points out.",
+    "pt-BR": "[infuse] Bloqueado: arquivos foram alterados fora das ferramentas de escrita antes de existir um plano ({files}). Registre o plano deste pedido com TodoWrite — cada tarefa com a prova que mostra que funciona — e corrija o que a auditoria apontar."
+  },
   "gate.redo": {
     "en": "[infuse] Blocked: a new diagnosis is required ({why}). The current approach produced that sign; continuing it treats effects. Read further — the project's documents first, to the end — and register a new Diagnosis with evidence you did not cite before.",
     "pt-BR": "[infuse] Bloqueado: é preciso um novo diagnóstico ({why}). A abordagem atual produziu esse sinal; continuar nela trata efeitos. Leia mais — os documentos do projeto primeiro, até o fim — e registre um novo diagnóstico com evidência que você ainda não citou."
@@ -1868,8 +1892,8 @@
     "pt-BR": "Missão encerrada em impasse. O usuário vê o motivo, o que foi tentado e o que é preciso. Termine o turno com um resumo curto."
   },
   "instr.compile_failed": {
-    "en": "[infuse] The project's instructions could not be compiled into rules ({error}): their required reading and verification commands are not enforced in this turn. infuse tries again at the next message.",
-    "pt-BR": "[infuse] Não foi possível compilar as instruções do projeto em regras ({error}): a leitura obrigatória e os comandos de verificação delas não estão valendo neste turno. O infuse tenta de novo na próxima mensagem."
+    "en": "[infuse] The project's instructions could not be compiled into rules ({error}). The rules compiled from the previous version stay in force, with their required reading and verification commands; infuse tries again at the next message.",
+    "pt-BR": "[infuse] Não foi possível compilar as instruções do projeto em regras ({error}). As regras compiladas da versão anterior continuam valendo, com a leitura obrigatória e os comandos de verificação delas; o infuse tenta de novo na próxima mensagem."
   },
   "instr.compiling": {
     "en": "[infuse] Reading the project's instructions to extract the rules (each one checked against the text)…",
@@ -1970,6 +1994,14 @@
   "knowledge.reading": {
     "en": "[infuse] Reading the project's documents to the end before the agent acts: {count} document(s) new or changed.",
     "pt-BR": "[infuse] Lendo os documentos do projeto até o fim antes de o agente agir: {count} documento(s) novo(s) ou alterado(s)."
+  },
+  "knowledge.doc_failed": {
+    "en": "[infuse] A project document could not be read to the end and is not part of the grounds: {file} ({error}). Its facts are missing from this turn.",
+    "pt-BR": "[infuse] Um documento do projeto não pôde ser lido até o fim e não faz parte dos fundamentos: {file} ({error}). Os fatos dele faltam neste turno."
+  },
+  "knowledge.overflow": {
+    "en": "[infuse] The project has more documents than one knowledge pass reads ({count}): only the first {count} are included. Split or narrow the knowledge folders so nothing is silently left out.",
+    "pt-BR": "[infuse] O projeto tem mais documentos do que uma passada de conhecimento lê ({count}): só os primeiros {count} entram. Divida ou restrinja as pastas de conhecimento para nada ficar de fora em silêncio."
   },
   "live.compacting": {
     "en": "compacting context",
@@ -2378,6 +2410,10 @@
   "memory.removed": {
     "en": "removed: {id}",
     "pt-BR": "removido: {id}"
+  },
+  "menu.itemByNumber": {
+    "en": "Choose an item by number",
+    "pt-BR": "Escolher um item pelo número"
   },
   "mission.auditor": {
     "en": "\n\nNote from the flow auditor (advice, not an order): {note}",
@@ -3243,6 +3279,10 @@
     "en": "[infuse] Architecture: {why} Project rules: .infuse/architecture.json.",
     "pt-BR": "[infuse] Arquitetura: {why} Regras do projeto: .infuse/architecture.json."
   },
+  "protocol.out_of_base": {
+    "en": "[infuse] {file} is outside the project's architecture base ({base}). Put the code in one of the base's folders, or ask the user to change the base.",
+    "pt-BR": "[infuse] {file} está fora da base de arquitetura do projeto ({base}). Coloque o código em uma das pastas da base, ou peça ao usuário para mudar a base."
+  },
   "protocol.convention": {
     "en": "[infuse] Blocked: {why} Rewrite it following the project's convention (.infuse/conventions.md).",
     "pt-BR": "[infuse] Bloqueado: {why} Reescreva seguindo a convenção do projeto (.infuse/conventions.md)."
@@ -3447,9 +3487,29 @@
     "en": "changed in this turn",
     "pt-BR": "alterado neste turno"
   },
+  "report.ev_bg_done": {
+    "en": "background command {id} ended with exit 0",
+    "pt-BR": "o comando em segundo plano {id} terminou com saída 0"
+  },
+  "report.ev_bg_failed": {
+    "en": "background command {id} ended with exit {exit}",
+    "pt-BR": "o comando em segundo plano {id} terminou com saída {exit}"
+  },
+  "report.ev_bg_running": {
+    "en": "background command {id} is still running: its result is not known yet",
+    "pt-BR": "o comando em segundo plano {id} ainda está rodando: o resultado ainda não é conhecido"
+  },
   "report.ev_failed": {
     "en": "run in this turn, but it failed: {output}",
     "pt-BR": "executado neste turno, mas falhou: {output}"
+  },
+  "report.ev_subagent": {
+    "en": "reported by a subagent of this session; the agent itself did not do it here",
+    "pt-BR": "relatado por um subagente desta sessão; o agente em si não fez isso aqui"
+  },
+  "report.ev_subagent_ran": {
+    "en": "a subagent of this session ran it; the agent itself did not",
+    "pt-BR": "um subagente desta sessão executou; o agente em si não"
   },
   "report.ev_fetched": {
     "en": "fetched in this session",
@@ -4219,6 +4279,10 @@
     "en": "swallowed error (except: pass)",
     "pt-BR": "erro engolido (except: pass)"
   },
+  "shortcut.justify": {
+    "en": "[infuse] Blocked: this write silences the project's checker without a reason on the same line:\n{lines}\nA suppression is allowed when it says why, on the same line: an eslint `-- reason`, specific linter or code names (//nolint:errcheck, # noqa: E501, # type: ignore[name-defined]), or a comment inside the empty catch.",
+    "pt-BR": "[infuse] Bloqueado: esta escrita silencia o verificador do projeto sem o motivo na mesma linha:\n{lines}\nUma supressão é aceita quando diz por quê, na mesma linha: um `-- motivo` do eslint, nomes de linter ou código específicos (//nolint:errcheck, # noqa: E501, # type: ignore[name-defined]) ou um comentário dentro do catch vazio."
+  },
   "shortcut.introduced": {
     "en": "[infuse] This edit introduced a shortcut:\n- {items}\nThat hides problems instead of solving them; deal with the real error or explain why it is necessary.",
     "pt-BR": "[infuse] Esta edição introduziu um atalho:\n- {items}\nIsso esconde problemas em vez de resolvê-los; trate o erro de verdade ou explique por que é necessário."
@@ -4354,6 +4418,10 @@
   "sidebar.none": {
     "en": "None",
     "pt-BR": "Nenhum"
+  },
+  "sidebar.openSplit": {
+    "en": "Open beside (split view)",
+    "pt-BR": "Abrir ao lado (tela dividida)"
   },
   "sidebar.openIn": {
     "en": "Open in",
@@ -4711,6 +4779,22 @@
     "en": "New terminal",
     "pt-BR": "Novo terminal"
   },
+  "terminal.gone": {
+    "en": "The terminal has ended.",
+    "pt-BR": "O terminal foi encerrado."
+  },
+  "terminal.noDir": {
+    "en": "There is no directory to start the terminal in.",
+    "pt-BR": "Não há uma pasta para abrir o terminal."
+  },
+  "terminal.openFailed": {
+    "en": "The terminal could not be opened: {error}",
+    "pt-BR": "Não foi possível abrir o terminal: {error}"
+  },
+  "terminal.shell": {
+    "en": "shell",
+    "pt-BR": "shell"
+  },
   "text.verbatim": {
     "en": "{text}",
     "pt-BR": "{text}"
@@ -4843,9 +4927,25 @@
     "en": "[infuse] The turn cannot end: the project's checker reports problems in files changed in this turn. Fix them:\n{problems}",
     "pt-BR": "[infuse] O turno não pode terminar: o verificador do projeto acusa problemas em arquivos alterados neste turno. Corrija:\n{problems}"
   },
+  "turn.oracle": {
+    "en": "[infuse] The oracle ran on this tree and the verdict is “{verdict}” ({summary}). Your word does not change it; the failing checks and their evidence do:\n{items}",
+    "pt-BR": "[infuse] O oráculo rodou nesta árvore e o veredito é “{verdict}” ({summary}). A sua palavra não o muda; o que o muda são as verificações que falharam e a evidência delas:\n{items}"
+  },
+  "turn.open_procs": {
+    "en": "[infuse] Blocked: these background processes are still running and the Report does not account for them: {items}. Name each one in the Report (a claim of kind other with its id and what it serves) or stop it with KillShell — a turn does not leave processes it cannot explain.",
+    "pt-BR": "[infuse] Bloqueado: estes processos em segundo plano continuam rodando e o Report não os menciona: {items}. Cite cada um no Report (uma afirmação de tipo other com o id e o que ele serve) ou encerre com KillShell — um turno não deixa processos que não explica."
+  },
   "turn.open_tasks": {
     "en": "[infuse] The turn cannot end: the plan has open tasks — {tasks}. Complete each one and mark it with TodoWrite (done), or mark it as blocked and explain why in the Report.",
     "pt-BR": "[infuse] O turno não pode terminar: o plano tem tarefas abertas — {tasks}. Conclua cada uma e marque com TodoWrite (done), ou marque como blocked e explique o motivo no Report."
+  },
+  "turn.unverified": {
+    "en": "[infuse] This turn ended UNVERIFIED: the agent kept refusing the end-of-turn obligations (checker, report, oracle, review). Nothing it reported was confirmed; the journal records it.",
+    "pt-BR": "[infuse] Este turno terminou NÃO VERIFICADO: o agente recusou repetidamente as obrigações de fim de turno (checker, relatório, oráculo, revisão). Nada do que ele relatou foi confirmado; o Jornal registra."
+  },
+  "turn.snapshot": {
+    "en": "[infuse] The turn cannot be judged: the tree snapshot taken at its start failed ({error}). The turn stays open until the snapshot works, because without it there is no record of what changed.",
+    "pt-BR": "[infuse] O turno não pode ser julgado: o snapshot da árvore tirado no início falhou ({error}). O turno fica aberto até o snapshot funcionar, porque sem ele não há registro do que mudou."
   },
   "turn.review": {
     "en": "[infuse] Mandatory independent review of this turn (a reviewer with a clean context read the request, the plan, the criteria and the diff). Address every finding: fix it, or explain with evidence why it does not apply. Then report again with Report.\n\n{findings}",
@@ -5095,6 +5195,14 @@
     "en": "Vim mode on",
     "pt-BR": "Modo vim ligado"
   },
+  "work.baseline": {
+    "en": "[infuse] {file} is a {kind} file: it decides whether a verification passes by comparing numbers, so changing it changes the verdict without changing the work. Only the user may allow this change.",
+    "pt-BR": "[infuse] {file} é um arquivo de {kind}: ele decide se uma verificação passa comparando números, então alterá-lo muda o veredito sem mudar o trabalho. Só o usuário pode permitir esta alteração."
+  },
+  "work.baseline_shell": {
+    "en": "[infuse] Blocked: {file} is a {kind} file and was changed outside the write tools. Restore it, or change it with Edit (which asks the user) after explaining why the baseline must move.",
+    "pt-BR": "[infuse] Bloqueado: {file} é um arquivo de {kind} e foi alterado fora das ferramentas de escrita. Restaure-o, ou altere com Edit (que pergunta ao usuário) depois de explicar por que a referência precisa mudar."
+  },
   "work.large_removal": {
     "en": "[infuse] Blocked: this change removes {removed} of the {total} lines of {file}. Removing most of a file must be part of the plan or the diagnosis (name the file there and why), so a feature is never cut to make a problem disappear.",
     "pt-BR": "[infuse] Bloqueado: esta alteração remove {removed} das {total} linhas de {file}. Remover a maior parte de um arquivo precisa estar no plano ou no diagnóstico (cite o arquivo e o porquê), para que um recurso nunca seja cortado só para um problema sumir."
@@ -5102,6 +5210,270 @@
   "write.diagnostics": {
     "en": "[diagnostics] problems found by the project's checker in this file:\n{problems}",
     "pt-BR": "[diagnóstico] problemas encontrados pelo verificador do projeto neste arquivo:\n{problems}"
+  },
+  "api.hostNotAllowed": {
+    "en": "host not allowed",
+    "pt-BR": "host não permitido"
+  },
+  "api.missingToken": {
+    "en": "request without the application token",
+    "pt-BR": "requisição sem o token do aplicativo"
+  },
+  "api.originNotAllowed": {
+    "en": "origin not allowed",
+    "pt-BR": "origem não permitida"
+  },
+  "api.streamingUnsupported": {
+    "en": "streaming is not supported by this connection",
+    "pt-BR": "streaming não é suportado por esta conexão"
+  },
+  "app.notFound": {
+    "en": "application not found",
+    "pt-BR": "aplicativo não encontrado"
+  },
+  "app.opensInTerminal": {
+    "en": "opens in a terminal in the project folder",
+    "pt-BR": "abre num terminal na pasta do projeto"
+  },
+  "browser.invalidUrl": {
+    "en": "invalid URL",
+    "pt-BR": "endereço inválido"
+  },
+  "cheat.silent_output": {
+    "en": "[infuse] Blocked: this test run hides its output in /dev/null — its result could not be read. Run it and show the output, or explain in the Report why the output is not needed.",
+    "pt-BR": "[infuse] Bloqueado: esta execução de testes esconde a saída em /dev/null — o resultado não poderia ser lido. Rode e mostre a saída, ou explique no Report por que a saída não é necessária."
+  },
+  "oracle.protected_write": {
+    "en": "[infuse] Blocked: the oracle's criteria or the executor's evidence changed outside the executor ({files}). They are read-only for the agent: restore them. Criteria are edited by the user; evidence is written by the executor.",
+    "pt-BR": "[infuse] Bloqueado: os critérios do oráculo ou a evidência do executor mudaram fora do executor ({files}). Eles são somente leitura para o agente: restaure-os. Os critérios são editados pelo usuário; a evidência é escrita pelo executor."
+  },
+  "turn.oracle_spec": {
+    "en": "[infuse] Blocked: the criteria file is unreadable ({error}). The executor cannot run, and a broken criteria file does not turn it off: fix .infuse/oracle/checks.json.",
+    "pt-BR": "[infuse] Bloqueado: o arquivo de critérios está ilegível ({error}). O executor não pode rodar, e um arquivo de critérios quebrado não o desliga: corrija .infuse/oracle/checks.json."
+  },
+  "cheat.exit_zero": {
+    "en": "[infuse] Blocked: this write adds exit(0) to {file}, which is not the program's entry point — a failure would look like success. Remove it and handle the error.",
+    "pt-BR": "[infuse] Bloqueado: esta escrita adiciona exit(0) em {file}, que não é o ponto de entrada do programa — uma falha pareceria sucesso. Remova e trate o erro."
+  },
+  "command.invalidName": {
+    "en": "invalid name",
+    "pt-BR": "nome inválido"
+  },
+  "docs.needUrl": {
+    "en": "enter an http(s) address",
+    "pt-BR": "informe um endereço http(s)"
+  },
+  "docs.whyDependency": {
+    "en": "dependency {package} {version}",
+    "pt-BR": "dependência {package} {version}"
+  },
+  "docs.whyModule": {
+    "en": "Go module {module}",
+    "pt-BR": "módulo Go {module}"
+  },
+  "dialog.attachFiles": {
+    "en": "Attach files",
+    "pt-BR": "Anexar arquivos"
+  },
+  "dialog.chooseFolder": {
+    "en": "Choose the project folder",
+    "pt-BR": "Escolher a pasta do projeto"
+  },
+  "filter.invalidJson": {
+    "en": "invalid JSON",
+    "pt-BR": "JSON inválido"
+  },
+  "fs.home": {
+    "en": "Home",
+    "pt-BR": "Início"
+  },
+  "git.emptyMessage": {
+    "en": "empty message",
+    "pt-BR": "mensagem vazia"
+  },
+  "mcp.serverFields": {
+    "en": "enter the server's name and command (or address)",
+    "pt-BR": "informe o nome e o comando (ou o endereço) do servidor"
+  },
+  "mcp.serverNotFound": {
+    "en": "server not found",
+    "pt-BR": "servidor não encontrado"
+  },
+  "mcp.unknownAction": {
+    "en": "unknown action",
+    "pt-BR": "ação desconhecida"
+  },
+  "oracle.noChecks": {
+    "en": "no checks in .infuse/oracle/checks.json",
+    "pt-BR": "nenhuma verificação em .infuse/oracle/checks.json"
+  },
+  "oracle.anchor": {
+    "en": "the criteria do not match the copy the user saved outside the project: {error}",
+    "pt-BR": "os critérios não correspondem à cópia que o usuário salvou fora do projeto: {error}"
+  },
+  "oracle.httpNeedsServer": {
+    "en": "an HTTP check requires \"server\" in the criteria: without it the check would measure whatever answers the address, not the snapshot",
+    "pt-BR": "uma verificação HTTP exige \"server\" nos critérios: sem isso ela mediria o que estiver respondendo no endereço, não o snapshot"
+  },
+  "oracle.setupFailed": {
+    "en": "preparation failed (exit {exit}) — see setup.log",
+    "pt-BR": "preparação falhou (exit {exit}) — veja setup.log"
+  },
+  "oracle.snapshotFailed": {
+    "en": "snapshot failed: {error}",
+    "pt-BR": "snapshot falhou: {error}"
+  },
+  "oracle.summary": {
+    "en": "{passed} of {total} checks passed",
+    "pt-BR": "{passed} de {total} verificações passaram"
+  },
+  "oracle.evidenceNotFound": {
+    "en": "evidence not found",
+    "pt-BR": "evidência não encontrada"
+  },
+  "oracle.invalidName": {
+    "en": "invalid name",
+    "pt-BR": "nome inválido"
+  },
+  "proc.notFound": {
+    "en": "process not found",
+    "pt-BR": "processo não encontrado"
+  },
+  "project.chooseRoot": {
+    "en": "choose the project folder",
+    "pt-BR": "escolha a pasta do projeto"
+  },
+  "project.notFound": {
+    "en": "the project folder was not found",
+    "pt-BR": "a pasta do projeto não foi encontrada"
+  },
+  "review.unknownAction": {
+    "en": "unknown action",
+    "pt-BR": "ação desconhecida"
+  },
+  "session.copySuffix": {
+    "en": " (copy)",
+    "pt-BR": " (cópia)"
+  },
+  "session.noComments": {
+    "en": "no comments",
+    "pt-BR": "nenhum comentário"
+  },
+  "session.notFound": {
+    "en": "session not found",
+    "pt-BR": "sessão não encontrada"
+  },
+  "session.worktreeDirty": {
+    "en": "the worktree has uncommitted changes",
+    "pt-BR": "o worktree tem alterações não commitadas"
+  },
+  "skill.invalidName": {
+    "en": "name: lowercase letters, numbers and hyphens (e.g. review-pr)",
+    "pt-BR": "nome: letras minúsculas, números e hífens (ex.: revisar-pr)"
+  },
+  "slash.btw": {
+    "en": "A side question, outside the history",
+    "pt-BR": "Pergunta paralela, fora do histórico"
+  },
+  "slash.clear": {
+    "en": "New session in this project",
+    "pt-BR": "Nova sessão neste projeto"
+  },
+  "slash.compact": {
+    "en": "Compact the session's context now",
+    "pt-BR": "Compactar o contexto da sessão agora"
+  },
+  "slash.config": {
+    "en": "Open Settings",
+    "pt-BR": "Abrir as Configurações"
+  },
+  "slash.copy": {
+    "en": "Copy the last answer (/copy 2 = the one before)",
+    "pt-BR": "Copiar a última resposta (/copy 2 = a penúltima)"
+  },
+  "slash.cost": {
+    "en": "This session's tokens and cost",
+    "pt-BR": "Tokens e custo desta sessão"
+  },
+  "slash.diff": {
+    "en": "Show the project's changes",
+    "pt-BR": "Mostrar as alterações do projeto"
+  },
+  "slash.effort": {
+    "en": "Choose the reasoning effort",
+    "pt-BR": "Escolher o esforço de raciocínio"
+  },
+  "slash.export": {
+    "en": "Export the conversation as Markdown",
+    "pt-BR": "Exportar a conversa como Markdown"
+  },
+  "slash.help": {
+    "en": "Keyboard shortcuts",
+    "pt-BR": "Atalhos de teclado"
+  },
+  "slash.initDesc": {
+    "en": "Generate INFUSE.md with the project's instructions",
+    "pt-BR": "Gerar INFUSE.md com as instruções do projeto"
+  },
+  "slash.memory": {
+    "en": "Edit the project's instructions",
+    "pt-BR": "Editar as instruções do projeto"
+  },
+  "slash.mission": {
+    "en": "Work alone until the Ready? criteria pass, within a budget",
+    "pt-BR": "Trabalhar sozinho até os critérios do Pronto? passarem, com orçamento"
+  },
+  "slash.mode": {
+    "en": "Switch the permission mode",
+    "pt-BR": "Alternar o modo de permissão"
+  },
+  "slash.model": {
+    "en": "Change this session's model",
+    "pt-BR": "Trocar o modelo desta sessão"
+  },
+  "slash.plan": {
+    "en": "Enter Plan mode",
+    "pt-BR": "Entrar no modo Plano"
+  },
+  "slash.rename": {
+    "en": "Rename this session",
+    "pt-BR": "Renomear esta sessão"
+  },
+  "slash.resume": {
+    "en": "Open another session",
+    "pt-BR": "Abrir outra sessão"
+  },
+  "slash.review": {
+    "en": "Independent review: a reviewer with a clean context checks the changes",
+    "pt-BR": "Revisão independente: um revisor com contexto limpo confere as alterações"
+  },
+  "slash.rewind": {
+    "en": "Go back to an earlier turn",
+    "pt-BR": "Voltar a um turno anterior"
+  },
+  "slash.terminal": {
+    "en": "Open the terminal",
+    "pt-BR": "Abrir o terminal"
+  },
+  "slash.vim": {
+    "en": "Turn vim mode on or off in the prompt box",
+    "pt-BR": "Ligar/desligar o modo vim na caixa de prompt"
+  },
+  "window.createFailed": {
+    "en": "The window could not be created.",
+    "pt-BR": "Não foi possível criar a janela."
+  },
+  "window.webviewFailed": {
+    "en": "The Microsoft Edge WebView2 Runtime is not available on this computer.\n\nInstall it from https://go.microsoft.com/fwlink/p/?LinkId=2124703 and open infuse again.",
+    "pt-BR": "O Microsoft Edge WebView2 Runtime não está disponível neste computador.\n\nInstale-o em https://go.microsoft.com/fwlink/p/?LinkId=2124703 e abra o infuse de novo."
+  },
+  "workspace.commandApproval": {
+    "en": "this .infuse/launch.json command needs your approval before running: ",
+    "pt-BR": "este comando de .infuse/launch.json precisa da sua aprovação antes de rodar: "
+  },
+  "workspace.launchConfigMissing": {
+    "en": "configuration not found in .infuse/launch.json or .claude/launch.json",
+    "pt-BR": "configuração não encontrada em .infuse/launch.json ou .claude/launch.json"
   },
   "write.done": {
     "en": "File written: {file} ({bytes} bytes)",

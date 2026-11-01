@@ -71,7 +71,7 @@ func newMainWindow() (*winWindow, bool) {
 	w.hwnd, _, _ = procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(cls)), uintptr(unsafe.Pointer(title)), wsOverlappedWin,
 		cwUseDefault, cwUseDefault, 1280, 820, 0, 0, uintptr(inst), 0)
 	if w.hwnd == 0 {
-		fatalBox("Não foi possível criar a janela.")
+		fatalBox(core.M("window.createFailed").Render(config.LoadSettings().Language))
 		return nil, false
 	}
 	w.applyTheme()
@@ -85,7 +85,7 @@ func (w *winWindow) attachWebView() bool {
 	w.chromium.DataPath = filepath.Join(core.InfuseHome(), "webview")
 	w.chromium.SetPermission(edge.CoreWebView2PermissionKindClipboardRead, edge.CoreWebView2PermissionStateAllow)
 	if !w.chromium.Embed(w.hwnd) {
-		fatalBox("O Microsoft Edge WebView2 Runtime não está disponível neste computador.\n\nInstale-o em https://go.microsoft.com/fwlink/p/?LinkId=2124703 e abra o infuse de novo.")
+		fatalBox(core.M("window.webviewFailed").Render(config.LoadSettings().Language))
 		return false
 	}
 	w.ready = true

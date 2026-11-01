@@ -1,0 +1,26 @@
+{
+  "consoleErrors": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ],
+  "httpErrors": [
+    {
+      "url": "http://127.0.0.1:7481/api/term/t25fbfae86627/stream",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://127.0.0.1:7481/api/term/t5dabff1ad761/stream",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://127.0.0.1:7481/api/term/t5dabff1ad761/input",
+      "status": 404,
+      "method": "POST"
+    }
+  ],
+  "requests": 77
+}

@@ -11,9 +11,9 @@ import { toast } from '../components/toast.js';
 
 const CRIT_KINDS = {
   command: { name: 'crit.command.name', ex: 'npm test · go test ./... · python -m pytest', help: 'crit.command.help', make: () => ({ kind: 'command', run: '', expect: { exit: 0 } }), title: 'crit.command.title' },
-  http: { name: 'crit.http.name', ex: 'http://localhost:3000/login → 200 "Entrar"', help: 'crit.http.help', make: () => ({ kind: 'http', url: 'http://localhost:3000/', expect: { status: 200 } }), title: 'crit.http.title' },
-  file: { name: 'crit.file.name', ex: 'README.md contém "Instalação" · .env não existe', help: 'crit.file.help', make: () => ({ kind: 'file', path: '', expect: {} }), title: 'crit.file.title' },
-  maxLines: { name: 'crit.maxLines.name', ex: 'src/**/*.ts com no máximo 400 linhas', help: 'crit.maxLines.help', make: () => ({ kind: 'maxLines', glob: '**/*.ts', max: 400 }), title: 'crit.maxLines.title' },
+  http: { name: 'crit.http.name', ex: 'http://localhost:3000/login → 200 "Sign in"', help: 'crit.http.help', make: () => ({ kind: 'http', url: 'http://localhost:3000/', expect: { status: 200 } }), title: 'crit.http.title' },
+  file: { name: 'crit.file.name', ex: 'README.md contains "Installation" · .env does not exist', help: 'crit.file.help', make: () => ({ kind: 'file', path: '', expect: {} }), title: 'crit.file.title' },
+  maxLines: { name: 'crit.maxLines.name', ex: 'src/**/*.ts with at most 400 lines', help: 'crit.maxLines.help', make: () => ({ kind: 'maxLines', glob: '**/*.ts', max: 400 }), title: 'crit.maxLines.title' },
 };
 const ORACLE_EXAMPLE_KEY = 'crit.example';
 
@@ -30,9 +30,8 @@ export function drawVerdict(c, out, v, err) {
     aprovado: ['verdict.passed', t('verdict.passedCount', { passed, total: checks.length }), 'ok'],
     reprovado: ['verdict.failed', t('verdict.failedCount', { failed: checks.length - passed, total: checks.length }), 'bad'],
     'sem-criterios': ['verdict.nothing', 'verdict.addCriteria', 'warn'],
-    erro: ['verdict.couldNot', v.summary || err || '', 'bad'],
   };
-  const [hk, hs, cls] = heads[v.verdict] || [v.verdict, v.summary || '', ''];
+  const [hk, hs, cls] = heads[v.verdict] || ['verdict.couldNot', v.summary || err || '', 'bad'];
   out.innerHTML = `<div class="verdict-box ${cls}" role="status"><b>${esc(t(hk))}</b><span>${esc(t(hs) === hs ? hs : t(hs) || hs)}</span><span class="grow"></span><span class="faint" title="${esc(t('verdict.snapshotHint'))}">${fmtTime(v.finished || v.started)}</span></div>
     ${checks.map(k => `<div class="verdict-row"><span class="${k.passed ? 'add' : 'del'}" aria-hidden="true">${k.passed ? '✓' : '✗'}</span><span class="vt">${esc(critTitle(c.root, k.id))}</span><span class="faint grow trunc" title="${esc(k.detail)}">${esc(k.detail)}</span><span class="faint">${k.millis < 1000 ? k.millis + ' ms' : (k.millis / 1000).toFixed(1) + ' s'}</span>${k.evidence ? `<button class="btn sm" data-ev="${esc(k.evidence)}">${t('verdict.viewOutput')}</button>` : ''}</div>`).join('')}
     <div class="evbox"></div>`;
@@ -202,7 +201,7 @@ function drawDocs(o, files) {
   const docs = o.pb.querySelector('.docs');
   if (!docs) return;
   const prose = (files || []).filter(f => f.name !== 'checks.json');
-  (prose.length ? prose : [{ name: 'pronto.md', content: '' }]).forEach(f => {
+  (prose.length ? prose : [{ name: 'ready.md', content: '' }]).forEach(f => {
     const d = h(`<div class="mb-5">${prose.length > 1 ? `<div class="faint mono mb-2">${esc(f.name)}</div>` : ''}<textarea class="doc-editor" placeholder="${esc(t('oracle.prosePlaceholder'))}">${esc(f.content)}</textarea><div class="row"><button class="btn sm ex">${t('oracle.insertExample')}</button><span class="faint st" aria-live="polite"></span></div></div>`);
     const ta = d.querySelector('textarea'), st = d.querySelector('.st');
     const put = async () => {

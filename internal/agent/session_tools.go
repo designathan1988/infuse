@@ -136,7 +136,27 @@ func (s *Session) writeGuards(ctx context.Context, tool Tool, b Block) (string, 
 			return s.say(b.ID, M("perm.user_refused", "why", why)), true
 		}
 	}
+	if why, changed := baselineChange(rel, before, after); changed { // B9: a verdict container is the user's call
+		if !s.askPermissionWhy(ctx, tool, b.Input, "baseline:"+rel, why) {
+			return s.say(b.ID, M("perm.user_refused", "why", why)), true
+		}
+	}
+	// B5: a checker cannot be silenced without the reason on the same line
+	if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
+		return s.refuse(b.ID, "", M("shortcut.justify", "lines", strings.Join(lines, "\n")))
+	}
+	s.markGated(rel) // everything above passed: the shell audit may skip this path
 	return "", false
+}
+
+// markGated records a path the write gates accepted in this turn.
+func (s *Session) markGated(rel string) {
+	s.Mu.Lock()
+	if s.gate.gatedPaths == nil {
+		s.gate.gatedPaths = map[string]bool{}
+	}
+	s.gate.gatedPaths[rel] = true
+	s.Mu.Unlock()
 }
 
 func (s *Session) commandGuards(ctx context.Context, tool Tool, b Block) (string, bool) {
@@ -187,7 +207,7 @@ func (s *Session) shortcutGuard(ctx context.Context, tool Tool, b Block) ([]Msg,
 	}
 	Journal(s.Root, JournalEntry{Kind: "sentinel", Path: p, Detail: why.Render(s.uiLang())})
 	if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
-		Lesson(s.Root, "atalho-em-teste", why.String()+" in "+p)
+		Lesson(s.Root, "shortcut-in-test", why.String()+" in "+p)
 		return warn, s.say(b.ID, M("shortcut.user_refused", "why", why)), true
 	}
 	return warn, "", false
@@ -264,7 +284,7 @@ func (s *Session) runToolChecked(ctx context.Context, rules *RuleSet, tool Tool,
 			if !silenced {
 				Journal(s.Root, JournalEntry{Kind: "sentinel", Detail: why.Render(s.uiLang())})
 				if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
-					Lesson(s.Root, "teste-alterado", why.String())
+					Lesson(s.Root, "test-changed", why.String())
 					return s.say(b.ID, M("perm.user_refused", "why", why)), true
 				}
 				decision = "allow"

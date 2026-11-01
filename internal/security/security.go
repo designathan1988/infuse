@@ -3,8 +3,8 @@
 package security
 
 import (
-	"infuse/internal/core"
 	"fmt"
+	"infuse/internal/core"
 	"net"
 	"net/url"
 	"regexp"
@@ -69,6 +69,32 @@ func PrivateTargetMsg(raw string) (bool, core.Msg) {
 		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.Equal(net.ParseIP("169.254.169.254")) {
 			return true, core.M("safety.internal_ip", "ip", ip.String())
 		}
+	}
+	return false, core.Msg{}
+}
+
+// BrowserTargetMsg reports whether the agent's browser must refuse a URL. The browser may open the
+// web and the project's own local servers (the product exists to test them), but not non-web
+// schemes, file:// URLs, or link-local/metadata addresses.
+func BrowserTargetMsg(raw string) (bool, core.Msg) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return true, core.M("safety.bad_url")
+	}
+	if strings.EqualFold(u.Scheme, "about") {
+		return false, core.Msg{}
+	}
+	if u.Hostname() == "" {
+		return true, core.M("safety.bad_url")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "http", "https":
+	default:
+		return true, core.M("safety.scheme", "scheme", u.Scheme)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "169.254.169.254" || strings.HasPrefix(host, "169.254.") || strings.HasSuffix(host, ".internal") {
+		return true, core.M("safety.local", "host", host)
 	}
 	return false, core.Msg{}
 }

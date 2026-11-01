@@ -21,6 +21,7 @@ import (
 	"infuse/internal/journal"
 	"infuse/internal/lang"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -35,8 +36,18 @@ type Guard struct {
 }
 
 // infuse's own records (other sessions' transcripts, the journal, snapshots, checkpoints) are not the
-// project: the agent neither reads nor writes them, by any tool.
-var internalRels = []string{".infuse/sessions", ".infuse/checkpoints", ".infuse/tree", ".infuse/journal.jsonl", ".infuse/watcher.json", ".infuse/architecture.json", ".infuse/conventions.json", ".infuse/project-rules.json"}
+// project: the agent neither reads nor writes them, by any tool. The project settings, hooks and MCP
+// configuration are here because a single write to them could disarm the filter or self-approve a
+// command; they are the user's, not the agent's.
+var internalRels = []string{
+	".infuse/sessions", ".infuse/checkpoints", ".infuse/tree", ".infuse/journal.jsonl",
+	".infuse/watcher.json", ".infuse/architecture.json", ".infuse/conventions.json",
+	".infuse/project-rules.json", ".infuse/settings.json", ".infuse/hooks.json", ".infuse/base.json",
+}
+
+// externalRels are files shared with other agents that the agent must never rewrite, although they
+// live outside .infuse: the project's MCP servers and Claude Code's own settings.
+var externalRels = []string{".mcp.json", ".claude/settings.json"}
 
 // agentVisibleInternal lists what of .infuse/ the agent may read: pinned docs, the conventions, the
 // project map and its own captures.
@@ -44,16 +55,40 @@ var agentVisibleInternal = []string{".infuse/docs/", ".infuse/conventions.md", "
 
 // hiddenInternal reports whether rel (relative to the project) is infuse's own file the agent may not read.
 func HiddenInternal(rel string) bool {
-	rel = strings.TrimPrefix(core.ToPosix(rel), "./")
+	rel = foldPath(strings.TrimPrefix(core.ToPosix(rel), "./"))
 	if rel != ".infuse" && !strings.HasPrefix(rel, ".infuse/") {
 		return false
 	}
 	for _, ok := range agentVisibleInternal {
+		ok = foldPath(ok)
 		if rel == strings.TrimSuffix(ok, "/") || strings.HasPrefix(rel, ok) {
 			return false
 		}
 	}
 	return true
+}
+
+// foldPath lowers a path where the filesystem ignores case, so a spelling like .INFUSE cannot walk
+// around a protection written in lower case.
+func foldPath(p string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(p)
+	}
+	return p
+}
+
+// containsRel reports whether an absolute path contains one of the protected relative paths at any
+// depth, so the same record is protected in a worktree or reached from outside the project root.
+func containsRel(abs string, rels []string) bool {
+	a := foldPath("/" + strings.Trim(filepath.ToSlash(abs), "/"))
+	protected := append(append([]string{}, rels...), externalRels...)
+	for _, rel := range append(protected, ".infuse/oracle", ".infuse/evidence") {
+		r := foldPath(rel)
+		if a == "/"+r || strings.HasSuffix(a, "/"+r) || strings.Contains(a, "/"+r+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // Policy is the project-specific part of the protection, supplied by the caller so the filter never
@@ -72,6 +107,9 @@ func NewGuard(root string, p Policy) *Guard {
 	}
 	for _, r := range internalRels {
 		base = append(base, r+"/**", r)
+	}
+	for _, r := range externalRels {
+		base = append(base, r)
 	}
 	base = append(base, p.InstructionFiles...) // the project's instructions: followed, not edited
 	for _, ref := range p.References {
@@ -105,8 +143,9 @@ func (g *Guard) Protects(cwd, p string) (string, bool) {
 
 func (g *Guard) protectsAbs(abs string) (string, bool) {
 	rel := core.RelTo(g.Root, abs)
-	// the oracle is protected wherever it is: the project's, a worktree's, or reached from outside the root
-	if slash := "/" + strings.Trim(filepath.ToSlash(abs), "/"); strings.Contains(slash+"/", "/"+oracleRel+"/") || strings.Contains(slash+"/", "/"+evidenceRel+"/") {
+	// The oracle, the evidence and infuse's own records are protected wherever they are: the
+	// project's, a worktree's, or reached from outside the root with ../
+	if containsRel(abs, internalRels) {
 		if rel == "" || strings.HasPrefix(rel, "..") {
 			rel = filepath.ToSlash(abs)
 		}
@@ -116,11 +155,19 @@ func (g *Guard) protectsAbs(abs string) (string, bool) {
 		return "", false
 	}
 	for _, pat := range g.Protected {
-		if lang.GlobToRegex(pat).MatchString(rel) || rel == strings.TrimSuffix(pat, "/**") {
+		if matchGlob(pat, rel) || foldPath(rel) == foldPath(strings.TrimSuffix(pat, "/**")) {
 			return rel, true
 		}
 	}
 	return "", false
+}
+
+// matchGlob matches a protected glob against a relative path, ignoring case where the OS does.
+func matchGlob(pat, rel string) bool {
+	if runtime.GOOS == "windows" {
+		pat, rel = strings.ToLower(pat), strings.ToLower(rel)
+	}
+	return lang.GlobToRegex(pat).MatchString(rel)
 }
 
 // resolveSymlinks resolves a path that may not exist yet (its deepest existing parent is resolved).

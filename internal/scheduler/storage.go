@@ -84,13 +84,13 @@ func Load(name string) (Task, error) {
 func Save(t Task) (Task, error) {
 	t.Name = Slug(t.Name)
 	if t.Name == "" {
-		return t, errors.New("dê um nome à tarefa")
+		return t, errors.New("give the task a name")
 	}
 	if strings.TrimSpace(t.Prompt) == "" {
-		return t, errors.New("escreva as instruções da tarefa")
+		return t, errors.New("write the task instructions")
 	}
 	if st, err := os.Stat(t.Root); err != nil || !st.IsDir() {
-		return t, errors.New("escolha a pasta do projeto")
+		return t, errors.New("choose the project folder")
 	}
 	if t.Preset == "" {
 		t.Preset = "daily"
@@ -193,7 +193,7 @@ func (s *Service) Start() {
 					continue
 				}
 				if now.Sub(time.UnixMilli(t.NextRun)) > 7*24*time.Hour { // too old to catch up
-					t.History = append([]TaskRun{{Ts: now.UnixMilli(), Status: "skipped", Note: "execução perdida há mais de 7 dias"}}, t.History...)
+					t.History = append([]TaskRun{{Ts: now.UnixMilli(), Status: "skipped", Note: "run missed more than 7 days ago"}}, t.History...)
 					t.NextRun = NextRun(t, now)
 					_ = core.WriteJSON(filepath.Join(Dir(), t.Name+".json"), t)
 					continue

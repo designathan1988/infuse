@@ -17,9 +17,8 @@ type mcpAgentTool struct {
 }
 
 func (t mcpAgentTool) Category() string {
-	if t.tool.Annotations.ReadOnly {
-		return "read"
-	}
+	// A server's own "read only" hint is not evidence: a connector tool goes through the permission
+	// policy like any other external call.
 	return "mcp"
 }
 

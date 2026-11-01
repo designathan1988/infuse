@@ -579,7 +579,7 @@
 /* State rules must sit in the component layer: an earlier layer cannot override display here. */
 @layer components {
   .view.no-rail .session-rail, .view.home .session-rail { display: none; }
-  @container (max-width: 700px) { .view-body .session-rail { display: none; } }
+  @container (max-width: 600px) { .view-body .session-rail { display: none; } }
 }
 
 @layer components {

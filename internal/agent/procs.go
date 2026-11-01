@@ -21,6 +21,7 @@ import (
 type bgProc struct {
 	ID          string `json:"id"`
 	Command     string `json:"command"`
+	Original    string `json:"original,omitempty"` // the command as the agent wrote it, before the filter transformed it
 	Description string `json:"description,omitempty"`
 	Started     int64  `json:"started"`
 	Ended       int64  `json:"ended,omitempty"`
@@ -100,13 +101,13 @@ func (l *procLog) tail(n int64) (string, int64) {
 var allProcs sync.Map // every running process of every session, for shutdown
 
 // startBackground runs command in the session's shell and returns at once.
-func (s *Session) startBackground(command, description, cwd string) (*bgProc, error) {
+func (s *Session) startBackground(command, original, description, cwd string) (*bgProc, error) {
 	cmd := exec.Command(FindRealBash(), "-c", command)
 	noConsoleWindow(cmd)
 	procGroup(cmd)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "INFUSE_AGENT=1", "GIT_TERMINAL_PROMPT=0", "CI=1")
-	p := &bgProc{Command: command, Description: description, Started: time.Now().UnixMilli(), State: "running", out: &procLog{}, cmd: cmd}
+	p := &bgProc{Command: command, Original: original, Description: description, Started: time.Now().UnixMilli(), State: "running", out: &procLog{}, cmd: cmd}
 	cmd.Stdout, cmd.Stderr = p.out, p.out
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -119,7 +120,7 @@ func (s *Session) startBackground(command, description, cwd string) (*bgProc, er
 	s.procs = append(s.procs, p)
 	s.Mu.Unlock()
 	allProcs.Store(p, true)
-	Journal(s.Root, JournalEntry{Kind: "command", Command: command, Detail: "em segundo plano (" + p.ID + ")"})
+	Journal(s.Root, JournalEntry{Kind: "command", Command: command, Detail: "in the background (" + p.ID + ")"})
 	s.emitProcs()
 	go func() {
 		err := cmd.Wait()

@@ -14,8 +14,8 @@ func diagProject(t *testing.T) (*Session, string) {
 	testHome(t)
 	root := t.TempDir()
 	files := map[string]string{
-		"CLAUDE.md":               "# Projeto\nLeia docs/AUDITORIA.md antes de otimizar.\n",
-		"docs/AUDITORIA.md":       "# Auditoria\nO quadro é preso na GPU porque o renderizador desenha tudo dentro de raios fixos, sem teste de oclusão.\nPasso P11: culling por oclusão na GPU e LOD por erro na tela.\n",
+		"CLAUDE.md":               "# Project\nRead docs/AUDIT.md before optimizing.\n",
+		"docs/AUDIT.md":           "# Audit\nThe frame is stuck on the GPU because the renderer draws everything within fixed radii, without an occlusion test.\nStep P11: occlusion culling on the GPU and screen-error LOD.\n",
 		"src/render/cellLayer.ts": "export function draw(cells) {\n  for (const c of cells) if (c.inFrustum) c.render();\n}\n",
 	}
 	for p, c := range files {
@@ -41,25 +41,25 @@ func diagnose(s *Session, d map[string]any) (string, bool) {
 }
 
 var goodDiag = map[string]any{
-	"problem":    "a GPU chega a 100% em todas as vistas do jogo",
-	"root_cause": "o renderizador desenha tudo dentro de raios fixos sem teste de oclusão",
-	"approach":   "implementar culling por oclusão na GPU e LOD por erro na tela, o passo P11",
-	"why_cause":  "o custo passa a acompanhar o que aparece na tela, não o raio desenhado",
+	"problem":    "the GPU reaches 100% in every view of the game",
+	"root_cause": "the renderer draws everything within fixed radii without an occlusion test",
+	"approach":   "implement occlusion culling on the GPU and screen-error LOD, step P11",
+	"why_cause":  "the cost follows what appears on screen, not the drawn radius",
 	"evidence": []map[string]string{
-		{"file": "docs/AUDITORIA.md", "quote": "desenha tudo dentro de raios fixos, sem teste de oclusão", "supports": "a causa já registrada"},
-		{"file": "src/render/cellLayer.ts", "quote": "if (c.inFrustum) c.render();", "supports": "só o campo de visão decide"},
+		{"file": "docs/AUDIT.md", "quote": "draws everything within fixed radii, without an occlusion test", "supports": "the already recorded cause"},
+		{"file": "src/render/cellLayer.ts", "quote": "if (c.inFrustum) c.render();", "supports": "only the field of view decides"},
 	},
 }
 
 func TestNoChangeOrMeasurementBeforeADiagnosis(t *testing.T) {
 	s, _ := diagProject(t)
 	s.gate.planned = true
-	readAll(t, s, "docs/AUDITORIA.md") // the document the instructions point to (its own gate)
+	readAll(t, s, "docs/AUDIT.md") // the document the instructions point to (its own gate)
 	// reading is free; measuring and changing are not
 	if out, isErr := s.runTool(context.Background(), &RuleSet{}, bashCall("1", "git log --oneline -3 && ls src")); strings.Contains(out, "no diagnosis") && isErr {
 		t.Fatal("a read-only command was blocked")
 	}
-	if out, isErr := s.runTool(context.Background(), &RuleSet{}, bashCall("2", "npm run medir-gpu")); !isErr || !strings.Contains(out, "no diagnosis") {
+	if out, isErr := s.runTool(context.Background(), &RuleSet{}, bashCall("2", "npm run measure-gpu")); !isErr || !strings.Contains(out, "no diagnosis") {
 		t.Fatalf("a measurement ran before the diagnosis: %s", out)
 	}
 	if out, isErr := s.runTool(context.Background(), &RuleSet{}, writeCall("3", "src/render/cellLayer.ts", "x\n")); !isErr || !strings.Contains(out, "no diagnosis") {
@@ -73,7 +73,7 @@ func TestDiagnosisEvidenceIsChecked(t *testing.T) {
 	if out, isErr := diagnose(s, goodDiag); !isErr || !strings.Contains(out, "read it to the end") {
 		t.Fatalf("unread evidence accepted: %s", out)
 	}
-	readAll(t, s, "docs/AUDITORIA.md")
+	readAll(t, s, "docs/AUDIT.md")
 	readAll(t, s, "src/render/cellLayer.ts")
 	// an invented quote is refused
 	bad := map[string]any{}
@@ -81,10 +81,10 @@ func TestDiagnosisEvidenceIsChecked(t *testing.T) {
 		bad[k] = v
 	}
 	bad["evidence"] = []map[string]string{
-		{"file": "docs/AUDITORIA.md", "quote": "a sombra das nuvens é a causa principal do custo", "supports": "x"},
+		{"file": "docs/AUDIT.md", "quote": "the cloud shadow is the main cause of the cost", "supports": "x"},
 		{"file": "src/render/cellLayer.ts", "quote": "if (c.inFrustum) c.render();", "supports": "y"},
 	}
-	if out, isErr := diagnose(s, bad); !isErr || !strings.Contains(out, "not in docs/AUDITORIA.md") {
+	if out, isErr := diagnose(s, bad); !isErr || !strings.Contains(out, "not in docs/AUDIT.md") {
 		t.Fatalf("invented quote accepted: %s", out)
 	}
 	// evidence only from code, when the project has documents about it, is refused
@@ -103,14 +103,14 @@ func TestDiagnosisEvidenceIsChecked(t *testing.T) {
 		t.Fatal(out)
 	}
 	s.gate.planned = true
-	if out, isErr := s.runTool(context.Background(), &RuleSet{}, bashCall("4", "npm run medir-gpu")); strings.Contains(out, "no diagnosis") {
+	if out, isErr := s.runTool(context.Background(), &RuleSet{}, bashCall("4", "npm run measure-gpu")); strings.Contains(out, "no diagnosis") {
 		t.Fatalf("still blocked after a valid diagnosis: %s %v", out, isErr)
 	}
 }
 
 func TestFactsAgainstTheApproachDemandANewDiagnosis(t *testing.T) {
 	s, root := diagProject(t)
-	readAll(t, s, "docs/AUDITORIA.md")
+	readAll(t, s, "docs/AUDIT.md")
 	readAll(t, s, "src/render/cellLayer.ts")
 	if out, isErr := diagnose(s, goodDiag); isErr {
 		t.Fatal(out)
@@ -138,7 +138,7 @@ func TestFactsAgainstTheApproachDemandANewDiagnosis(t *testing.T) {
 
 func TestMeasureAndTweakLoopDemandsANewDiagnosis(t *testing.T) {
 	s, _ := diagProject(t)
-	readAll(t, s, "docs/AUDITORIA.md")
+	readAll(t, s, "docs/AUDIT.md")
 	readAll(t, s, "src/render/cellLayer.ts")
 	if out, isErr := diagnose(s, goodDiag); isErr {
 		t.Fatal(out)
@@ -147,10 +147,10 @@ func TestMeasureAndTweakLoopDemandsANewDiagnosis(t *testing.T) {
 	run := func(b Block) (string, bool) { return s.runTool(context.Background(), &RuleSet{}, b) }
 	var out string
 	for i := 0; i < 4; i++ {
-		run(bashCall("m", "echo medindo-gpu"))
-		out, _ = run(writeCall("w", "src/render/cellLayer.ts", "export function draw(cells) { /* ajuste "+string(rune('a'+i))+" */ }\n"))
+		run(bashCall("m", "echo measuring-gpu"))
+		out, _ = run(writeCall("w", "src/render/cellLayer.ts", "export function draw(cells) { /* adjustment "+string(rune('a'+i))+" */ }\n"))
 	}
-	if !strings.Contains(out, "new diagnosis") || !strings.Contains(out, "echo medindo-gpu") {
+	if !strings.Contains(out, "new diagnosis") || !strings.Contains(out, "echo measuring-gpu") {
 		t.Fatalf("the measure-and-tweak loop went on: %s", out)
 	}
 }
@@ -160,7 +160,7 @@ func TestContinuationCarriesThePreviousDiagnosisOnly(t *testing.T) {
 	if out, isErr := diagnose(s, map[string]any{"continues": true}); !isErr {
 		t.Fatalf("continuation with no previous diagnosis: %s", out)
 	}
-	readAll(t, s, "docs/AUDITORIA.md")
+	readAll(t, s, "docs/AUDIT.md")
 	readAll(t, s, "src/render/cellLayer.ts")
 	s.Turn = 1
 	if out, isErr := diagnose(s, goodDiag); isErr {
@@ -179,22 +179,22 @@ func TestKnowledgeDigestCoversTheWholeDocumentAndChecksQuotes(t *testing.T) {
 	s, root := diagProject(t)
 	var long strings.Builder
 	for i := 1; i <= 1000; i++ {
-		long.WriteString("linha de contexto número " + strings.Repeat("x", i%7) + "\n")
+		long.WriteString("context line number " + strings.Repeat("x", i%7) + "\n")
 	}
-	long.WriteString("Decisão D81: o budget da rua mede 33 M de triângulos desenhados.\n")
-	_ = os.WriteFile(filepath.Join(root, "docs", "ESTADO.md"), []byte(long.String()), 0o644)
+	long.WriteString("Decision D81: the street budget measures 33 M drawn triangles.\n")
+	_ = os.WriteFile(filepath.Join(root, "docs", "STATE.md"), []byte(long.String()), 0o644)
 	parts := 0
 	p := &scriptProvider{steps: []func(ModelRequest) (ModelResult, error){func(req ModelRequest) (ModelResult, error) {
 		parts++
 		text := req.Messages[0].Content[0].Text
-		facts := `{"facts":[{"line":2,"kind":"state","fact":"invented","quote":"esta frase não existe no documento de forma alguma"}]}`
-		if strings.Contains(text, "Decisão D81") {
-			facts = `{"facts":[{"line":1001,"kind":"measurement","fact":"street budget draws 33M triangles","quote":"o budget da rua mede 33 M de triângulos desenhados"}]}`
+		facts := `{"facts":[{"line":2,"kind":"state","fact":"invented","quote":"this sentence does not exist in the document at all"}]}`
+		if strings.Contains(text, "Decision D81") {
+			facts = `{"facts":[{"line":1001,"kind":"measurement","fact":"street budget draws 33M triangles","quote":"the street budget measures 33 M drawn triangles"}]}`
 		}
 		return ModelResult{Content: []Block{{Type: "text", Text: facts}}, StopReason: "end_turn"}, nil
 	}}}
-	b, _ := os.ReadFile(filepath.Join(root, "docs", "ESTADO.md"))
-	d, err := s.digestDocument(context.Background(), p, "docs/ESTADO.md", b)
+	b, _ := os.ReadFile(filepath.Join(root, "docs", "STATE.md"))
+	d, err := s.digestDocument(context.Background(), p, "docs/STATE.md", b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestKnowledgeDigestCoversTheWholeDocumentAndChecksQuotes(t *testing.T) {
 		t.Fatalf("facts %+v dropped %d", d.Facts, d.Dropped)
 	}
 	inv := knowledgeInventory(root)
-	if !contains(inv, "docs/ESTADO.md") || !contains(inv, "docs/AUDITORIA.md") || !contains(inv, "CLAUDE.md") {
+	if !contains(inv, "docs/STATE.md") || !contains(inv, "docs/AUDIT.md") || !contains(inv, "CLAUDE.md") {
 		t.Fatalf("inventory %v", inv)
 	}
 }
@@ -214,8 +214,8 @@ func TestKnowledgeDigestCoversTheWholeDocumentAndChecksQuotes(t *testing.T) {
 // to read what it already knows; a line someone else adds does.
 func TestOwnChangesKeepTheReadingOfADocument(t *testing.T) {
 	s, root := diagProject(t)
-	abs := filepath.Join(root, "docs", "AUDITORIA.md")
-	readAll(t, s, "docs/AUDITORIA.md")
+	abs := filepath.Join(root, "docs", "AUDIT.md")
+	readAll(t, s, "docs/AUDIT.md")
 	full := func(want bool) {
 		t.Helper()
 		seen, total, next := s.readProgress(abs)
@@ -225,7 +225,7 @@ func TestOwnChangesKeepTheReadingOfADocument(t *testing.T) {
 	}
 	full(true)
 	s.gate.diagnosed, s.gate.planned = true, true
-	edit := json.RawMessage(`{"path":"docs/AUDITORIA.md","old_string":"Passo P11:","new_string":"Aplicado em 31/10.\nPasso P11:"}`)
+	edit := json.RawMessage(`{"path":"docs/AUDIT.md","old_string":"Step P11:","new_string":"Applied on 31/10.\nStep P11:"}`)
 	if out, isErr := s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "e", Name: "Edit", Input: edit}); isErr {
 		t.Fatal(out)
 	}
@@ -233,8 +233,8 @@ func TestOwnChangesKeepTheReadingOfADocument(t *testing.T) {
 	b, _ := os.ReadFile(abs)
 	_ = os.WriteFile(abs, []byte(strings.ReplaceAll(string(b), "\n", "\r\n")), 0o644) // what a shell command did
 	full(true)
-	_ = os.WriteFile(abs, append(b, []byte("Achado novo: o limite mudou.\n")...), 0o644) // someone else wrote this
+	_ = os.WriteFile(abs, append(b, []byte("New finding: the limit changed.\n")...), 0o644) // someone else wrote this
 	full(false)
-	readAll(t, s, "docs/AUDITORIA.md")
+	readAll(t, s, "docs/AUDIT.md")
 	full(true)
 }

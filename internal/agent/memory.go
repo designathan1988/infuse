@@ -109,4 +109,3 @@ func (s *Session) editMemory(scope string, f func([]MemoryItem) []MemoryItem) er
 		return saveMemory(projectMemoryFile(s.Root), f(loadMemory(projectMemoryFile(s.Root))))
 	}
 }
-

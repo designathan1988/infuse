@@ -12,14 +12,14 @@ import (
 
 type SessionHit = sessionHit
 
-func NewSession(root string) *Session                 { return newSession(root) }
-func LoadSession(root, id string) (*Session, error)   { return loadSession(root, id) }
-func ListSessions(root string) []SessionData          { return listSessions(root) }
-func SearchSessions(q string, max int) []SessionHit   { return searchSessions(q, max) }
-func ResumeInterruptedSessions()                      { resumeInterruptedSessions() }
-func SessionsDir(root string) string                  { return sessionsDir(root) }
-func ToolSpecs() []core.ToolSpec                      { return toolSpecs() }
-func StopAllProcs()                                   { stopAllProcs() }
+func NewSession(root string) *Session                  { return newSession(root) }
+func LoadSession(root, id string) (*Session, error)    { return loadSession(root, id) }
+func ListSessions(root string) []SessionData           { return listSessions(root) }
+func SearchSessions(q string, max int) []SessionHit    { return searchSessions(q, max) }
+func ResumeInterruptedSessions()                       { resumeInterruptedSessions() }
+func SessionsDir(root string) string                   { return sessionsDir(root) }
+func ToolSpecs() []core.ToolSpec                       { return toolSpecs() }
+func StopAllProcs()                                    { stopAllProcs() }
 func LiveSessions(root string) []workspace.LiveSession { return liveSessions(root) }
 
 // RemoveSession drops a session from the live registry and deletes its document and checkpoints.
@@ -40,16 +40,16 @@ func AddHook(root, scope, event, matcher, command string) error {
 }
 func RemoveHook(root, key string) error { return removeHook(root, key) }
 
-func (s *Session) Save()                         { s.save() }
-func (s *Session) Snapshot() map[string]any      { return s.snapshot() }
-func (s *Session) Emit(t string, data any)       { s.emit(t, data) }
+func (s *Session) Save()                           { s.save() }
+func (s *Session) Snapshot() map[string]any        { return s.snapshot() }
+func (s *Session) Emit(t string, data any)         { s.emit(t, data) }
 func (s *Session) Subscribe() (chan Event, func()) { return s.subscribe() }
-func (s *Session) UILang() string                { return s.uiLang() }
-func (s *Session) CopyMessages() []Message       { return s.copyMessages() }
-func (s *Session) ProcList() []map[string]any    { return s.procList() }
-func (s *Session) StopProc(id string) error      { return s.stopProc(id) }
-func (s *Session) MissionSnapshot() *Mission     { return s.missionSnapshot() }
-func (s *Session) LiftBan(i int, off bool) []Ban { return s.liftBan(i, off) }
+func (s *Session) UILang() string                  { return s.uiLang() }
+func (s *Session) CopyMessages() []Message         { return s.copyMessages() }
+func (s *Session) ProcList() []map[string]any      { return s.procList() }
+func (s *Session) StopProc(id string) error        { return s.stopProc(id) }
+func (s *Session) MissionSnapshot() *Mission       { return s.missionSnapshot() }
+func (s *Session) LiftBan(i int, off bool) []Ban   { return s.liftBan(i, off) }
 func (s *Session) EditMemory(scope string, f func([]MemoryItem) []MemoryItem) error {
 	return s.editMemory(scope, f)
 }
@@ -100,11 +100,11 @@ func ApproveHook(key string) error { return approveHook(key) }
 
 func ParseSkill(text string) (string, string, string) { return parseSkill(text) }
 
-func ProjectMemoryFile(root string) string { return projectMemoryFile(root) }
-func GlobalMemoryFile() string             { return globalMemoryFile() }
-func LoadMemory(file string) []MemoryItem  { return loadMemory(file) }
+func ProjectMemoryFile(root string) string             { return projectMemoryFile(root) }
+func GlobalMemoryFile() string                         { return globalMemoryFile() }
+func LoadMemory(file string) []MemoryItem              { return loadMemory(file) }
 func SaveMemory(file string, items []MemoryItem) error { return saveMemory(file, items) }
-func NormalizeMemory(it *MemoryItem) error { return normalizeMemory(it) }
+func NormalizeMemory(it *MemoryItem) error             { return normalizeMemory(it) }
 
 // LiveState is the state of a running session (idle when only its file exists).
 func LiveState(id string) string {
@@ -116,13 +116,23 @@ func LiveState(id string) string {
 	return "idle"
 }
 
-func OpenDefaultBrowser(u string) error { return openDefaultBrowser(u) }
+// TurnOf is the live session's turn (0 for a session that is not running): a verdict records it.
+func TurnOf(id string) int {
+	sessionsMu.Lock()
+	defer sessionsMu.Unlock()
+	if s, ok := sessions[id]; ok {
+		return s.Turn
+	}
+	return 0
+}
+
+func OpenDefaultBrowser(u string) error            { return openDefaultBrowser(u) }
 func Frameable(ctx context.Context, u string) bool { return frameable(ctx, u) }
 
-func ReadIfExists(p string) string { return readIfExists(p) }
+func ReadIfExists(p string) string        { return readIfExists(p) }
 func LoadInstructions(root string) string { return loadInstructions(root) }
 
 func (s *Session) CheckpointBeforeWrite(abs string) { s.checkpointBeforeWrite(abs) }
 
 func (s *Session) LookupTool(name string) (Tool, bool) { return s.lookupTool(name) }
-func (s *Session) ToolSpecs() []ToolSpec { return s.toolSpecs() }
+func (s *Session) ToolSpecs() []ToolSpec               { return s.toolSpecs() }

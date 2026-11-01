@@ -34,7 +34,7 @@ func appReview(w http.ResponseWriter, r *http.Request, q map[string]string, body
 		case "failed-logs": // the failing CI run of this branch, for the agent to fix
 			out, err = workspace.FailedCILogs(dir)
 		default:
-			err = errors.New("ação desconhecida")
+			err = errors.New("unknown action")
 		}
 		res := map[string]any{"ok": err == nil, "output": out}
 		if err != nil {

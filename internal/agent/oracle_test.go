@@ -16,7 +16,7 @@ func oracleSession(t *testing.T) (*Session, *ToolContext, string) {
 	t.Helper()
 	t.Setenv("INFUSE_HOME", t.TempDir())
 	root := t.TempDir()
-	oracle := filepath.Join(root, ".infuse", "oracle", "pronto.md")
+	oracle := filepath.Join(root, ".infuse", "oracle", "ready.md")
 	_ = os.MkdirAll(filepath.Dir(oracle), 0o755)
 	_ = os.WriteFile(oracle, []byte("ORIGINAL\n"), 0o644)
 	s := newSession(root)
@@ -42,7 +42,7 @@ func blockedCount(root string) int {
 
 func TestOracleUnreachableByEveryTool(t *testing.T) {
 	s, tc, oracle := oracleSession(t)
-	rel := ".infuse/oracle/pronto.md"
+	rel := ".infuse/oracle/ready.md"
 
 	if out, isErr := run(t, tc, "Write", map[string]any{"path": rel, "content": "hack"}); !isErr || !strings.Contains(out, "protected path") {
 		t.Fatalf("Write: %v %q", isErr, out)
@@ -51,19 +51,19 @@ func TestOracleUnreachableByEveryTool(t *testing.T) {
 	if _, isErr := run(t, tc, "Edit", map[string]any{"path": rel, "old_string": "ORIGINAL", "new_string": "hack"}); !isErr {
 		t.Fatal("Edit must fail")
 	}
-	if out, isErr := run(t, tc, "Bash", map[string]any{"command": "cat > .infuse/oracle/pronto.md <<'EOF'\nhack\nEOF\necho done"}); !isErr || strings.Contains(out, "done") {
+	if out, isErr := run(t, tc, "Bash", map[string]any{"command": "cat > .infuse/oracle/ready.md <<'EOF'\nhack\nEOF\necho done"}); !isErr || strings.Contains(out, "done") {
 		t.Fatalf("heredoc: %v %q", isErr, out)
 	}
-	if out, _ := run(t, tc, "Bash", map[string]any{"command": "echo hack > .infuse/oracle/pronto.md; echo hack2 >> " + strings.ReplaceAll(oracle, `\`, "/") + "; echo ran"}); !strings.Contains(out, "ran") || !strings.Contains(out, "neutralized") {
+	if out, _ := run(t, tc, "Bash", map[string]any{"command": "echo hack > .infuse/oracle/ready.md; echo hack2 >> " + strings.ReplaceAll(oracle, `\`, "/") + "; echo ran"}); !strings.Contains(out, "ran") || !strings.Contains(out, "neutralized") {
 		t.Fatalf("redirect: %q", out)
 	}
-	if _, isErr := run(t, tc, "Bash", map[string]any{"command": "rm -f .infuse/oracle/pronto.md"}); !isErr {
+	if _, isErr := run(t, tc, "Bash", map[string]any{"command": "rm -f .infuse/oracle/ready.md"}); !isErr {
 		t.Fatal("rm must be refused")
 	}
-	if _, isErr := run(t, tc, "Bash", map[string]any{"command": "mv .infuse/oracle/pronto.md /tmp/x && echo ok"}); !isErr {
+	if _, isErr := run(t, tc, "Bash", map[string]any{"command": "mv .infuse/oracle/ready.md /tmp/x && echo ok"}); !isErr {
 		t.Fatal("mv must be refused")
 	}
-	if _, isErr := run(t, tc, "Bash", map[string]any{"command": "tee .infuse/oracle/pronto.md < /dev/null"}); !isErr {
+	if _, isErr := run(t, tc, "Bash", map[string]any{"command": "tee .infuse/oracle/ready.md < /dev/null"}); !isErr {
 		t.Fatal("tee must be refused")
 	}
 

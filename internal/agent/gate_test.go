@@ -26,7 +26,7 @@ func TestResearchGateStopsTrialAndError(t *testing.T) {
 
 	run(bashCall("1", "echo 'Error: module not found' >&2; exit 1"))
 	run(bashCall("2", "echo 'Error: module still not found' >&2; exit 1"))
-	out, isErr := run(bashCall("3", "echo terceira tentativa"))
+	out, isErr := run(bashCall("3", "echo third attempt"))
 	if want := M("gate.research_local", "fails", 2, "errors", "Error: module not found\n- Error: module still not found"); !isErr || out != want.String() {
 		t.Fatalf("third attempt without investigating was not blocked: %s", out)
 	}
@@ -36,24 +36,24 @@ func TestResearchGateStopsTrialAndError(t *testing.T) {
 	}
 	// reading the code opens the gate
 	run(Block{Type: "tool_use", ID: "4", Name: "Read", Input: json.RawMessage(`{"path":"a.js"}`)})
-	if out, isErr := run(bashCall("5", "echo depois de ler")); isErr {
+	if out, isErr := run(bashCall("5", "echo after reading")); isErr {
 		t.Fatalf("blocked after investigating: %s", out)
 	}
 	// failing again after reading: now only research outside the project opens it
 	run(bashCall("6", "exit 1"))
 	run(bashCall("7", "exit 1"))
 	const web = "gate.research_web"
-	if out, _ := run(bashCall("8", "echo de novo")); !msgSaid(s, "8", web) {
+	if out, _ := run(bashCall("8", "echo again")); !msgSaid(s, "8", web) {
 		t.Fatalf("second gate did not ask for web research: %s", out)
 	}
 	run(Block{Type: "tool_use", ID: "9", Name: "Read", Input: json.RawMessage(`{"path":"a.js"}`)})
-	if out, isErr := run(bashCall("10", "echo so leitura local")); !isErr || !msgSaid(s, "10", web) {
+	if out, isErr := run(bashCall("10", "echo local reading only")); !isErr || !msgSaid(s, "10", web) {
 		t.Fatalf("local reading opened a gate that asks for web research: %s", out)
 	}
 	if why := s.gateCheck("WebSearch", "net", json.RawMessage(`{"query":"module not found"}`)); !why.Empty() {
 		t.Fatal(why)
 	}
-	if out, isErr := run(bashCall("11", "echo depois de pesquisar")); isErr {
+	if out, isErr := run(bashCall("11", "echo after researching")); isErr {
 		t.Fatalf("still blocked after web research: %s", out)
 	}
 	// a new turn starts clean
@@ -82,8 +82,8 @@ func TestShortcutsInEditsAreCaught(t *testing.T) {
 	s.gate.diagnosed = true // this test is about another gate
 	s.Mode = "bypass"
 	s.gate.planned = true // the protocol's plan rule is tested apart
-	test := filepath.Join(root, "soma.test.js")
-	_ = os.WriteFile(test, []byte("test('soma', () => { expect(soma(2, 2)).toBe(4) })\n"), 0o644)
+	test := filepath.Join(root, "sum.test.js")
+	_ = os.WriteFile(test, []byte("test('sum', () => { expect(sum(2, 2)).toBe(4) })\n"), 0o644)
 	s.markRead(test)
 	// skipping the failing test: the user is asked even in bypass mode; refused here
 	go func() {
@@ -101,16 +101,21 @@ func TestShortcutsInEditsAreCaught(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}()
-	out, isErr := s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "1", Name: "Edit", Input: json.RawMessage(`{"path":"soma.test.js","old_string":"test('soma'","new_string":"test.skip('soma'"}`)})
+	out, isErr := s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "1", Name: "Edit", Input: json.RawMessage(`{"path":"sum.test.js","old_string":"test('sum'","new_string":"test.skip('sum'"}`)})
 	if want := M("shortcut.user_refused", "why", M("shortcut.weakens_tests", "items", []Msg{M("shortcut.skip_only")})); !isErr || out != want.String() {
 		t.Fatal(out)
 	}
 	if b, _ := os.ReadFile(test); strings.Contains(string(b), "skip") {
 		t.Fatal("the test was skipped although the user refused")
 	}
-	// swallowing an error in code: the edit goes through and the agent is told
-	out, isErr = s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "2", Name: "Write", Input: json.RawMessage(`{"path":"soma.js","content":"try { carrega() } catch (e) {}\n"}`)})
-	if want := M("shortcut.introduced", "items", []Msg{M("shortcut.empty_catch")}); isErr || !strings.Contains(out, "\n"+want.String()) {
+	// swallowing an error in code: the write is refused until the line says why (B5)
+	out, isErr = s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "2", Name: "Write", Input: json.RawMessage(`{"path":"sum.js","content":"try { load() } catch (e) {}\n"}`)})
+	if who := M("shortcut.justify", "lines", "try { load() } catch (e) {}"); !isErr || out != who.String() {
+		t.Fatal(out)
+	}
+	// with the reason on the same line the same catch is accepted
+	out, isErr = s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "3", Name: "Write", Input: json.RawMessage(`{"path":"sum.js","content":"try { load() } catch (e) { /* the cache is optional here */ }\n"}`)})
+	if isErr {
 		t.Fatal(out)
 	}
 	// a shortcut already in the file before the edit is not the agent's doing
@@ -125,7 +130,7 @@ func TestTurnWithChangesNeedsAReport(t *testing.T) {
 	s := newSession(root)
 	s.gate.diagnosed = true // this test is about another gate
 	s.Turn, s.TurnStarts = 1, []int{0}
-	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "faça"}}}}
+	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "do it"}}}}
 	if !s.missingReport().Empty() {
 		t.Fatal("no changes, no report needed")
 	}
@@ -148,7 +153,7 @@ func TestDeepSeekHasAPriceSoBudgetsWork(t *testing.T) {
 	if !s.HasPrice("deepseek-chat") || s.CostOf("deepseek-chat", Usage{Input: 1_000_000, Output: 1_000_000}) < 1.4 {
 		t.Fatalf("deepseek-chat is free: %v", s.Pricing["deepseek-chat"])
 	}
-	if s.HasPrice("modelo-desconhecido") {
+	if s.HasPrice("unknown-model") {
 		t.Fatal("unknown model priced")
 	}
 }

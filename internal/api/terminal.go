@@ -21,11 +21,12 @@ func getTerminal(id string) *termSession { return terminal.Get(id) }
 
 func CloseTerminal(id string) { terminal.Close(id) }
 
-// streamTerminal sends the backlog, then live output, base64-encoded, as SSE.
+// streamTerminal sends the backlog, then live output, base64-encoded, as SSE. The browser decodes it
+// as bytes, so escape sequences reach the emulator unchanged.
 func streamTerminal(w http.ResponseWriter, r *http.Request, t *termSession) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming não suportado", 500)
+		http.Error(w, "streaming is not supported by this connection", 500)
 		return
 	}
 	w.Header().Set("content-type", "text/event-stream")

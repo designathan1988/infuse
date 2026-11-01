@@ -45,6 +45,13 @@ type researchGate struct {
 	diagnosed  bool                // the current request has a verified diagnosis
 	redoWhy    Msg                 // why a new diagnosis is demanded (empty when none)
 	fileHashes map[string][]string // contents each file had in this turn, to see the agent undo its own change
+
+	oracleKey     string // the tree the last automatic verdict was produced from
+	oracleVerdict string // that verdict's result code
+
+	// gatedPaths are the paths a write tool judged in this turn. A heredoc or any shell write also
+	// creates a checkpoint; only a path that passed the write gates may be skipped by the shell audit.
+	gatedPaths map[string]bool
 }
 
 func (g *researchGate) reset() { *g = researchGate{} }
@@ -160,6 +167,56 @@ var shortcuts = []shortcut{
 	{regexp.MustCompile(`catch\s*(\([^)]*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(\{\s*\}|null|undefined)\s*\)`), M("shortcut.empty_catch"), false},
 	{regexp.MustCompile(`except(\s+[\w.,() ]+)?:\s*(\n\s*)?pass\b`), M("shortcut.except_pass"), false},
 	{regexp.MustCompile(`"test"\s*:\s*"[^"]*(\|\|\s*true|exit\s+0)[^"]*"`), M("shortcut.test_true"), true},
+}
+
+// suppressors silence the project's checker. A suppression that carries its reason on the same line
+// is a decision; one without a reason hides a problem. The reason forms are code, not prose: an
+// eslint `-- reason`, specific linter/code names, a bracketed type-ignore code, or a comment inside
+// an empty catch.
+var suppressors = []*regexp.Regexp{
+	regexp.MustCompile(`@ts-(?:ignore|nocheck|expect-error)`),
+	regexp.MustCompile(`eslint-disable|//\s*nolint|#\s*noqa|#\s*type:\s*ignore|#\s*pylint:\s*disable`),
+	regexp.MustCompile(`catch\s*(?:\([^)]*\))?\s*\{\s*(\/\*.*?\*\/)?\s*\}`),
+	regexp.MustCompile(`except(?:\s+[\w.,() ]+)?:\s*(?:\n\s*)?pass\b`),
+}
+
+var (
+	reJustifyWords = regexp.MustCompile(`--\s*\S+(?:\s+\S+)+|\/\*\s*\S+(?:\s+\S+)+\s*\*\/|#\s*\S+(?:\s+\S+){2,}|@ts-(?:ignore|expect-error)\s+\S+(?:\s+\S+)+`)
+	reJustifyCode  = regexp.MustCompile(`(?://nolint|#\s*noqa|#\s*type:\s*ignore)\s*:\s*[\w-]+|#\s*noqa:\s*[A-Z]+\d*(?:,[A-Z]+\d*)+|#\s*type:\s*ignore\[[\w-]+`)
+)
+
+// unjustifiedSuppressions lists the lines in after (not in before) that silence a checker without
+// saying why.
+func unjustifiedSuppressions(before, after string) []string {
+	was := map[string]int{}
+	for _, l := range strings.Split(before, "\n") {
+		was[l]++
+	}
+	var out []string
+	for _, l := range strings.Split(after, "\n") {
+		if was[l] > 0 {
+			was[l]--
+			continue
+		}
+		if suppressorWithoutReason(l) {
+			out = append(out, strings.TrimSpace(l))
+		}
+	}
+	return out
+}
+
+func suppressorWithoutReason(line string) bool {
+	matched := false
+	for _, re := range suppressors {
+		if re.MatchString(line) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		return false
+	}
+	return !reJustifyWords.MatchString(line) && !reJustifyCode.MatchString(line)
 }
 
 // detectShortcuts lists the shortcuts that after has and before did not (newly introduced).

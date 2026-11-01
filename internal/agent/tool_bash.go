@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/core"
 	"os"
 	"os/exec"
 	"strings"
@@ -41,37 +42,51 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if in.Timeout > 600 {
 		in.Timeout = 600
 	}
-	command, tr, notes, started, errMsg, ok := prepareBash(tc, &in)
+	original := in.Command
+	command, tr, notes, started, errMsg, ok := prepareBash(ctx, tc, &in)
 	if !ok {
 		return errMsg, true
 	}
 	if in.Background {
-		return runBackground(ctx, tc, &in, command)
+		return runBackground(ctx, tc, &in, command, original)
 	}
 	return runForeground(ctx, tc, &in, command, tr, notes, started)
 }
 
-// prepareBash applies the guard, checkpoints heredoc targets, transforms and rules the command.
-func prepareBash(tc *ToolContext, in *bashInput) (string, TransformResult, []Msg, int64, string, bool) {
+// prepareBash applies the guard, judges and checkpoints heredoc targets, transforms and rules the command.
+func prepareBash(ctx context.Context, tc *ToolContext, in *bashInput) (string, TransformResult, []Msg, int64, string, bool) {
 	started := time.Now().UnixMilli()
-	guarded, guardNotes, gerr := newGuard(tc.Root, tc.S.settings.ProtectedPaths).GuardCommandMsgs(in.Command, tc.Cwd)
+	// The guard is rooted at the real project, not at a session worktree: from a worktree, ../../
+	// reaches the project's own .infuse records and settings.
+	guardRoot := tc.Root
+	if tc.S != nil {
+		guardRoot = tc.S.Root
+	}
+	guarded, guardNotes, gerr := newGuard(guardRoot, tc.S.settings.ProtectedPaths).GuardCommandMsgs(in.Command, tc.Cwd)
 	if gerr != nil {
 		return "", TransformResult{}, nil, started, tc.SayErr(gerr), false
 	}
 	in.Command = guarded
-	// Heredoc file writes happen inside TransformCommand: checkpoint their targets first.
+	// Heredoc file writes happen inside TransformCommand: judge their content by the write policy and
+	// checkpoint their targets first. A checkpoint alone never exempts the path from the turn audit.
+	intents := make([]shellWriteIntent, 0)
 	for _, h := range FindHeredocs(in.Command) {
 		_, _, line := CommandLineOf(in.Command, h)
 		if intent := DetectFileWrite(line); intent != nil {
-			tc.S.checkpointBeforeWrite(resolveIn(tc.Cwd, FromMsysPath(intent.Path)))
+			abs := resolveIn(tc.Cwd, FromMsysPath(intent.Path))
+			tc.S.checkpointBeforeWrite(abs)
+			intents = append(intents, shellWriteIntent{Abs: abs, Content: h.Body})
 		}
+	}
+	if m := tc.S.precheckShellWrites(ctx, intents); !m.Empty() {
+		return "", TransformResult{}, nil, started, tc.SayErr(core.ErrMsg(m)), false
 	}
 	tr := TransformCommand(in.Command, tc.Cwd)
 	if tc.Rules.Disabled["heredoc"] {
 		tr = TransformResult{Command: in.Command}
 	}
 	command, ruleLines := ApplyCommandRulesMsgs(tc.Root, tc.Rules, tr.Command)
-	Journal(tc.Root, JournalEntry{Kind: "command", Command: in.Command, Detail: "agente"})
+	Journal(tc.Root, JournalEntry{Kind: "command", Command: in.Command, Detail: "agent"})
 	for _, a := range tr.Actions {
 		if a.Kind == ActLesson && a.Vice != "" {
 			Lesson(tc.Root, a.Vice, a.Detail)
@@ -82,8 +97,8 @@ func prepareBash(tc *ToolContext, in *bashInput) (string, TransformResult, []Msg
 	return command, tr, append(guardNotes, ruleLines...), started, "", true
 }
 
-func runBackground(ctx context.Context, tc *ToolContext, in *bashInput, command string) (string, bool) {
-	p, err := tc.S.startBackground(command, in.Description, tc.Cwd)
+func runBackground(ctx context.Context, tc *ToolContext, in *bashInput, command, original string) (string, bool) {
+	p, err := tc.S.startBackground(command, original, in.Description, tc.Cwd)
 	if err != nil {
 		return tc.Say(M("bash.not_started", "error", errArg(err))), true
 	}

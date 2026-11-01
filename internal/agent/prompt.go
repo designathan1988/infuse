@@ -5,6 +5,7 @@ package agent
 
 import (
 	"fmt"
+	"infuse/internal/journal"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -72,6 +73,9 @@ func writePromptGrounds(b *strings.Builder, s *Session, rules *RuleSet) {
 			}
 		}
 		b.WriteString("Use LS on any folder to see its map; when you write a file you are told what depends on it.\n")
+	}
+	if bg := baseGrounds(s.Root); bg != "" {
+		b.WriteString("\n## Architecture base (chosen by the user; code outside it is refused)\n" + bg + "\n")
 	}
 	if oracle := readOracle(s.Root); oracle != "" {
 		b.WriteString("\n## Definition of done (set by the user; read-only — you cannot change it)\n" + oracle + "\n")
@@ -178,12 +182,38 @@ func lessonsSummary(root string) string {
 	sort.Slice(kvs, func(i, j int) bool { return kvs[i].v > kvs[j].v })
 	var parts []string
 	for i, e := range kvs {
-		if i >= 10 {
+		if i >= 8 {
 			break
 		}
-		parts = append(parts, fmt.Sprintf("- %s (%d time(s))", e.k, e.v))
+		signature, remedy := journal.Vice(e.k)
+		line := fmt.Sprintf("- %s (%d time(s))", e.k, e.v)
+		if remedy != "" {
+			line += "\n  signature: " + signature + "\n  remedy: " + remedy
+		}
+		parts = append(parts, line)
 	}
 	return strings.Join(parts, "\n")
+}
+
+// groundsBrief is the project's knowledge in a bounded form, for the independent reviewer, the
+// subagents and the mission auditor: the same grounds the agent gets, never only the diff.
+func (s *Session) groundsBrief() string {
+	var b strings.Builder
+	if m := LoadMap(s.Root); m != nil {
+		if d := DescribeDir(m, "."); d != "" {
+			b.WriteString("### Project map\n" + truncate(d, 3000) + "\n\n")
+		}
+	}
+	if c := conventionsPrompt(s.Root); c != "" {
+		b.WriteString("### Project conventions\n" + truncate(c, 2000) + "\n\n")
+	}
+	if l := lessonsSummary(s.Root); l != "" {
+		b.WriteString("### Lessons from this project\n" + l + "\n\n")
+	}
+	if k := knowledgePrompt(s.Root); k != "" {
+		b.WriteString("### Facts read from the project's documents\n" + truncate(k, 4000) + "\n")
+	}
+	return b.String()
 }
 
 // loadInstructions: global, then project; compatible with CLAUDE.md and AGENTS.md.
@@ -195,6 +225,9 @@ func loadInstructions(root string) string {
 		filepath.Join(root, infuseDirName, "instructions.md"),
 		filepath.Join(root, "CLAUDE.md"),
 		filepath.Join(root, "AGENTS.md"),
+		filepath.Join(root, "GEMINI.md"),
+		filepath.Join(root, ".cursorrules"),
+		filepath.Join(root, ".github", "copilot-instructions.md"),
 		filepath.Join(root, ".claude", "CLAUDE.md"),
 	} {
 		t := readIfExists(p)

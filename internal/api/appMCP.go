@@ -43,7 +43,7 @@ func mcpAction(w http.ResponseWriter, r *http.Request, path string, body map[str
 		err = mcpRemoveServer(root, scope, name)
 	case "restart":
 	default:
-		sendJSON(w, 404, map[string]any{"error": "ação desconhecida"})
+		sendJSON(w, 404, map[string]any{"error": "unknown action", "code": "mcp.unknownAction"})
 		return
 	}
 	if err != nil {
@@ -60,7 +60,7 @@ func mcpAddServer(body map[string]any, root, scope, name string, approve bool) e
 	err := json.Unmarshal(b, &cfg)
 	if err == nil {
 		if strings.TrimSpace(name) == "" || (cfg.Command == "" && cfg.URL == "") {
-			err = errors.New("informe o nome e o comando (ou o endereço) do servidor")
+			err = errors.New("enter the server's name and command (or address)")
 		} else {
 			err = mcp.Edit(root, scope, func(sv map[string]mcp.ServerConfig) {
 				sv[name] = cfg
@@ -76,7 +76,7 @@ func mcpAddServer(body map[string]any, root, scope, name string, approve bool) e
 func mcpApproveServer(root, scope, name string) error {
 	cfg, ok := mcp.LoadFile(mcp.FilePath(root, scope)).Servers[name]
 	if !ok {
-		return errors.New("servidor não encontrado")
+		return errors.New("server not found")
 	}
 	return mcp.Approve(root, scope, name, cfg)
 }

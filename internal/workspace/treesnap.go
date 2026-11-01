@@ -11,6 +11,8 @@ import (
 	"encoding/hex"
 	"infuse/internal/core"
 	"infuse/internal/fsx"
+	"infuse/internal/journal"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -22,15 +24,18 @@ import (
 )
 
 const (
-	snapMaxFiles = 20000
-	snapMaxSize  = 2 << 20
+	// Large enough that the audit does not go blind on a real project: every file up to these limits is
+	// compared by content. Above them the file is still hashed, but its old content is not stored.
+	snapMaxFiles = 100000
+	snapMaxSize  = 16 << 20
 )
 
 type treeManifest struct {
-	Work  string            `json:"work"`
-	At    int64             `json:"at"`
-	Turn  int               `json:"turn"`
-	Files map[string]string `json:"files"` // slash path → sha1 of the content
+	Work      string            `json:"work"`
+	At        int64             `json:"at"`
+	Turn      int               `json:"turn"`
+	Files     map[string]string `json:"files"`     // slash path → sha1 of the content
+	Protected map[string]string `json:"protected"` // .infuse/oracle and .infuse/evidence → sha1
 }
 
 func treeDir(root string) string { return filepath.Join(root, core.InfuseDirName, "tree") }
@@ -42,6 +47,20 @@ func blobPath(root, hash string) string {
 func hashBytes(b []byte) string {
 	sum := sha1.Sum(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// hashFile hashes a file without loading it whole (a generated file can be very large).
+func hashFile(p string) (string, error) {
+	f, err := os.Open(p)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha1.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 var (
@@ -70,7 +89,7 @@ func walkTree(root, work string, store bool) map[string]string {
 			return nil
 		}
 		info, err := d.Info()
-		if err != nil || info.Size() > snapMaxSize {
+		if err != nil {
 			return nil
 		}
 		rel, _ := filepath.Rel(work, p)
@@ -81,6 +100,15 @@ func walkTree(root, work string, store bool) map[string]string {
 		settled := time.Since(info.ModTime()) > 2*time.Second // a just-written file may change again within the same mtime
 		if ok && settled && e.mod == info.ModTime().UnixNano() && e.size == info.Size() && (!store || core.Exists(blobPath(root, e.hash))) {
 			out[rel] = e.hash
+			return nil
+		}
+		if info.Size() > snapMaxSize { // hashed in a stream and never stored: a very large file is still a change
+			if h, err := hashFile(p); err == nil {
+				hashCacheMu.Lock()
+				hashCache[p] = hashEntry{info.ModTime().UnixNano(), info.Size(), h}
+				hashCacheMu.Unlock()
+				out[rel] = h
+			}
 			return nil
 		}
 		b, err := os.ReadFile(p)
@@ -104,10 +132,107 @@ func walkTree(root, work string, store bool) map[string]string {
 	return out
 }
 
-// snapshotTurn records the tree at the start of a session's turn.
-func SnapshotTurn(root, work, session string, turn int) {
-	m := treeManifest{Work: filepath.Clean(work), At: time.Now().UnixMilli(), Turn: turn, Files: walkTree(root, work, true)}
-	_ = core.WriteJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), m)
+// SnapshotTurn records the tree at the start of a session's turn. The error is returned so the
+// session can fail closed: without the initial tree the turn cannot be audited.
+func SnapshotTurn(root, work, session string, turn int) error {
+	m := treeManifest{Work: filepath.Clean(work), At: time.Now().UnixMilli(), Turn: turn, Files: walkTree(root, work, true), Protected: protectedHashes(root)}
+	if err := core.WriteJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), m); err != nil {
+		journal.Journal(root, journal.JournalEntry{Kind: "gate", Detail: "turn snapshot failed: " + err.Error()})
+		return err
+	}
+	return nil
+}
+
+// protectedHashes hashes what the agent must never write: the oracle's criteria and the executor's
+// evidence. The shell guard reads the command line; a script that writes the file directly is caught
+// by comparing these hashes at the end of the turn.
+func protectedHashes(root string) map[string]string {
+	out := map[string]string{}
+	for _, dir := range []string{"oracle", "evidence"} {
+		base := filepath.Join(root, core.InfuseDirName, dir)
+		_ = filepath.WalkDir(base, func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || len(out) > 2000 {
+				return nil
+			}
+			if info, err := d.Info(); err != nil || info.Size() > 1<<20 {
+				return nil
+			}
+			if h, err := hashFile(p); err == nil {
+				rel, _ := filepath.Rel(root, p)
+				out[filepath.ToSlash(rel)] = h
+			}
+			return nil
+		})
+	}
+	return out
+}
+
+// TurnProtectedChanges lists oracle/evidence files that changed since the turn started. The executor's
+// own writes are accepted by refreshing the manifest after each run (RefreshTurnProtected).
+func TurnProtectedChanges(root, session string, turn int) []string {
+	var m treeManifest
+	if core.ReadJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), &m) != nil {
+		return nil
+	}
+	now := protectedHashes(root)
+	var out []string
+	for rel, h := range now {
+		if old, had := m.Protected[rel]; !had || old != h {
+			out = append(out, rel)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// RefreshTurnProtected accepts what infuse itself just wrote (the executor's evidence) as the turn's
+// baseline, so the next audit does not blame the agent for it.
+func RefreshTurnProtected(root, session string, turn int) {
+	p := filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json")
+	var m treeManifest
+	if core.ReadJSON(p, &m) != nil {
+		return
+	}
+	m.Protected = protectedHashes(root)
+	_ = core.WriteJSON(p, m)
+}
+
+// TreeChange is one path the tree differs by since the turn started: changed, created or removed,
+// whatever made the change (a write tool, a shell command, a generator, another process).
+type TreeChange struct {
+	Path    string
+	Before  string // hash of the content at the start of the turn ("" when the file did not exist)
+	New     bool
+	Deleted bool
+}
+
+// TurnChanges compares the current tree with the snapshot taken when the turn started.
+func TurnChanges(root, work, session string, turn int) []TreeChange {
+	var m treeManifest
+	if core.ReadJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), &m) != nil {
+		return nil
+	}
+	if !strings.EqualFold(filepath.Clean(m.Work), filepath.Clean(work)) {
+		return nil
+	}
+	now := walkTree(root, work, false)
+	var out []TreeChange
+	for rel, h := range now {
+		old, had := m.Files[rel]
+		switch {
+		case !had:
+			out = append(out, TreeChange{Path: rel, New: true})
+		case old != h:
+			out = append(out, TreeChange{Path: rel, Before: old})
+		}
+	}
+	for rel, h := range m.Files {
+		if _, still := now[rel]; !still {
+			out = append(out, TreeChange{Path: rel, Before: h, Deleted: true})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
 
 // manifests lists the recorded snapshots of a work folder, oldest first (only one session's with session).
@@ -133,4 +258,32 @@ func Manifests(root, work, session string) []treeManifest {
 func ReadBlob(root, hash string) (string, bool) {
 	b, err := os.ReadFile(blobPath(root, hash))
 	return string(b), err == nil
+}
+
+// RestoreTurn rewrites work to the tree recorded at the start of a turn: files created later are
+// removed and changed files come back from the blob store. This is what makes a shell deletion
+// revertible, not just a write the tools checkpointed.
+func RestoreTurn(root, work, session string, turn int) {
+	var m treeManifest
+	if core.ReadJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), &m) != nil {
+		return
+	}
+	if !strings.EqualFold(filepath.Clean(m.Work), filepath.Clean(work)) {
+		return
+	}
+	now := walkTree(root, work, false)
+	for rel := range now {
+		if _, had := m.Files[rel]; !had {
+			_ = os.Remove(filepath.Join(work, filepath.FromSlash(rel)))
+		}
+	}
+	for rel, hash := range m.Files {
+		b, ok := ReadBlob(root, hash)
+		if !ok {
+			continue // too large to keep: the per-write checkpoint may still restore it
+		}
+		dst := filepath.Join(work, filepath.FromSlash(rel))
+		_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+		_ = os.WriteFile(dst, []byte(b), 0o644)
+	}
 }

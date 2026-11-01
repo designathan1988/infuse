@@ -41,6 +41,12 @@ type bridgeProvider struct {
 	cli  string // executable path ("" → not installed)
 }
 
+// claudeNotLoggedIn: the CLI answered with its sign-in error instead of a model answer.
+func claudeNotLoggedIn(text string) bool {
+	l := strings.ToLower(text)
+	return strings.Contains(l, "not logged in") || strings.Contains(l, "please run /login") || strings.Contains(l, "invalid api key")
+}
+
 func (p *bridgeProvider) Name() string {
 	if p.kind == "codex" {
 		return "codexdesk"
@@ -48,29 +54,56 @@ func (p *bridgeProvider) Name() string {
 	return "claudedesk"
 }
 
+// runWithDesktopFallback runs the turn and, when Claude's standalone CLI answers with its sign-in
+// error, retries once with the CLI bundled with the desktop application.
+func (p *bridgeProvider) runWithDesktopFallback(ctx context.Context, req ModelRequest, prompt string, emit func(StreamEvent), usage *Usage, think *strings.Builder) (string, error) {
+	final, err := p.runOnce(ctx, req, prompt, emit, usage, think)
+	if err != nil || p.kind != "claude" || !claudeNotLoggedIn(final) {
+		return final, err
+	}
+	desk := FindClaudeDesktopCLI()
+	if desk == "" || desk == p.cli {
+		return final, nil
+	}
+	p.cli = desk
+	*usage = Usage{}
+	think.Reset()
+	return p.runOnce(ctx, req, prompt, emit, usage, think)
+}
+
+// readReply parses the model's answer; when it does not follow the protocol, one repair round goes
+// back to the model, and plain prose is accepted as the answer after that.
+func (p *bridgeProvider) readReply(ctx context.Context, req ModelRequest, prompt, final string, emit func(StreamEvent), usage *Usage, think *strings.Builder) (bridgeReply, error) {
+	reply, perr := parseBridgeReply(final)
+	if perr == nil {
+		return reply, nil
+	}
+	fix := fmt.Sprintf("\n\n[user] Your previous reply was not valid for this protocol (%v). Reply again with ONLY the JSON object, no fences, no commentary.", perr)
+	final, err := p.runOnce(ctx, req, prompt+fix, emit, usage, think)
+	if err != nil {
+		return bridgeReply{}, err
+	}
+	reply, perr = bridgeReplyOrText(final)
+	if perr != nil {
+		return bridgeReply{}, fmt.Errorf("the bridge could not read the model's response: %w", perr)
+	}
+	return reply, nil
+}
+
 func (p *bridgeProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
 	if p.cli == "" {
-		return ModelResult{}, fmt.Errorf("%s não foi encontrado nesta máquina (instale o aplicativo ou o CLI)", p.missingName())
+		return ModelResult{}, fmt.Errorf("%s was not found on this machine (install the application or the CLI)", p.missingName())
 	}
 	prompt := bridgePrompt(req)
 	usage := Usage{}
 	var think strings.Builder
-	final, err := p.runOnce(ctx, req, prompt, emit, &usage, &think)
+	final, err := p.runWithDesktopFallback(ctx, req, prompt, emit, &usage, &think)
 	if err != nil {
 		return ModelResult{Usage: usage}, err
 	}
-	reply, perr := parseBridgeReply(final)
-	if perr != nil {
-		// one repair round: the parser's error goes back to the model, the way askJSON does
-		fix := fmt.Sprintf("\n\n[user] Your previous reply was not valid for this protocol (%v). Reply again with ONLY the JSON object, no fences, no commentary.", perr)
-		final, err = p.runOnce(ctx, req, prompt+fix, emit, &usage, &think)
-		if err != nil {
-			return ModelResult{Usage: usage}, err
-		}
-		reply, perr = parseBridgeReply(final)
-		if perr != nil {
-			return ModelResult{Usage: usage}, fmt.Errorf("a ponte não conseguiu ler a resposta do modelo: %w", perr)
-		}
+	reply, err := p.readReply(ctx, req, prompt, final, emit, &usage, &think)
+	if err != nil {
+		return ModelResult{Usage: usage}, err
 	}
 	res := ModelResult{Usage: usage}
 	if t := strings.TrimSpace(think.String()); t != "" {
@@ -113,9 +146,9 @@ func (p *bridgeProvider) Stream(ctx context.Context, req ModelRequest, emit func
 
 func (p *bridgeProvider) missingName() string {
 	if p.kind == "codex" {
-		return "o Codex"
+		return "Codex"
 	}
-	return "o Claude Code"
+	return "Claude Code"
 }
 
 // runOnce starts one CLI turn and returns the model's final text.
@@ -132,7 +165,7 @@ func (p *bridgeProvider) runOnce(ctx context.Context, req ModelRequest, prompt s
 		return "", err
 	}
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("não foi possível iniciar %s (%s): %w", p.missingName(), p.cli, err)
+		return "", fmt.Errorf("could not start %s (%s): %w", p.missingName(), p.cli, err)
 	}
 	done := make(chan struct{})
 	defer close(done) // releases the killer goroutine when the turn ends on its own
@@ -152,7 +185,7 @@ func (p *bridgeProvider) runOnce(ctx context.Context, req ModelRequest, prompt s
 		return "", ctx.Err()
 	}
 	if finalText == "" {
-		return "", fmt.Errorf("%s terminou sem resposta (verifique o login do aplicativo)", p.missingName())
+		return "", fmt.Errorf("%s ended without an answer (check the app's login)", p.missingName())
 	}
 	return finalText, nil
 }

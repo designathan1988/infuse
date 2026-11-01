@@ -22,6 +22,7 @@ export function createComposerContext(v, el) {
     },
   };
   ctx.renderAtts = () => renderAttachments(ctx);
+  v.renderAtts = ctx.renderAtts; // the window's drop handler (app.js) adds files outside this module
   ctx.renderSendBtn = () => renderSendButton(ctx);
   ctx.renderUnder = () => renderUnder(ctx);
   ctx.ac = createAutocomplete(ctx);

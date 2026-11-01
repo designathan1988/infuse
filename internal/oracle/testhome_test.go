@@ -1,6 +1,7 @@
 package oracle
 
 import (
+	"infuse/internal/config"
 	"infuse/internal/filter"
 	"infuse/internal/workspace"
 	"os"
@@ -12,6 +13,9 @@ import (
 func testHome(t *testing.T) {
 	t.Helper()
 	t.Setenv("INFUSE_HOME", t.TempDir())
+	old := config.SecretBackend
+	config.SecretBackend = config.MemSecrets{}
+	t.Cleanup(func() { config.SecretBackend = old })
 }
 
 func gitRepo(t *testing.T) string {
@@ -39,7 +43,7 @@ func bypassRoot(t *testing.T) (string, *filter.Guard) {
 	t.Helper()
 	t.Setenv("INFUSE_HOME", t.TempDir())
 	root := t.TempDir()
-	oracle := filepath.Join(root, ".infuse", "oracle", "pronto.md")
+	oracle := filepath.Join(root, ".infuse", "oracle", "ready.md")
 	_ = os.MkdirAll(filepath.Dir(oracle), 0o755)
 	_ = os.WriteFile(oracle, []byte("ORIGINAL\n"), 0o644)
 	_ = os.MkdirAll(filepath.Join(root, "secrets"), 0o755)

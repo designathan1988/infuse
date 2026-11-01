@@ -10,6 +10,7 @@ import { setRow, selectEl, inputEl } from '../shell.js';
 export async function renderModels({ el, s, save, open }) {
   el.append(h(`<h1>${t('settings.models')}</h1>`));
   await ensureModels();
+  if (!el.isConnected) return; // the page changed while the models were being read
   const models = cache.models.get();
   const opts = models.map(m => [m.provider + '|' + m.model, `${m.label} · ${m.model}`]);
   el.append(setRow('settings.defaultModel', 'settings.defaultModelDesc', selectEl(opts.length ? opts : [['', 'settings.connectFirst']], s.provider + '|' + s.model, v => { const [p, m] = v.split('|'); save({ provider: p, model: m }); })));
@@ -24,6 +25,7 @@ export async function renderModels({ el, s, save, open }) {
 
 async function renderUsage(el) {
   const u = await api('/api/usage', { root: '' }).catch(() => ({}));
+  if (!el.isConnected) return;
   el.append(h(`<h2>${t('usage.title')}</h2>`), h(`<div class="row settings-usage"><div><div class="faint">${t('usage.today')}</div><div class="big-number">${money(u.today)}</div></div><div><div class="faint">${t('usage.month')}</div><div class="big-number">${money(u.month)}</div></div><div><div class="faint">${t('usage.tokens')}</div><div class="big-number">${ktok(u.tokens?.input)} / ${ktok(u.tokens?.output)}</div></div></div>`));
   const proj = Object.entries(u.byProject || {}).sort((a, b) => b[1] - a[1]);
   if (proj.length) el.append(h(`<table class="price-table"><tr><th>${t('usage.project')}</th><th>${t('common.total')}</th></tr>${proj.map(([r, cst]) => `<tr><td>${esc(projectLabel(r))} <span class="faint">${esc(r)}</span></td><td class="mono">${money(cst)}</td></tr>`).join('')}</table>`));

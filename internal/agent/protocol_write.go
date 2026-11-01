@@ -48,6 +48,10 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) Msg {
 			return M("protocol.architecture", "why", why)
 		}
 	}
+	// 5. the user's base: code lives where the chosen architecture says
+	if why := s.baseViolation(relTo(s.workRoot(), p), codeExts[ext]); !why.Empty() {
+		return why
+	}
 	return s.sizeViolation(rel, ext, before, after)
 }
 

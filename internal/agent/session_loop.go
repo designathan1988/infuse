@@ -307,7 +307,7 @@ func (s *Session) closeToolTurn(res ModelResult, results []Block, why ...Msg) {
 	}
 	s.Messages = append(s.Messages, Message{Role: "user", Content: results, TS: time.Now().UnixMilli()})
 	s.inflight = nil
-	s.save()
+	s.saveLocked()
 }
 
 func (s *Session) settleTrip(ctx context.Context, st *runState, why Msg) bool {
@@ -339,7 +339,7 @@ func (s *Session) settleTrip(ctx context.Context, st *runState, why Msg) bool {
 		return false
 	}
 	if st.tripped != nil {
-		Lesson(s.Root, "loop-errático", st.tripped.Error())
+		Lesson(s.Root, "erratic-loop", st.tripped.Error())
 		s.failMsg(why)
 		return true
 	}

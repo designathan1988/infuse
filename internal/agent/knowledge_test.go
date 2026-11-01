@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"infuse/internal/journal"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,22 +13,56 @@ import (
 	"testing"
 )
 
+// An observed vice reaches the prompt with its deterministic signature and its remedy, not only a
+// name and a count.
+func TestLessonsCarryTheirRemedy(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	journal.Lesson(root, "swallowed-error", "src/a.js: empty catch")
+	s := newSession(root)
+	p := buildSystemPrompt(s, &RuleSet{})
+	for _, want := range []string{"swallowed-error", "signature:", "remedy:", "propagate or handle it"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("missing %q in the prompt", want)
+		}
+	}
+}
+
+// GEMINI.md, .cursorrules and copilot instructions are instruction layers like CLAUDE.md/AGENTS.md.
+func TestForeignInstructionFilesAreInjected(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	_ = os.WriteFile(filepath.Join(root, "GEMINI.md"), []byte("gemini says: use tabs"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, ".cursorrules"), []byte("cursor says: no globals"), 0o644)
+	_ = os.MkdirAll(filepath.Join(root, ".github"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, ".github", "copilot-instructions.md"), []byte("copilot says: test first"), 0o644)
+	p := buildSystemPrompt(newSession(root), &RuleSet{})
+	for _, want := range []string{"use tabs", "no globals", "test first"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("instruction layer missing: %q", want)
+		}
+	}
+}
+
 func TestConventionsAreCountedFromTheCode(t *testing.T) {
 	testHome(t)
 	root := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(root, "src"), 0o755)
 	for i, name := range []string{"user-list.js", "order-form.js", "api-client.js", "login.test.js"} {
-		code := "const x = require('./a');\nfunction f() {\n  // retorna o usuário que fez a compra\n  return 1;\n}\n"
+		code := "const x = require('./a');\nfunction f() {\n  // returns the user who made the purchase\n  return 1;\n}\n"
 		if i == 3 {
 			code = "const { test } = require('node:test');\ntest('x', () => {\n  return 1;\n});\n"
 		}
 		_ = os.WriteFile(filepath.Join(root, "src", name), []byte(code), 0o644)
 	}
 	text := LearnConventions(root)
-	for _, want := range []string{"Indentation: 2 spaces", "Quotes in imports: single quotes", "Modules: CommonJS (require)", "End of statement (JS/TS): with semicolons", "File names .js: kebab-case", "Tests: *.test.js", "Comment language: Portuguese"} {
+	for _, want := range []string{"Indentation: 2 spaces", "Quotes in imports: single quotes", "Modules: CommonJS (require)", "End of statement (JS/TS): with semicolons", "File names .js: kebab-case", "Tests: *.test.js", "Observed, not a rule", "Comments are mostly in English"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q in\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "- Comment language:") { // a fact about old code is not a convention to follow
+		t.Fatal("comment language is still taught as a convention")
 	}
 	s := newSession(root)
 	if !strings.Contains(buildSystemPrompt(s, &RuleSet{}), "kebab-case") {
@@ -43,7 +78,7 @@ func TestPinnedDocsFetchedAndListed(t *testing.T) {
 	root := t.TempDir()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		_, _ = io.WriteString(w, `<html><head><title>API do Widget</title><script>var x=1</script></head><body><nav>menu</nav><main><h1>widget.render(el)</h1><p>Desenha o widget dentro de el.</p></main></body></html>`)
+		_, _ = io.WriteString(w, `<html><head><title>Widget API</title><script>var x=1</script></head><body><nav>menu</nav><main><h1>widget.render(el)</h1><p>Draws the widget inside el.</p></main></body></html>`)
 	}))
 	defer srv.Close()
 	defer closeAgentBrowsers()
@@ -52,7 +87,7 @@ func TestPinnedDocsFetchedAndListed(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(filepath.Join(root, filepath.FromSlash(doc.File)))
-	if !strings.Contains(string(b), "Desenha o widget dentro de el.") || strings.Contains(string(b), "var x=1") {
+	if !strings.Contains(string(b), "Draws the widget inside el.") || strings.Contains(string(b), "var x=1") {
 		t.Fatalf("%s", b)
 	}
 	s := newSession(root)
@@ -74,7 +109,7 @@ func TestDiagnosticsAfterWrite(t *testing.T) {
 	root := t.TempDir()
 	bad := filepath.Join(root, "x.json")
 	_ = os.WriteFile(bad, []byte(`{"a": }`), 0o644)
-	if d := fileDiagnostics(root, bad); !strings.Contains(d, "JSON inválido") {
+	if d := fileDiagnostics(root, bad); !strings.Contains(d, "invalid JSON") {
 		t.Fatal(d)
 	}
 	js := filepath.Join(root, "a.js")

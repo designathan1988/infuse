@@ -42,9 +42,9 @@ func TestCompactionKeepsTheToolCallOfTheLastExchange(t *testing.T) {
 	s := newSession(t.TempDir())
 	s.Provider = "mock"
 	call := Message{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "t1", Name: "Write", Input: json.RawMessage(`{"path":"a.ts","content":"x"}`)}}}
-	result := Message{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "t1", Content: "Arquivo escrito"}}}
+	result := Message{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "t1", Content: "File written"}}}
 	s.Messages = make([]Message, 0, 16) // spare capacity: appending to a sub-slice would overwrite in place
-	s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: "corrija a GPU"}}}, Message{Role: "assistant", Content: []Block{{Type: "text", Text: "vou investigar"}}}, Message{Role: "user", Content: []Block{{Type: "text", Text: "continue"}}}, call, result)
+	s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: "fix the GPU"}}}, Message{Role: "assistant", Content: []Block{{Type: "text", Text: "I will investigate"}}}, Message{Role: "user", Content: []Block{{Type: "text", Text: "continue"}}}, call, result)
 	p, err := providerFor(s.settings, "mock")
 	if err != nil {
 		t.Fatal(err)
@@ -64,15 +64,15 @@ func TestCompactionKeepsTheToolCallOfTheLastExchange(t *testing.T) {
 
 func TestRepairTranscript(t *testing.T) {
 	msgs := []Message{
-		{Role: "user", Content: []Block{{Type: "text", Text: "[Contexto compactado] resumo"}}},
-		{Role: "assistant", Content: []Block{{Type: "text", Text: "Entendido"}}},
-		{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "perdido", Content: "Arquivo escrito: a.ts"}}}, // its call was lost
+		{Role: "user", Content: []Block{{Type: "text", Text: "[Compacted context] summary"}}},
+		{Role: "assistant", Content: []Block{{Type: "text", Text: "Understood"}}},
+		{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "lost", Content: "File written: a.ts"}}}, // its call was lost
 		{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "c1", Name: "Read"}, {Type: "tool_use", ID: "c2", Name: "Read"}}},
 		{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "c1", Content: "ok"}}}, // c2 never answered
 		{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "c3", Name: "Bash"}}},       // interrupted at the end
 	}
 	got := repairTranscript(msgs)
-	if got[2].Content[0].Type != "text" || !strings.Contains(got[2].Content[0].Text, "Arquivo escrito") {
+	if got[2].Content[0].Type != "text" || !strings.Contains(got[2].Content[0].Text, "File written") {
 		t.Fatalf("orphan result: %+v", got[2])
 	}
 	ids := map[string]bool{}

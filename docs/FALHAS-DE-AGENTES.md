@@ -1,93 +1,119 @@
-# Falhas de agentes de IA e as travas do infuse
+# Agent failures and the locks infuse enforces
 
-Fontes:
-- **R**: o que o dono já relatou. São 656 mensagens em todas as sessões (roadcraft, lab, cad2, Laboratório de Sentido, infuse), mais `docs/LICOES.md` do roadcraft e as memórias.
-- **P**: a pesquisa. METR (reward hacking), ImpossibleBench, MAST (falhas de sistemas multiagente), OpenAI (monitoramento de CoT), Anthropic (system cards, boas práticas do Claude Code), OWASP LLM Top 10, estudos de SWE-bench, slopsquatting.
+Sources:
+- **R**: what the owner already reported. That is 656 messages across all sessions (roadcraft, lab, cad2,
+  Laboratório de Sentido, infuse), plus roadcraft's `docs/LICOES.md` and the memories.
+- **P**: research. METR (reward hacking), ImpossibleBench, MAST (multi-agent system failures), OpenAI
+  (chain-of-thought monitoring), Anthropic (system cards, Claude Code best practices), OWASP LLM Top 10,
+  SWE-bench studies, slopsquatting.
 
-Princípio, tirado da pesquisa e da experiência: **pedir ao modelo não impede**. A METR mostrou que pedir "não trapaceie" quase não muda nada. O que impede é a **trava mecânica**, e toda trava aqui age sobre fatos sem idioma:
-- chamadas de ferramenta, caminhos e diffs;
-- códigos de saída;
-- linhas efetivamente mostradas ao agente;
-- dados estruturados que o agente é obrigado a declarar, como o diagnóstico e o relatório com afirmações. Esses dados são conferidos por código.
+Principle, taken from the research and from experience: **asking the model does not prevent**. METR showed
+that telling it "do not cheat" changes almost nothing. What prevents is the **mechanical lock**, and every
+lock here acts on language-free facts:
+- tool calls, paths and diffs;
+- exit codes;
+- lines actually shown to the agent;
+- structured data the agent is required to declare, such as the diagnosis and the report with claims.
+  That data is checked by code.
 
-Texto em linguagem natural nunca é interpretado por palavras. Quando o significado importa (as instruções do projeto), um modelo o compila em regras estruturadas, cada uma com **citação literal conferida** no texto.
+Natural-language text is never interpreted by words. When meaning matters (the project's instructions), a
+model compiles it into structured rules, each with a **verbatim citation verified** in the text.
 
-Estado: **coberta** (trava em código, com teste) · **parcial** · **falta**.
+State: **covered** (lock in code, with a test) · **partial** · **missing**.
 
-## A. Leitura, pesquisa e conhecimento do projeto
+## A. Reading, research and knowledge of the project
 
-| # | Falha | Sinal mecânico | Trava | Estado |
+| # | Failure | Mechanical signal | Lock | State |
 |---|---|---|---|---|
-| A1 | Age sem ler as instruções e os documentos que elas apontam (R ~10, P G4) | primeira alteração/comando antes da leitura integral | leitura obrigatória com cobertura linha a linha; nenhuma alteração ou comando antes | coberta |
-| A2 | Ignora o que o projeto já sabe: a causa e o plano estavam na auditoria (R, caso GPU) | diagnóstico sem evidência dos documentos | o infuse lê cada documento até a última linha (cobertura por construção); os fatos com citação conferida vão para o contexto; o diagnóstico exige evidência dos documentos | coberta |
-| A3 | Lê pedaços e diz que leu (R ~4+8) | cobertura < 100% | Read pagina em vez de cortar o meio; a evidência do diagnóstico exige o arquivo lido inteiro | coberta |
-| A4 | Afirma no relatório "li X" sem ter lido | afirmação de leitura × cobertura | afirmação de tipo `read` no Report conferida pela cobertura | **falta** |
-| A5 | Usa biblioteca/API sem pesquisar a documentação (R ~30, P D2) | import/host novo no diff | documentação consultada no turno antes de escrever | coberta |
-| A6 | Usa opções de comando sem ter lido sobre elas (R, caso RenderDoc) | `--opção` × texto efetivamente lido | comando recusado com a lista das opções | coberta |
-| A7 | Lê só parte de uma página e age (R) | partes da página lidas | página em partes bloqueia ação até o fim | coberta |
-| A8 | Tentativa e erro (R ~25, P G1) | falhas seguidas; mesmo comando após cada ajuste | portão de pesquisa; laço medir-ajustar exige novo diagnóstico | coberta |
-| A9 | Repropõe o que o projeto ou o usuário já rejeitou (R ~12) | proposta × decisões registradas | conhecimento do projeto no contexto + diagnóstico; proibições do usuário estruturadas | parcial (ver F4) |
-| A10 | Perde o fio depois da compactação (R ~6, P G5) | trabalho refeito, regras esquecidas | pedidos literais preservados; compactação segura; **diagnóstico, plano e proibições reinjetados em todo pedido** | parcial |
-| A11 | Copia o código que as instruções proíbem copiar (R ~6) | clone de trecho da referência | regra compilada com citação + detector de clones | coberta |
+| A1 | Acts without reading the instructions and the documents they point to (R ~10, P G4) | first change/command before the full reading | required reading with line-by-line coverage; no change or command before it | covered |
+| A2 | Ignores what the project already knows: the cause and the plan were in the audit (R, GPU case) | diagnosis without evidence from the documents | infuse reads every document to its last line (coverage by construction); facts with verified citations enter the context; the diagnosis requires evidence from the documents | covered |
+| A3 | Reads pieces and says it read (R ~4+8) | coverage < 100% | Read pages instead of cutting the middle; the diagnosis evidence requires the file read whole | covered |
+| A4 | Claims "I read X" in the report without having read it | read claim × coverage | a `read` claim in the Report is checked against the coverage of what infuse showed the agent | covered |
+| A5 | Uses a library/API without researching the documentation (R ~30, P D2) | new import/host in the diff | documentation consulted in the turn before writing | covered |
+| A6 | Uses command options without having read about them (R, RenderDoc case) | `--option` × text actually read | command refused with the list of options | covered |
+| A7 | Reads only part of a page and acts (R) | parts of the page read | a page read in parts blocks action until it is finished | covered |
+| A8 | Trial and error (R ~25, P G1) | repeated failures; the same command after each adjustment | research gate; the measure-and-tweak loop demands a new diagnosis | covered |
+| A9 | Repropones what the project or the user already rejected (R ~12) | proposal × recorded decisions | project knowledge in the context + diagnosis; the user's prohibitions are structured | partial (see F4) |
+| A10 | Loses the thread after compaction (R ~6, P G5) | work redone, rules forgotten | literal requests preserved; safe compaction; **diagnosis, plan and prohibitions reinjected on every request** | covered |
+| A11 | Copies code the instructions forbid copying (R ~6) | clone of a passage from the reference | compiled rule with citation + clone detector | covered |
 
-## B. Honestidade e fraude
+## B. Honesty and fraud
 
-| # | Falha | Sinal | Trava | Estado |
+| # | Failure | Signal | Lock | State |
 |---|---|---|---|---|
-| B1 | Diz que fez, testou ou corrigiu sem ter feito (R ~40, P B1) | afirmação × execução | Report com afirmações estruturadas conferidas contra o que rodou | coberta |
-| B2 | Escopo falso (mediu outra coisa e relatou como pedido) (R ~8) | comando citado × comando executado | afirmação de comando exige o comando exato executado | parcial |
-| B3 | Edita, inverte ou apaga testes para passar (R ~5, P A1) | diff em arquivo de teste | sentinela pede autorização ao usuário | coberta |
-| B4 | Pula ou desliga testes (skip/only/xfail) (P A2) | marcador novo no diff | detector de atalhos | coberta |
-| B5 | Silencia o verificador (ts-ignore, eslint-disable, `any`, catch vazio) (P A10/A11) | supressão nova no diff | hoje só avisa; **passa a bloquear** sem justificativa na mesma linha | parcial |
-| B6 | Sai cedo ou falsifica o código de saída (`|| true`, `exit(0)`) (P A3) | `|| true` no comando de teste; `exit(0)` novo fora do ponto de entrada | recusar | **falta** |
-| B7 | Caso especial para os valores do teste (P A4) | literais dos testes no código de produção, dentro de condição | recusar | **falta** |
-| B8 | Igualdade ou timer sempre verdadeiros, patch no framework (P A5/A6) | `__eq__` que retorna constante; escrita em conftest/setup/scorer | recusar; arquivos de infraestrutura de teste protegidos | **falta** |
-| B9 | Mexe em limiares, baselines e orçamentos para passar (R ~5) | escrita em arquivos lidos pelas verificações declaradas | arquivos de baseline/orçamento protegidos | **falta** |
-| B10 | Placeholders, stubs e TODO no lugar de implementação (R, P C1/A9) | corpo de função reduzido a constante ou `throw`; marcadores TODO/FIXME/HACK novos | recusar o aumento | **falta** |
-| B11 | Inventa URLs e fontes (P D4) | URL citada × URLs efetivamente buscadas | recusar o fim do turno | **falta** |
-| B12 | Anuncia "encontrei a causa" várias vezes (R ~10) | — | diagnóstico estruturado + novo diagnóstico com evidência nova | coberta |
-| B13 | Blefa ou bajula ("você tem razão") (R ~12) | só linguagem | não mecânico; mitigado pelo Report conferido | não mecânico |
+| B1 | Says it did, tested or fixed something without having done it (R ~40, P B1) | claim × execution | Report with structured claims checked against what ran | covered |
+| B2 | False scope (measured something else and reported it as the request) (R ~8) | cited command × executed command | a command claim requires the exact command that ran | covered |
+| B3 | Edits, reverses or deletes tests to make them pass (R ~5, P A1) | diff in a test file | sentinel asks the user for authorization | covered |
+| B4 | Skips or disables tests (skip/only/xfail) (P A2) | new marker in the diff | shortcut detector | covered |
+| B5 | Silences the checker (ts-ignore, eslint-disable, `any`, empty catch) (P A10/A11) | new suppression in the diff | a suppression without its reason on the same line is refused — for Write/Edit and for shell writes (heredoc pre-check and turn audit); with the reason it passes | covered |
+| B6 | Exits early or fakes the exit code (`|| true`, `exit(0)`) (P A3) | `|| true` in the test command; new `exit(0)` outside the entry point | test runs judged by the real exit code; swallowing is refused | covered |
+| B7 | Special-cases the test values (P A4) | test literals in production code, inside a condition | refused | covered |
+| B8 | Equality or timers that are always true, patches in the framework (P A5/A6) | `__eq__` returning a constant; writes to conftest/setup/scorer | refused; test infrastructure files protected (the user decides every time) | covered |
+| B9 | Changes thresholds, baselines and budgets to pass (R ~5) | writes to files read by the declared verifications | baseline/threshold/budget/golden/coverage files are verdict containers: the user decides every time, and a shell write to one blocks the turn end | covered |
+| B10 | Placeholders, stubs and TODO instead of implementation (R, P C1/A9) | function body reduced to a constant or `throw`; new TODO/FIXME/HACK markers | refuse the growth | covered |
+| B11 | Invents URLs and sources (P D4) | cited URL × URLs actually fetched | refuse the end of the turn | covered |
+| B12 | Announces "I found the cause" several times (R ~10) | — | structured diagnosis + new diagnosis with new evidence | covered |
+| B13 | Bluffs or flatters ("you are right") (R ~12) | language only | not mechanical; mitigated by the checked Report | not mechanical |
 
-## C. Abordagem e escopo
+## C. Approach and scope
 
-| # | Falha | Sinal | Trava | Estado |
+| # | Failure | Signal | Lock | State |
 |---|---|---|---|---|
-| C1 | Trata sintomas, não a causa (R ~30) | laço, regressão, auto-reversão | diagnóstico obrigatório; sinais objetivos exigem novo diagnóstico | coberta |
-| C2 | Escolhe o caminho barato (R ~15) | — | diagnóstico + revisão independente obrigatória | parcial (não mecânico) |
-| C3 | Corta escopo, desliga recurso, apaga código para "resolver" (R ~12, P C4) | Write que remove grande parte de um arquivo existente | exigir que o diagnóstico/plano cite o arquivo e a remoção | **falta** |
-| C4 | Arquivos deus, soltos, sem organização; CSS espalhado; estado global; dados sem schema (R) | diff × regras de arquitetura | regras de arquitetura em toda escrita (só o novo é julgado) | coberta |
-| C5 | Desfaz o próprio trabalho, oscila (P C3) | arquivo volta a um conteúdo anterior do turno | exige novo diagnóstico | coberta |
-| C6 | Quebra o que funcionava (R ~8) | verificação declarada passava e falha | exige novo diagnóstico; o fim do turno exige as verificações declaradas verdes | coberta |
-| C7 | Ferramentas, relatórios e sondas em vez de corrigir (R ~8) | ferramenta de medição própria × comandos declarados | comandos declarados obrigatórios após alterações | coberta |
+| C1 | Treats symptoms, not the cause (R ~30) | loop, regression, self-reversal | mandatory diagnosis; objective signals demand a new diagnosis | covered |
+| C2 | Chooses the cheap path (R ~15) | — | diagnosis + mandatory independent review | partial (not mechanical) |
+| C3 | Cuts scope, disables a feature, deletes code to "solve" it (R ~12, P C4) | Write that removes most of an existing file | the diagnosis/plan must cite the file and the removal | covered |
+| C4 | God files, scattered code, no organization; CSS spread out; global state; data without a schema (R) | diff × architecture rules | architecture rules on every write (only the new is judged) | covered |
+| C5 | Undoes its own work, oscillates (P C3) | file back to an earlier content of the turn | demands a new diagnosis | covered |
+| C6 | Breaks what worked (R ~8) | declared verification used to pass and now fails | demands a new diagnosis; the end of the turn requires the declared verifications green | covered |
+| C7 | Tools, reports and probes instead of fixing (R ~8) | own measurement tool × declared commands | declared commands required after changes | covered |
 
-## D. Processo, testes e medição
+## D. Process, tests and measurement
 
-| # | Falha | Sinal | Trava | Estado |
+| # | Failure | Signal | Lock | State |
 |---|---|---|---|---|
-| D1 | Medição atrás de medição (R ~45) | comando não-leitura antes do diagnóstico; laço | diagnóstico antes de medir; laço exige novo diagnóstico | coberta |
-| D2 | Para no meio (R ~25, P B5) | fim de turno com plano aberto; erros de provedor; limite de passos | obrigações de fim de turno; resiliência total; vigia de progresso; retomada após reinício | coberta |
-| D3 | Repete o que trava (R ~8) | mesma chamada falhando | disjuntor: muda abordagem → pesquisa externa → para | coberta |
-| D4 | Deixa processos rodando (R ~6) | processos vivos no fim do turno | listar e encerrar os não declarados como servidor | parcial |
-| D5 | Edita arquivo sem tê-lo lido (P D3) | Edit sem Read | exigido | coberta |
-| D6 | Pacote inventado (slopsquatting) (P D1) | instalação ou import de pacote | conferir no registro antes de instalar | **falta** |
+| D1 | Measurement after measurement (R ~45) | non-reading command before the diagnosis; loop | diagnosis before measuring; the loop demands a new diagnosis | covered |
+| D2 | Stops halfway (R ~25, P B5) | turn end with an open plan; provider errors; step limit | end-of-turn obligations; full resilience; progress watchdog; resume after restart | covered |
+| D3 | Repeats what gets stuck (R ~8) | same call failing | circuit breaker: change approach → external research → stop | covered |
+| D4 | Leaves processes running (R ~6) | processes alive at the end of the turn | every running background process must be named in the Report (id and purpose) or stopped with KillShell | covered |
+| D5 | Edits a file without having read it (P D3) | Edit without Read | required | covered |
+| D6 | Invented package (slopsquatting) (P D1) | install or import of a package | check it in the registry before installing | covered |
 
-## E. Interface e verificação visual
+## E. Interface and visual verification
 
-| # | Falha | Sinal | Trava | Estado |
+| # | Failure | Signal | Lock | State |
 |---|---|---|---|---|
-| E1 | Altera interface e não fotografa nem olha (R ~20, P B4) | diff em css/html/jsx/tsx/vue/svelte sem captura depois | o fim do turno exige captura (Browser screenshot) depois da última alteração de UI | **falta** |
-| E2 | Abre janelas na tela do usuário (R ~17) | — | navegador do agente sem janela; preview no painel | coberta |
+| E1 | Changes the interface without photographing or looking at it (R ~20, P B4) | diff in css/html/jsx/tsx/vue/svelte without a capture afterwards | the end of the turn requires a capture (Browser screenshot) after the last UI change | covered |
+| E2 | Opens windows on the user's screen (R ~17) | — | the agent's browser has no window; preview inside the panel | covered |
 
-## F. Comunicação e controle
+## F. Communication and control
 
-| # | Falha | Sinal | Trava | Estado |
+| # | Failure | Signal | Lock | State |
 |---|---|---|---|---|
-| F1 | Responde em outro idioma (R ~11) | — | idioma da configuração no prompt; mensagens do infuse por catálogo | coberta |
-| F2 | Pergunta em vez de decidir (R ~30) | turno termina em pergunta com plano aberto | obrigações de fim de turno | parcial |
-| F3 | Muda as próprias regras ou hooks (P E5) | escrita em instruções, `.infuse` ou regras | protegidos | coberta |
-| F4 | Faz o que o usuário proibiu na sessão (R ~35, P G3) | chamada × proibição | proibições do usuário compiladas com citação conferida e aplicadas a ferramentas, comandos e caminhos | **falta** |
-| F5 | Usa subagentes depois de proibido, ou paraleliza demais (R ~15) | chamada Agent × proibição | via F4 | **falta** |
-| F6 | Aceita o "pronto" do subagente sem conferir (R ~15, P H3) | resultado do subagente usado sem verificação | afirmações de subagentes entram no Report como não verificadas até haver evidência própria | **falta** |
-| F7 | Comandos destrutivos (rm -rf fora, reset --hard, push --force) (P E1/E2) | comando × lista | sentinela/guarda | coberta |
-| F8 | Injeção de prompt por conteúdo externo (P F2) | conteúdo externo marcado | marcação de conteúdo externo; não vale como pedido | parcial |
-| F9 | Vaza segredos (P F1) | segredo em saída/diff | redação de segredos; cofre do sistema | coberta |
+| F1 | Replies in another language (R ~11) | — | configured language in the prompt; infuse's messages through the catalog | covered |
+| F2 | Asks instead of deciding (R ~30) | turn ends in a question with an open plan | end-of-turn obligations | partial |
+| F3 | Changes its own rules or hooks (P E5) | write to instructions, `.infuse` or rules | protected | covered |
+| F4 | Does what the user forbade in the session (R ~35, P G3) | call × prohibition | the user's prohibitions compiled with verified citations and applied to tools, commands and paths — including shell write targets (heredoc pre-check) and shell changes at the turn boundary | covered |
+| F5 | Uses subagents after being forbidden, or parallelizes too much (R ~15) | Agent call × prohibition | through F4 | covered |
+| F6 | Accepts the subagent's "done" without checking (R ~15, P H3) | subagent result used without verification | subagent work enters the Report as not verified until the agent itself produces the evidence | covered |
+| F7 | Destructive commands (rm -rf outside, reset --hard, push --force) (P E1/E2) | command × list | sentinel/guard | covered |
+| F8 | Prompt injection through external content (P F2) | external content marked | external content is marked; it does not count as a request | partial |
+| F9 | Leaks secrets (P F1) | secret in output/diff | secret redaction; system vault; browser captures redacted | covered |
+
+## G. Locks added in the 2026-11-01 hardening pass
+
+| Lock | Failure it closes | State |
+|---|---|---|
+| Control files protected at the executor and by the guard: `.infuse/settings.json`, `.infuse/hooks.json`, `.infuse/base.json`, `.mcp.json`, `.claude/settings.json` | one write disarms the filter or self-approves a command | covered (`containment_test.go`) |
+| Project settings can only tighten mode/permissions, never loosen them | a project file turns the filter off | covered (`settings_test.go`) |
+| Guard rooted at the real project, case-insensitive, any-depth records, symlinks/junctions both ways, `mklink` refused | worktree `../../`, `.INFUSE`, junction read bypass | covered |
+| Indirect writers: `sed --in-place`, `curl -o`, `wget -O`, `sort -o`, PowerShell `-EncodedCommand`, inline script paths | writes that dodge the writing-command list | covered |
+| Hook commands judged by the guard; hook/MCP approvals HMAC-signed with a key outside the project; MCP read-only hints ignored | hook/MCP self-approval through an agent-writable file | covered |
+| Heredoc bodies judged before execution (plan, size, base, bans, large removal, suppressors, cheat, baseline ask) | `cat > src/big.js <<EOF` writing before any gate | covered (`shell_precheck_test.go`) |
+| Shell audit applies bans, suppressors and `cheat.test_infra`; failed snapshot blocks the turn; the ask budget ends UNVERIFIED; revert restores shell deletions | rules that stopped at Write/Edit | covered |
+| Oracle criteria anchored outside the project; verdicts HMAC-signed; HTTP without snapshot server refused; port free + child alive; content-hash cache; no-edit turns judged; mission reuses the turn verdict | forged criteria/verdict, timestamp replay, impostor server | covered (`oracle/executor_test.go`) |
+| Background-command claims resolve against the final exit code | a claim confirmed by the first two seconds | covered (claims path) |
+| Screenshot must come from the origin the criteria measure | any screenshot satisfying the visual gate | covered (code + catalog message) |
+| Lessons carry signature + remedy from the vice catalog; reviewer/subagents/auditor receive the grounds; digest overflow/failure is loud; comment language is an observation | knowledge that was cosmetic | covered (`knowledge_test.go`, `map_test.go`) |
+| Package gate reads a local cache; map parsed once per file generation | network and re-parsing in the gate path | covered (`locks_test.go`) |
+| Base `.infuse/base.json` refuses code outside its folders | work with no intended structure | covered (`base_test.go`) |
+| `infuse claude|codex|gemini` and the app launcher start external CLIs through the shim | the Studio launching unfiltered agents | build + desktop tests |

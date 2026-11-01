@@ -1,0 +1,392 @@
+[
+  {
+    "url": "http://127.0.0.1:7481/",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/vendor/xterm.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/css/tokens.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/css/base.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/css/layout.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/css/components.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/vendor/xterm.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/vendor/addon-fit.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/app.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/core/dom.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/core/i18n.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/core/fmt.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/core/icons.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/core/signals.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/core/api.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/dialog.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/menu.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/toast.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/sidebar.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/core/store.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/panes/index.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/view.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/open-in.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/session-actions.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/transcript.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/rail.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/options.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/mount.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/core/messages.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/cards-shared.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/core/markdown.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/toolblock.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/markup.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/effect.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/context.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/wire.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/send.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/keys.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/autocomplete.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/vim.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/under.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/menus.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/attachments.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/components/composer/slash.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/i18n",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/icon.png",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/settings/full",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/projects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/models",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/usage",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/editors",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/sessions/1793545332656?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/sessions/1793545332656/events?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/session/1793545332656/bans?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/projects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/session/1793545332656/bans?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/changes?session=1793545332656&scope=all&root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge&dir=C%3A%2FUsers%2FJonathan%2FDocuments%2Finfuse-teste-bridge",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/pr?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge&dir=C%3A%2FUsers%2FJonathan%2FDocuments%2Finfuse-teste-bridge",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/src/panes/terminal.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/term/open?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/term/t192596ffd913/stream?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/term/t192596ffd913/input?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/term/t192596ffd913/input?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/term/t192596ffd913/close?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/sessions/1793545332656/send?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/projects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/session/1793545332656/suggest?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/usage",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/session/1793545332656/suggest?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/session/1793545332656/suggest?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/changes?session=1793545332656&scope=all&root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge&dir=C%3A%2FUsers%2FJonathan%2FDocuments%2Finfuse-teste-bridge",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/projects/remove",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/projects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7481/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  }
+]

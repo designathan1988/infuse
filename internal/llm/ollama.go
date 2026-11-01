@@ -16,7 +16,7 @@ func (p *ollamaProvider) Name() string { return "ollama" }
 func (p *ollamaProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
 	resp, err := postJSON(ctx, p.client, p.base+"/api/chat", nil, ollamaBody(req))
 	if err != nil {
-		return ModelResult{}, fmt.Errorf("Ollama não respondeu em %s: %w", p.base, err)
+		return ModelResult{}, fmt.Errorf("Ollama did not respond within %s: %w", p.base, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {

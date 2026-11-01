@@ -22,11 +22,11 @@ const digestPartLines = knowledge.DigestPartLines
 
 var factsSpec = knowledge.FactsSpec
 
-func knowledgeDir(root string) string             { return knowledge.Dir(root) }
-func fileHash(b []byte) string                    { return knowledge.FileHash(b) }
+func knowledgeDir(root string) string               { return knowledge.Dir(root) }
+func fileHash(b []byte) string                      { return knowledge.FileHash(b) }
 func loadDigest(root, hash string) *knowledgeDigest { return knowledge.LoadDigest(root, hash) }
-func knowledgeInventory(root string) []string     { return knowledge.Inventory(root) }
-func knowledgePrompt(root string) string          { return knowledge.KnowledgePrompt(root) }
+func knowledgeInventory(root string) []string       { return knowledge.Inventory(root) }
+func knowledgePrompt(root string) string            { return knowledge.KnowledgePrompt(root) }
 
 // digestDocument hands the whole document to the model, part by part, and keeps the verified facts.
 func (s *Session) digestDocument(ctx context.Context, p Provider, rel string, b []byte) (*knowledgeDigest, error) {
@@ -67,8 +67,13 @@ func (s *Session) ensureKnowledge(ctx context.Context, p Provider) {
 	if s.settings.ReadProjectKnowledge != nil && !*s.settings.ReadProjectKnowledge {
 		return
 	}
+	inventory := knowledge.Inventory(s.Root)
+	if len(inventory) >= knowledge.InventoryLimit {
+		s.emitMsg("gate", M("knowledge.overflow", "count", knowledge.InventoryLimit))
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: fmt.Sprintf("knowledge inventory reached its limit of %d documents", knowledge.InventoryLimit)})
+	}
 	var todo []string
-	for _, rel := range knowledge.Inventory(s.Root) {
+	for _, rel := range inventory {
 		b, err := os.ReadFile(filepath.Join(s.Root, filepath.FromSlash(rel)))
 		if err != nil || knowledge.LoadDigest(s.Root, knowledge.FileHash(b)) != nil {
 			continue
@@ -93,8 +98,9 @@ func (s *Session) ensureKnowledge(ctx context.Context, p Provider) {
 				return
 			}
 			d, err := s.digestDocument(ctx, p, rel, b)
-			if err != nil {
-				Journal(s.Root, JournalEntry{Kind: "gate", Detail: "leitura de " + rel + " falhou: " + firstLine(err.Error())})
+			if err != nil { // a document not read is a document not known: say it, never skip it silently
+				Journal(s.Root, JournalEntry{Kind: "gate", Detail: "read of " + rel + " failed: " + firstLine(err.Error())})
+				s.emitMsg("gate", M("knowledge.doc_failed", "file", rel, "error", firstLine(err.Error())))
 				return
 			}
 			_ = writeJSON(filepath.Join(knowledge.Dir(s.Root), d.Hash+".json"), d)

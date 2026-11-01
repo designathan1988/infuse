@@ -15,6 +15,7 @@ var ReRedir = regexp.MustCompile(`(?:^|[^<>&0-9])(\d?)(>>|>\||<>|>)\s*("[^"]*"|'
 var writingCommands = map[string]bool{
 	"rm": true, "rmdir": true, "mv": true, "cp": true, "tee": true, "truncate": true, "install": true, "ln": true, "shred": true,
 	"unlink": true, "rsync": true, "chmod": true, "chown": true, "touch": true, "mkdir": true, "dd": true, "patch": true,
+	"mklink": true, "junction": true, // a link is a way to reach a protected tree under another name
 	// cmd.exe and PowerShell, reached through cmd /c or powershell -Command
 	"del": true, "erase": true, "rd": true, "move": true, "copy": true, "ren": true, "rename": true, "xcopy": true, "robocopy": true,
 	"remove-item": true, "ri": true, "move-item": true, "mi": true, "copy-item": true, "cpi": true, "set-content": true,
@@ -213,15 +214,31 @@ func (g *Guard) checkSimple(fields []string, dir, text string) error {
 		}
 		return nil
 	}
+	if payload, opaque := encodedPayload(head, args); opaque {
+		if payload == "" { // a base64 payload we cannot read is not allowed near the project
+			return g.block("", core.M("guard.command"))
+		}
+		_, _, err := g.guard(payload, dir, true)
+		return err
+	}
 	if payload := nestedPayload(head, args); payload != "" {
 		_, _, err := g.guard(payload, dir, true)
 		return err
 	}
 	switch {
-	case writingCommands[head], scriptingCommands[head]:
+	case scriptingCommands[head]:
+		if rel, ok := g.scriptProtected(dir, args); ok {
+			return g.block(rel, core.M("guard.command"))
+		}
 		return refuse(core.M("guard.command"))
-	case head == "sed" && hasFlag(args, "-i"):
+	case writingCommands[head]:
+		return refuse(core.M("guard.command"))
+	case head == "sed" && hasInPlace(args):
 		return refuse(core.M("guard.sed"))
+	case head == "sort" && (hasFlag(args, "-o") || hasLongFlag(args, "--output")):
+		return refuse(core.M("guard.command"))
+	case (head == "curl" || head == "wget") && outputTarget(args) != "":
+		return refuse(core.M("guard.command"))
 	case head == "find" && findWrites(args):
 		return refuse(core.M("guard.find"))
 	case head == "git" && len(args) > 0 && gitWriting[args[0]]:

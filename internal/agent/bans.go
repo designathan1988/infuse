@@ -1,6 +1,6 @@
 package agent
 
-// The user's prohibitions (docs/FALHAS-DE-AGENTES.md F4, F5). What the user forbids in a session —
+// The user's prohibitions (agent-failure notes F4, F5). What the user forbids in a session —
 // "no subagents", "don't run the game", "don't touch src/legacy", "don't commit" — binds the agent until
 // the user lifts it. The meaning of the user's words, in any language, is compiled by a model into
 // structured prohibitions, each with the exact words of the user's message it comes from; code keeps
@@ -125,6 +125,21 @@ func (s *Session) compileBans(ctx context.Context, p Provider) {
 	s.setBans(list)
 }
 
+// banViolationPath refuses a write to a path a prohibition in force forbids, whoever writes it.
+func (s *Session) banViolationPath(rel string) Msg {
+	p := strings.ToLower(strings.Trim(strings.TrimPrefix(filepath.ToSlash(rel), "./"), "/"))
+	for _, b := range s.Bans() {
+		if b.Off || b.Kind != "path" {
+			continue
+		}
+		v := strings.ToLower(strings.Trim(strings.TrimPrefix(b.Value, "./"), "/"))
+		if v != "" && (p == v || strings.HasPrefix(p, v+"/")) {
+			return M("ban.refused", "quote", b.Quote, "turn", b.Turn)
+		}
+	}
+	return Msg{}
+}
+
 // banCheck refuses a tool call that a prohibition in force forbids.
 func (s *Session) banCheck(name string, input json.RawMessage) Msg {
 	cmd := ""
@@ -145,12 +160,13 @@ func (s *Session) banCheck(name string, input json.RawMessage) Msg {
 			hit = cmd != "" && strings.Contains(cmd, v)
 		case "path":
 			if target != "" && (name == "Write" || name == "Edit" || name == "MultiEdit") {
-				rel := strings.ToLower(filepath.ToSlash(relTo(s.Root, filepath.Join(s.Cwd, target))))
+				rel := filepath.ToSlash(relTo(s.Root, filepath.Join(s.Cwd, target)))
 				if filepath.IsAbs(target) {
-					rel = strings.ToLower(filepath.ToSlash(relTo(s.Root, target)))
+					rel = filepath.ToSlash(relTo(s.Root, target))
 				}
-				p := strings.Trim(strings.TrimPrefix(v, "./"), "/")
-				hit = rel == p || strings.HasPrefix(rel, p+"/")
+				if m := s.banViolationPath(rel); !m.Empty() {
+					return m
+				}
 			}
 		case "action":
 			switch v {

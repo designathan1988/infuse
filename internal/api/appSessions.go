@@ -36,7 +36,7 @@ func appSessions(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 
 func newSessionRoute(w http.ResponseWriter, root string, str func(string) string, boolean func(string) bool) {
 	if st, err := os.Stat(root); err != nil || !st.IsDir() {
-		sendJSON(w, 400, map[string]any{"error": "escolha a pasta do projeto"})
+		sendJSON(w, 400, map[string]any{"error": "choose the project folder", "code": "project.chooseRoot"})
 		return
 	}
 	s := agent.NewSession(root)
@@ -112,7 +112,7 @@ func sessionRoute(w http.ResponseWriter, r *http.Request, body map[string]any, r
 	}
 	s, err := agent.LoadSession(root, parts[0])
 	if err != nil {
-		sendJSON(w, 404, map[string]any{"error": "sessão não encontrada"})
+		sendJSON(w, 404, map[string]any{"error": "session not found", "code": "session.notFound"})
 		return true
 	}
 	c := &sessionAPI{w: w, r: r, s: s, body: body, root: root, str: str, num: num, boolean: boolean}
@@ -173,7 +173,7 @@ func (c *sessionAPI) flags(action string) {
 	case "archive":
 		if s.Worktree != "" && !c.boolean("force") {
 			if st := strings.TrimSpace(workspace.GitOutput(s.Worktree, "status", "--porcelain")); st != "" {
-				sendJSON(c.w, 200, map[string]any{"ok": false, "dirty": true, "error": "o worktree tem alterações não commitadas"})
+				sendJSON(c.w, 200, map[string]any{"ok": false, "dirty": true, "error": "the worktree has uncommitted changes", "code": "session.worktreeDirty"})
 				return
 			}
 		}
@@ -253,11 +253,11 @@ func (c *sessionAPI) reviewComments() {
 	b, _ := json.Marshal(c.body["comments"])
 	_ = json.Unmarshal(b, &items)
 	if len(items) == 0 {
-		sendJSON(c.w, 400, map[string]any{"error": "nenhum comentário"})
+		sendJSON(c.w, 400, map[string]any{"error": "no comments", "code": "session.noComments"})
 		return
 	}
 	var sb strings.Builder
-	sb.WriteString("Comentários de revisão no diff. Aplique cada um e mostre o resultado:\n")
+	sb.WriteString("Review comments on the diff. Apply each one and show the result:\n")
 	for _, it := range items {
 		fmt.Fprintf(&sb, "\n- %s:%d  `%s`\n  %s\n", it.Path, it.Line, strings.TrimSpace(it.Code), it.Text)
 	}
@@ -302,7 +302,7 @@ func (c *sessionAPI) procs() {
 	case "output":
 		text, ok := s.ProcOutput(c.str("id"))
 		if !ok {
-			sendJSON(c.w, 404, map[string]any{"error": "processo não encontrado"})
+			sendJSON(c.w, 404, map[string]any{"error": "process not found", "code": "proc.notFound"})
 			return
 		}
 		sendJSON(c.w, 200, map[string]any{"output": text})

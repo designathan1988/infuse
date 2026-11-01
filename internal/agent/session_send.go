@@ -63,15 +63,23 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 		blocks = append(blocks, Block{Type: "text", Text: "<hook-context>\n" + hook.Message + "\n</hook-context>"})
 	}
 	s.Messages = append(s.Messages, Message{Role: "user", Content: blocks, TS: time.Now().UnixMilli()})
-	if s.Turn == 1 && (s.Title == "" || s.Title == "Nova sessão") {
+	if s.Turn == 1 && (s.Title == "") {
 		s.Title = truncate(strings.SplitN(strings.TrimSpace(text), "\n", 2)[0], 60)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.Working = true
 	s.Mu.Unlock()
-	if work := s.workRoot(); !exists(filepath.Join(work, ".git")) && !exists(filepath.Join(s.Root, ".git")) {
-		snapshotTurn(s.Root, work, s.ID, s.Turn) // the base of "Alterações", whatever changes the files
+	// The tree at the start of the turn: the base of the "Changes" view and of the shell-write audit, which
+	// judges every file changed by anything other than the write tools.
+	if err := snapshotTurn(s.Root, s.workRoot(), s.ID, s.Turn); err != nil {
+		s.Mu.Lock()
+		s.snapshotErr = err
+		s.Mu.Unlock()
+	} else {
+		s.Mu.Lock()
+		s.snapshotErr = nil
+		s.Mu.Unlock()
 	}
 	s.emit("turn", map[string]any{"turn": s.Turn, "text": text, "title": s.Title})
 	s.save()

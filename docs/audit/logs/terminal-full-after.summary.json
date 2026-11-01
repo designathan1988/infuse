@@ -1,0 +1,16 @@
+{
+  "consoleErrors": [],
+  "httpErrors": [
+    {
+      "url": "http://127.0.0.1:7481/api/term/td6f04c60b510/stream",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://127.0.0.1:7481/api/term/t04382e83f98c/stream",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "requests": 83
+}

@@ -26,7 +26,7 @@ type folderListing struct {
 func listFolders(p string) folderListing {
 	out := folderListing{Dirs: []folderEntry{}, Roots: []folderEntry{}}
 	home := core.HomeDir()
-	out.Roots = append(out.Roots, folderEntry{Name: "Início", Path: home})
+	out.Roots = append(out.Roots, folderEntry{Name: "Home", Path: home})
 	for _, sub := range []string{"Documents", "Desktop", "Downloads", "Projects", "src", "dev", "code"} {
 		if d := filepath.Join(home, sub); core.Exists(d) {
 			out.Roots = append(out.Roots, folderEntry{Name: sub, Path: d})

@@ -1,0 +1,240 @@
+package llm
+
+// The mock provider plays a scripted agent: it reacts to the last user text with deterministic tool
+// calls, so the whole loop (streaming, permissions, the filter, checkpoints) runs without a key.
+// Its "demo" flow follows the protocol infuse enforces — list, read, diagnose, run, write — so the
+// demonstration shows a complete turn instead of stopping at the diagnosis gate.
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"time"
+
+	"infuse/internal/core"
+)
+
+type mockProvider struct{}
+
+func (m *mockProvider) Name() string { return "mock" }
+
+func (m *mockProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
+	if req.ForceTool != "" { // a forced structured answer (askJSON): the empty answer is valid and honest
+		in := json.RawMessage("{}")
+		emit(StreamEvent{Kind: "tool_start", ID: "tu_f", Name: req.ForceTool})
+		emit(StreamEvent{Kind: "tool_input", ID: "tu_f", Text: "{}"})
+		emit(StreamEvent{Kind: "tool_end", ID: "tu_f", Name: req.ForceTool})
+		return ModelResult{Content: []Block{{Type: "tool_use", ID: "tu_f", Name: req.ForceTool, Input: in}}, StopReason: "tool_use", Usage: Usage{Input: 300, Output: 5}}, nil
+	}
+	d := &mockDialogue{req: req, emit: emit}
+	if d.isReview() { // the independent reviewer is played by the same scripted model
+		return d.say("VERDICT: APPROVE")
+	}
+	if d.lastIsToolResult() {
+		if name, input, ok := d.demoStep(); ok {
+			return d.call(name, input)
+		}
+		r := d.last()
+		if strings.Contains(r.Content, "ls-step") {
+			return d.call("Write", map[string]any{"path": "src/demo.ts", "content": "export const demo = () => `ok ${1}`;\n"})
+		}
+		return d.say("Done. The tool returned: " + core.Truncate(strings.TrimSpace(r.Content), 160))
+	}
+	text := ""
+	for _, b := range d.lastBlocks() {
+		if b.Type == "text" {
+			text += b.Text
+		}
+	}
+	switch {
+	case mockWants(text, "demo"):
+		return d.call("Bash", map[string]any{"command": "echo ls-step && ls"})
+	case mockWants(text, "heredoc"):
+		return d.call("Bash", map[string]any{"command": "cat > src/h.ts <<EOF\nexport const h = `x${y}`;\nEOF\necho feito"})
+	case mockWants(text, "oracle") || mockWants(text, "oráculo"):
+		return d.call("Write", map[string]any{"path": ".infuse/oracle/done.md", "content": "hack"})
+	case mockWants(text, "pergunta"):
+		return d.call("AskUserQuestion", map[string]any{"question": "Which approach?", "options": []string{"A", "B"}})
+	}
+	return d.say("Hello. I am the demonstration provider: ask for “demo”, “heredoc”, “oracle” or “question” to see the filter act.")
+}
+
+func mockWants(text, word string) bool { return strings.Contains(strings.ToLower(text), word) }
+
+// mockDialogue reads the conversation and answers the next scripted step.
+type mockDialogue struct {
+	req  ModelRequest
+	emit func(StreamEvent)
+}
+
+func (d *mockDialogue) lastBlocks() []Block {
+	msgs := d.req.Messages
+	if len(msgs) == 0 {
+		return nil
+	}
+	return msgs[len(msgs)-1].Content
+}
+
+func (d *mockDialogue) last() Block {
+	bs := d.lastBlocks()
+	if len(bs) == 0 {
+		return Block{}
+	}
+	return bs[0]
+}
+
+func (d *mockDialogue) lastIsToolResult() bool {
+	l := d.last()
+	return l.Type == "tool_result"
+}
+
+func (d *mockDialogue) say(s string) (ModelResult, error) {
+	for _, ch := range strings.SplitAfter(s, " ") {
+		d.emit(StreamEvent{Kind: "text", Text: ch})
+		time.Sleep(8 * time.Millisecond)
+	}
+	return ModelResult{Content: []Block{{Type: "text", Text: s}}, StopReason: "end_turn", Usage: Usage{Input: 1200, Output: len(s) / 4}}, nil
+}
+
+func (d *mockDialogue) call(name string, input any) (ModelResult, error) {
+	in, _ := json.Marshal(input)
+	id := "tu_" + name
+	d.emit(StreamEvent{Kind: "tool_start", ID: id, Name: name})
+	d.emit(StreamEvent{Kind: "tool_input", ID: id, Text: string(in)})
+	d.emit(StreamEvent{Kind: "tool_end", ID: id, Name: name})
+	return ModelResult{Content: []Block{{Type: "text", Text: "Working on it."}, {Type: "tool_use", ID: id, Name: name, Input: in}}, StopReason: "tool_use", Usage: Usage{Input: 1500, Output: 60}}, nil
+}
+
+// demoStep is the protocol the demo follows, one tool per model turn: LS, Read, Diagnosis, Bash,
+// Write. It stops when every step has run, so a second "demo" message just answers.
+func (d *mockDialogue) demoStep() (string, map[string]any, bool) {
+	if !d.isDemo() {
+		return "", nil, false
+	}
+	counts := map[string]int{}
+	for _, msg := range d.req.Messages {
+		for _, b := range msg.Content {
+			if b.Type == "tool_use" {
+				counts[b.Name]++
+			}
+		}
+	}
+	switch {
+	case counts["LS"] == 0:
+		return "LS", map[string]any{"path": "."}, true
+	case counts["Read"] == 0:
+		return "Read", map[string]any{"path": d.demoFile()}, true
+	case counts["Diagnosis"] == 0:
+		return "Diagnosis", d.demoDiagnosis(), true
+	case counts["Bash"] == 0:
+		return "Bash", map[string]any{"command": "echo ls-step && ls"}, true
+	case counts["TodoWrite"] == 0:
+		return "TodoWrite", map[string]any{"tasks": []map[string]any{
+			{"id": "1", "text": "Create the demo file", "status": "in_progress", "proof": "src/demo.ts exists and exports demo"},
+			{"id": "2", "text": "Confirm the turn closes with every task done", "status": "pending", "proof": "the plan shows both tasks done"},
+		}}, true
+	case counts["Write"] == 0:
+		return "Write", map[string]any{"path": "src/demo.ts", "content": "export const demo = () => `ok ${1}`;\n"}, true
+	case counts["TodoWrite"] == 1:
+		return "TodoWrite", map[string]any{"tasks": []map[string]any{
+			{"id": "1", "text": "Create the demo file", "status": "done", "proof": "src/demo.ts exists and exports demo"},
+			{"id": "2", "text": "Confirm the turn closes with every task done", "status": "done", "proof": "the plan shows both tasks done"},
+		}}, true
+	case counts["Report"] == 0:
+		return "Report", map[string]any{
+			"summary": "Created src/demo.ts from the project's own documentation.",
+			"claims": []map[string]any{
+				{"text": "src/demo.ts was created", "kind": "file", "ref": "src/demo.ts"},
+				{"text": "Every task in the plan is done", "kind": "other"},
+			},
+		}, true
+	}
+	return "", nil, false
+}
+
+func (d *mockDialogue) isReview() bool {
+	for _, msg := range d.req.Messages {
+		for _, b := range msg.Content {
+			if b.Type == "text" && strings.Contains(b.Text, "VERDICT:") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (d *mockDialogue) isDemo() bool {
+	for _, msg := range d.req.Messages {
+		if msg.Role != "user" {
+			continue
+		}
+		for _, b := range msg.Content {
+			if b.Type == "text" && mockWants(b.Text, "demo") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// demoFile picks the documentation file first: a diagnosis must cite what the project already knows.
+func (d *mockDialogue) demoFile() string {
+	for _, msg := range d.req.Messages {
+		for _, b := range msg.Content {
+			if b.Type != "tool_result" {
+				continue
+			}
+			for _, line := range strings.Split(b.Content, "\n") {
+				name := strings.TrimSpace(line)
+				if name == "" || strings.HasSuffix(name, "/") || strings.ContainsAny(name, " \t") {
+					continue
+				}
+				if strings.HasSuffix(strings.ToLower(name), ".md") {
+					return name
+				}
+			}
+		}
+	}
+	return "README.md"
+}
+
+func (d *mockDialogue) demoDiagnosis() map[string]any {
+	file := d.demoFile()
+	q1, q2 := mockQuotes(d.last().Content)
+	return map[string]any{
+		"problem":    "The demo asks for a small file to be created in the project.",
+		"root_cause": "The project has no demo file yet, so there is nothing to show.",
+		"approach":   "Create src/demo.ts exporting a small function built from the project's own conventions.",
+		"why_cause":  "Adding the missing file removes the cause directly instead of working around one symptom.",
+		"evidence": []map[string]any{
+			{"file": file, "quote": q1, "supports": "what the project documents about its own purpose"},
+			{"file": file, "quote": q2, "supports": "the conventions the demo file should follow"},
+		},
+	}
+}
+
+// mockQuotes extracts two verbatim lines from a Read result (numbered "N\tline").
+func mockQuotes(read string) (string, string) {
+	var qs []string
+	for _, line := range strings.Split(read, "\n") {
+		i := strings.IndexByte(line, '\t')
+		if i < 0 {
+			continue
+		}
+		text := strings.TrimSpace(line[i+1:])
+		if len(strings.Fields(text)) < 3 {
+			continue
+		}
+		qs = append(qs, text)
+		if len(qs) == 2 {
+			break
+		}
+	}
+	switch len(qs) {
+	case 0:
+		return "the project has no documentation to quote", "the project has no documentation to quote"
+	case 1:
+		return qs[0], qs[0]
+	}
+	return qs[0], qs[1]
+}

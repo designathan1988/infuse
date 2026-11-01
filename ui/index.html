@@ -12,20 +12,20 @@
 <link rel="stylesheet" href="/css/components.css">
 </head>
 <body>
-<aside class="app-sidebar" data-i18n-aria="sidebar.sessions" aria-label="Sessões">
+<aside class="app-sidebar" data-i18n-aria="sidebar.sessions" aria-label="Sessions">
   <div class="sidebar-top">
-    <button class="side-nav emph" id="navNew"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="sidebar.newSession">Nova sessão</span><span class="kbd">Ctrl N</span></button>
+    <button class="side-nav emph" id="navNew"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="sidebar.newSession">New session</span><span class="kbd">Ctrl N</span></button>
     <button class="side-nav" id="navScheduled"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span data-i18n="nav.scheduled">Agendadas</span></button>
     <button class="side-nav" id="navCustomize"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span data-i18n="nav.customize">Personalizar</span></button>
   </div>
   <div class="sidebar-search">
     <svg class="i search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m20 20-4-4"/></svg>
-    <input id="search" data-i18n-ph="sidebar.search" placeholder="Buscar sessões" aria-label="Buscar sessões">
+    <input id="search" data-i18n-ph="sidebar.search" placeholder="Search sessions" aria-label="Search sessions">
   </div>
-  <div class="sidebar-head"><span id="sbHeadLabel" data-i18n="sidebar.sessions">Sessões</span><button class="icon-btn" id="btnGroup" data-i18n-title="sidebar.groupSort" title="Agrupar e ordenar" aria-label="Agrupar e ordenar"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg></button></div>
+  <div class="sidebar-head"><span id="sbHeadLabel" data-i18n="sidebar.sessions">Sessions</span><button class="icon-btn" id="btnGroup" data-i18n-title="sidebar.groupSort" title="Agrupar e ordenar" aria-label="Agrupar e ordenar"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg></button></div>
   <div id="sessList" class="session-list" role="list"></div>
   <div class="sidebar-bottom">
-    <button class="btn sm" id="btnSettings"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span data-i18n="nav.settings">Configurações</span></button>
+    <button class="btn sm" id="btnSettings"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg><span data-i18n="nav.settings">Settings</span></button>
     <span class="usage" id="usageToday" data-i18n-title="usage.todayTitle" title="Gasto de hoje (estimativa)"></span>
   </div>
 </aside>
@@ -33,7 +33,7 @@
   <div class="views" id="views"></div>
   <section class="pane-host empty" id="panes"><div class="pane-grip" role="separator" aria-orientation="vertical"></div></section>
 </div>
-<div class="drop-overlay" id="drop" data-i18n="drop.hint">Solte: pasta vira projeto, arquivo vira anexo</div>
+<div class="drop-overlay" id="drop" data-i18n="drop.hint">Drop: a folder becomes a project, a file becomes an attachment</div>
 <script>
   window.__errs = [];
   window.addEventListener('error', e => window.__errs.push('ERR ' + e.message + ' @ ' + (e.filename || '') + ':' + e.lineno));

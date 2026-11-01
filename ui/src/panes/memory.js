@@ -8,13 +8,13 @@ import { pref } from '../core/store.js';
 import { menu } from '../components/menu.js';
 
 const MEM_TYPES = {
-  correcao: ['mem.type.correction', 'mem.type.correctionDesc', 'use pnpm, não npm'],
-  criterio: ['mem.type.criterion', 'mem.type.criterionDesc', 'o formulário valida o e-mail antes de enviar'],
-  decisao: ['mem.type.decision', 'mem.type.decisionDesc', 'CommonJS em vez de ESM: roda no Node 22 sem build'],
-  beco: ['mem.type.deadend', 'mem.type.deadendDesc', 'vite 6 quebra o plugin de PWA; ficar no 5'],
+  correcao: ['mem.type.correction', 'mem.type.correctionDesc', 'use pnpm, not npm'],
+  criterio: ['mem.type.criterion', 'mem.type.criterionDesc', 'the form validates the email before sending'],
+  decisao: ['mem.type.decision', 'mem.type.decisionDesc', 'CommonJS instead of ESM: runs on Node 22 without a build'],
+  beco: ['mem.type.deadend', 'mem.type.deadendDesc', 'vite 6 breaks the PWA plugin; stay on 5'],
   comando: ['mem.type.command', 'mem.type.commandDesc', 'pnpm test -- --run'],
-  arquivo: ['mem.type.file', 'mem.type.fileDesc', 'src/auth.ts concentra a sessão do usuário'],
-  fato: ['mem.type.fact', 'mem.type.factDesc', 'a API de produção fica em api.exemplo.com'],
+  arquivo: ['mem.type.file', 'mem.type.fileDesc', 'src/auth.ts holds the user session'],
+  fato: ['mem.type.fact', 'mem.type.factDesc', 'the production API is at api.example.com'],
 };
 const MEM_SCOPES = { session: 'mem.scope.session', project: 'mem.scope.project', global: 'mem.scope.global' };
 const MEM_PRIO = ['', 'mem.prio.normal', 'mem.prio.important', 'mem.prio.essential'];

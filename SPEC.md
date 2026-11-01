@@ -80,9 +80,19 @@ What escapes: what the model thinks (touches nothing) and the final message it w
 
 ## 7. Delivery slices
 
-> Status (0.5): slice 1 done; the agent now runs *inside* the filter, in a native window, with the oracle guarded in the executor for every tool (see docs/PROMPT-infuse-studio.md,
-> slices 1–3 largely delivered: tools, permissions, sessions, checkpoints, compaction, git, oracle read-only).
-> Next: oracle executor with evidence, bases, subagents with independent reviewer, MCP client.
+> Status (0.5): slice 1 done; the agent runs *inside* the filter, in a native window, with the oracle
+> guarded in the executor for every tool. The oracle executor runs the user's criteria on an immutable
+> snapshot at the end of every turn (including turns that changed nothing, reusing a content-hash
+> verdict), the criteria are anchored in the user's store outside the project and the verdict carries an
+> HMAC, so neither file can be forged inside the project. A shell/MCP/subagent write is judged by the
+> same write rules before the turn can end — heredocs before they run, everything else at the turn
+> boundary. Slice 2 is partially delivered: the starter bases (api, web, cli, interactive), the
+> `.infuse/base.json` choice and out-of-base refusal exist; scaffold creation and the pre-filled map do
+> not. Slice 3 is delivered and anchored. Slice 5's vice catalog now ships as a data table
+> (`internal/data/vices.json`) and lessons carry signature + remedy. Also delivered: tools, permissions,
+> sessions, checkpoints, compaction, git, subagents with an independent reviewer, the MCP client, web
+> search, the desktop bridges and the `infuse claude|codex|gemini` launcher. Still absent: base
+> scaffolds, the FUSE/WinFsp mount, and OS-level sandboxing of the agent's processes.
 
 
 1. **Minimal filter** — launcher + interposed shell (heredoc → write) + map v0 + write watcher. ← this one

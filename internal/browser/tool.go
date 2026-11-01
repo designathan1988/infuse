@@ -30,6 +30,7 @@ type Host interface {
 	Clip(string) string
 	Say(core.Msg) string
 	SayErr(error) string
+	NoteScreenshot(url string) // what the capture looked at, for the turn's visual-evidence gate
 }
 
 type Tool struct{}

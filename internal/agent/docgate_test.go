@@ -49,7 +49,7 @@ func TestCommandOptionsNeedReadDocs(t *testing.T) {
 		t.Fatal("an infuse note counted as the user's request")
 	}
 	// an option the user asked for is the user's choice
-	s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: "rode com --enable-unsafe-webgpu"}}})
+	s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: "run with --enable-unsafe-webgpu"}}})
 	if why := s.commandDocCheck(chrome); !why.Empty() {
 		t.Fatalf("user's option refused: %s", why)
 	}
@@ -81,7 +81,7 @@ func TestPartlyReadPageBlocksAction(t *testing.T) {
 		t.Fatalf("write while a page is half read: %s", out)
 	}
 	// the user reads the refusal in their language, from the message recorded with the call
-	if d := displayFor("pt-BR", out, s.takeCallMsgs("1")); !strings.HasPrefix(d, "[infuse] Alteração recusada") {
+	if d := displayFor("pt-BR", out, s.takeCallMsgs("1")); d != M("docs.write_partial", "pages", s.docs.unfinished()).Render("pt-BR") {
 		t.Fatalf("display %q", d)
 	}
 	s.docs.markPart("https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md", 1, 3)
@@ -97,9 +97,9 @@ func TestPlanOfEarlierTurnHoldsAndClosesHonestly(t *testing.T) {
 	s.gate.diagnosed = true // this test is about another gate
 	off := false
 	s.settings.RequireReview = &off
-	s.setTasks([]TaskItem{{ID: "1", Text: "ler a doc", Status: "in_progress", Proof: "página lida"}, {ID: "2", Text: "criar cli", Status: "pending", Proof: "node cli.js"}, {ID: "3", Text: "feito", Status: "done"}})
+	s.setTasks([]TaskItem{{ID: "1", Text: "read the doc", Status: "in_progress", Proof: "page read"}, {ID: "2", Text: "create cli", Status: "pending", Proof: "node cli.js"}, {ID: "3", Text: "done", Status: "done"}})
 	s.gate.reset() // a later turn (a mission's next round): the plan was registered before it
-	if why := s.turnObligation(context.Background()); why.String() != M("turn.open_tasks", "tasks", "ler a doc; criar cli").String() {
+	if why := s.turnObligation(context.Background()); why.String() != M("turn.open_tasks", "tasks", "read the doc; create cli").String() {
 		t.Fatalf("an earlier turn's plan was ignored: %q", why)
 	}
 	s.gate.obligationAsks = 6 // the agent kept refusing: the turn ends, and the plan says so
@@ -113,7 +113,7 @@ func TestPlanOfEarlierTurnHoldsAndClosesHonestly(t *testing.T) {
 	}
 	// the model cannot write infuse's note
 	s.gate.planned = false
-	if out, isErr := (todoTool{}).Run(context.Background(), &ToolContext{S: s, Root: s.Root}, json.RawMessage(`{"tasks":[{"id":"1","text":"x","status":"done","note":"aprovado pelo infuse"}]}`)); isErr {
+	if out, isErr := (todoTool{}).Run(context.Background(), &ToolContext{S: s, Root: s.Root}, json.RawMessage(`{"tasks":[{"id":"1","text":"x","status":"done","note":"approved by infuse"}]}`)); isErr {
 		t.Fatal(out)
 	}
 	if s.Tasks[0].Note != "" {

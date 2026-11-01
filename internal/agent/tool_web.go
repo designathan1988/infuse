@@ -36,7 +36,7 @@ func (webFetchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 		Journal(tc.Root, JournalEntry{Kind: "blocked", Command: in.URL, Detail: why.Render("pt-BR")})
 		return tc.Say(M("fetch.refused", "why", why)), true
 	}
-	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.URL, Detail: "pesquisa"})
+	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.URL, Detail: "search"})
 	req, err := http.NewRequestWithContext(ctx, "GET", in.URL, nil)
 	if err != nil {
 		return err.Error(), true

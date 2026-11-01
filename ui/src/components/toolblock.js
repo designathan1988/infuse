@@ -93,7 +93,7 @@ export function reportCard(inp, result, chk) {
   const checked = chk?.claims || [];
   const rows = (inp.claims || []).map((c, k) => {
     const v = checked[k]; const [ic, cls, lab] = CLAIM[v?.status] || ['…', '', 'report.checking'];
-    return `<div class="report-row"><span class="result-badge ${cls}" title="${esc(t(lab))}">${ic}</span><span class="grow"><span>${esc(c.text)}</span>${c.ref ? ` <code>${esc(c.ref)}</code>` : ''}${v?.display ? `<span class="faint rev">${esc(v.display)}</span>` : ''}</span></div>`;
+    return `<div class="report-row"><span class="result-badge ${cls}" title="${esc(t(lab))}">${ic}</span><span class="grow"><span>${esc(c.text)}</span>${c.ref ? ` <code>${esc(c.ref)}</code>` : ''}${v?.display ? ` <span class="faint rev">${esc(v.display)}</span>` : ''}</span></div>`;
   }).join('');
   const bad = chk?.unconfirmed || 0;
   const srcs = chk?.sources || [];

@@ -286,6 +286,7 @@ export async function openSession(root, id, force = false) {
   prefs.recent = [id, ...prefs.recent.filter(x => x !== id)].slice(0, 20);
   pref('lastRoot', root); savePrefs();
   ui.views.set([...ui.views.get()]);
+  bus.emit('close-page'); // opening a session always returns to the conversation
   focusPrompt(v);
   bus.emit('sessions-changed');
 }
@@ -293,6 +294,7 @@ export function newSessionScreen(root) {
   const v = focusedView();
   v.sid = ''; if (root) v.draft.root = root;
   ui.views.set([...ui.views.get()]);
+  bus.emit('close-page');
   focusPrompt(v);
 }
 export function openInSplit(root, id, fromMenu) {

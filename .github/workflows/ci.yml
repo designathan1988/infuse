@@ -30,6 +30,8 @@ jobs:
         run: node tools/check-frontend.mjs
       - name: i18n coverage
         run: node scripts/check-i18n.mjs
+      - name: language (English only)
+        run: node scripts/check-language.mjs
       - name: design tokens regenerated
         run: |
           node scripts/gen-tokens.mjs

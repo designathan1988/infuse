@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/config"
 	"infuse/internal/store"
 	"os"
 	"os/exec"
@@ -80,7 +81,10 @@ func approvedHooks() map[string]bool {
 	hookApproveMu.Lock()
 	defer hookApproveMu.Unlock()
 	m := map[string]bool{}
-	_ = readJSON(hookApprovalsFile(), &m)
+	// The approval file is signed by the user's key: an unsigned or edited file approves nothing.
+	if err := config.OpenJSON(hookApprovalsFile(), &m); err != nil {
+		return map[string]bool{}
+	}
 	return m
 }
 
@@ -88,9 +92,9 @@ func approveHook(key string) error {
 	hookApproveMu.Lock()
 	defer hookApproveMu.Unlock()
 	m := map[string]bool{}
-	_ = readJSON(hookApprovalsFile(), &m)
+	_ = config.OpenJSON(hookApprovalsFile(), &m)
 	m[key] = true
-	return writeJSON(hookApprovalsFile(), m)
+	return config.SealJSON(hookApprovalsFile(), m)
 }
 
 // LoadHooks lists every hook command of the project and the global file.
@@ -165,7 +169,7 @@ func removeHook(root, key string) error {
 			return writeJSON(src[0], raw)
 		}
 	}
-	return fmt.Errorf("hook não encontrado")
+	return fmt.Errorf("hook not found")
 }
 
 type hookOutcome struct {
@@ -183,6 +187,17 @@ func (o hookOutcome) blockMsg() Msg {
 	return M("hook.blocked_cmd", "command", o.Command)
 }
 
+// guardedHook judges a hook as the shell command it is: a hook cannot rewrite the oracle, the
+// settings or the evidence on the agent's behalf.
+func (s *Session) guardedHook(h HookEntry) (string, bool) {
+	guarded, _, err := newGuard(s.Root, s.settings.ProtectedPaths).GuardCommand(h.Command, s.workRoot())
+	if err != nil {
+		Journal(s.Root, JournalEntry{Kind: "blocked", Command: h.Command, Detail: "hook refused: " + err.Error()})
+		return "", false
+	}
+	return guarded, true
+}
+
 // runHooks runs the approved hooks of an event whose matcher fits target (a tool name; "" for others).
 func (s *Session) runHooks(ctx context.Context, event, target string, payload map[string]any) hookOutcome {
 	var res hookOutcome
@@ -195,6 +210,11 @@ func (s *Session) runHooks(ctx context.Context, event, target string, payload ma
 				continue
 			}
 		}
+		guarded, ok := s.guardedHook(h)
+		if !ok {
+			continue
+		}
+		h.Command = guarded
 		payload["hook_event_name"] = event
 		payload["session_id"] = s.ID
 		payload["cwd"] = s.workRoot()
@@ -217,7 +237,7 @@ func (s *Session) runHooks(ctx context.Context, event, target string, payload ma
 		if ee, ok := err.(*exec.ExitError); ok {
 			code = ee.ExitCode()
 		}
-		Journal(s.Root, JournalEntry{Kind: "hook", Command: h.Command, Detail: fmt.Sprintf("%s · saída %d", event, code)})
+		Journal(s.Root, JournalEntry{Kind: "hook", Command: h.Command, Detail: fmt.Sprintf("%s · output %d", event, code)})
 		var dec struct {
 			Decision string `json:"decision"`
 			Reason   string `json:"reason"`

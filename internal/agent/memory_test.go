@@ -20,20 +20,20 @@ func TestMemoryToolAndPrompt(t *testing.T) {
 		}
 		return out
 	}
-	run(`{"action":"add","type":"fato","text":"o projeto usa Node 22"}`)
-	run(`{"action":"add","type":"correcao","text":"use pnpm, não npm","priority":3}`)
+	run(`{"action":"add","type":"fato","text":"the project uses Node 22"}`)
+	run(`{"action":"add","type":"correcao","text":"use pnpm, not npm","priority":3}`)
 	run(`{"action":"add","type":"decisao","text":"CommonJS","scope":"session"}`)
 	run(`{"action":"add","type":"comando","text":"go test ./...","scope":"global"}`)
 	p := memoryPrompt(s)
 	if !strings.HasPrefix(p, "- [user correction · project] use pnpm") {
 		t.Fatalf("highest priority first:\n%s", p)
 	}
-	for _, want := range []string{"[decision · session] CommonJS", "[command that worked · global] go test", "[fact · project] o projeto usa Node 22"} {
+	for _, want := range []string{"[decision · session] CommonJS", "[command that worked · global] go test", "[fact · project] the project uses Node 22"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("missing %q in\n%s", want, p)
 		}
 	}
-	if !strings.Contains(buildSystemPrompt(s, &RuleSet{}), "use pnpm, não npm") {
+	if !strings.Contains(buildSystemPrompt(s, &RuleSet{}), "use pnpm, not npm") {
 		t.Fatal("memory not in the system prompt")
 	}
 	id := loadMemory(projectMemoryFile(root))[0].ID
@@ -62,13 +62,13 @@ func TestAgentCannotWriteMemoryFolderDirectly(t *testing.T) {
 }
 
 func TestCompactionKeepsUserWordsVerbatim(t *testing.T) {
-	msgs := append(compactionHead("resumo", []string{"primeiro pedido\nem duas linhas"}),
-		Message{Role: "user", Content: []Block{{Type: "text", Text: "NÃO use npm, use pnpm"}}},
-		Message{Role: "user", Content: []Block{{Type: "tool_result", Content: "saída"}}},
+	msgs := append(compactionHead("summary", []string{"first request\non two lines"}),
+		Message{Role: "user", Content: []Block{{Type: "text", Text: "Do not use npm, use pnpm"}}},
+		Message{Role: "user", Content: []Block{{Type: "tool_result", Content: "output"}}},
 		Message{Role: "user", Kind: "infuse_note", Content: []Block{{Type: "text", Text: "a note of infuse's"}}},
 	)
 	v := verbatimRequests(msgs)
-	if strings.Join(v, "|") != "primeiro pedido\nem duas linhas|NÃO use npm, use pnpm" {
+	if strings.Join(v, "|") != "first request\non two lines|Do not use npm, use pnpm" {
 		t.Fatalf("%q", v)
 	}
 }

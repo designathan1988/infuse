@@ -3,8 +3,11 @@
 package terminal
 
 import (
+	"errors"
 	"infuse/internal/core"
 	"io"
+	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -32,8 +35,9 @@ var (
 )
 
 func Open(root, cwd string, cols, rows int) (*Session, error) {
-	if cwd == "" {
-		cwd = root
+	cwd, err := resolveDir(root, cwd)
+	if err != nil {
+		return nil, err
 	}
 	if cols <= 0 {
 		cols = 100
@@ -51,6 +55,29 @@ func Open(root, cwd string, cols, rows int) (*Session, error) {
 	termsMu.Unlock()
 	go t.pump()
 	return t, nil
+}
+
+// ResolveDir picks an existing absolute directory for a shell: the requested one, the project, the
+// user's home. A shell never starts with an empty working directory.
+func ResolveDir(root, requested string) (string, error) { return resolveDir(root, requested) }
+
+func resolveDir(root, requested string) (string, error) {
+	for _, cand := range []string{requested, root} {
+		if cand == "" {
+			continue
+		}
+		abs, err := filepath.Abs(core.FromMsysPath(cand))
+		if err != nil {
+			continue
+		}
+		if st, err := os.Stat(abs); err == nil && st.IsDir() {
+			return abs, nil
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return home, nil
+	}
+	return "", errors.New("no working directory for the terminal")
 }
 
 func (t *Session) pump() {

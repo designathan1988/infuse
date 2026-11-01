@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"infuse/internal/config"
 	"infuse/internal/core"
 	"path/filepath"
 	"strings"
@@ -92,7 +93,10 @@ func Approved(root, scope, name string, c ServerConfig) bool {
 	mcpApproveMu.Lock()
 	defer mcpApproveMu.Unlock()
 	var m map[string]bool
-	_ = core.ReadJSON(mcpApprovalsFile(), &m)
+	// The file is signed by the user's key: an unsigned or edited file approves nothing.
+	if err := config.OpenJSON(mcpApprovalsFile(), &m); err != nil {
+		return false
+	}
 	return m[mcpFingerprint(root, scope, name, c)]
 }
 
@@ -100,9 +104,9 @@ func Approve(root, scope, name string, c ServerConfig) error {
 	mcpApproveMu.Lock()
 	defer mcpApproveMu.Unlock()
 	m := map[string]bool{}
-	_ = core.ReadJSON(mcpApprovalsFile(), &m)
+	_ = config.OpenJSON(mcpApprovalsFile(), &m)
 	m[mcpFingerprint(root, scope, name, c)] = true
-	return core.WriteJSON(mcpApprovalsFile(), m)
+	return config.SealJSON(mcpApprovalsFile(), m)
 }
 
 // ---------------------------------------------------------------- client

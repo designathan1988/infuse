@@ -26,6 +26,7 @@ export function buildView(v) {
   bindViewFocus(v, el);
   bindViewBar(v, el);
   el.classList.toggle('no-rail', !pref('rail'));
+  el.querySelector('[data-a="rail"]').setAttribute('aria-pressed', String(!!pref('rail')));
   mountTranscript(v, el.querySelector('.chat-scroller'), el.querySelector('.jump-down'));
   mountComposer(v, el.querySelector('.composer'));
   mountRail(v, el.querySelector('.session-rail'));
@@ -89,6 +90,9 @@ function viewChrome(v, el) {
   const snap = L?.snap.get();
   const changes = L?.changes.get();
   el.classList.toggle('home', !snap);
+  // On the new-session screen there is no session to detail and the rail is hidden by CSS: hide the
+  // control with it instead of leaving a visible button that cannot do anything.
+  el.querySelector('[data-a="rail"]').classList.toggle('hidden', !snap);
   if (snap) {
     const title = el.querySelector('.title');
     title.textContent = snap.title || t('sidebar.newSession');

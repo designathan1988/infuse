@@ -1,5 +1,5 @@
 // rail — the session-details column: bans, diagnosis, plan, changes, context, environment, pins,
-// running (procs/agents), mission, done-criteria (Pronto?) with the executor button.
+// running (procs/agents), mission, done-criteria (Done?) with the executor button.
 import { $, $$, esc, h } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { money, ktok, elapsed, fmtDur } from '../core/fmt.js';
@@ -53,7 +53,7 @@ function railMarkup(ctx) {
       ${(snap.pinnedMsgs || []).length ? `<div class="rail-card pins" data-card="pins"><div class="card-head">${t('rail.pinnedMsgs')}<span class="r">${snap.pinnedMsgs.length}</span></div>${snap.pinnedMsgs.map(i => `<div class="li pinli" data-goto="${i}" tabindex="0" role="button"><span class="n">${esc(((snap.messages[i] || { content: [] }).content || []).filter(b => b.type === 'text').map(b => b.display || b.text).join('\n').split('\n')[0].slice(0, 80) || '…')}</span></div>`).join('')}</div>` : ''}
       ${runningCard(L, snap)}
       ${missionCard(L, snap)}
-      <div class="rail-card" data-card="pronto"><div class="card-head">${t('rail.done')}<span class="r">${L.verdict.get() ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[L.verdict.get().verdict] || 'warn'}">${esc(t('verdict.' + L.verdict.get().verdict))}</span>` : `<span class="faint">${t('verdict.notChecked')}</span>`}</span></div>
+      <div class="rail-card" data-card="done"><div class="card-head">${t('rail.done')}<span class="r">${L.verdict.get() ? `<span class="tag ${{ aprovado: 'ok', reprovado: 'bad' }[L.verdict.get().verdict] || 'warn'}">${esc(t('verdict.' + L.verdict.get().verdict))}</span>` : `<span class="faint">${t('verdict.notChecked')}</span>`}</span></div>
         <div class="faint mb-3">${L.verdict.get() ? esc(L.verdict.get().summary || '') : t('verdict.hint')}</div>
         <div class="row"><button class="btn sm line oraclego">${t('rail.doneBtn')}</button><button class="btn sm" data-open="oracle">${t('rail.criteriaBtn')}</button><button class="btn sm revgo" title="${esc(t('review.aria'))}">${t('rail.reviewBtn')}</button></div></div>`;
 }
@@ -160,7 +160,7 @@ function planCard(L, snap, tasks) {
     ${tasks.map(x => {
     const st = x.status === 'in_progress' && !live ? 'stopped' : x.status;
     const [ic, cls] = PLAN_ICON[st] || PLAN_ICON.pending;
-    return `<div class="ptask ${st}"><span class="result-badge rst ${cls}">${ic}</span><span class="grow"><span class="tt">${esc(x.text)}</span>${x.proof ? `<span class="pf">${t('plan.proof')}: <code>${esc(x.proof)}</code></span>` : ''}${x.note ? `<span class="pn">${esc(t(x.note))}</span>` : ''}</span></div>`;
+    return `<div class="plan-task ${st}"><span class="result-badge rst ${cls}">${ic}</span><span class="grow"><span class="tt">${esc(x.text)}</span>${x.proof ? `<span class="pf">${t('plan.proof')}: <code>${esc(x.proof)}</code></span>` : ''}${x.note ? `<span class="pn">${esc(t(x.note))}</span>` : ''}</span></div>`;
   }).join('')}</div>`;
 }
 

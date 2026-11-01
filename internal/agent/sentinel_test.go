@@ -20,9 +20,9 @@ func TestSentinelAsksBeforeChangingAnExistingTest(t *testing.T) {
 	s.Mode = "bypass"       // even "accept everything" stops here
 	s.gate.planned = true   // the protocol's plan rule is tested apart
 	s.Turn, s.TurnStarts = 1, []int{0}
-	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "qualquer pedido"}}}}
+	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "any request"}}}}
 	write := toolRegistry["Write"]
-	for _, p := range []string{"src/soma.test.js", "tests/test_api.py", "pkg/x_test.go", "__tests__/a.js"} {
+	for _, p := range []string{"src/sum.test.js", "tests/test_api.py", "pkg/x_test.go", "__tests__/a.js"} {
 		if !s.sentinelMsg(write, json.RawMessage(`{"path":"`+p+`","content":"x"}`)).Empty() {
 			t.Fatal("a new test file was flagged:", p)
 		}
@@ -33,7 +33,7 @@ func TestSentinelAsksBeforeChangingAnExistingTest(t *testing.T) {
 			t.Fatal("an existing test file was not flagged:", p)
 		}
 	}
-	if !s.sentinelMsg(write, json.RawMessage(`{"path":"src/soma.js","content":"x"}`)).Empty() {
+	if !s.sentinelMsg(write, json.RawMessage(`{"path":"src/sum.js","content":"x"}`)).Empty() {
 		t.Fatal("a code file was flagged")
 	}
 
@@ -53,11 +53,11 @@ func TestSentinelAsksBeforeChangingAnExistingTest(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}()
-	out, isErr := s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "1", Name: "Write", Input: json.RawMessage(`{"path":"src/soma.test.js","content":"test('x', () => {})"}`)})
+	out, isErr := s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "1", Name: "Write", Input: json.RawMessage(`{"path":"src/sum.test.js","content":"test('x', () => {})"}`)})
 	if !isErr || !strings.Contains(out, M("sentinel.test_edit").String()) {
 		t.Fatalf("%v %s", isErr, out)
 	}
-	if b, _ := os.ReadFile(filepath.Join(root, "src", "soma.test.js")); string(b) != "existing test\n" {
+	if b, _ := os.ReadFile(filepath.Join(root, "src", "sum.test.js")); string(b) != "existing test\n" {
 		t.Fatal("the refused write happened")
 	}
 }

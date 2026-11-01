@@ -30,6 +30,16 @@ func apiToken() string {
 // address (defeats DNS rebinding), a browser Origin must be that same origin, and state-changing
 // requests must carry X-Infuse with this run's token — which a cross-site form cannot set and a local
 // process (the agent's Bash) does not know.
+// sensitiveRoute names the read-only routes that still require the application token: they read a
+// file chosen by the caller, fetch a URL, or hand a path to another application.
+func sensitiveRoute(path string) bool {
+	switch path {
+	case "/api/file", "/api/frameable", "/api/open":
+		return true
+	}
+	return false
+}
+
 func sameOrigin(host, origin, method, marker, token string) error {
 	h := strings.ToLower(host)
 	hn := h
@@ -37,16 +47,16 @@ func sameOrigin(host, origin, method, marker, token string) error {
 		hn = h[:i]
 	}
 	if hn != "127.0.0.1" && hn != "localhost" && hn != "[::1]" {
-		return errors.New("host não permitido")
+		return errors.New("host not allowed")
 	}
 	if origin != "" && origin != "null" {
 		u, err := url.Parse(origin)
 		if err != nil || strings.ToLower(u.Host) != h {
-			return errors.New("origem não permitida")
+			return errors.New("origin not allowed")
 		}
 	}
 	if method != "GET" && method != "HEAD" && method != "OPTIONS" && (token == "" || subtle.ConstantTimeCompare([]byte(marker), []byte(token)) != 1) {
-		return errors.New("requisição sem o token do aplicativo")
+		return errors.New("request without the application token")
 	}
 	return nil
 }

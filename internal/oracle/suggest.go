@@ -1,6 +1,6 @@
 package oracle
 
-// Ready-made criteria for "Pronto?", read from what the project already declares (package.json scripts,
+// Ready-made criteria for "Ready?", read from what the project already declares (package.json scripts,
 // go.mod, Cargo.toml, pyproject, .NET, Maven/Gradle, Makefile) so the user adds them with one click
 // instead of writing commands from memory.
 

@@ -10,6 +10,6 @@ import (
 )
 
 func RunWindow(url string) {
-	fmt.Fprintln(os.Stderr, "infuse: esta compilação não inclui a janela nativa (compile com CGO_ENABLED=1). Interface em "+url)
+	fmt.Fprintln(os.Stderr, "infuse: this build does not include the native window (build with CGO_ENABLED=1). UI at "+url)
 	select {}
 }

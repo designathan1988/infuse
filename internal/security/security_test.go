@@ -25,3 +25,17 @@ func TestPrivateTargets(t *testing.T) {
 		}
 	}
 }
+
+// The agent's browser may open the web and the project's local server, but not file:// or metadata.
+func TestBrowserTargets(t *testing.T) {
+	for _, u := range []string{"http://localhost:3000", "http://127.0.0.1:5173/app", "https://example.org/docs", "about:blank"} {
+		if bad, why := BrowserTargetMsg(u); bad {
+			t.Fatalf("%s refused: %s", u, why.String())
+		}
+	}
+	for _, u := range []string{"file:///etc/passwd", "javascript:alert(1)", "data:text/html,x", "http://169.254.169.254/latest/meta-data", "http://metadata.internal/"} {
+		if bad, _ := BrowserTargetMsg(u); !bad {
+			t.Fatalf("%s allowed", u)
+		}
+	}
+}

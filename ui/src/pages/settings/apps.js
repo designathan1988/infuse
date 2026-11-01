@@ -8,8 +8,10 @@ import { toast } from '../../components/toast.js';
 export async function renderApps({ el }) {
   el.append(h(`<h1>${t('settings.appsTitle')}</h1>`), h(`<p class="lead">${t('settings.appsDesc')}</p>`));
   const apps = await api('/api/apps', { root: curRoot() }).catch(() => []);
+  if (!el.isConnected) return; // the page changed while the apps were being read
   for (const a of apps) el.append(appRow(a));
   const eds = await api('/api/editors', { root: '' }).catch(() => []);
+  if (!el.isConnected) return;
   el.append(h(`<h2>${t('settings.editors')}</h2>`), h(`<p class="lead">${eds.length ? eds.map(e => esc(e.name)).join(', ') : t('settings.noEditors')} — ${t('settings.editorsDesc')}</p>`));
 }
 

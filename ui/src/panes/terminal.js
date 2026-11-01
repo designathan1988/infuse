@@ -36,6 +36,7 @@ function showTab(s, tb) {
 
 function closeTerm(s, tb) {
   tb.dead = true;
+  tb.stopInput?.();
   api(`/api/term/${tb.id}/close`, { body: {}, root: s.c.root }).catch(() => { });
   tb.es?.close(); tb.term?.dispose(); tb.el?.remove();
   s.tabs.splice(s.tabs.indexOf(tb), 1);
@@ -51,7 +52,7 @@ function writeFrame(term, e) {
 }
 
 function bindExit(tb, es, term) {
-  es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('terminal.exited')}]\x1b[0m\r\n`); es.close(); tb.dead = true; });
+  es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('terminal.exited')}]\x1b[0m\r\n`); es.close(); tb.dead = true; tb.stopInput?.(); });
   es.onerror = () => {
     if (es.readyState === EventSource.CLOSED || tb.dead) return;
     fetch(sseUrl(`/api/term/${tb.id}/resize`, tb.root), {
@@ -64,25 +65,39 @@ function bindExit(tb, es, term) {
 
 function bindInput(tb, term) {
   let pending = '', timer = null;
+  const flush = () => {
+    timer = null;
+    if (!pending) return;
+    const data = pending; pending = '';
+    api(`/api/term/${tb.id}/input`, { body: { data }, root: tb.root }).catch(() => { });
+  };
   term.onData(d => {
     if (tb.dead) return;
     pending += d;
-    if (!timer) timer = setTimeout(() => {
-      const data = pending; pending = ''; timer = null;
-      fetch(sseUrl(`/api/term/${tb.id}/input`, tb.root), { method: 'POST', headers: tokenHeader(), body: JSON.stringify({ data }) });
-    }, 8);
+    if (!timer) timer = setTimeout(flush, 8);
   });
+  tb.stopInput = () => { if (timer) clearTimeout(timer); timer = null; pending = ''; };
   term.onResize(({ cols, rows }) => api(`/api/term/${tb.id}/resize`, { body: { cols, rows }, root: tb.root }).catch(() => { }));
 }
 
+// Ctrl+letter arriving without a key code (remote desktop, layouts, automation) is still a control
+// character. Copy and paste belong to the browser, so they are never turned into a control byte.
 function bindControlKeys(term) {
   term.attachCustomKeyEventHandler(e => {
-    if (e.type === 'keydown' && e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey && !e.keyCode && /^[a-z]$/i.test(e.key)) {
-      term.input(String.fromCharCode(e.key.toUpperCase().charCodeAt(0) - 64), true);
-      e.preventDefault(); return false;
-    }
-    return true;
+    if (e.type !== 'keydown' || !e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || e.keyCode) return true;
+    const key = e.key.toLowerCase();
+    if (!/^[a-z]$/.test(key) || key === 'v' || (key === 'c' && term.hasSelection())) return true;
+    term.input(String.fromCharCode(key.toUpperCase().charCodeAt(0) - 64), true);
+    e.preventDefault(); return false;
   });
+}
+
+function uniqueName(s, base) {
+  const taken = new Set(s.tabs.map(tb => tb.name));
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
 }
 
 async function openTerm(s, cwd, run, name) {
@@ -94,9 +109,10 @@ async function openTerm(s, cwd, run, name) {
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit); term.open(el); fit.fit();
   bindControlKeys(term);
-  const r = await api('/api/term/open', { body: { cwd: cwd || s.c.dir, cols: term.cols, rows: term.rows, run: run || '' }, root: s.c.root }).catch(e => ({ error: String(e) }));
-  if (r.error) { term.write('\r\n' + r.error + '\r\n'); return; }
-  const tb = { id: r.id, root: s.c.root, term, fit, el, name: name || baseName(r.cwd) || 'shell' + (s.tabs.length + 1) };
+  const r = await api('/api/term/open', { body: { cwd: cwd || s.c.dir, cols: term.cols, rows: term.rows, run: run || '' }, root: s.c.root })
+    .catch(e => ({ error: e.message, code: e.body?.code, args: e.body?.args }));
+  if (r.error) { term.write('\r\n' + (r.code ? t(r.code, r.args) : r.error) + '\r\n'); return; }
+  const tb = { id: r.id, root: s.c.root, term, fit, el, name: uniqueName(s, name || baseName(r.cwd) || t('terminal.shell')) };
   const es = new EventSource(sseUrl(`/api/term/${r.id}/stream`, s.c.root));
   tb.es = es;
   es.onmessage = e => writeFrame(term, e);

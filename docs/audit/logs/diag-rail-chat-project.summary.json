@@ -1,0 +1,11 @@
+{
+  "consoleErrors": [],
+  "httpErrors": [
+    {
+      "url": "http://127.0.0.1:7481/api/term/t192596ffd913/stream?root=C%3A%5CUsers%5CJonathan%5CDocuments%5Cinfuse-teste-bridge",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "requests": 78
+}

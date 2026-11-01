@@ -31,9 +31,9 @@
   .side-group > .group-head .chev { width: var(--space-5); font-size: 9px; color: var(--color-text-tertiary); transition: transform var(--duration-fast); }
   .side-group.closed > .group-head .chev { transform: rotate(-90deg); }
   .side-group.closed .session-row { display: none; }
-  .side-group > .group-head .acts { margin-left: auto; display: flex; gap: var(--space-1); visibility: hidden; }
+  .side-group > .group-head .acts { margin-left: auto; display: flex; gap: var(--space-1); opacity: .35; transition: opacity var(--duration-fast); }
   .side-group > .group-head .acts .icon-btn { width: 20px; height: 20px; }
-  .side-group > .group-head:hover .acts { visibility: visible; }
+  .side-group > .group-head:hover .acts, .side-group > .group-head:focus-within .acts { opacity: 1; }
   .side-group.drop-target > .group-head { outline: var(--border-1) dashed var(--color-accent); }
 
   .session-row { display: flex; align-items: center; gap: var(--space-4); height: var(--space-16); padding: 0 var(--space-3) 0 var(--space-5); border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; color: var(--color-text-secondary); margin: 1px 0; position: relative; }
@@ -74,7 +74,9 @@
   .view-bar .run-badge i { position: absolute; top: 1px; right: 0; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; background: var(--color-ok); color: var(--color-on-accent); font: 600 9.5px/14px var(--font-sans); font-style: normal; display: none; box-sizing: border-box; text-align: center; }
   .view-bar .run-badge.working i { display: block; }
   .view-body { flex: 1; display: flex; min-height: 0; container-type: inline-size; }
-  @container (max-width: 900px) { .view-body .session-rail { display: none; } }
+  /* The details column yields only when nothing fits beside the chat; otherwise it is the user's
+     choice through the rail button, so the button always has a visible effect. */
+  @container (max-width: 600px) { .view-body .session-rail { display: none; } }
   .view-chat { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
   .chat-scroller { flex: 1; overflow: auto; min-height: 0; scrollbar-gutter: stable; }
   .chat-scroller::-webkit-scrollbar { width: var(--space-6); }

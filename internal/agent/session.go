@@ -80,6 +80,10 @@ type Session struct {
 	readFiles     map[string]bool
 	allowAlways   map[string]bool
 	lastError     string
+	snapshotErr   error  // the turn snapshot failed: the turn cannot be audited, so it cannot end clean
+	lastOracleRun string // the last executor run of this session, reused by missions instead of running twice
+	lastOracleSum string
+	lastOracleErr string // the failing checks of that run, for the mission's next message
 	mapTimer      *time.Timer
 	settings      Settings
 	inflight      []Block               // results of the current reply's tool calls, before they join the transcript
@@ -126,7 +130,7 @@ func newSession(root string) *Session {
 	s := &Session{
 		SessionData: SessionData{
 			ID: newSessionID(root), Root: root, Created: time.Now().UnixMilli(), Updated: time.Now().UnixMilli(),
-			Cwd: root, Checkpoints: map[int][]CheckpointFile{}, Title: "Nova sessão",
+			Cwd: root, Checkpoints: map[int][]CheckpointFile{},
 		},
 		State: "idle", subs: map[chan Event]struct{}{}, readFiles: map[string]bool{}, allowAlways: map[string]bool{},
 	}
@@ -230,7 +234,16 @@ func listSessions(root string) []SessionData {
 	return out
 }
 
+// save serializes the session under its lock, so a background save (a finishing turn, a mission
+// step) never reads fields another goroutine is writing.
 func (s *Session) save() {
+	s.Mu.Lock()
+	s.saveLocked()
+	s.Mu.Unlock()
+}
+
+// saveLocked is save for a caller that already holds s.Mu.
+func (s *Session) saveLocked() {
 	s.Updated = time.Now().UnixMilli()
 	s.SchemaVersion = store.Version
 	_ = writeJSON(filepath.Join(sessionsDir(s.Root), s.ID+".json"), s.SessionData)

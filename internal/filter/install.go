@@ -56,6 +56,23 @@ type InstallResult struct {
 	Error        string `json:"error,omitempty"`
 }
 
+// ShimPath is the interposed shell the install role has copied (or will copy) this binary to.
+func ShimPath() string { return shimPath() }
+
+// EnsureShim copies this binary under the shell names without touching any settings file: the
+// launcher points an external agent's shell at it for one process.
+func EnsureShim() error {
+	if err := copySelf(shimPath()); err != nil {
+		return err
+	}
+	if runtime.GOOS != "windows" {
+		if err := copySelf(filepath.Join(filepath.Dir(shimPath()), "sh")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func Install() InstallResult {
 	res := InstallResult{Shim: shimPath(), RealBash: core.FindRealBash(), SettingsFile: claudeSettingsPath(), EnvKey: envKey()}
 	if err := copySelf(res.Shim); err != nil {

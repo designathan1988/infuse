@@ -16,26 +16,26 @@ import (
 	"testing"
 )
 
-const browserTestPage = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Bancada</title>
+const browserTestPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Bench</title>
 <style>body{font:16px system-ui;margin:24px} #toast{position:fixed;right:20px;bottom:20px;padding:12px 18px;background:#1b5e20;color:#fff;border-radius:8px;opacity:0;transform:translateY(20px);transition:all .5s}
-#toast.on{opacity:1;transform:none} #longo{height:2200px} #rodape{width:300px;height:80px;background:rgb(220,20,20);color:#fff} button:hover{outline:3px solid blue}</style></head>
-<body><h1>Bancada de teste</h1>
-<label for="nome">Nome</label> <input id="nome" value="antigo">
-<button id="salvar" onclick="salvar()">Salvar</button>
-<label for="cor">Cor</label> <select id="cor"><option value="r">Vermelho</option><option value="g">Verde</option></select>
-<div id="duplo" ondblclick="this.dataset.n=(+this.dataset.n||0)+1" style="padding:8px;background:#eee;width:120px">duplo</div>
-<div id="direito" oncontextmenu="event.preventDefault();this.dataset.n=(+this.dataset.n||0)+1" style="padding:8px;background:#ddd;width:120px">direito</div>
-<textarea id="nota">texto velho</textarea>
-<input type="file" id="arq">
-<div id="toast"></div><div id="longo"></div><div id="rodape">rodapé</div>
-<script>localStorage.setItem('tema','escuro');
-function salvar(){ setTimeout(()=>{ const t=document.getElementById('toast'); t.textContent='Salvo: '+document.getElementById('nome').value; t.classList.add('on'); console.error('falha simulada'); fetch('/faltando'); }, 600); }</script></body></html>`
+#toast.on{opacity:1;transform:none} #long{height:2200px} #footer{width:300px;height:80px;background:rgb(220,20,20);color:#fff} button:hover{outline:3px solid blue}</style></head>
+<body><h1>Test bench</h1>
+<label for="name">Name</label> <input id="name" value="old">
+<button id="save" onclick="save()">Save</button>
+<label for="color">Color</label> <select id="color"><option value="r">Red</option><option value="g">Green</option></select>
+<div id="double" ondblclick="this.dataset.n=(+this.dataset.n||0)+1" style="padding:8px;background:#eee;width:120px">double</div>
+<div id="right" oncontextmenu="event.preventDefault();this.dataset.n=(+this.dataset.n||0)+1" style="padding:8px;background:#ddd;width:120px">right</div>
+<textarea id="note">old text</textarea>
+<input type="file" id="upload">
+<div id="toast"></div><div id="long"></div><div id="footer">footer</div>
+<script>localStorage.setItem('theme','dark');
+function save(){ setTimeout(()=>{ const t=document.getElementById('toast'); t.textContent='Saved: '+document.getElementById('name').value; t.classList.add('on'); console.error('simulated failure'); fetch('/missing'); }, 600); }</script></body></html>`
 
 // TestAgentBrowserForReal drives a real headless Edge/Chrome through every action of the Browser tool.
 // It needs a browser on the machine: INFUSE_BROWSER_TEST=1 go test -run TestAgentBrowserForReal
 func TestAgentBrowserForReal(t *testing.T) {
 	if os.Getenv("INFUSE_BROWSER_TEST") == "" {
-		t.Skip("INFUSE_BROWSER_TEST=1 para rodar com o navegador real")
+		t.Skip("INFUSE_BROWSER_TEST=1 to run with the real browser")
 	}
 	e := newBrowserTestEnv(t)
 	e.typingAndRecording()
@@ -68,7 +68,7 @@ func newBrowserTestEnv(t *testing.T) *browserTestEnv {
 	}))
 	t.Cleanup(srv.Close)
 	root := t.TempDir()
-	_ = os.WriteFile(filepath.Join(root, "anexo.txt"), []byte("conteúdo"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "attachment.txt"), []byte("content"), 0o644)
 	s := newSession(root)
 	t.Cleanup(closeAgentBrowsers)
 	return &browserTestEnv{t: t, s: s, root: root, srv: srv.URL, out: os.Getenv("INFUSE_BROWSER_TEST_OUT")}
@@ -106,23 +106,23 @@ func (e *browserTestEnv) js(expr string) string {
 
 func (e *browserTestEnv) typingAndRecording() {
 	t := e.t
-	if r := e.run(`{"action":"navigate","url":"` + e.srv + `"}`); !strings.Contains(r, "Bancada") {
+	if r := e.run(`{"action":"navigate","url":"` + e.srv + `"}`); !strings.Contains(r, "Bench") {
 		t.Fatal(r)
 	}
-	if e.js(`!!document.getElementById('__infuse_cursor') || 'sem'`) != "true" {
+	if e.js(`!!document.getElementById('__infuse_cursor') || 'none'`) != "true" {
 		e.run(`{"action":"hover","selector":"h1"}`)
 	}
-	e.run(`{"action":"type","selector":"label=Nome","text":"Jônathan Teste"}`)
-	if v := e.js(`document.getElementById('nome').value`); v != "Jônathan Teste" {
+	e.run(`{"action":"type","selector":"label=Name","text":"John Test"}`)
+	if v := e.js(`document.getElementById('name').value`); v != "John Test" {
 		t.Fatalf("typed %q", v)
 	}
 	// a recording around something that happens over time
 	e.run(`{"action":"record_start"}`)
-	e.run(`{"action":"click","selector":"role=button[name=\"Salvar\"]"}`)
-	e.run(`{"action":"wait_for","text":"Salvo: Jônathan Teste"}`)
+	e.run(`{"action":"click","selector":"role=button[name=\"Save\"]"}`)
+	e.run(`{"action":"wait_for","text":"Saved: John Test"}`)
 	e.run(`{"action":"scroll","dy":300}`)
 	rec := e.run(`{"action":"record_stop"}`)
-	for _, want := range []string{"keyframes", M("browser.ev_console", "type", "error", "text", "falha simulada").String(), "/faltando → 404", M("browser.ev_action", "action", "click").String()} {
+	for _, want := range []string{"keyframes", M("browser.ev_console", "type", "error", "text", "simulated failure").String(), "/missing → 404", M("browser.ev_action", "action", "click").String()} {
 		if !strings.Contains(rec, want) {
 			t.Fatalf("recording without %q:\n%s", want, rec)
 		}
@@ -135,25 +135,25 @@ func (e *browserTestEnv) typingAndRecording() {
 
 func (e *browserTestEnv) pointerAndKeyboard() {
 	t := e.t
-	if r := e.run(`{"action":"select","selector":"label=Cor","value":"Verde"}`); !strings.Contains(r, M("browser.selected", "option", "Verde").String()) || e.js(`document.getElementById('cor').value`) != "g" {
+	if r := e.run(`{"action":"select","selector":"label=Color","value":"Green"}`); !strings.Contains(r, M("browser.selected", "option", "Green").String()) || e.js(`document.getElementById('color').value`) != "g" {
 		t.Fatal(r)
 	}
-	e.run(`{"action":"click","selector":"#duplo","count":2}`)
-	e.run(`{"action":"click","selector":"text=direito","button":"right"}`)
-	if e.js(`document.getElementById('duplo').dataset.n + '/' + document.getElementById('direito').dataset.n`) != "1/1" {
+	e.run(`{"action":"click","selector":"#double","count":2}`)
+	e.run(`{"action":"click","selector":"text=right","button":"right"}`)
+	if e.js(`document.getElementById('double').dataset.n + '/' + document.getElementById('right').dataset.n`) != "1/1" {
 		t.Fatal("double or right click not received")
 	}
-	e.run(`{"action":"click","selector":"#nota"}`)
+	e.run(`{"action":"click","selector":"#note"}`)
 	e.run(`{"action":"press","key":"Control+A"}`)
 	e.run(`{"action":"press","key":"Backspace"}`)
-	if v := e.js(`document.getElementById('nota').value`); v != "" {
+	if v := e.js(`document.getElementById('note').value`); v != "" {
 		t.Fatalf("Control+A Backspace left %q", v)
 	}
-	e.run(`{"action":"hover","selector":"#salvar"}`)
-	if e.js(`document.getElementById('salvar').matches(':hover')`) != "true" {
+	e.run(`{"action":"hover","selector":"#save"}`)
+	if e.js(`document.getElementById('save').matches(':hover')`) != "true" {
 		t.Fatal("hover")
 	}
-	if r := e.run(`{"action":"text","selector":"#toast"}`); !strings.Contains(r, "Salvo: Jônathan Teste") {
+	if r := e.run(`{"action":"text","selector":"#toast"}`); !strings.Contains(r, "Saved: John Test") {
 		t.Fatal(r)
 	}
 }
@@ -163,7 +163,7 @@ func (e *browserTestEnv) captures() {
 	if r := e.run(`{"action":"screenshot"}`); !strings.Contains(r, "2880x1800") {
 		t.Fatal(r)
 	}
-	r := e.run(`{"action":"screenshot","selector":"#rodape"}`)
+	r := e.run(`{"action":"screenshot","selector":"#footer"}`)
 	jpg, _ := base64.StdEncoding.DecodeString(e.s.pendingImages[len(e.s.pendingImages)-1].Data)
 	im, err := jpeg.Decode(bytes.NewReader(jpg))
 	if err != nil {
@@ -178,17 +178,17 @@ func (e *browserTestEnv) captures() {
 
 func (e *browserTestEnv) diagnostics() {
 	t := e.t
-	e.run(`{"action":"upload","selector":"#arq","path":"anexo.txt"}`)
-	if e.js(`document.getElementById('arq').files[0]?.name`) != "anexo.txt" {
+	e.run(`{"action":"upload","selector":"#upload","path":"attachment.txt"}`)
+	if e.js(`document.getElementById('upload').files[0]?.name`) != "attachment.txt" {
 		t.Fatal("upload")
 	}
 	for in, want := range map[string]string{
 		`{"action":"network","only_issues":true}`: "404",
-		`{"action":"console"}`:                    "falha simulada",
+		`{"action":"console"}`:                    "simulated failure",
 		`{"action":"performance"}`:                "timings (ms)",
-		`{"action":"a11y"}`:                       `button "Salvar"`,
-		`{"action":"storage"}`:                    "escuro",
-		`{"action":"dom","selector":"#cor"}`:      "Verde",
+		`{"action":"a11y"}`:                       `button "Save"`,
+		`{"action":"storage"}`:                    "dark",
+		`{"action":"dom","selector":"#color"}`:    "Green",
 	} {
 		if r := e.run(in); !strings.Contains(r, want) {
 			t.Fatalf("%s without %q: %s", in, want, r)

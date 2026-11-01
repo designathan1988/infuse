@@ -5,11 +5,11 @@ package connections
 // (secrets_*.go), never in settings.json. Sessions pick a connection and a model from it.
 
 import (
+	"context"
+	"errors"
 	"infuse/internal/config"
 	"infuse/internal/core"
 	"infuse/internal/llm"
-	"context"
-	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -23,18 +23,20 @@ type Provider = llm.Provider
 var providerPresets = config.ProviderPresets
 
 func presetFor(id string) config.ProviderPreset { return config.PresetFor(id) }
-func secretGet(name string) (string, error)      { return config.SecretGet(name) }
-func secretSet(name, v string) error             { return config.SecretSet(name, v) }
-func secretDelete(name string) error             { return config.SecretDelete(name) }
-func secretName(id string) string                { return config.SecretName(id) }
-func keyHint(k string) string                    { return config.KeyHint(k) }
-func contains(list []string, v string) bool      { return core.Contains(list, v) }
+func secretGet(name string) (string, error)     { return config.SecretGet(name) }
+func secretSet(name, v string) error            { return config.SecretSet(name, v) }
+func secretDelete(name string) error            { return config.SecretDelete(name) }
+func secretName(id string) string               { return config.SecretName(id) }
+func keyHint(k string) string                   { return config.KeyHint(k) }
+func contains(list []string, v string) bool     { return core.Contains(list, v) }
 func ListModels(ctx context.Context, name string, cfg ProviderConfig) ([]string, error) {
 	return llm.ListModels(ctx, name, cfg)
 }
-func newProvider(name string, cfg ProviderConfig) (Provider, error) { return llm.NewProvider(name, cfg) }
-func LoadSettings() Settings                    { return config.LoadSettings() }
-func SaveSettings(s Settings) error             { return config.SaveSettings(s) }
+func newProvider(name string, cfg ProviderConfig) (Provider, error) {
+	return llm.NewProvider(name, cfg)
+}
+func LoadSettings() Settings        { return config.LoadSettings() }
+func SaveSettings(s Settings) error { return config.SaveSettings(s) }
 
 // connectionConfig resolves a connection id to the provider kind and its config (key from the secret store).
 func ConnectionConfig(s Settings, id string) (string, ProviderConfig) {
@@ -97,7 +99,7 @@ func ConnectProvider(ctx context.Context, id, key, base string) (Connection, err
 	}
 	if key != "" {
 		if err := secretSet(secretName(id), key); err != nil {
-			return c, errors.New("não foi possível guardar a chave no cofre do sistema: " + err.Error())
+			return c, errors.New("could not store the key in the system key vault: " + err.Error())
 		}
 		c.KeyHint = keyHint(key)
 	}
@@ -131,7 +133,6 @@ func DisconnectProvider(id string) error {
 	}
 	return SaveSettings(s)
 }
-
 
 // preferredModel picks a sensible default from a provider's list: a coding/chat model, not an embedding one.
 func PreferredModel(models []string) string {

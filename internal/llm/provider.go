@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"infuse/internal/core"
 	"io"
 	"net/http"
 	"strings"
@@ -84,7 +83,7 @@ func (p *anthropicProvider) Name() string { return "anthropic" }
 
 func (p *anthropicProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
 	if p.key == "" {
-		return ModelResult{}, errors.New("chave de API da Anthropic não configurada (Configurações)")
+		return ModelResult{}, errors.New("Anthropic API key not configured (Settings)")
 	}
 	resp, err := postJSON(ctx, p.client, p.base+"/v1/messages", map[string]string{"x-api-key": p.key, "anthropic-version": "2023-06-01"}, p.body(req))
 	if err != nil {
@@ -310,60 +309,4 @@ func anthropicMessages(msgs []Message) []map[string]any {
 	return out
 }
 
-// ---------------------------------------------------------------- mock (for tests and demo)
-
-// mockProvider plays a scripted agent: it reacts to the last user text with deterministic tool calls,
-// so the whole loop (streaming, permissions, filter, checkpoints) can be exercised without a key.
-type mockProvider struct{}
-
-func (m *mockProvider) Name() string { return "mock" }
-
-func (m *mockProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
-	if req.ForceTool != "" { // a forced structured answer (askJSON): the empty answer is valid and honest
-		in := json.RawMessage("{}")
-		emit(StreamEvent{Kind: "tool_start", ID: "tu_f", Name: req.ForceTool})
-		emit(StreamEvent{Kind: "tool_input", ID: "tu_f", Text: "{}"})
-		emit(StreamEvent{Kind: "tool_end", ID: "tu_f", Name: req.ForceTool})
-		return ModelResult{Content: []Block{{Type: "tool_use", ID: "tu_f", Name: req.ForceTool, Input: in}}, StopReason: "tool_use", Usage: Usage{Input: 300, Output: 5}}, nil
-	}
-	last := req.Messages[len(req.Messages)-1]
-	say := func(s string) (ModelResult, error) {
-		for _, ch := range strings.SplitAfter(s, " ") {
-			emit(StreamEvent{Kind: "text", Text: ch})
-			time.Sleep(8 * time.Millisecond)
-		}
-		return ModelResult{Content: []Block{{Type: "text", Text: s}}, StopReason: "end_turn", Usage: Usage{Input: 1200, Output: len(s) / 4}}, nil
-	}
-	call := func(id, name string, input any) (ModelResult, error) {
-		in, _ := json.Marshal(input)
-		emit(StreamEvent{Kind: "tool_start", ID: id, Name: name})
-		emit(StreamEvent{Kind: "tool_input", ID: id, Text: string(in)})
-		emit(StreamEvent{Kind: "tool_end", ID: id, Name: name})
-		return ModelResult{Content: []Block{{Type: "text", Text: "Vou fazer isso."}, {Type: "tool_use", ID: id, Name: name, Input: in}}, StopReason: "tool_use", Usage: Usage{Input: 1500, Output: 60}}, nil
-	}
-	// Tool result just came back → answer.
-	if last.Role == "user" && len(last.Content) > 0 && last.Content[0].Type == "tool_result" {
-		r := last.Content[0]
-		if strings.Contains(r.Content, "ls-step") {
-			return call("tu_2", "Write", map[string]any{"path": "src/demo.ts", "content": "export const demo = () => `ok ${1}`;\n"})
-		}
-		return say("Concluído. O resultado da ferramenta foi: " + core.Truncate(strings.TrimSpace(r.Content), 160))
-	}
-	text := ""
-	for _, b := range last.Content {
-		if b.Type == "text" {
-			text += b.Text
-		}
-	}
-	switch {
-	case strings.Contains(strings.ToLower(text), "demo"):
-		return call("tu_1", "Bash", map[string]any{"command": "echo ls-step && ls"})
-	case strings.Contains(strings.ToLower(text), "heredoc"):
-		return call("tu_3", "Bash", map[string]any{"command": "cat > src/h.ts <<EOF\nexport const h = `x${y}`;\nEOF\necho feito"})
-	case strings.Contains(strings.ToLower(text), "oracle") || strings.Contains(strings.ToLower(text), "oráculo"):
-		return call("tu_4", "Write", map[string]any{"path": ".infuse/oracle/done.md", "content": "hack"})
-	case strings.Contains(strings.ToLower(text), "pergunta"):
-		return call("tu_5", "AskUserQuestion", map[string]any{"question": "Qual abordagem?", "options": []string{"A", "B"}})
-	}
-	return say("Olá. Sou o provedor de demonstração: peça “demo”, “heredoc”, “oráculo” ou “pergunta” para ver o filtro agindo.")
-}
+// The mock provider (tests and the keyless demonstration) lives in mock.go.

@@ -32,7 +32,7 @@ func TestGuardProtectsWorktreeOracle(t *testing.T) {
 	run("worktree", "add", "-q", wt, "-b", "infuse-test")
 
 	g := NewGuard(wt, Policy{})
-	if _, ok := g.Protects(wt, ".infuse/oracle/pronto.md"); !ok {
+	if _, ok := g.Protects(wt, ".infuse/oracle/ready.md"); !ok {
 		t.Fatal("worktree oracle not protected")
 	}
 	if _, ok := g.Protects(wt, filepath.Join(root, ".infuse", "oracle", "x.md")); !ok {

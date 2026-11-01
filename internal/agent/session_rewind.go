@@ -34,7 +34,7 @@ func (s *Session) RewindTo(toTurn int, code, conversation bool) (string, error) 
 	if conversation {
 		s.cutConversationLocked(toTurn)
 	}
-	s.save()
+	s.saveLocked()
 	s.scheduleMapRefreshLocked()
 	return prompt, nil
 }
@@ -74,7 +74,7 @@ func (s *Session) restoreCodeLocked(toTurn int) {
 		_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
 		delete(s.Checkpoints, t)
 	}
-	Journal(s.Root, JournalEntry{Kind: "revert", Detail: fmt.Sprintf("sessão %s: código restaurado a antes do turno %d", s.ID, toTurn)})
+	Journal(s.Root, JournalEntry{Kind: "revert", Detail: fmt.Sprintf("session %s: code restored to before turn %d", s.ID, toTurn)})
 }
 
 func (s *Session) cutConversationLocked(toTurn int) {

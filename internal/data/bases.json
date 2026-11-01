@@ -1,0 +1,34 @@
+[
+  {
+    "name": "api",
+    "description": "HTTP service: transport, domain, storage and contracts in separate layers.",
+    "folders": ["cmd", "internal/api", "internal/domain", "internal/store", "internal/config", "internal/platform", "tests"],
+    "dataDir": "internal/store",
+    "tokens": "",
+    "maxFileLines": 400
+  },
+  {
+    "name": "web",
+    "description": "Browser application: components, pages, core primitives, styles from tokens.",
+    "folders": ["src", "src/core", "src/components", "src/pages", "src/panes", "ui", "ui/css", "ui/tokens", "tests", "public"],
+    "dataDir": "src/data",
+    "tokens": "ui/tokens",
+    "maxFileLines": 400
+  },
+  {
+    "name": "cli",
+    "description": "Command-line tool: command dispatch, one file per command, shared core.",
+    "folders": ["cmd", "internal", "internal/commands", "internal/core", "tests"],
+    "dataDir": "internal/data",
+    "tokens": "",
+    "maxFileLines": 400
+  },
+  {
+    "name": "interactive",
+    "description": "Interactive application: engine, state, input, rendering, assets and tests separated.",
+    "folders": ["src", "src/engine", "src/state", "src/input", "src/render", "src/ui", "assets", "tests"],
+    "dataDir": "src/data",
+    "tokens": "src/ui/tokens",
+    "maxFileLines": 400
+  }
+]

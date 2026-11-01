@@ -1,6 +1,8 @@
 package api
 
 import (
+	"infuse/internal/core"
+	"infuse/internal/terminal"
 	"net/http"
 	"strings"
 )
@@ -13,13 +15,15 @@ func appTerminal(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 	switch {
 	// ---------------------------------------------------------------- terminal
 	case path == "/api/term/open":
-		cwd := str("cwd")
-		if cwd == "" {
-			cwd = dir
-		}
-		t, err := OpenTerminal(root, cwd, num("cols"), num("rows"))
+		base := core.FirstNonEmpty(root, dir)
+		cwd, err := terminal.ResolveDir(base, str("cwd"))
 		if err != nil {
-			sendJSON(w, 500, map[string]any{"error": err.Error()})
+			sendJSON(w, 400, map[string]any{"error": "no directory to start the terminal in", "code": "terminal.noDir"})
+			return true
+		}
+		t, err := OpenTerminal(core.FirstNonEmpty(root, cwd), cwd, num("cols"), num("rows"))
+		if err != nil {
+			sendJSON(w, 500, map[string]any{"error": err.Error(), "code": "terminal.openFailed", "args": map[string]any{"error": err.Error()}})
 			return true
 		}
 		if run := str("run"); run != "" { // e.g. an agent CLI: started by the shell, so it runs in the project folder
@@ -31,7 +35,7 @@ func appTerminal(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 		parts := strings.SplitN(strings.TrimPrefix(path, "/api/term/"), "/", 2)
 		t := getTerminal(parts[0])
 		if t == nil || len(parts) < 2 {
-			sendJSON(w, 404, map[string]any{"error": "terminal encerrado"})
+			sendJSON(w, 404, map[string]any{"error": "the terminal has ended", "code": "terminal.gone"})
 			return true
 		}
 		switch parts[1] {

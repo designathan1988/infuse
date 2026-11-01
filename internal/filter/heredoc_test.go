@@ -1,12 +1,12 @@
 package filter
 
 import (
+	"infuse/internal/core"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"infuse/internal/core"
 )
 
 func runBash(t *testing.T, cmd, cwd string) string {

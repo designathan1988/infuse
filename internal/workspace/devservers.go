@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"infuse/internal/config"
 	"infuse/internal/core"
 	"infuse/internal/platform/process"
 	"net"
@@ -99,7 +100,7 @@ func DevServers(root string) []map[string]any {
 type ErrLaunchNeedsApproval struct{ Command string }
 
 func (e ErrLaunchNeedsApproval) Error() string {
-	return "este comando de .infuse/launch.json precisa da sua aprovação antes de rodar: " + e.Command
+	return core.M("workspace.commandApproval").Render(config.LoadSettings().Language) + e.Command
 }
 
 func StartDevServer(root, name string) error {
@@ -136,7 +137,7 @@ func StartDevServer(root, name string) error {
 		go func() { _ = cmd.Wait(); devServersMu.Lock(); d.exited = true; devServersMu.Unlock() }()
 		return nil
 	}
-	return errors.New("configuração não encontrada em .infuse/launch.json ou .claude/launch.json")
+	return errors.New(core.M("workspace.launchConfigMissing").Render(config.LoadSettings().Language))
 }
 
 func StopDevServer(root, name string) {

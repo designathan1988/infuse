@@ -27,8 +27,8 @@ const HOOK_EVENTS = {
   Stop: ['hooks.stop', 'hooks.stopDesc'],
 };
 const HOOK_PRESETS = [
-  { title: 'hooks.preset.tests', what: 'hooks.preset.testsWhat', event: 'Stop', matcher: '', command: "npm test --silent >/dev/null 2>&1 || { echo 'Os testes falharam. Rode npm test, corrija e só então termine.' >&2; exit 2; }" },
-  { title: 'hooks.preset.noPush', what: 'hooks.preset.noPushWhat', event: 'PreToolUse', matcher: 'Bash', command: "grep -q 'git push' && { echo 'git push é feito pelo usuário, não pelo agente.' >&2; exit 2; } || exit 0" },
+  { title: 'hooks.preset.tests', what: 'hooks.preset.testsWhat', event: 'Stop', matcher: '', command: "npm test --silent >/dev/null 2>&1 || { echo 'The tests failed. Run npm test, fix them, and only then finish.' >&2; exit 2; }" },
+  { title: 'hooks.preset.noPush', what: 'hooks.preset.noPushWhat', event: 'PreToolUse', matcher: 'Bash', command: "grep -q 'git push' && { echo 'git push is done by the user, not by the agent.' >&2; exit 2; } || exit 0" },
   { title: 'hooks.preset.prettier', what: 'hooks.preset.prettierWhat', event: 'PostToolUse', matcher: 'Write|Edit|MultiEdit', command: 'npx --no-install prettier --write . --log-level silent >/dev/null 2>&1 || true' },
   { title: 'hooks.preset.gitStatus', what: 'hooks.preset.gitStatusWhat', event: 'UserPromptSubmit', matcher: '', command: 'git status --short 2>/dev/null | head -30' },
 ];

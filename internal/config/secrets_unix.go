@@ -18,7 +18,7 @@ func (osSecrets) Set(name, value string) error {
 		return exec.Command("security", "add-generic-password", "-U", "-a", "infuse", "-s", name, "-w", value).Run()
 	}
 	if _, err := exec.LookPath("secret-tool"); err != nil {
-		return errors.New("secret-tool (libsecret) não encontrado")
+		return errors.New("secret-tool (libsecret) not found")
 	}
 	cmd := exec.Command("secret-tool", "store", "--label="+name, "service", name, "account", "infuse")
 	cmd.Stdin = strings.NewReader(value)

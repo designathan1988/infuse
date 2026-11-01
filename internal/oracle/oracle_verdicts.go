@@ -13,7 +13,9 @@ func ListVerdicts(root string, n int) []Verdict {
 	var out []Verdict
 	for i := len(entries) - 1; i >= 0 && len(out) < n; i-- {
 		var v Verdict
-		if entries[i].IsDir() && core.ReadJSON(filepath.Join(EvidenceDir(root), entries[i].Name(), "verdict.json"), &v) == nil {
+		dir := filepath.Join(EvidenceDir(root), entries[i].Name())
+		if entries[i].IsDir() && core.ReadJSON(filepath.Join(dir, "verdict.json"), &v) == nil {
+			v.SpecVerified = verifySpecCopy(dir, v.SpecHash) && verifyVerdict(v)
 			out = append(out, v)
 		}
 	}

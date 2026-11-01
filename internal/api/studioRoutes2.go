@@ -79,7 +79,7 @@ func studioGit(w http.ResponseWriter, q map[string]string, root string, str func
 	case "commit":
 		msg := str("message")
 		if strings.TrimSpace(msg) == "" {
-			sendJSON(w, 400, map[string]any{"error": "mensagem vazia"})
+			sendJSON(w, 400, map[string]any{"error": "empty message", "code": "git.emptyMessage"})
 			return
 		}
 		out, err := workspace.GitRun(root, "add", "-A")
@@ -106,7 +106,7 @@ func studioOracle(w http.ResponseWriter, r *http.Request, root string, str func(
 		_ = os.MkdirAll(dir, 0o755)
 		name := reSafeName.ReplaceAllString(str("name"), "_")
 		if name == "" {
-			name = "pronto.md"
+			name = "ready.md"
 		}
 		_ = os.WriteFile(filepath.Join(dir, name), []byte(str("content")), 0o644)
 		sendJSON(w, 200, map[string]any{"ok": true})

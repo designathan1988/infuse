@@ -8,6 +8,7 @@ import { toast } from '../../components/toast.js';
 export async function renderProviders({ el }) {
   el.append(h(`<h1>${t('settings.providers')}</h1>`), h(`<p class="lead">${t('settings.providersDesc')}</p>`));
   const conns = await api('/api/connections', { root: '' }).catch(() => []);
+  if (!el.isConnected) return; // the page changed while the connections were being read
   const list = h('<div></div>');
   el.append(list);
   drawProviders(list, conns);

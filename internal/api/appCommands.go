@@ -20,7 +20,7 @@ func appCommands(w http.ResponseWriter, r *http.Request, q map[string]string, bo
 	case path == "/api/commands/save":
 		name := taskSlug(str("name"))
 		if name == "" {
-			sendJSON(w, 400, map[string]any{"error": "nome inválido"})
+			sendJSON(w, 400, map[string]any{"error": "invalid name", "code": "command.invalidName"})
 			return true
 		}
 		base := filepath.Join(root, core.InfuseDirName, "commands")

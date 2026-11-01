@@ -88,7 +88,7 @@ func skillsList(w http.ResponseWriter, root string) {
 func skillsSave(w http.ResponseWriter, root string, str func(string) string) {
 	name := strings.TrimSpace(str("name"))
 	if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`).MatchString(name) {
-		sendJSON(w, 200, map[string]any{"ok": false, "error": "nome: letras minúsculas, números e hífens (ex.: revisar-pr)"})
+		sendJSON(w, 200, map[string]any{"ok": false, "error": "name: lowercase letters, numbers and hyphens (e.g. review-pr)", "code": "skill.invalidName"})
 		return
 	}
 	dir := filepath.Join(root, core.InfuseDirName, "skills", name)

@@ -235,7 +235,7 @@ func (s *Session) demandRediagnosis(why Msg) {
 	s.gate.diagnosed, s.gate.redoWhy = false, why
 	s.Mu.Unlock()
 	if first {
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "novo diagnóstico exigido: " + why.Render("pt-BR")})
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "new diagnosis demanded: " + why.Render("pt-BR")})
 		s.emitMsg("gate", M("diag.redo_notice", "why", why))
 	}
 }

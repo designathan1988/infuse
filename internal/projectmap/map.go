@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -72,6 +73,7 @@ var (
 	reImpPy1 = regexp.MustCompile(`(?m)^\s*from\s+([\w.]+)\s+import`)
 	reImpPy2 = regexp.MustCompile(`(?m)^\s*import\s+([\w.]+)`)
 	reImpGo  = regexp.MustCompile(`(?m)^\s*"([^"]+)"\s*$`)
+	reImpGo1 = regexp.MustCompile(`(?m)^\s*import\s+(?:[\w.]+\s+)?"([^"]+)"`)
 	reImpRs1 = regexp.MustCompile(`(?m)^\s*(?:pub\s+)?use\s+([\w:]+)`)
 	reImpRs2 = regexp.MustCompile(`(?m)^\s*mod\s+(\w+)\s*;`)
 )
@@ -209,122 +211,12 @@ func extractImports(text, lang string) []string {
 		addAll(set, reImpPy2, text)
 	case "go":
 		addAll(set, reImpGo, text)
+		addAll(set, reImpGo1, text)
 	case "rs":
 		addAll(set, reImpRs1, text)
 		addAll(set, reImpRs2, text)
 	}
 	return keys(set)
-}
-
-var tsExts = []string{".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs", ".cjs", "/index.ts", "/index.tsx", "/index.js"}
-
-func resolveImports(root string, m *ProjectMap) {
-	for _, f := range m.Files {
-		for i, spec := range f.Imports {
-			switch f.Lang {
-			case "ts", "js":
-				if !strings.HasPrefix(spec, ".") && !strings.HasPrefix(spec, "/") {
-					continue
-				}
-				base := filepath.Join(root, filepath.Dir(filepath.FromSlash(f.Path)), filepath.FromSlash(spec))
-				stripped := strings.TrimSuffix(base, ".js")
-				cands := []string{base}
-				for _, e := range tsExts {
-					cands = append(cands, stripped+e, base+e)
-				}
-				for _, c := range cands {
-					rel, _ := filepath.Rel(root, c)
-					rel = core.ToPosix(rel)
-					if _, ok := m.Files[rel]; ok {
-						f.Imports[i] = rel
-						break
-					}
-				}
-			case "py":
-				dots := 0
-				for dots < len(spec) && spec[dots] == '.' {
-					dots++
-				}
-				relPath := strings.ReplaceAll(spec[dots:], ".", "/")
-				var base string
-				if dots > 0 {
-					base = filepath.Join(root, filepath.Dir(filepath.FromSlash(f.Path)), strings.Repeat("../", dots-1), relPath)
-				} else {
-					base = filepath.Join(root, relPath)
-				}
-				for _, c := range []string{base + ".py", filepath.Join(base, "__init__.py")} {
-					rel, _ := filepath.Rel(root, c)
-					rel = core.ToPosix(rel)
-					if _, ok := m.Files[rel]; ok {
-						f.Imports[i] = rel
-						break
-					}
-				}
-			}
-		}
-	}
-	for _, f := range m.Files {
-		for _, imp := range f.Imports {
-			if t, ok := m.Files[imp]; ok {
-				t.Dependents = append(t.Dependents, f.Path)
-			}
-		}
-	}
-	for _, f := range m.Files {
-		sort.Strings(f.Dependents)
-	}
-}
-
-// DescribeDir: short, agent-facing description of one directory — what is infused into `ls` output.
-func DescribeDir(m *ProjectMap, relDir string) string {
-	if relDir == "" {
-		relDir = "."
-	}
-	d, ok := m.Dirs[relDir]
-	if !ok {
-		return ""
-	}
-	name := d.Path
-	if name == "." {
-		name = "project root"
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "[infuse] %s: %d files, %d dirs, %d lines", name, len(d.Files), len(d.Subdirs), d.Lines)
-	for _, fn := range d.Files {
-		key := fn
-		if d.Path != "." {
-			key = d.Path + "/" + fn
-		}
-		f, ok := m.Files[key]
-		if !ok {
-			continue
-		}
-		fmt.Fprintf(&b, "\n  %s (%dl)", fn, f.Lines)
-		if len(f.Exports) > 0 {
-			ex := f.Exports
-			more := ""
-			if len(ex) > 8 {
-				ex, more = ex[:8], "…"
-			}
-			fmt.Fprintf(&b, " exports %s%s", strings.Join(ex, ", "), more)
-		}
-		if len(f.Dependents) > 0 {
-			fmt.Fprintf(&b, " ← used by %d", len(f.Dependents))
-		}
-		if f.Lines >= hotspotLines {
-			b.WriteString(" ⚠ hotspot")
-		}
-	}
-	for _, s := range d.Subdirs {
-		key := s
-		if d.Path != "." {
-			key = d.Path + "/" + s
-		}
-		if sd, ok := m.Dirs[key]; ok {
-			fmt.Fprintf(&b, "\n  %s/ (%dl, %d files)", s, sd.Lines, len(sd.Files))
-		}
-	}
-	return b.String()
 }
 
 // DescribeDependents: who depends on a file — infused when the agent writes it (English).
@@ -377,11 +269,34 @@ func LoadMap(root string) *ProjectMap {
 	return &m
 }
 
+// mapCache keeps the parsed map per project while the map file is unchanged: shell commands read it
+// on every call, and re-parsing the JSON each time is wasted work in the gate path.
+var mapCache sync.Map // root → mapCacheEntry
+
+type mapCacheEntry struct {
+	mod  int64
+	size int64
+	m    *ProjectMap
+}
+
 func LoadOrBuildMap(root string) *ProjectMap {
-	if m := LoadMap(root); m != nil {
-		return m
+	p := MapFile(root)
+	if st, err := os.Stat(p); err == nil {
+		if v, ok := mapCache.Load(root); ok {
+			e := v.(mapCacheEntry)
+			if e.mod == st.ModTime().UnixNano() && e.size == st.Size() {
+				return e.m
+			}
+		}
+		if m := LoadMap(root); m != nil {
+			mapCache.Store(root, mapCacheEntry{st.ModTime().UnixNano(), st.Size(), m})
+			return m
+		}
 	}
 	m := BuildMap(root)
 	WriteMap(root, m)
+	if st, err := os.Stat(p); err == nil {
+		mapCache.Store(root, mapCacheEntry{st.ModTime().UnixNano(), st.Size(), m})
+	}
 	return m
 }

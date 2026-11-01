@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/mcp"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"infuse/internal/mcp"
 	"os"
 	"strings"
 	"testing"
@@ -80,7 +80,7 @@ func TestMCPStdioServerNeedsApprovalThenServesTools(t *testing.T) {
 	}
 	s := newSession(root)
 	echo, ok := s.LookupTool("mcp__fake__echo")
-	if !ok || echo.Category() != "read" {
+	if !ok || echo.Category() != "mcp" { // a server's read-only hint is not evidence: it asks like any connector
 		t.Fatal("echo tool")
 	}
 	if danger, ok := s.LookupTool("mcp__fake__apaga_tudo"); !ok || danger.Category() != "mcp" {

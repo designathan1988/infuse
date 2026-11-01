@@ -16,12 +16,12 @@ func TestSubagentToolsAreLimitedAndGuarded(t *testing.T) {
 	s.Provider, s.Mode = "mock", "bypass"
 
 	// explore: only read tools; the mock tries to Write and gets refused by the kind
-	out, err := s.RunSubagent(context.Background(), "explore", "x", "escreva no oráculo")
+	out, err := s.RunSubagent(context.Background(), "explore", "x", "write to the oracle")
 	if err != nil || !strings.Contains(out, "unavailable for this subagent") {
 		t.Fatalf("%v %s", err, out)
 	}
 	// general: Write is allowed by the kind, but the guard still protects the oracle
-	out, err = s.RunSubagent(context.Background(), "general", "x", "escreva no oráculo")
+	out, err = s.RunSubagent(context.Background(), "general", "x", "write to the oracle")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,13 +39,13 @@ func TestReviewMaterialHasRequestPlanCriteriaAndDiff(t *testing.T) {
 		t.Skip("git")
 	}
 	root := gitRepo(t)
-	_ = os.WriteFile(filepath.Join(root, "novo.js"), []byte("module.exports = 1;\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "new.js"), []byte("module.exports = 1;\n"), 0o644)
 	s := newSession(root)
 	s.Turn, s.TurnStarts = 1, []int{0}
-	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "crie novo.js exportando 1"}}}}
-	s.Tasks = []TaskItem{{ID: "1", Text: "criar novo.js", Status: "done", Proof: "node -e require('./novo.js')"}}
+	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "create new.js exporting 1"}}}}
+	s.Tasks = []TaskItem{{ID: "1", Text: "create new.js", Status: "done", Proof: "node -e require('./new.js')"}}
 	m := s.reviewMaterial("")
-	for _, want := range []string{"crie novo.js exportando 1", "criar novo.js", "proof: node -e", "novo.js (new file)", "module.exports = 1;"} {
+	for _, want := range []string{"create new.js exporting 1", "create new.js", "proof: node -e", "new.js (new file)", "module.exports = 1;"} {
 		if !strings.Contains(m, want) {
 			t.Fatalf("missing %q in\n%s", want, m)
 		}

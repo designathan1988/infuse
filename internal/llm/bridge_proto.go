@@ -109,6 +109,19 @@ func bridgeBlock(blk Block) string {
 	return ""
 }
 
+// bridgeReplyOrText is the last chance after a repair round: a model that keeps answering in plain
+// prose is still answering, so the text becomes the reply instead of failing the turn. No tool call is
+// ever invented from prose.
+func bridgeReplyOrText(text string) (bridgeReply, error) {
+	if r, err := parseBridgeReply(text); err == nil {
+		return r, nil
+	}
+	if plain := strings.TrimSpace(text); plain != "" {
+		return bridgeReply{Text: plain}, nil
+	}
+	return bridgeReply{}, fmt.Errorf("the reply had neither JSON nor text")
+}
+
 // parseBridgeReply finds the JSON object in the model's reply (it may sit inside a fence or carry a
 // stray line before it) and checks its shape.
 func parseBridgeReply(text string) (bridgeReply, error) {

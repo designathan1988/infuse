@@ -4,6 +4,7 @@ package api
 // native window (window_*.go). Nothing leaves the machine. `infuse serve` serves without a window.
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"infuse/internal/agent"
@@ -84,6 +85,13 @@ func StartUI(window bool) {
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		if err := sameOrigin(r.Host, r.Header.Get("Origin"), r.Method, r.Header.Get("X-Infuse"), token); err != nil {
 			sendJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+			return
+		}
+		// Reading an arbitrary file or fetching an arbitrary URL is as sensitive as a mutation: the
+		// application token is required even on GET, so a local process (the agent's shell included)
+		// cannot use the API as its own file or network oracle.
+		if sensitiveRoute(r.URL.Path) && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Infuse")), []byte(token)) != 1 {
+			sendJSON(w, http.StatusForbidden, map[string]any{"error": "request without the application token"})
 			return
 		}
 		apiHandler(w, r)

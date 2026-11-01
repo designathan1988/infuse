@@ -268,7 +268,9 @@ func (sc *conventionScan) markdown() string {
 	line("End of statement (JS/TS)", sc.semis)
 	line("Modules", sc.modules)
 	line("Line endings", sc.eol)
-	line("Comment language", sc.lang)
+	if k, n, total := sc.lang.Top(); k != "" && total > 0 {
+		fmt.Fprintf(&b, "\n## Observed, not a rule\n- Comments are mostly in %s (%s of files). This is a fact about the existing code, not a convention: new code follows the project's configured language.\n", k, pct(n, total))
+	}
 	exts := make([]string, 0, len(sc.naming))
 	for e := range sc.naming {
 		exts = append(exts, e)

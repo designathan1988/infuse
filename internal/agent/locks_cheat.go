@@ -1,6 +1,6 @@
 package agent
 
-// Locks against gaming the checks (docs/FALHAS-DE-AGENTES.md B6, B7, B8, B10). Every signal is code
+// Locks against gaming the checks (agent-failure notes B6, B7, B8, B10). Every signal is code
 // syntax, never natural language: a test command whose failure is swallowed, the expected values of the
 // tests appearing in production conditions, equality or clocks that always agree, test infrastructure
 // changed, functions hollowed into stubs, new TODO/FIXME/HACK markers.
@@ -18,6 +18,7 @@ import (
 var (
 	reTestRunner   = regexp.MustCompile(`\b(?:go\s+test|npm\s+(?:run\s+)?test|pnpm\s+(?:run\s+)?test|yarn\s+(?:run\s+)?test|npx\s+(?:jest|vitest|mocha|playwright)|jest|vitest|mocha|pytest|python3?\s+-m\s+(?:pytest|unittest)|node\s+--test|cargo\s+test|dotnet\s+test|mvn\s+test|gradle\w*\s+test|deno\s+test|bun\s+test)\b`)
 	reSwallowExit  = regexp.MustCompile(`\|\|\s*(?:true|:|exit\s+0)\b|;\s*(?:true|exit\s+0)\s*$|\bset\s+\+e\b`)
+	reSilenceOut   = regexp.MustCompile(`(?:^|[^0-9&2])>\s*/dev/null`) // stdout hidden: the result cannot be read
 	reTestInfra    = regexp.MustCompile(`(?i)(?:^|/)(?:conftest\.py|sitecustomize\.py|usercustomize\.py|[^/]*\.pth|jest\.(?:config|setup)[^/]*|vitest\.(?:config|setup|workspace)[^/]*|setuptests\.[jt]sx?|karma\.conf[^/]*|\.mocharc[^/]*|pytest\.ini|tox\.ini|playwright\.config[^/]*)$`)
 	reAlwaysEqual  = regexp.MustCompile(`(?s)def\s+__(?:eq|ne)__\s*\([^)]*\)\s*(?:->\s*\w+\s*)?:\s*\n\s*return\s+(?:True|False)\b|\bequals\s*\([^)]*\)\s*(?::\s*\w+\s*)?\{\s*return\s+(?:true|false)\s*;?\s*\}`)
 	reClockPatch   = regexp.MustCompile(`\b(?:time\.time|time\.perf_counter|time\.monotonic|Date\.now|performance\.now|process\.hrtime)\s*=[^=]`)
@@ -32,8 +33,14 @@ func isTestPath(rel string) bool { return reTestFile.MatchString(filepath.ToSlas
 
 // swallowedTestCommand: a test run whose failure is made to look like success.
 func swallowedTestCommand(cmd string) Msg {
-	if reTestRunner.MatchString(cmd) && reSwallowExit.MatchString(cmd) {
+	if !reTestRunner.MatchString(cmd) {
+		return Msg{}
+	}
+	if reSwallowExit.MatchString(cmd) {
 		return M("cheat.swallowed_exit", "command", truncate(strings.TrimSpace(cmd), 160))
+	}
+	if reSilenceOut.MatchString(cmd) {
+		return M("cheat.silent_output", "command", truncate(strings.TrimSpace(cmd), 160))
 	}
 	return Msg{}
 }
@@ -79,6 +86,11 @@ func cheatWriteCheck(work, rel, before, after string) Msg {
 	if !isTestPath(rel) && reClockPatch.MatchString(stripCode(addedText, ext)) {
 		return M("cheat.clock_patch", "file", rel)
 	}
+	if !isTestPath(rel) {
+		if m := exitZeroCheck(rel, before, after); !m.Empty() {
+			return m
+		}
+	}
 	if !codeExts[ext] || ext == ".css" || ext == ".html" {
 		return Msg{}
 	}
@@ -121,6 +133,30 @@ func cheatMarkers(rel, ext, before, after string) Msg {
 		}
 	}
 	return Msg{}
+}
+
+// reExitZero finds an exit with success status: a command that "works" whatever happened.
+var reExitZero = regexp.MustCompile(`\b(?:os\.Exit|process\.exit|sys\.exit|System\.exit|exit)\s*\(\s*0\s*\)`)
+
+// exitZeroCheck (B6): a new exit(0) outside the program's entry point makes any failure look like
+// success.
+func exitZeroCheck(rel, before, after string) Msg {
+	if len(reExitZero.FindAllString(after, -1)) <= len(reExitZero.FindAllString(before, -1)) || isEntryPoint(rel) {
+		return Msg{}
+	}
+	return M("cheat.exit_zero", "file", filepath.ToSlash(rel))
+}
+
+// isEntryPoint: the places where ending the process with 0 is the program's own answer.
+func isEntryPoint(rel string) bool {
+	p := strings.ToLower(filepath.ToSlash(rel))
+	base := filepath.Base(p)
+	switch base {
+	case "main.go", "main.rs", "main.py", "index.js", "index.ts", "index.mjs", "server.js", "server.ts", "cli.js", "cli.ts", "__main__.py":
+		return true
+	}
+	return strings.HasPrefix(p, "cmd/") || strings.HasPrefix(p, "bin/") || strings.HasPrefix(p, "src/bin/") ||
+		strings.Contains(base, "main.") && (strings.HasSuffix(base, ".go") || strings.HasSuffix(base, ".rs") || strings.HasSuffix(base, ".java"))
 }
 
 func cheatSpecialCase(work, rel string, added []string) Msg {

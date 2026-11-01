@@ -362,4 +362,3 @@ func (s *Session) noteRead(name string, input json.RawMessage, out string, isErr
 	}
 	s.docs.add(out)
 }
-

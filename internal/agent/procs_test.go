@@ -42,11 +42,11 @@ func (e *procTestEnv) startAndFinish() {
 	t, s, run := e.t, e.s, e.run
 	// returns at once with the id and the first output, while the command goes on
 	start := time.Now()
-	out, isErr := run("Bash", `{"command":"echo pronto; sleep 3; echo fim","run_in_background":true,"description":"servidor de teste"}`)
-	if isErr || !strings.Contains(out, "p1") || !strings.Contains(out, "pronto") || time.Since(start) > 2800*time.Millisecond {
+	out, isErr := run("Bash", `{"command":"echo ready; sleep 3; echo end","run_in_background":true,"description":"test server"}`)
+	if isErr || !strings.Contains(out, "p1") || !strings.Contains(out, "ready") || time.Since(start) > 2800*time.Millisecond {
 		t.Fatalf("%v %s", time.Since(start), out)
 	}
-	if ps := s.procList(); len(ps) != 1 || ps[0]["description"] != "servidor de teste" {
+	if ps := s.procList(); len(ps) != 1 || ps[0]["description"] != "test server" {
 		t.Fatalf("%+v", ps)
 	}
 	for i := 0; i < 100 && e.procState("p1") == "running"; i++ {
@@ -64,7 +64,7 @@ func (e *procTestEnv) startAndFinish() {
 		t.Fatal("announced twice")
 	}
 	// only the new output, then nothing new
-	if out, _ = run("BashOutput", `{"id":"p1"}`); !strings.Contains(out, "fim") || strings.Contains(out, "pronto") || !strings.Contains(out, "exited") {
+	if out, _ = run("BashOutput", `{"id":"p1"}`); !strings.Contains(out, "end") || strings.Contains(out, "ready") || !strings.Contains(out, "exited") {
 		t.Fatalf("new output: %s", out)
 	}
 	if out, _ = run("BashOutput", `{"id":"p1"}`); !strings.Contains(out, "no new output") {
@@ -75,8 +75,8 @@ func (e *procTestEnv) startAndFinish() {
 func (e *procTestEnv) killTree() {
 	t, s, run := e.t, e.s, e.run
 	// stopping ends the whole tree: the shell and the program it started
-	out, _ := run("Bash", `{"command":"sleep 60 & echo filho $!; wait","run_in_background":true}`)
-	m := regexp.MustCompile(`filho (\d+)`).FindStringSubmatch(out)
+	out, _ := run("Bash", `{"command":"sleep 60 & echo child $!; wait","run_in_background":true}`)
+	m := regexp.MustCompile(`child (\d+)`).FindStringSubmatch(out)
 	if m == nil {
 		t.Fatalf("child pid: %s", out)
 	}
@@ -129,8 +129,8 @@ func TestParallelSubagentsAreEachRecorded(t *testing.T) {
 	s.gate.diagnosed = true // this test is about another gate
 	s.Provider = "mock"
 	content := []Block{
-		{Type: "tool_use", ID: "a", Name: "Agent", Input: json.RawMessage(`{"kind":"explore","description":"pesquisa A","prompt":"olá 1"}`)},
-		{Type: "tool_use", ID: "b", Name: "Agent", Input: json.RawMessage(`{"kind":"explore","description":"pesquisa B","prompt":"olá 2"}`)},
+		{Type: "tool_use", ID: "a", Name: "Agent", Input: json.RawMessage(`{"kind":"explore","description":"research A","prompt":"hello 1"}`)},
+		{Type: "tool_use", ID: "b", Name: "Agent", Input: json.RawMessage(`{"kind":"explore","description":"research B","prompt":"hello 2"}`)},
 	}
 	_ = s.runReadsInParallel(context.Background(), &RuleSet{}, content)
 	if len(s.Agents) != 2 {
@@ -143,7 +143,7 @@ func TestParallelSubagentsAreEachRecorded(t *testing.T) {
 			t.Fatalf("%+v", a)
 		}
 	}
-	if !titles["pesquisa A"] || !titles["pesquisa B"] {
+	if !titles["research A"] || !titles["research B"] {
 		t.Fatalf("%+v", s.Agents)
 	}
 	if snap := s.snapshot(); len(snap["agents"].([]AgentRun)) != 2 {

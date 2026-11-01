@@ -76,9 +76,14 @@ bus.on('gate', d => {
   if (d === 'choose-folder') return toast(t('composer.chooseFolder'));
   toast(t('gate.intervened') + text);
 });
-bus.on('api-error', e => toast(String(e?.message || e)));
+bus.on('api-error', e => {
+  const code = e?.body?.code;
+  const translated = code ? t(code, e.body.args) : '';
+  toast(translated && translated !== code ? translated : String(e?.message || e));
+});
 bus.on('compacted', () => toast(t('chat.compactedToast')));
 bus.on('sessions-changed', () => reloadSessions().catch(() => { }));
+bus.on('close-page', () => import('./pages/shell.js').then(s => s.showPage(null))); // a session click leaves any page
 
 // CI auto-fix: check PRs of sessions with autofix on, every 2 minutes
 setInterval(async () => {
@@ -122,17 +127,17 @@ addEventListener('drop', async e => {
     const r = await infuse.drop(files);
     if (r.projects?.length) { await reloadSessions(); newSessionScreen(r.projects[0]); }
     for (const a of r.attachments || []) if (!v.atts.find(x => x.path === a.path)) v.atts.push(a);
-    import('./components/composer.js').then(() => { }); // atts render via composer's renderAtts on next effect
+    v.renderAtts?.();
     ui.views.set([...ui.views.get()]);
   } else {
     for (const f of files) {
       if (f.type.startsWith('image/')) {
         const r = new FileReader();
-        r.onload = () => { v.images.push({ mediaType: f.type, data: r.result.split(',')[1] }); ui.views.set([...ui.views.get()]); };
+        r.onload = () => { v.images.push({ mediaType: f.type, data: r.result.split(',')[1] }); v.renderAtts?.(); };
         r.readAsDataURL(f);
       } else {
         const r = new FileReader();
-        r.onload = () => { if (v._promptEl) v._promptEl.value += `\n<arquivo nome="${f.name}">\n${r.result.slice(0, 200000)}\n</arquivo>`; };
+        r.onload = () => { if (v._promptEl) v._promptEl.value += `\n<file name="${f.name}">\n${r.result.slice(0, 200000)}\n</file>`; };
         r.readAsText(f);
       }
     }

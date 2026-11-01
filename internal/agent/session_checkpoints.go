@@ -3,6 +3,7 @@ package agent
 import (
 	"errors"
 	"fmt"
+	"infuse/internal/workspace"
 	"os"
 	"path/filepath"
 	"time"
@@ -40,6 +41,9 @@ func (s *Session) Revert(toTurn int) error {
 		return errors.New(M("session.stop_first_revert").Render(s.uiLang()))
 	}
 	for t := s.Turn; t >= toTurn; t-- {
+		// Restore the whole tree recorded when the turn started, so a shell deletion (which has no
+		// per-write checkpoint) is reverted too.
+		workspace.RestoreTurn(s.Root, s.workRoot(), s.ID, t)
 		files := s.Checkpoints[t]
 		for i := len(files) - 1; i >= 0; i-- {
 			c := files[i]
@@ -62,8 +66,8 @@ func (s *Session) Revert(toTurn int) error {
 		s.TurnStarts = s.TurnStarts[:toTurn-1]
 	}
 	s.Turn = toTurn - 1
-	Journal(s.Root, JournalEntry{Kind: "revert", Detail: fmt.Sprintf("sessão %s revertida ao turno %d", s.ID, toTurn)})
-	s.save()
+	Journal(s.Root, JournalEntry{Kind: "revert", Detail: fmt.Sprintf("session %s reverted to turn %d", s.ID, toTurn)})
+	s.saveLocked()
 	s.scheduleMapRefreshLocked()
 	return nil
 }

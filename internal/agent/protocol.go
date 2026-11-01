@@ -79,7 +79,7 @@ var (
 	rePyImport  = regexp.MustCompile(`(?m)^\s*(?:from\s+([A-Za-z_][\w.]*)\s+import|import\s+([A-Za-z_][\w.]*))`)
 	reGoImport  = regexp.MustCompile(`"([a-z0-9.\-]+\.[a-z]{2,}/[^"\s]+)"`)
 	reURLHost   = regexp.MustCompile(`https?://([a-zA-Z0-9.\-]+)`)
-	localHosts  = map[string]bool{"localhost": true, "127.0.0.1": true, "0.0.0.0": true, "example.com": true, "example.org": true, "www.example.com": true}
+	localHosts  = map[string]bool{"localhost": true, "127.0.0.1": true, "0.0.0.0": true}
 	codeExts    = map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true, ".py": true, ".go": true, ".rs": true, ".java": true, ".kt": true, ".cs": true, ".rb": true, ".php": true, ".vue": true, ".svelte": true, ".css": true, ".scss": true, ".html": true}
 	jsLikeExts  = map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true}
 	reDotsSplit = regexp.MustCompile(`[/.]`)

@@ -181,8 +181,11 @@ const (
 
 func loadProjects() []config.ProjectEntry { return config.LoadProjects() }
 func RememberProject(root string)         { config.RememberProject(root) }
-func snapshotTurn(root, work, session string, turn int) {
-	workspace.SnapshotTurn(root, work, session, turn)
+func snapshotTurn(root, work, session string, turn int) error {
+	return workspace.SnapshotTurn(root, work, session, turn)
+}
+func RefreshTurnProtected(root, session string, turn int) {
+	workspace.RefreshTurnProtected(root, session, turn)
 }
 func msgStrings(ms []Msg) []string            { return filter.MsgStrings(ms) }
 func hiddenInternal(rel string) bool          { return filter.HiddenInternal(rel) }
@@ -245,6 +248,10 @@ func conventionRulesFile(root string) string           { return knowledge.Conven
 func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verdict, error) {
 	return oracle.RunOracle(ctx, evidenceRoot, workDir, session)
 }
+func RunOracleTurn(ctx context.Context, evidenceRoot, workDir, session string, turn int) (Verdict, error) {
+	return oracle.RunOracleTurn(ctx, evidenceRoot, workDir, session, turn)
+}
+func SpecFile(root string) string { return oracle.SpecFile(root) }
 func CreateWorktree(root, name string) (string, string, error) {
 	return workspace.CreateWorktree(root, name)
 }

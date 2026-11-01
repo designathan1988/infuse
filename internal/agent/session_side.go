@@ -78,9 +78,9 @@ func (s *Session) ContextBreakdown() map[string]any {
 	return map[string]any{
 		"limit": limit, "total": total,
 		"categories": []map[string]any{
-			{"name": "Instruções do sistema", "tokens": sys}, {"name": "Ferramentas", "tokens": tools},
-			{"name": "Suas mensagens", "tokens": user}, {"name": "Respostas", "tokens": assistant},
-			{"name": "Chamadas de ferramenta", "tokens": calls}, {"name": "Resultados de ferramenta", "tokens": results},
+			{"name": "System instructions", "tokens": sys}, {"name": "Tools", "tokens": tools},
+			{"name": "Your messages", "tokens": user}, {"name": "Responses", "tokens": assistant},
+			{"name": "Tool calls", "tokens": calls}, {"name": "Tool results", "tokens": results},
 			{"name": "Imagens", "tokens": images},
 		},
 	}

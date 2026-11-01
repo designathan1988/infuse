@@ -60,7 +60,7 @@ func jsonDiagnostics(abs, rel string) string {
 	if err == nil && !json.Valid(b) {
 		var v any
 		err := json.Unmarshal(b, &v)
-		return rel + ": JSON inválido: " + err.Error()
+		return rel + ": invalid JSON: " + err.Error()
 	}
 	return ""
 }

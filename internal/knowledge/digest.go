@@ -21,6 +21,10 @@ var knowledgeDirs = map[string]bool{"docs": true, "doc": true, "memory": true, "
 
 var knowledgeExts = map[string]bool{".md": true, ".markdown": true, ".txt": true, ".rst": true, ".adoc": true}
 
+// InventoryLimit bounds how many documents infuse digests in one pass. When the inventory reaches
+// it, the caller tells the user instead of silently reading less.
+const InventoryLimit = 200
+
 // Inventory lists the project's documents (relative paths): the instruction files, what they point to,
 // the documents at the root and in knowledge folders.
 func Inventory(root string) []string {
@@ -29,7 +33,7 @@ func Inventory(root string) []string {
 	var out []string
 	add := func(rel string) {
 		rel = filepath.ToSlash(rel)
-		if !seen[rel] && len(out) < 80 {
+		if !seen[rel] && len(out) < InventoryLimit {
 			if fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil && !fi.IsDir() && fi.Size() < 3<<20 {
 				seen[rel] = true
 				out = append(out, rel)

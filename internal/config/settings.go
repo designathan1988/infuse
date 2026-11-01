@@ -165,15 +165,51 @@ func EffectiveSettings(root string) Settings {
 		if p.Model != "" {
 			s.Model = p.Model
 		}
-		if p.Mode != "" {
+		// A project file is data inside the project: it may make the agent more restricted, never
+		// less. Otherwise one write to .infuse/settings.json would turn the filter off.
+		if p.Mode != "" && modeRank(p.Mode) <= modeRank(s.Mode) {
 			s.Mode = p.Mode
 		}
 		for k, v := range p.Permissions {
-			s.Permissions[k] = v
+			current, ok := s.Permissions[k]
+			if !ok {
+				current = "ask"
+			}
+			if permRank(v) <= permRank(current) {
+				s.Permissions[k] = v
+			}
 		}
-		s.ProtectedPaths = append(s.ProtectedPaths, p.ProtectedPaths...)
+		s.ProtectedPaths = append(s.ProtectedPaths, p.ProtectedPaths...) // additions only tighten
 	}
 	return s
+}
+
+// modeRank orders permission modes from the most restricted to the least.
+func modeRank(m string) int {
+	switch m {
+	case "plan":
+		return 0
+	case "default", "":
+		return 1
+	case "acceptEdits":
+		return 2
+	case "bypass":
+		return 3
+	}
+	return 1
+}
+
+// permRank orders a tool permission from the most restricted to the least.
+func permRank(v string) int {
+	switch v {
+	case "deny":
+		return 0
+	case "ask", "":
+		return 1
+	case "allow":
+		return 2
+	}
+	return 1
 }
 
 // RootLanguage is the language the user reads infuse in, for code that has a project folder but no

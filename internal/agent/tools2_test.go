@@ -21,7 +21,7 @@ func TestMultiEditAllOrNothing(t *testing.T) {
 		t.Fatal("edited without reading:", out)
 	}
 	s.markRead(p)
-	out, isErr := tool.Run(context.Background(), tc, json.RawMessage(`{"path":"a.js","edits":[{"old_string":"a = 1","new_string":"a = 10"},{"old_string":"nao-existe","new_string":"x"}]}`))
+	out, isErr := tool.Run(context.Background(), tc, json.RawMessage(`{"path":"a.js","edits":[{"old_string":"a = 1","new_string":"a = 10"},{"old_string":"does-not-exist","new_string":"x"}]}`))
 	if !isErr || !strings.Contains(out, "edit 2") {
 		t.Fatal(out)
 	}
@@ -43,8 +43,8 @@ func TestReadImageAttachesIt(t *testing.T) {
 	testHome(t)
 	root := t.TempDir()
 	s := newSession(root)
-	_ = os.WriteFile(filepath.Join(root, "tela.png"), []byte("\x89PNG\r\n\x1a\nfake"), 0o644)
-	out, isErr := readTool{}.Run(context.Background(), &ToolContext{S: s, Root: root, Cwd: root}, json.RawMessage(`{"path":"tela.png"}`))
+	_ = os.WriteFile(filepath.Join(root, "screen.png"), []byte("\x89PNG\r\n\x1a\nfake"), 0o644)
+	out, isErr := readTool{}.Run(context.Background(), &ToolContext{S: s, Root: root, Cwd: root}, json.RawMessage(`{"path":"screen.png"}`))
 	if isErr || !strings.Contains(out, "attached") || len(s.pendingImages) != 1 || s.pendingImages[0].MediaType != "image/png" {
 		t.Fatalf("%v %s %+v", isErr, out, s.pendingImages)
 	}
@@ -78,9 +78,9 @@ func TestExploreSubagentsRunAsATeam(t *testing.T) {
 	s := newSession(root)
 	s.Provider = "mock"
 	content := []Block{
-		{Type: "tool_use", ID: "a", Name: "Agent", Input: json.RawMessage(`{"kind":"explore","prompt":"olá 1"}`)},
-		{Type: "tool_use", ID: "b", Name: "Agent", Input: json.RawMessage(`{"kind":"review","prompt":"olá 2"}`)},
-		{Type: "tool_use", ID: "c", Name: "Agent", Input: json.RawMessage(`{"kind":"general","prompt":"olá 3"}`)},
+		{Type: "tool_use", ID: "a", Name: "Agent", Input: json.RawMessage(`{"kind":"explore","prompt":"hello 1"}`)},
+		{Type: "tool_use", ID: "b", Name: "Agent", Input: json.RawMessage(`{"kind":"review","prompt":"hello 2"}`)},
+		{Type: "tool_use", ID: "c", Name: "Agent", Input: json.RawMessage(`{"kind":"general","prompt":"hello 3"}`)},
 	}
 	got := s.runReadsInParallel(context.Background(), &RuleSet{}, content)
 	if len(got) != 2 || got["a"].Content == "" || got["b"].Content == "" {

@@ -3,6 +3,7 @@ package oracle
 import (
 	"context"
 	"fmt"
+	"infuse/internal/config"
 	"infuse/internal/core"
 	"infuse/internal/fsx"
 	"infuse/internal/journal"
@@ -23,34 +24,55 @@ import (
 
 // The executor: run the checks against an immutable snapshot.
 
+// uiText renders a catalog message in the language the user reads infuse in.
+func uiText(id string, kv ...any) string {
+	return core.M(id, kv...).Render(config.LoadSettings().Language)
+}
+
+// RunOracle runs the user's criteria for a project (turn 0 when the caller has none).
 func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verdict, error) {
+	return RunOracleTurn(ctx, evidenceRoot, workDir, session, 0)
+}
+
+// RunOracleTurn is the executor. The verdict carries the hash of the criteria it used and the turn it
+// belongs to, and the criteria are copied beside the evidence: a verdict can always be traced back to
+// the exact criteria and snapshot that produced it.
+func RunOracleTurn(ctx context.Context, evidenceRoot, workDir, session string, turn int) (Verdict, error) {
 	mu, _ := executorMu.LoadOrStore(evidenceRoot, &sync.Mutex{})
 	mu.(*sync.Mutex).Lock()
 	defer mu.(*sync.Mutex).Unlock()
 
-	v := Verdict{Run: time.Now().Format("20060102-150405.000"), Started: time.Now().UnixMilli(), Session: session, Checks: []CheckResult{}}
+	v := Verdict{Run: time.Now().Format("20060102-150405.000"), Started: time.Now().UnixMilli(), Session: session, Turn: turn, Checks: []CheckResult{}}
 	spec, err := LoadOracleSpec(evidenceRoot)
 	if err != nil {
-		return v, fmt.Errorf("checks.json inválido: %w", err)
+		return v, fmt.Errorf("invalid checks.json: %w", err)
 	}
+	v.SpecHash, v.Criteria = specHash(spec), len(spec.Checks)
 	dir := filepath.Join(EvidenceDir(evidenceRoot), v.Run)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return v, err
 	}
+	writeSpecCopy(dir, spec)
 	finish := func() (Verdict, error) {
 		v.Finished = time.Now().UnixMilli()
+		v.Signature = signVerdict(v)
 		_ = core.WriteJSON(filepath.Join(dir, "verdict.json"), v)
-		journal.Journal(evidenceRoot, journal.JournalEntry{Kind: "oracle", Detail: fmt.Sprintf("veredito %s (%s) — evidência em .infuse/evidence/%s", v.Verdict, v.Summary, v.Run)})
+		journal.Journal(evidenceRoot, journal.JournalEntry{Kind: "oracle", Detail: fmt.Sprintf("verdict %s (%s) — evidence in .infuse/evidence/%s", v.Verdict, v.Summary, v.Run)})
 		return v, nil
 	}
 	if len(spec.Checks) == 0 {
-		v.Verdict, v.Summary = "sem-criterios", "nenhuma verificação em .infuse/oracle/checks.json"
+		v.Verdict, v.Summary = "sem-criterios", uiText("oracle.noChecks")
 		return finish()
 	}
+	if summary, ok := oraclePreflight(evidenceRoot, spec); !ok {
+		v.Verdict, v.Summary = "erro", summary
+		return finish()
+	}
+	v.Warnings = specWarnings(spec)
 
 	snapDir, snapID, cleanup, err := takeSnapshot(workDir, dir)
 	if err != nil {
-		v.Verdict, v.Summary = "erro", "snapshot falhou: "+err.Error()
+		v.Verdict, v.Summary = "erro", uiText("oracle.snapshotFailed", "error", err.Error())
 		return finish()
 	}
 	defer cleanup()
@@ -60,6 +82,13 @@ func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verd
 		v.Verdict, v.Summary = "erro", summary
 		return finish()
 	}
+	pid, stop, summary, ok := startSnapshotServer(ctx, spec, snapDir, dir)
+	if !ok {
+		v.Verdict, v.Summary = "erro", summary
+		return finish()
+	}
+	v.ServerPID = pid
+	defer stop()
 	var passed int
 	v.Checks, passed = runChecks(ctx, snapDir, dir, spec.Checks)
 	if passed == len(spec.Checks) {
@@ -67,8 +96,32 @@ func RunOracle(ctx context.Context, evidenceRoot, workDir, session string) (Verd
 	} else {
 		v.Verdict = "reprovado"
 	}
-	v.Summary = fmt.Sprintf("%d de %d verificações passaram", passed, len(spec.Checks))
+	v.Summary = uiText("oracle.summary", "passed", passed, "total", len(spec.Checks))
 	return finish()
+}
+
+// oraclePreflight refuses criteria that cannot produce a trustworthy verdict: criteria that do not
+// match the user's anchored copy, or an HTTP check with no server started from the snapshot.
+func oraclePreflight(evidenceRoot string, spec OracleSpec) (summary string, ok bool) {
+	if err := verifyAnchor(evidenceRoot, spec); err != nil {
+		return uiText("oracle.anchor", "error", err.Error()), false
+	}
+	if hasHTTPChecks(spec) && strings.TrimSpace(spec.Server) == "" {
+		return uiText("oracle.httpNeedsServer"), false
+	}
+	return "", true
+}
+
+// startSnapshotServer starts the criteria's server from the snapshot when there is one to start.
+func startSnapshotServer(ctx context.Context, spec OracleSpec, snapDir, dir string) (pid int, stop func(), summary string, ok bool) {
+	if !hasHTTPChecks(spec) || strings.TrimSpace(spec.Server) == "" {
+		return 0, func() {}, "", true
+	}
+	stop, pid, err := startServer(ctx, snapDir, dir, spec)
+	if err != nil {
+		return 0, nil, err.Error(), false
+	}
+	return pid, stop, "", true
 }
 
 // runSetup runs the spec's preparation command against the snapshot; ok is false when it failed.
@@ -79,7 +132,7 @@ func runSetup(ctx context.Context, snapDir, dir, setup string) (summary string, 
 	res := runCheckCommand(ctx, snapDir, setup, 600)
 	_ = os.WriteFile(filepath.Join(dir, "setup.log"), []byte(res.out), 0o644)
 	if res.exit != 0 {
-		return fmt.Sprintf("preparação falhou (exit %d) — veja setup.log", res.exit), false
+		return uiText("oracle.setupFailed", "exit", res.exit), false
 	}
 	return "", true
 }
@@ -94,10 +147,11 @@ func runChecks(ctx context.Context, snapDir, dir string, checks []OracleCheck) (
 		}
 		start := time.Now()
 		r := runCheck(ctx, snapDir, dir, c)
+		r.Target = checkTarget(c)
 		r.Millis = time.Since(start).Milliseconds()
 		if c.Expect.MaxMillis > 0 && r.Passed && r.Millis > int64(c.Expect.MaxMillis) {
 			r.Passed = false
-			r.Detail += fmt.Sprintf("; levou %d ms (máximo %d)", r.Millis, c.Expect.MaxMillis)
+			r.Detail += fmt.Sprintf("; took %d ms (maximum %d)", r.Millis, c.Expect.MaxMillis)
 		}
 		if r.Passed {
 			passed++
@@ -128,7 +182,7 @@ func runCheckCommand(ctx context.Context, dir, command string, timeoutSec int) c
 	code := core.ExitCode(err)
 	if cctx.Err() == context.DeadlineExceeded {
 		code = -1
-		_, _ = buf.Write([]byte(fmt.Sprintf("\n[tempo esgotado após %ds]", timeoutSec)))
+		_, _ = buf.Write([]byte(fmt.Sprintf("\n[timed out after %ds]", timeoutSec)))
 	}
 	return cmdResult{security.RedactSecrets(buf.String()), code}
 }
@@ -145,7 +199,7 @@ func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResul
 	case "maxLines":
 		return checkMaxLines(snap, evDir, safe, c)
 	default:
-		return CheckResult{ID: c.ID, Kind: c.Kind, Detail: "tipo de verificação desconhecido: " + c.Kind}
+		return CheckResult{ID: c.ID, Kind: c.Kind, Detail: "unknown check type: " + c.Kind}
 	}
 }
 
@@ -158,18 +212,18 @@ func writeEvidence(r *CheckResult, evDir, name, content string) {
 // textOK applies the expectation's text conditions to a check's output.
 func textOK(c OracleCheck, text string) (bool, string) {
 	if c.Expect.Contains != "" && !strings.Contains(text, c.Expect.Contains) {
-		return false, fmt.Sprintf("não contém %q", c.Expect.Contains)
+		return false, fmt.Sprintf("does not contain %q", c.Expect.Contains)
 	}
 	if c.Expect.NotContains != "" && strings.Contains(text, c.Expect.NotContains) {
-		return false, fmt.Sprintf("contém %q", c.Expect.NotContains)
+		return false, fmt.Sprintf("contains %q", c.Expect.NotContains)
 	}
 	if c.Expect.Matches != "" {
 		re, err := regexp.Compile(c.Expect.Matches)
 		if err != nil {
-			return false, "regex inválida: " + err.Error()
+			return false, "invalid regex: " + err.Error()
 		}
 		if !re.MatchString(text) {
-			return false, fmt.Sprintf("não casa com /%s/", c.Expect.Matches)
+			return false, fmt.Sprintf("does not match /%s/", c.Expect.Matches)
 		}
 	}
 	return true, ""
@@ -235,11 +289,11 @@ func checkFile(snap string, c OracleCheck) CheckResult {
 		wantExists = *c.Expect.Exists
 	}
 	if exists != wantExists {
-		r.Detail = map[bool]string{true: "o arquivo existe", false: "o arquivo não existe"}[exists]
+		r.Detail = map[bool]string{true: "the file exists", false: "the file does not exist"}[exists]
 		return r
 	}
 	if !exists {
-		r.Passed, r.Detail = true, "não existe, como esperado"
+		r.Passed, r.Detail = true, "does not exist, as expected"
 		return r
 	}
 	ok, why := textOK(c, string(b))
@@ -273,7 +327,7 @@ func checkMaxLines(snap, evDir, safe string, c OracleCheck) CheckResult {
 	sort.Strings(over)
 	writeEvidence(&r, evDir, safe+".txt", strings.Join(over, "\n"))
 	r.Passed = len(over) == 0
-	r.Detail = map[bool]string{true: fmt.Sprintf("nenhum arquivo acima de %d linhas", c.Max), false: fmt.Sprintf("%d arquivo(s) acima de %d linhas", len(over), c.Max)}[r.Passed]
+	r.Detail = map[bool]string{true: fmt.Sprintf("no file above %d lines", c.Max), false: fmt.Sprintf("%d file(s) above %d lines", len(over), c.Max)}[r.Passed]
 	return r
 }
 

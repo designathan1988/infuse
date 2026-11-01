@@ -159,7 +159,7 @@ func (w *winWindow) Browser(op string, a BrowserArgs) (any, error) {
 	case r := <-done:
 		return r.v, r.err
 	case <-time.After(30 * time.Second):
-		return nil, errors.New("o navegador não respondeu")
+		return nil, errors.New("the browser did not respond")
 	}
 }
 
@@ -207,7 +207,7 @@ func (w *winWindow) browserOp(op string, a BrowserArgs) (any, error) {
 		delete(browserBySender, uintptr(tb.wv))
 		procDestroyWindow.Call(tb.hwnd)
 	default:
-		return nil, errors.New("operação desconhecida: " + op)
+		return nil, errors.New("unknown operation: " + op)
 	}
 	return true, nil
 }
@@ -224,13 +224,13 @@ func (w *winWindow) newBrowserTab(id string) (*browserTab, error) {
 	const wsChild, wsClipSiblings, wsClipChildren = 0x40000000, 0x04000000, 0x02000000
 	hwnd, _, _ := procCreateWindowExW.Call(0, uintptr(unsafe.Pointer(cls)), 0, wsChild|wsClipSiblings|wsClipChildren, 0, 0, 1, 1, w.hwnd, 0, uintptr(inst), 0)
 	if hwnd == 0 {
-		return nil, errors.New("não foi possível criar a área do navegador")
+		return nil, errors.New("could not create the browser area")
 	}
 	ch := edge.NewChromium()
 	ch.DataPath = filepath.Join(core.InfuseHome(), "browser") // the sites' cookies and storage, apart from the app's
 	if !ch.Embed(hwnd) {
 		procDestroyWindow.Call(hwnd)
-		return nil, errors.New("WebView2 indisponível")
+		return nil, errors.New("WebView2 unavailable")
 	}
 	if s, err := ch.GetSettings(); err == nil {
 		_ = s.PutAreDevToolsEnabled(true) // F12 inspects the page
@@ -264,7 +264,7 @@ func (w *winWindow) newBrowserTab(id string) (*browserTab, error) {
 	comCall(unsafe.Pointer(ctrl), slotControllerCoreWebView2, uintptr(unsafe.Pointer(&tb.wv)))
 	if tb.wv == nil {
 		procDestroyWindow.Call(hwnd)
-		return nil, errors.New("WebView2 sem página")
+		return nil, errors.New("WebView2 has no page")
 	}
 	var token int64
 	for slot, h := range map[int]*comHandler{slotAddSourceChanged: onSourceChanged, slotAddDocumentTitleChanged: onTitleChanged, slotAddNavigationStarting: onNavigationStarting, slotAddNewWindowRequested: onNewWindow} {

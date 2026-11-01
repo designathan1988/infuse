@@ -84,7 +84,7 @@ func memorySaveRoute(w http.ResponseWriter, body map[string]any, root string, st
 	case "session":
 		s, e := agent.LoadSession(root, str("session"))
 		if e != nil {
-			sendJSON(w, 404, map[string]any{"error": "sessão não encontrada"})
+			sendJSON(w, 404, map[string]any{"error": "session not found", "code": "session.notFound"})
 			return
 		}
 		err = s.EditMemory("session", func([]agent.MemoryItem) []agent.MemoryItem {
@@ -106,7 +106,7 @@ func oracleEvidenceRoute(w http.ResponseWriter, q map[string]string, root string
 	run, name := filepath.Base(q["run"]), filepath.Base(q["file"])
 	b, err := os.ReadFile(filepath.Join(oracle.EvidenceDir(root), run, name))
 	if err != nil {
-		sendJSON(w, 404, map[string]any{"error": "evidência não encontrada"})
+		sendJSON(w, 404, map[string]any{"error": "evidence not found", "code": "oracle.evidenceNotFound"})
 		return
 	}
 	sendJSON(w, 200, map[string]any{"name": name, "content": string(b)})
@@ -132,7 +132,7 @@ func appCommandRoute(w http.ResponseWriter, str func(string) string) {
 		sendJSON(w, 200, map[string]any{"ok": true, "command": cmd, "name": a.Name})
 		return
 	}
-	sendJSON(w, 200, map[string]any{"ok": false, "error": "aplicativo não encontrado"})
+	sendJSON(w, 200, map[string]any{"ok": false, "error": "application not found", "code": "app.notFound"})
 }
 
 func modelsRoute(w http.ResponseWriter, r *http.Request) {

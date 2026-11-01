@@ -64,7 +64,7 @@ func runScript(t *testing.T, steps ...func(ModelRequest) (ModelResult, error)) (
 	off := false
 	s.settings.RequireReview = &off // before the turn starts: the loop reads the settings without this lock
 	s.Mu.Unlock()
-	if err := s.Send("faça a tarefa", nil, nil); err != nil {
+	if err := s.Send("do the task", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	waitTurn(t, s)
@@ -95,12 +95,12 @@ func TestProviderFailuresDoNotEndTheTurn(t *testing.T) {
 		fails(errors.New("DeepSeek 503: service overloaded")),
 		fails(errors.New("read tcp: connection reset by peer")),
 		func(ModelRequest) (ModelResult, error) { return ModelResult{}, nil }, // an empty answer
-		say("pronto"))
-	if s.State != "idle" || !strings.Contains(transcript(s), "pronto") {
+		say("ready"))
+	if s.State != "idle" || !strings.Contains(transcript(s), "ready") {
 		t.Fatalf("state %s, error %q", s.State, s.lastError)
 	}
 	// a key or request problem is not retried: the user must act
-	s2, p2 := runScript(t, fails(errors.New("DeepSeek 401: invalid api key")), say("nunca"))
+	s2, p2 := runScript(t, fails(errors.New("DeepSeek 401: invalid api key")), say("never"))
 	if s2.State != "error" || p2.n != 1 {
 		t.Fatalf("fatal error retried: state %s after %d calls", s2.State, p2.n)
 	}
@@ -115,11 +115,11 @@ func TestContextTooLongCompactsAndGoesOn(t *testing.T) {
 			asked = append(asked, len(req.Messages))
 			return ModelResult{}, errors.New("DeepSeek 400: This model's maximum context length is 1000000 tokens")
 		},
-		say("resumo"), // the compaction's summary
-		say("continuando"),
+		say("summary"), // the compaction's summary
+		say("continuing"),
 	}
 	s, _ := runScript(t, steps...)
-	if s.State != "idle" || s.Compactions < 1 || !strings.Contains(transcript(s), "continuando") {
+	if s.State != "idle" || s.Compactions < 1 || !strings.Contains(transcript(s), "continuing") {
 		t.Fatalf("state %s, compactions %d: %s", s.State, s.Compactions, s.lastError)
 	}
 }
@@ -128,9 +128,9 @@ func TestReplyCutAtTheLimitIsContinuedNotRun(t *testing.T) {
 	ran := false
 	registerTool(panicTool{&ran})
 	cut := func(ModelRequest) (ModelResult, error) {
-		return ModelResult{Content: []Block{{Type: "text", Text: "Vou escrever"}, {Type: "tool_use", ID: "half", Name: "PanicProbe", Input: json.RawMessage(`{"path":"a.ts","content":"exp`)}}, StopReason: "length"}, nil
+		return ModelResult{Content: []Block{{Type: "text", Text: "I will write"}, {Type: "tool_use", ID: "half", Name: "PanicProbe", Input: json.RawMessage(`{"path":"a.ts","content":"exp`)}}, StopReason: "length"}, nil
 	}
-	s, _ := runScript(t, cut, say("terminei"))
+	s, _ := runScript(t, cut, say("finished"))
 	if ran {
 		t.Fatal("a half-written call was executed")
 	}
@@ -153,8 +153,8 @@ func (p panicTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 func TestPanicInAToolIsThatToolsError(t *testing.T) {
 	ran := false
 	registerTool(panicTool{&ran})
-	s, _ := runScript(t, call("PanicProbe", `{}`), say("segui"))
-	if !ran || s.State != "idle" || !strings.Contains(transcript(s), "failed inside infuse") || !strings.Contains(transcript(s), "segui") {
+	s, _ := runScript(t, call("PanicProbe", `{}`), say("continued"))
+	if !ran || s.State != "idle" || !strings.Contains(transcript(s), "failed inside infuse") || !strings.Contains(transcript(s), "continued") {
 		t.Fatalf("ran %v, state %s: %s", ran, s.State, s.lastError)
 	}
 }
@@ -164,15 +164,15 @@ func TestLongWorkWithProgressIsNotCutAtAStepCount(t *testing.T) {
 	plan := func(ModelRequest) (ModelResult, error) {
 		n++
 		if n > 260 {
-			return ModelResult{Content: []Block{{Type: "text", Text: "fim"}}, StopReason: "end_turn"}, nil
+			return ModelResult{Content: []Block{{Type: "text", Text: "end"}}, StopReason: "end_turn"}, nil
 		}
 		status := "done" // the plan advances on every step
 		if n%2 == 0 {
 			status = "in_progress"
 		}
-		in := fmt.Sprintf(`{"tasks":[{"id":"1","text":"passo","status":"done"},{"id":"%d","text":"seguinte","status":"%s","proof":"teste"}]}`, n, status)
+		in := fmt.Sprintf(`{"tasks":[{"id":"1","text":"step","status":"done"},{"id":"%d","text":"next","status":"%s","proof":"test"}]}`, n, status)
 		if n == 260 {
-			in = `{"tasks":[{"id":"1","text":"passo","status":"done"}]}`
+			in = `{"tasks":[{"id":"1","text":"step","status":"done"}]}`
 		}
 		return ModelResult{Content: []Block{{Type: "tool_use", ID: fmt.Sprintf("t%d", n), Name: "TodoWrite", Input: json.RawMessage(in)}}, StopReason: "tool_use"}, nil
 	}
@@ -183,7 +183,7 @@ func TestLongWorkWithProgressIsNotCutAtAStepCount(t *testing.T) {
 }
 
 func TestNoProgressIsWarnedThenStopped(t *testing.T) {
-	s, p := runScript(t, call("Glob", `{"pattern":"*.nada"}`))
+	s, p := runScript(t, call("Glob", `{"pattern":"*.nothing"}`))
 	if s.State != "error" || !strings.Contains(s.lastError, "120") || !strings.Contains(transcript(s), M("stall.warn", "steps", 60).String()) {
 		t.Fatalf("state %s after %d calls: %s", s.State, p.n, s.lastError)
 	}
@@ -193,13 +193,13 @@ func TestInterruptedTurnResumesAtStartup(t *testing.T) {
 	testHome(t)
 	scriptSeq++
 	name := fmt.Sprintf("script-%d", scriptSeq)
-	p := &scriptProvider{steps: []func(ModelRequest) (ModelResult, error){say("retomei")}}
+	p := &scriptProvider{steps: []func(ModelRequest) (ModelResult, error){say("I resumed")}}
 	registerProvider(name, func(ProviderConfig) Provider { return p })
 	root := t.TempDir()
 	RememberProject(root)
 	s := newSession(root)
 	s.Provider, s.Model = name, "script"
-	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "tarefa"}}}, {Role: "assistant", Content: []Block{{Type: "tool_use", ID: "x", Name: "Glob", Input: json.RawMessage(`{"pattern":"*"}`)}}}}
+	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "task"}}}, {Role: "assistant", Content: []Block{{Type: "tool_use", ID: "x", Name: "Glob", Input: json.RawMessage(`{"pattern":"*"}`)}}}}
 	s.Working = true
 	s.save()
 	sessionsMu.Lock()
@@ -211,7 +211,7 @@ func TestInterruptedTurnResumesAtStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitTurn(t, r)
-	if !strings.Contains(transcript(r), "retomei") || !strings.Contains(transcript(r), "infuse was restarted") {
+	if !strings.Contains(transcript(r), "I resumed") || !strings.Contains(transcript(r), "infuse was restarted") {
 		t.Fatalf("not resumed: %s", transcript(r))
 	}
 }

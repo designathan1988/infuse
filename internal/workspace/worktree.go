@@ -21,10 +21,10 @@ var reBranchUnsafe = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 // CreateWorktree makes a new worktree for a session and returns its path and branch.
 func CreateWorktree(root, name string) (string, string, error) {
 	if !core.Exists(filepath.Join(root, ".git")) {
-		return "", "", errors.New("a pasta não é um repositório git; worktree exige git")
+		return "", "", errors.New("the folder is not a git repository; worktree requires git")
 	}
 	if strings.TrimSpace(GitOutput(root, "rev-parse", "--verify", "HEAD")) == "" {
-		return "", "", errors.New("o repositório ainda não tem nenhum commit")
+		return "", "", errors.New("the repository has no commits yet")
 	}
 	s := config.EffectiveSettings(root)
 	slug := strings.Trim(reBranchUnsafe.ReplaceAllString(strings.ToLower(name), "-"), "-")

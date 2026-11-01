@@ -121,7 +121,7 @@ type Editor struct {
 	Path string `json:"-"`
 }
 
-// Editors lists the code editors found on this machine, for "Abrir em".
+// Editors lists the code editors found on this machine, for "Open in".
 func Editors() []Editor {
 	var out []Editor
 	for _, e := range []struct{ id, name, bin string }{
@@ -169,7 +169,7 @@ func WriteUserFile(root, rel, content string, mtime int64, force bool) (int64, e
 	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
 		return 0, err
 	}
-	journal.Journal(root, journal.JournalEntry{Kind: "write", Path: core.ToPosix(rel), Bytes: len(content), Detail: "usuário (editor)"})
+	journal.Journal(root, journal.JournalEntry{Kind: "write", Path: core.ToPosix(rel), Bytes: len(content), Detail: "user (editor)"})
 	st, _ := os.Stat(abs)
 	if st == nil {
 		return time.Now().UnixMilli(), nil

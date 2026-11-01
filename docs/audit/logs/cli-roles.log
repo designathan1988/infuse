@@ -1,0 +1,28 @@
+== version
+infuse 0.5.0
+== status
+{
+  "platform": "windows",
+  "version": "0.5.0",
+  "home": "C:\\Users\\Jonathan\\.infuse",
+  "shim": "C:\\Users\\Jonathan\\.infuse\\bin\\bash.exe",
+  "shimInstalled": false,
+  "realBash": "C:\\Program Files\\Git\\bin\\bash.exe",
+  "settingsFile": "C:\\Users\\Jonathan\\.claude\\settings.json",
+  "claudeEnv": {},
+  "pointed": false,
+  "envKey": "CLAUDE_CODE_GIT_BASH_PATH"
+}
+project root here: C:\Users\Jonathan\Documents\infuse-src-0.5
+watcher: pid 0 alive=false
+== rules
+[infuse] rule files in effect: C:\Users\Jonathan\Documents\infuse-src-0.5\.infuse\rules.json
+== lessons
+== journal
+2026-11-01 14:57:01 oracle    .infuse/oracle/checks.json critérios editados pelo usuário
+2026-11-01 14:57:02 oracle     veredito erro (snapshot falhou: git add (índice temporário) falhou) — evidência em .infuse/evidence/20261101-145701.510
+2026-11-01 14:57:02 oracle    .infuse/oracle/checks.json critérios editados pelo usuário
+== map (timing)
+/usr/bin/bash: line 1: /usr/bin/time: No such file or directory
+map_exit=127
+map_exit=0 seconds=0

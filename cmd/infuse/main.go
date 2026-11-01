@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"infuse/internal/api"
 	"infuse/internal/core"
+	"infuse/internal/desktop"
 	"infuse/internal/filter"
 	"infuse/internal/knowledge"
 	"infuse/internal/platform/process"
 	"infuse/internal/projectmap"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -66,6 +68,8 @@ func runCommand(command string, args []string) int {
 			os.Setenv("INFUSE_PORT", args[0])
 		}
 		api.Start(false)
+	case "claude", "codex", "gemini":
+		return launchAgent(command, args)
 	case "install":
 		return installCommand()
 	case "uninstall":
@@ -85,10 +89,54 @@ func runCommand(command string, args []string) int {
 	case "version", "--version", "-v":
 		fmt.Println("infuse", version)
 	default:
-		fmt.Println("usage: infuse [ui | install | uninstall | status | map | journal [n] | lessons | rules | shell -c <cmd> | watch <root> | version]")
+		fmt.Println("usage: infuse [ui | claude | codex | gemini | install | uninstall | status | map | journal [n] | lessons | rules | shell -c <cmd> | watch <root> | version]")
 		return 1
 	}
 	return 0
+}
+
+// launchAgent starts an external coding agent with its shell pointing at the interposed shim: every
+// command it runs passes through the filter, without changing the user's global settings.
+func launchAgent(kind string, args []string) int {
+	exe := desktop.CLIPath(kind)
+	if exe == "" {
+		fmt.Printf("[infuse] %s was not found on this machine; install the CLI or use the bridge provider.\n", kind)
+		return 1
+	}
+	if err := filter.EnsureShim(); err != nil {
+		fmt.Println("[infuse] cannot install the interposed shell:", err)
+		return 1
+	}
+	shim := filter.ShimPath()
+	cmd := exec.Command(exe, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir, _ = os.Getwd()
+	env := setEnv(os.Environ(), "CLAUDE_CODE_GIT_BASH_PATH", shim)
+	env = setEnv(env, "CLAUDE_CODE_SHELL", shim)
+	env = setEnv(env, "SHELL", shim)
+	env = setEnv(env, "PATH", filepath.Dir(shim)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	env = setEnv(env, "INFUSE_LAUNCHED", "1")
+	cmd.Env = env
+	if err := cmd.Run(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			return ee.ExitCode()
+		}
+		fmt.Fprintln(os.Stderr, "[infuse] cannot start", kind+":", err)
+		return 1
+	}
+	return 0
+}
+
+// setEnv replaces a variable (case-insensitively, as Windows does) instead of appending a duplicate.
+func setEnv(env []string, key, value string) []string {
+	out := env[:0]
+	for _, e := range env {
+		k, _, _ := strings.Cut(e, "=")
+		if !strings.EqualFold(k, key) {
+			out = append(out, e)
+		}
+	}
+	return append(out, key+"="+value)
 }
 
 // installCommand installs the interposed shell; 1 when installation failed.

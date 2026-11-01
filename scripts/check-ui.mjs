@@ -22,4 +22,4 @@ const walk = d => {
 };
 walk(srcDir);
 if (bad) { console.error(`${bad} of ${count} modules failed to parse`); process.exit(1); }
-console.log(`check-ui: ${count} módulos OK`);
+console.log(`check-ui: ${count} modules OK`);

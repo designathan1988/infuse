@@ -52,7 +52,7 @@ func (a *action) contentTextOrDOM() (string, bool) {
 	}
 	var str string
 	_ = json.Unmarshal(v, &str)
-	return a.h.Clip(security.ExternalContent(a.where(), str)), false
+	return a.h.Clip(security.ExternalContent(a.where(), security.RedactSecrets(str))), false
 }
 
 func (a *action) contentEval() (string, bool) {
@@ -60,7 +60,7 @@ func (a *action) contentEval() (string, bool) {
 	if err != nil {
 		return a.h.Say(core.M("browser.script_error", "error", err.Error())), true
 	}
-	return a.h.Clip(security.ExternalContent(a.where(), string(v))), false
+	return a.h.Clip(security.ExternalContent(a.where(), security.RedactSecrets(string(v)))), false
 }
 
 func (a *action) contentScreenshot() (string, bool) {
@@ -92,6 +92,7 @@ func (a *action) contentScreenshot() (string, bool) {
 	_ = os.WriteFile(filepath.Join(dir, name), jpg, 0o644)
 	cfg, _ := jpeg.DecodeConfig(bytes.NewReader(jpg))
 	attachImage(a.h, jpg)
+	a.h.NoteScreenshot(a.where())
 	if what == "" {
 		return a.h.Say(core.M("browser.shot_screen", "w", cfg.Width, "h", cfg.Height, "where", a.where(), "file", name)), false
 	}

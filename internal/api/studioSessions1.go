@@ -19,7 +19,7 @@ func legacySessions(w http.ResponseWriter, r *http.Request, body map[string]any,
 	parts := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/api/sessions/"), "/", 2)
 	s, err := agent.LoadSession(root, parts[0])
 	if err != nil {
-		sendJSON(w, 404, map[string]any{"error": "sessão não encontrada"})
+		sendJSON(w, 404, map[string]any{"error": "session not found", "code": "session.notFound"})
 		return
 	}
 	action := ""
@@ -56,7 +56,7 @@ func legacySessionRoot(w http.ResponseWriter, r *http.Request, root string) {
 		return
 	}
 	if st, err := os.Stat(root); err != nil || !st.IsDir() {
-		sendJSON(w, 400, map[string]any{"error": "projeto não encontrado"})
+		sendJSON(w, 400, map[string]any{"error": "the project folder was not found", "code": "project.notFound"})
 		return
 	}
 	s := agent.NewSession(root)
@@ -88,7 +88,7 @@ func (c *legacySessionAPI) rootRoute() {
 func (c *legacySessionAPI) duplicate() {
 	d := agent.NewSession(c.root)
 	d.Mu.Lock()
-	d.Title = c.s.Title + " (cópia)"
+	d.Title = c.s.Title + " (copy)"
 	d.Model = c.s.Model
 	d.Messages = c.s.CopyMessages()
 	d.Turn = c.s.Turn

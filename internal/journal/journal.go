@@ -7,9 +7,11 @@ import (
 	"bufio"
 	"encoding/json"
 	"infuse/internal/core"
+	"infuse/internal/data"
 	"infuse/internal/security"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -24,9 +26,41 @@ type JournalEntry struct {
 }
 
 type LessonEntry struct {
-	Ts     int64  `json:"ts"`
-	Vice   string `json:"vice"`
-	Detail string `json:"detail"`
+	Ts        int64  `json:"ts"`
+	Vice      string `json:"vice"`
+	Detail    string `json:"detail"`
+	Signature string `json:"signature,omitempty"`
+	Remedy    string `json:"remedy,omitempty"`
+}
+
+type viceInfo struct {
+	Vice      string `json:"vice"`
+	Signature string `json:"signature"`
+	Remedy    string `json:"remedy"`
+}
+
+var (
+	vicesOnce sync.Once
+	vices     map[string]viceInfo
+)
+
+// Vice describes the observed vice by its deterministic signature and its remedy, from the base
+// catalog in internal/data/vices.json. The signature is what was detected; the remedy is what to do.
+func Vice(name string) (signature, remedy string) {
+	vicesOnce.Do(func() {
+		vices = map[string]viceInfo{}
+		var list []viceInfo
+		if json.Unmarshal(data.Read("vices.json"), &list) == nil {
+			for _, v := range list {
+				vices[v.Vice] = v
+			}
+		}
+	})
+	v, ok := vices[name]
+	if !ok {
+		return "", ""
+	}
+	return v.Signature, v.Remedy
 }
 
 // InfuseDir creates and returns the project's .infuse directory, seeding its .gitignore.
@@ -49,7 +83,9 @@ func Journal(root string, e JournalEntry) {
 }
 
 func Lesson(root, vice, detail string) {
-	core.AppendLine(filepath.Join(InfuseDir(root), "lessons.jsonl"), LessonEntry{time.Now().UnixMilli(), vice, detail})
+	e := LessonEntry{Ts: time.Now().UnixMilli(), Vice: vice, Detail: detail}
+	e.Signature, e.Remedy = Vice(vice)
+	core.AppendLine(filepath.Join(InfuseDir(root), "lessons.jsonl"), e)
 }
 
 func ReadJournalSince(root string, since int64) []JournalEntry {

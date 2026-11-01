@@ -17,13 +17,13 @@ func TestFailedCILogsFromGh(t *testing.T) {
 	root := gitRepo(t)
 	bin := t.TempDir()
 	bat := "@echo off\r\n" +
-		"if \"%1 %2\"==\"run list\" (echo [{\"databaseId\":1,\"conclusion\":\"success\",\"name\":\"lint\",\"headSha\":\"aaaaaaaa1\"},{\"databaseId\":7,\"conclusion\":\"failure\",\"name\":\"testes\",\"headSha\":\"bbbbbbbb2\"}]& exit /b 0)\r\n" +
-		"if \"%1 %2 %3\"==\"run view 7\" (echo FAIL soma.test.js: esperado 4, recebido 5& exit /b 0)\r\n" +
+		"if \"%1 %2\"==\"run list\" (echo [{\"databaseId\":1,\"conclusion\":\"success\",\"name\":\"lint\",\"headSha\":\"aaaaaaaa1\"},{\"databaseId\":7,\"conclusion\":\"failure\",\"name\":\"tests\",\"headSha\":\"bbbbbbbb2\"}]& exit /b 0)\r\n" +
+		"if \"%1 %2 %3\"==\"run view 7\" (echo FAIL sum.test.js: expected 4, received 5& exit /b 0)\r\n" +
 		"exit /b 1\r\n"
 	_ = os.WriteFile(filepath.Join(bin, "gh.bat"), []byte(bat), 0o755)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := FailedCILogs(root)
-	if err != nil || !strings.Contains(out, "Workflow: testes (run 7") || !strings.Contains(out, "esperado 4, recebido 5") {
+	if err != nil || !strings.Contains(out, "Workflow: tests (run 7") || !strings.Contains(out, "expected 4, received 5") {
 		t.Fatalf("%v\n%s", err, out)
 	}
 }

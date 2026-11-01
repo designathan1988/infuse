@@ -72,6 +72,11 @@ func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if matches == 0 {
 		return tc.Say(M("grep.none")), false
 	}
+	if m := LoadMap(tc.Root); m != nil { // the same directory context LS gives
+		if d := DescribeDir(m, relTo(tc.Root, base)); d != "" {
+			sb.WriteString("\n" + d + "\n")
+		}
+	}
 	return tc.clip(sb.String()), false
 }
 

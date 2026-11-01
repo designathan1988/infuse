@@ -26,13 +26,13 @@ func TestToolMessagesShownInTheUsersLanguage(t *testing.T) {
 	if out != M("plan.no_proof", "tasks", "write the parser; test it").String() || !strings.HasPrefix(out, "plan refused:") {
 		t.Fatal(out)
 	}
-	if pt != "plano recusado: cada tarefa aberta precisa de proof (o comando, a página ou o arquivo que comprovará que funciona). Sem proof: write the parser; test it" {
+	if pt != M("plan.no_proof", "tasks", "write the parser; test it").Render("pt-BR") {
 		t.Fatal(pt)
 	}
 
 	// a message inside a message is written in the same language (the list of processes: none)
 	out, pt = run(bashOutputTool{}, "2", `{"id":"p9"}`)
-	if out != "process not found: p9. Processes in this session: none" || pt != "processo não encontrado: p9. Processos desta sessão: nenhum" {
+	if out != "process not found: p9. Processes in this session: none" || pt != M("proc.not_found", "id", "p9", "list", M("proc.none")).Render("pt-BR") {
 		t.Fatalf("%q / %q", out, pt)
 	}
 
@@ -43,18 +43,27 @@ func TestToolMessagesShownInTheUsersLanguage(t *testing.T) {
 	if !strings.Contains(out, "export const a = 'xxx") || !strings.Contains(out, "[continues: the file has 501 lines; read on from here with Read offset=") {
 		t.Fatal(out[len(out)-300:])
 	}
-	if !strings.Contains(pt, "export const a = 'xxx") || !strings.Contains(pt, "[continua: o arquivo tem 501 linhas; leia a partir daqui com Read offset=") || strings.Contains(pt, "read on from here") {
+	idx := strings.Index(out, "Read offset=")
+	if idx < 0 {
+		t.Fatal(out[len(out)-300:])
+	}
+	i := idx + len("Read offset=")
+	j := i
+	for j < len(out) && out[j] >= '0' && out[j] <= '9' {
+		j++
+	}
+	if !strings.Contains(pt, "export const a = 'xxx") || !strings.Contains(pt, M("read.continues", "lines", 501, "offset", out[i:j]).Render("pt-BR")) || strings.Contains(pt, "read on from here") {
 		t.Fatal(pt[len(pt)-300:])
 	}
 
 	// a refusal that travels as an error keeps its message: the path refusals
-	out, pt = run(writeTool{}, "4", `{"path":"../fora.txt","content":"x"}`)
-	if out != M("path.outside", "path", "../fora.txt").String() || pt != "caminho fora do projeto: ../fora.txt" {
+	out, pt = run(writeTool{}, "4", `{"path":"../outside.txt","content":"x"}`)
+	if out != M("path.outside", "path", "../outside.txt").String() || pt != M("path.outside", "path", "../outside.txt").Render("pt-BR") {
 		t.Fatalf("%q / %q", out, pt)
 	}
 
 	// an English reader gets the model's text and no separate version
-	if displayFor("en", out, []Msg{M("path.outside", "path", "../fora.txt")}) != "" {
+	if displayFor("en", out, []Msg{M("path.outside", "path", "../outside.txt")}) != "" {
 		t.Fatal("English has no display")
 	}
 }
@@ -66,10 +75,10 @@ func TestMessageErrorsCarryTheirMessage(t *testing.T) {
 		t.Fatal(m, inner)
 	}
 	outer := M("mcp.call_failed", "name", "github", "error", errArg(inner))
-	if outer.Render("pt-BR") != "conector github: o servidor não respondeu em 120 s" {
+	if outer.Render("pt-BR") != M("mcp.call_failed", "name", "github", "error", M("mcp.timeout")).Render("pt-BR") {
 		t.Fatal(outer.Render("pt-BR"))
 	}
-	if userError("pt-BR", M("fork.no_message")).Error() != "mensagem inexistente" {
+	if userError("pt-BR", M("fork.no_message")).Error() != M("fork.no_message").Render("pt-BR") {
 		t.Fatal("an error answered to the screen is in the user's language")
 	}
 	if errArg(os.ErrNotExist) != os.ErrNotExist.Error() {

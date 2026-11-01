@@ -19,7 +19,7 @@ func (p stubbornProvider) Stream(ctx context.Context, req ModelRequest, emit fun
 			return ModelResult{Content: []Block{{Type: "text", Text: "Mudei a abordagem."}}, StopReason: "end_turn"}, nil
 		}
 	}
-	in, _ := json.Marshal(map[string]string{"path": "nao-existe.txt"})
+	in, _ := json.Marshal(map[string]string{"path": "does-not-exist.txt"})
 	return ModelResult{Content: []Block{{Type: "tool_use", ID: "r" + time.Now().Format("150405.000000000"), Name: "Read", Input: in}}, StopReason: "tool_use"}, nil
 }
 
@@ -31,7 +31,7 @@ func runStubborn(t *testing.T, listen bool) *Session {
 	s.Provider, s.Model, s.Mode = "stubborn-test", "stubborn", "bypass"
 	off := false
 	s.settings.RequireReview = &off
-	if err := s.Send("leia o arquivo", nil, nil); err != nil {
+	if err := s.Send("read the file", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	started := false

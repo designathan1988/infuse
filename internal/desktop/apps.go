@@ -60,9 +60,9 @@ func detectApps(start []startApp) []App {
 	apps := []App{
 		{ID: "claude-desktop", Name: "Claude (desktop)", Kind: "msix"},
 		{ID: "chatgpt-desktop", Name: "ChatGPT (desktop)", Kind: "msix"},
-		{ID: "claude-cli", Name: "Claude Code (CLI)", Kind: "cli", Note: "abre num terminal na pasta do projeto"},
-		{ID: "codex-cli", Name: "Codex CLI", Kind: "cli", Note: "abre num terminal na pasta do projeto"},
-		{ID: "gemini-cli", Name: "Gemini CLI", Kind: "cli", Note: "abre num terminal na pasta do projeto"},
+		{ID: "claude-cli", Name: "Claude Code (CLI)", Kind: "cli", Note: "opens in a terminal in the project folder"},
+		{ID: "codex-cli", Name: "Codex CLI", Kind: "cli", Note: "opens in a terminal in the project folder"},
+		{ID: "gemini-cli", Name: "Gemini CLI", Kind: "cli", Note: "opens in a terminal in the project folder"},
 	}
 	for i := range apps {
 		a := &apps[i]
@@ -109,6 +109,15 @@ func detectApps(start []startApp) []App {
 	return apps
 }
 
+// quoteAll quotes each command word for cmd.exe's /K line.
+func quoteAll(words []string) []string {
+	out := make([]string, len(words))
+	for i, w := range words {
+		out[i] = `"` + w + `"`
+	}
+	return out
+}
+
 func appFileExists(p string) bool {
 	if p == "" {
 		return false
@@ -150,7 +159,18 @@ func findCLI(name, home string) string {
 	return ""
 }
 
-// LaunchApp starts an app: MSIX via shell:AppsFolder, desktop apps directly, CLIs in a new terminal at workdir.
+// CLIPath is the executable of one agent CLI ("claude", "codex", "gemini"), as detected on this machine.
+func CLIPath(kind string) string {
+	for _, a := range DetectApps() {
+		if a.ID == kind+"-cli" && a.Kind == "cli" && a.Found {
+			return a.Path
+		}
+	}
+	return ""
+}
+
+// LaunchApp starts an app: MSIX via shell:AppsFolder, desktop apps directly, CLIs in a new terminal at
+// workdir — always through infuse's launcher, so the agent's shell passes through the filter.
 func LaunchApp(id, workdir string) (string, error) {
 	var app App
 	for _, a := range DetectApps() {
@@ -162,7 +182,7 @@ func LaunchApp(id, workdir string) (string, error) {
 		return "", fmt.Errorf("app desconhecido: %s", id)
 	}
 	if !app.Found {
-		return "", fmt.Errorf("%s não foi encontrado nesta máquina", app.Name)
+		return "", fmt.Errorf("%s was not found on this machine", app.Name)
 	}
 	if workdir == "" {
 		workdir, _ = os.Getwd()
@@ -179,13 +199,17 @@ func LaunchApp(id, workdir string) (string, error) {
 		}
 		cmd.Dir = workdir
 	case "cli":
+		// Never start the CLI onto the project raw: infuse's launcher installs the shim and points the
+		// agent's shell at it for that process.
+		kind := strings.TrimSuffix(app.ID, "-cli")
+		launcher := []string{core.SelfPath(), kind}
 		switch runtime.GOOS {
 		case "windows":
-			cmd = exec.Command("cmd", "/C", "start", "", "/D", workdir, "cmd", "/K", `"`+app.Path+`"`)
+			cmd = exec.Command("cmd", "/C", "start", "", "/D", workdir, "cmd", "/K", strings.Join(quoteAll(launcher), " "))
 		case "darwin":
-			cmd = exec.Command("osascript", "-e", `tell application "Terminal" to do script "cd `+asEscape(workdir)+` && `+asEscape(app.Path)+`"`, "-e", `tell application "Terminal" to activate`)
+			cmd = exec.Command("osascript", "-e", `tell application "Terminal" to do script "cd `+asEscape(workdir)+` && `+asEscape(strings.Join(launcher, " "))+`"`, "-e", `tell application "Terminal" to activate`)
 		default:
-			cmd = exec.Command("x-terminal-emulator", "-e", app.Path)
+			cmd = exec.Command("x-terminal-emulator", "-e", strings.Join(launcher, " "))
 			cmd.Dir = workdir
 		}
 	}

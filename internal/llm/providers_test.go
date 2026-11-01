@@ -29,9 +29,9 @@ func streamedText(evs []StreamEvent) string {
 }
 
 var convo = []Message{
-	{Role: "user", Content: []Block{{Type: "text", Text: "oi"}}},
-	{Role: "assistant", Content: []Block{{Type: "text", Text: "vou ler"}, {Type: "tool_use", ID: "c1", Name: "Read", Input: json.RawMessage(`{"path":"a"}`)}}},
-	{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "c1", Content: "conteúdo"}}},
+	{Role: "user", Content: []Block{{Type: "text", Text: "hi"}}},
+	{Role: "assistant", Content: []Block{{Type: "text", Text: "I will read"}, {Type: "tool_use", ID: "c1", Name: "Read", Input: json.RawMessage(`{"path":"a"}`)}}},
+	{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "c1", Content: "content"}}},
 }
 
 func TestOpenAIStreamToolsUsage(t *testing.T) {
@@ -44,8 +44,8 @@ func TestOpenAIStreamToolsUsage(t *testing.T) {
 		_ = json.Unmarshal(b, &gotBody)
 		w.Header().Set("content-type", "text/event-stream")
 		for _, c := range []string{
-			`data: {"choices":[{"delta":{"role":"assistant","content":"Olá"}}]}`,
-			`data: {"choices":[{"delta":{"content":", mundo"}}]}`,
+			`data: {"choices":[{"delta":{"role":"assistant","content":"Hello"}}]}`,
+			`data: {"choices":[{"delta":{"content":", world"}}]}`,
 			`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"Write","arguments":"{\"pa"}}]}}]}`,
 			`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\":\"a.go\",\"content\":\"x\"}"}}]}}]}`,
 			`data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
@@ -62,10 +62,10 @@ func TestOpenAIStreamToolsUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if streamedText(*evs) != "Olá, mundo" {
+	if streamedText(*evs) != "Hello, world" {
 		t.Fatalf("streamed %q", streamedText(*evs))
 	}
-	if len(res.Content) != 2 || res.Content[0].Text != "Olá, mundo" || res.Content[1].Name != "Write" || string(res.Content[1].Input) != `{"path":"a.go","content":"x"}` {
+	if len(res.Content) != 2 || res.Content[0].Text != "Hello, world" || res.Content[1].Name != "Write" || string(res.Content[1].Input) != `{"path":"a.go","content":"x"}` {
 		t.Fatalf("blocks: %+v", res.Content)
 	}
 	if res.Usage.Input != 8 || res.Usage.Output != 7 || res.Usage.CacheRead != 4 || res.StopReason != "tool_use" {
@@ -91,9 +91,9 @@ func TestGoogleStreamFunctionCallUsage(t *testing.T) {
 		_ = json.Unmarshal(b, &gotBody)
 		w.Header().Set("content-type", "text/event-stream")
 		for _, c := range []string{
-			`data: {"candidates":[{"content":{"parts":[{"text":"pensando","thought":true}],"role":"model"}}]}`,
-			`data: {"candidates":[{"content":{"parts":[{"text":"Vou criar "}],"role":"model"}}]}`,
-			`data: {"candidates":[{"content":{"parts":[{"text":"o arquivo."}],"role":"model"}}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":"thinking","thought":true}],"role":"model"}}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":"I will create "}],"role":"model"}}]}`,
+			`data: {"candidates":[{"content":{"parts":[{"text":"the file."}],"role":"model"}}]}`,
 			`data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"Write","args":{"path":"b.ts","content":"y"}}}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":3,"thoughtsTokenCount":2}}`,
 		} {
 			_, _ = io.WriteString(w, c+"\r\n\r\n")
@@ -106,10 +106,10 @@ func TestGoogleStreamFunctionCallUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if streamedText(*evs) != "Vou criar o arquivo." {
+	if streamedText(*evs) != "I will create the file." {
 		t.Fatalf("streamed %q", streamedText(*evs))
 	}
-	if len(res.Content) != 3 || res.Content[0].Type != "thinking" || res.Content[1].Text != "Vou criar o arquivo." || res.Content[2].Name != "Write" || !strings.Contains(string(res.Content[2].Input), `"b.ts"`) {
+	if len(res.Content) != 3 || res.Content[0].Type != "thinking" || res.Content[1].Text != "I will create the file." || res.Content[2].Name != "Write" || !strings.Contains(string(res.Content[2].Input), `"b.ts"`) {
 		t.Fatalf("blocks: %+v", res.Content)
 	}
 	if res.Usage.Input != 9 || res.Usage.Output != 5 || res.StopReason != "tool_use" {
@@ -142,8 +142,8 @@ func TestOllamaNDJSONToolsUsage(t *testing.T) {
 		}
 		w.Header().Set("content-type", "application/x-ndjson")
 		for _, l := range []string{
-			`{"model":"llama-test","message":{"role":"assistant","content":"escrevendo "},"done":false}`,
-			`{"model":"llama-test","message":{"role":"assistant","content":"o arquivo"},"done":false}`,
+			`{"model":"llama-test","message":{"role":"assistant","content":"writing "},"done":false}`,
+			`{"model":"llama-test","message":{"role":"assistant","content":"the file"},"done":false}`,
 			`{"model":"llama-test","message":{"role":"assistant","content":"","tool_calls":[{"function":{"name":"Bash","arguments":{"command":"ls"}}}]},"done":true,"prompt_eval_count":20,"eval_count":11}`,
 		} {
 			_, _ = io.WriteString(w, l+"\n")
@@ -156,7 +156,7 @@ func TestOllamaNDJSONToolsUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if streamedText(*evs) != "escrevendo o arquivo" || len(res.Content) != 2 || res.Content[1].Name != "Bash" || string(res.Content[1].Input) != `{"command":"ls"}` {
+	if streamedText(*evs) != "writing the file" || len(res.Content) != 2 || res.Content[1].Name != "Bash" || string(res.Content[1].Input) != `{"command":"ls"}` {
 		t.Fatalf("blocks: %+v", res.Content)
 	}
 	if res.Usage.Input != 20 || res.Usage.Output != 11 || res.StopReason != "tool_use" {

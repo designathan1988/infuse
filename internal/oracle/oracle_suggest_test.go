@@ -16,15 +16,15 @@ func TestSuggestChecksFromProject(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(root, "src", "a.ts"), []byte("export {}\n"), 0o644)
 	got := map[string]CheckSuggestion{}
 	for _, s := range SuggestChecks(root) {
-		got[s.Check.ID] = s
+		got[s.Check.Description] = s
 	}
-	if got["testes"].Check.Run != "npm test" || got["testes"].Setup != "npm ci" {
-		t.Fatalf("%+v", got["testes"])
+	if tests := got["The tests pass"]; tests.Check.Run != "npm test" || tests.Setup != "npm ci" {
+		t.Fatalf("%+v", tests)
 	}
-	if got["build"].Check.Run != "npm run build" || got["tipos"].Check.Run != "npx tsc --noEmit" {
+	if got["The project builds"].Check.Run != "npm run build" || got["No type errors"].Check.Run != "npx tsc --noEmit" {
 		t.Fatalf("%+v", got)
 	}
-	if got["pagina"].Check.URL != "http://localhost:5173/" || got["tamanho"].Check.Glob != "**/*.ts" {
+	if got["The home page opens"].Check.URL != "http://localhost:5173/" || got["No file is too large"].Check.Glob != "**/*.ts" {
 		t.Fatalf("%+v", got)
 	}
 	// a suggestion already in the spec is not offered again

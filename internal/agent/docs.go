@@ -90,7 +90,7 @@ func fetchPageText(ctx context.Context, root, url string) (string, string, error
 func PinDoc(ctx context.Context, root, url string) (PinnedDoc, error) {
 	url = strings.TrimSpace(url)
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		return PinnedDoc{}, errors.New("informe um endereço http(s)")
+		return PinnedDoc{}, errors.New(M("docs.needUrl").Render(uiLanguage()))
 	}
 	title, text, err := fetchPageText(ctx, root, url)
 	if err != nil {
@@ -175,7 +175,7 @@ func SuggestDocs(root string) []docSuggestion {
 	add := func(dep, version string) {
 		if d, ok := docsForDependency[dep]; ok && !pinned[d[1]] && !seen[d[1]] {
 			seen[d[1]] = true
-			out = append(out, docSuggestion{Name: d[0], URL: d[1], Why: strings.TrimSpace("dependência " + dep + " " + version)})
+			out = append(out, docSuggestion{Name: d[0], URL: d[1], Why: M("docs.whyDependency", "package", dep, "version", version).Render(uiLanguage())})
 		}
 	}
 	var pkg struct{ Dependencies, DevDependencies map[string]string }
@@ -201,7 +201,7 @@ func SuggestDocs(root string) []docSuggestion {
 		for _, m := range regexp.MustCompile(`(?m)^\s*(?:require\s+)?([a-z0-9.\-]+\.[a-z]+/[^\s]+)\s+(v[^\s]+)`).FindAllStringSubmatch(string(b), 8) {
 			u := "https://pkg.go.dev/" + m[1] + "@" + m[2]
 			if !pinned[u] {
-				out = append(out, docSuggestion{Name: m[1], URL: u, Why: "módulo Go " + m[2]})
+				out = append(out, docSuggestion{Name: m[1], URL: u, Why: M("docs.whyModule", "module", m[2]).Render(uiLanguage())})
 			}
 		}
 	}

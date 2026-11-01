@@ -1,6 +1,6 @@
 package agent
 
-// Missions: the agent works across turns on its own until the "Pronto?" criteria pass, within a budget
+// Missions: the agent works across turns on its own until the completion criteria pass, within a budget
 // (dollars and turns) the user sets. After each turn infuse runs the criteria in a snapshot (not the
 // agent's word) and, if they fail, sends the agent back with the reasons. The mission ends approved,
 // out of budget, stopped by the user, or at an impasse the agent declares with the Impasse tool (what it
@@ -19,7 +19,7 @@ type MissionStep struct {
 	Turn    int     `json:"turn"`
 	At      int64   `json:"at"`
 	Cost    float64 `json:"cost"`    // spent in this step
-	Verdict string  `json:"verdict"` // aprovado | reprovado | sem-criterios | erro | ""
+	Verdict string  `json:"verdict"` // verdict code set by verifyMissionStep; "" until verified
 	Summary string  `json:"summary"` // the verdict's summary or the failing checks
 	Auditor string  `json:"auditor,omitempty"`
 	Run     string  `json:"run,omitempty"` // evidence run id
@@ -200,7 +200,31 @@ func (s *Session) missionStep() {
 	}
 }
 
+// missionDetail states the failing checks in the form the mission's next turn reads.
+func missionDetail(checks []CheckResult) string {
+	var out []string
+	for _, c := range checks {
+		if !c.Passed {
+			out = append(out, c.ID+": "+c.Detail)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 func (s *Session) verifyMissionStep(ctx context.Context, step *MissionStep) {
+	// The turn gate already ran the executor on this tree: reuse that verdict instead of running the
+	// same checks twice.
+	s.Mu.Lock()
+	key, run, summary, detail, verdict := s.gate.oracleKey, s.lastOracleRun, s.lastOracleSum, s.lastOracleErr, s.gate.oracleVerdict
+	s.Mu.Unlock()
+	if run != "" && key == s.oracleRunKey() {
+		step.Verdict, step.Run = verdict, run
+		step.Summary = summary
+		if verdict != "aprovado" && detail != "" {
+			step.Summary = detail
+		}
+		return
+	}
 	v, err := RunOracle(ctx, s.Root, s.workRoot(), s.ID)
 	step.Verdict, step.Run = v.Verdict, v.Run
 	if err != nil {
@@ -292,7 +316,8 @@ func (s *Session) auditTurn(ctx context.Context) string {
 	if b.Len() == 0 {
 		return ""
 	}
-	ask := fmt.Sprintf("Mission goal: %s\n\nLog of the last turn of a coding agent:\n%s", goal, truncate(b.String(), 12000)) +
+	grounds := truncate(s.groundsBrief(), 3000)
+	ask := fmt.Sprintf("Mission goal: %s\n\nProject grounds (the filter's knowledge):\n%s\n\nLog of the last turn of a coding agent:\n%s", goal, grounds, truncate(b.String(), 12000)) +
 		"\n\nIn at most two sentences, point out a problem in how the work is being conducted, if there is one: repeating the same attempt, ignored errors, work outside the goal, changes to tests or criteria, claims without verification. If the work is being conducted properly, answer only: -"
 	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: []Message{{Role: "user", Content: []Block{{Type: "text", Text: ask}}}}, MaxTokens: 200}, func(StreamEvent) {})
 	if err != nil {

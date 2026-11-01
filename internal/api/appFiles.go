@@ -91,7 +91,7 @@ func openURLRoute(w http.ResponseWriter, str func(string) string) {
 	// "open in the default browser", asked by the user from the browser pane
 	u := str("url")
 	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
-		sendJSON(w, 400, map[string]any{"error": "endereço inválido"})
+		sendJSON(w, 400, map[string]any{"error": "invalid URL", "code": "browser.invalidUrl"})
 		return
 	}
 	sendJSON(w, 200, map[string]any{"ok": agent.OpenDefaultBrowser(u) == nil})

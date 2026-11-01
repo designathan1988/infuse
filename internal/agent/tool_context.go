@@ -68,15 +68,40 @@ func (tc *ToolContext) resolvePath(p string, forWrite bool) (string, error) {
 			return "", errMsg(M("path.outside", "path", p))
 		}
 	}
-	if !forWrite && err == nil && !strings.HasPrefix(rel, "..") && hiddenInternal(rel) {
-		return "", errMsg(M("path.internal", "path", toPosix(rel)))
+	if !forWrite {
+		// A read is judged against the real path too: a junction or symlink inside the project must
+		// not turn a protected record into readable content.
+		real := realPath(abs)
+		if real != abs {
+			if relReal, rerr := filepath.Rel(tc.Root, real); rerr == nil && !strings.HasPrefix(relReal, "..") && hiddenInternal(relReal) {
+				return "", errMsg(M("path.internal", "path", toPosix(relReal)))
+			}
+			if tc.S != nil && tc.S.isProtected(real) {
+				return "", errMsg(M("path.protected", "path", toPosix(rel)))
+			}
+		}
+		if err == nil && !strings.HasPrefix(rel, "..") && hiddenInternal(rel) {
+			return "", errMsg(M("path.internal", "path", toPosix(rel)))
+		}
 	}
 	if forWrite && tc.S.isProtected(abs) {
-		Journal(tc.Root, JournalEntry{Kind: "blocked", Path: toPosix(rel), Detail: "tentativa de escrita em caminho protegido"})
-		Lesson(tc.Root, "protected-path-write", "tentativa de escrever em "+toPosix(rel))
+		Journal(tc.Root, JournalEntry{Kind: "blocked", Path: toPosix(rel), Detail: "attempt to write to a protected path"})
+		Lesson(tc.Root, "protected-path-write", "attempt to write to "+toPosix(rel))
 		return "", errMsg(M("path.protected", "path", toPosix(rel)))
 	}
 	return abs, nil
+}
+
+// realPath resolves the deepest existing part of a path, so a link that does not exist yet is still
+// read as the place it points to.
+func realPath(abs string) string {
+	if r, err := filepath.EvalSymlinks(abs); err == nil {
+		return r
+	}
+	if r, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		return filepath.Join(r, filepath.Base(abs))
+	}
+	return abs
 }
 
 func (tc *ToolContext) afterWrite(abs string) []string {
@@ -86,7 +111,7 @@ func (tc *ToolContext) afterWrite(abs string) []string {
 	if st != nil {
 		size = int(st.Size())
 	}
-	Journal(tc.Root, JournalEntry{Kind: "write", Path: rel, Bytes: size, Detail: "agente"})
+	Journal(tc.Root, JournalEntry{Kind: "write", Path: rel, Bytes: size, Detail: "agent"})
 	tc.S.scheduleMapRefresh()
 	var lines []string
 	if m := LoadMap(tc.Root); m != nil {

@@ -66,6 +66,9 @@ func cachedCLI(name string, cached *string, inDir func(name, dir string) string)
 	if found == "" && name == "codex" {
 		found = bundledCodexCLI()
 	}
+	if found == "" && name == "claude" {
+		found = FindClaudeDesktopCLI()
+	}
 	bridgeFindMu.Lock()
 	*cached = found
 	bridgeFindMu.Unlock()
@@ -118,6 +121,66 @@ func bundledCodexCLI() string {
 		return p
 	}
 	return ""
+}
+
+// FindClaudeDesktopCLI locates the Claude Code CLI bundled with the Claude desktop application (the
+// one the app itself signs in with). It is the desktop bridge when the standalone CLI is absent or
+// logged out.
+func FindClaudeDesktopCLI() string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	local := os.Getenv("LOCALAPPDATA")
+	roaming := os.Getenv("APPDATA")
+	var best string
+	var bestVer int
+	for _, root := range []string{
+		filepath.Join(local, "Claude-3p", "claude-code"),
+		filepath.Join(local, "Claude", "claude-code"),
+		filepath.Join(roaming, "Claude", "claude-code"),
+	} {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			ver := versionNumber(e.Name())
+			subs, err := os.ReadDir(filepath.Join(root, e.Name()))
+			if err != nil {
+				continue
+			}
+			for _, sub := range subs {
+				if !sub.IsDir() {
+					continue
+				}
+				p := filepath.Join(root, e.Name(), sub.Name(), "claude.exe")
+				if fileExists(p) && ver >= bestVer {
+					best, bestVer = p, ver
+				}
+			}
+		}
+	}
+	return best
+}
+
+// versionNumber turns "2.1.309" into a comparable integer (2*1e6 + 1*1e3 + 309).
+func versionNumber(v string) int {
+	parts := strings.Split(v, ".")
+	n := 0
+	for _, p := range parts {
+		d := 0
+		for _, r := range p {
+			if r < '0' || r > '9' {
+				break
+			}
+			d = d*10 + int(r-'0')
+		}
+		n = n*1000 + d
+	}
+	return n
 }
 
 // CodexDefaultModel is the model the local Codex is configured to use (config.toml), for the picker.

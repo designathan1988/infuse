@@ -56,7 +56,7 @@ func TestGuardSpeaksInMessages(t *testing.T) {
 	if m.String() != want.String() || err.Error() != want.String() {
 		t.Fatalf("%v", err)
 	}
-	if !strings.HasPrefix(m.Render("pt-BR"), "caminho protegido, somente leitura para o agente: secrets/key.pem (comando sobre caminho protegido recusado: rm") {
+	if m.Render("pt-BR") != want.Render("pt-BR") {
 		t.Fatal(m.Render("pt-BR"))
 	}
 	_, notes, err := g.GuardCommandMsgs("echo x > secrets/a", root)

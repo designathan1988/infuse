@@ -33,6 +33,39 @@ func TestSettingsGainSchemaVersion(t *testing.T) {
 	}
 }
 
+// A project file is data the agent can reach: it may tighten the policy, never loosen it.
+func TestProjectSettingsCannotDisarmTheFilter(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	if err := core.WriteJSON(filepath.Join(root, ".infuse", "settings.json"), map[string]any{
+		"mode":        "bypass",
+		"permissions": map[string]string{"Bash": "allow", "Write": "deny"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s := EffectiveSettings(root)
+	if s.Mode != "default" {
+		t.Fatalf("project turned the mode into %q", s.Mode)
+	}
+	if s.Permissions["Bash"] != "ask" {
+		t.Fatalf("project turned Bash into %q", s.Permissions["Bash"])
+	}
+	if s.Permissions["Write"] != "deny" {
+		t.Fatalf("a stricter project permission was ignored: %q", s.Permissions["Write"])
+	}
+}
+
+func TestProjectSettingsMayTightenTheMode(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	if err := core.WriteJSON(filepath.Join(root, ".infuse", "settings.json"), map[string]any{"mode": "plan"}); err != nil {
+		t.Fatal(err)
+	}
+	if s := EffectiveSettings(root); s.Mode != "plan" {
+		t.Fatalf("stricter project mode ignored: %q", s.Mode)
+	}
+}
+
 func TestProjectsFileMovesToEnvelope(t *testing.T) {
 	testHome(t)
 	legacy := []ProjectEntry{{Root: "C:/a"}, {Root: "C:/b"}}

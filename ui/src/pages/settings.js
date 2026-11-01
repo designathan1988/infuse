@@ -23,8 +23,12 @@ const RENDER = {
   integration: renderIntegration, about: renderAbout
 };
 
+let renderSeq = 0;
+
 export async function openSettings(section = 'general') {
+  const mine = ++renderSeq;
   await reloadSettings();
+  if (mine !== renderSeq) return; // a newer navigation won: this render is stale
   const el = pageShell('settings', SECTIONS, section, openSettings);
   const s = cache.settings.get();
   const save = patch => saveSettings(patch).catch(e => toast(String(e)));

@@ -59,7 +59,7 @@ func TestCompileSchemasAcceptAndRefuse(t *testing.T) {
 		good, bad string
 	}{
 		{projectRulesSpec, `{"rules":[{"kind":"read","path":"docs/A.md","quote":"leia docs/A.md"}]}`, `{"rules":[{"kind":"maybe","quote":"x"}]}`},
-		{bansSpec, `{"bans":[{"kind":"action","value":"commit","quote":"não faça commit"}]}`, `{"bans":[{"kind":"action","quote":"x"}]}`},
+		{bansSpec, `{"bans":[{"kind":"action","value":"commit","quote":"do not commit"}]}`, `{"bans":[{"kind":"action","quote":"x"}]}`},
 		{factsSpec, `{"facts":[]}`, `{"facts":[{"line":"one","kind":"rule","fact":"x","quote":"y"}]}`},
 	}
 	for _, c := range cases {

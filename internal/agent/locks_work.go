@@ -1,6 +1,6 @@
 package agent
 
-// Locks on how work is shown to be done (docs/FALHAS-DE-AGENTES.md E1, C3, B11, D6): a changed screen is
+// Locks on how work is shown to be done (agent-failure notes E1, C3, B11, D6): a changed screen is
 // looked at before the turn ends; a large removal is grounded in the diagnosis or the plan; every web
 // address the agent cites was fetched; a package exists in its registry before it is installed. All of it
 // is decided on paths, file kinds, addresses and registry answers — no words.
@@ -23,6 +23,7 @@ type lockState struct {
 	mu          sync.Mutex
 	uiChangeSeq int
 	shotSeq     int
+	shotURL     string // where the last capture looked
 	uiChanged   []string
 	fetched     map[string]bool
 }
@@ -38,7 +39,7 @@ func (s *Session) locks() *lockState {
 func (s *Session) resetTurnLocks() {
 	l := s.locks()
 	l.mu.Lock()
-	l.uiChangeSeq, l.shotSeq, l.uiChanged = 0, 0, nil
+	l.uiChangeSeq, l.shotSeq, l.shotURL, l.uiChanged = 0, 0, "", nil
 	l.mu.Unlock()
 }
 
@@ -58,36 +59,6 @@ func isUIFile(rel string) bool {
 		}
 	}
 	return false
-}
-
-// noteUIChange and noteScreenshot feed the obligation below.
-func (s *Session) noteUIChange(rel string) {
-	if !isUIFile(rel) || isTestPath(rel) {
-		return
-	}
-	l := s.locks()
-	l.mu.Lock()
-	l.uiChangeSeq++
-	l.uiChanged = append(l.uiChanged, rel)
-	l.mu.Unlock()
-}
-
-func (s *Session) noteScreenshot() {
-	l := s.locks()
-	l.mu.Lock()
-	l.shotSeq = l.uiChangeSeq
-	l.mu.Unlock()
-}
-
-// missingScreenshot: the turn changed what a screen shows and nobody looked at it afterwards.
-func (s *Session) missingScreenshot() Msg {
-	l := s.locks()
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.uiChangeSeq == 0 || l.shotSeq >= l.uiChangeSeq {
-		return Msg{}
-	}
-	return M("agent.no_screenshot", "files", strings.Join(firstN(dedupe(l.uiChanged), 6), ", "))
 }
 
 // ---------------------------------------------------------------- C3: large removals are grounded
@@ -282,16 +253,18 @@ var registryLookup = func(ctx context.Context, p pkgRef) (exists bool, created t
 
 // unknownPackages refuses packages that do not exist and asks about very new ones (a name an LLM
 // invented may have been registered by an attacker).
-func unknownPackages(ctx context.Context, cmd string) Msg {
+func unknownPackages(_ context.Context, cmd string) Msg {
 	var missing, fresh []string
 	for _, p := range packagesInCommand(cmd) {
-		ok, created, err := registryLookup(ctx, p)
-		if err != nil {
+		e, ok := cachedPackage(p)
+		if !ok { // not known yet: ask the registry in the background, never inside the gate
+			refreshPackageAsync(p)
 			continue
 		}
-		if !ok {
+		created := time.UnixMilli(e.Created)
+		if !e.Exists {
 			missing = append(missing, fmt.Sprintf("%s (%s)", p.name, p.registry))
-		} else if !created.IsZero() && time.Since(created) < 30*24*time.Hour {
+		} else if e.Created > 0 && time.Since(created) < 30*24*time.Hour {
 			fresh = append(fresh, fmt.Sprintf("%s (%s, %s)", p.name, p.registry, created.Format("2006-01-02")))
 		}
 	}

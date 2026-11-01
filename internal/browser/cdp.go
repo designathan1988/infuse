@@ -84,7 +84,7 @@ func startCDP(profile string) (*Browser, error) {
 	}
 	if port == "" {
 		_ = cmd.Process.Kill()
-		return nil, errors.New("o navegador não abriu a porta de depuração")
+		return nil, errors.New("the browser did not open the debugging port")
 	}
 	var targets []struct{ Type, WebSocketDebuggerURL string }
 	for i := 0; i < 30; i++ {
@@ -106,7 +106,7 @@ func startCDP(profile string) (*Browser, error) {
 	}
 	if wsURL == "" {
 		_ = cmd.Process.Kill()
-		return nil, errors.New("o navegador não tem página")
+		return nil, errors.New("the browser has no page")
 	}
 	ws, err := wsDial(wsURL)
 	if err != nil {
@@ -248,7 +248,7 @@ func (b *Browser) logConsoleEvent(m cdpMessage) {
 			} `json:"exceptionDetails"`
 		}
 		_ = json.Unmarshal(m.Params, &p)
-		b.addConsole("exceção: " + core.FirstNonEmpty(p.Details.Exception.Description, p.Details.Text))
+		b.addConsole("exception: " + core.FirstNonEmpty(p.Details.Exception.Description, p.Details.Text))
 	case "Log.entryAdded":
 		var p struct {
 			Entry struct{ Level, Text, URL string } `json:"entry"`
@@ -303,7 +303,7 @@ func (b *Browser) call(ctx context.Context, method string, params any) (json.Raw
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(60 * time.Second):
-		return nil, errors.New("o navegador não respondeu em 60 s")
+		return nil, errors.New("the browser did not respond within 60 s")
 	}
 }
 

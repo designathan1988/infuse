@@ -8,6 +8,7 @@ package agent
 
 import (
 	"fmt"
+	"infuse/internal/config"
 	"strings"
 )
 
@@ -39,6 +40,14 @@ func responseLanguageRule(code string) string {
 func (s *Session) uiLang() string {
 	if s.settings.Language != "" {
 		return s.settings.Language
+	}
+	return "pt-BR"
+}
+
+// uiLanguage is the same answer for package functions that have no session.
+func uiLanguage() string {
+	if l := config.LoadSettings().Language; l != "" {
+		return l
 	}
 	return "pt-BR"
 }

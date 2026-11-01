@@ -151,7 +151,7 @@ func (s *Session) compactResilient(ctx context.Context, p Provider) {
 	before := s.Compactions
 	s.Mu.Unlock()
 	if err := s.compact(ctx, p); err != nil && ctx.Err() == nil {
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "compactação por resumo falhou: " + firstLine(err.Error())})
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "summary compaction failed: " + firstLine(err.Error())})
 		s.compactFallback()
 		s.emit("compacted", map[string]any{"summary": M("compact.no_summary").Render(s.uiLang())})
 	}
@@ -182,7 +182,7 @@ func (s *Session) safeRunTool(ctx context.Context, rules *RuleSet, b Block) (out
 	defer func() {
 		if r := recover(); r != nil {
 			out, isErr = s.say(b.ID, M("tool.panic", "tool", b.Name, "error", fmt.Sprint(r))), true
-			Journal(s.Root, JournalEntry{Kind: "gate", Detail: fmt.Sprintf("panic em %s: %v", b.Name, r)})
+			Journal(s.Root, JournalEntry{Kind: "gate", Detail: fmt.Sprintf("panic in %s: %v", b.Name, r)})
 		}
 	}()
 	return s.runTool(ctx, rules, b)
@@ -256,7 +256,7 @@ func resumeInterruptedSessions() {
 				continue
 			}
 			if s, err := loadSession(p.Root, d.ID); err == nil {
-				Journal(p.Root, JournalEntry{Kind: "gate", Detail: "sessão retomada após reinício: " + d.ID})
+				Journal(p.Root, JournalEntry{Kind: "gate", Detail: "session resumed after restart: " + d.ID})
 				s.ResumeInterrupted()
 			}
 		}

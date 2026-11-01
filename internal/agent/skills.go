@@ -13,8 +13,8 @@ import (
 
 type Skill = knowledge.Skill
 
-func LoadSkills(root string) []Skill      { return knowledge.LoadSkills(root) }
-func skillsPrompt(root string) string     { return knowledge.SkillsPrompt(root) }
+func LoadSkills(root string) []Skill                  { return knowledge.LoadSkills(root) }
+func skillsPrompt(root string) string                 { return knowledge.SkillsPrompt(root) }
 func parseSkill(text string) (string, string, string) { return knowledge.ParseSkill(text) }
 
 type skillTool struct{}
@@ -43,4 +43,3 @@ func (skillTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage
 	}
 	return tc.Say(M("skill.not_found", "name", in.Name)), true
 }
-

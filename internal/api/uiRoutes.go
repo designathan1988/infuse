@@ -68,9 +68,14 @@ func projectsRoute(w http.ResponseWriter, r *http.Request, body map[string]any, 
 		_ = config.SaveProjects(out)
 		sendJSON(w, 200, out)
 	case "/api/projects/add":
-		p := filepath.Clean(str("root"))
+		raw := strings.TrimSpace(str("root"))
+		p := filepath.Clean(raw)
+		if raw == "" || p == "." || p == string(filepath.Separator) {
+			sendJSON(w, 400, map[string]any{"error": "the project folder is missing", "code": "project.noRoot"})
+			return
+		}
 		if st, err := os.Stat(p); err != nil || !st.IsDir() {
-			sendJSON(w, 400, map[string]any{"error": "pasta não encontrada"})
+			sendJSON(w, 400, map[string]any{"error": "the project folder was not found", "code": "project.notFound"})
 			return
 		}
 		config.RememberProject(p)
@@ -81,7 +86,7 @@ func projectsRoute(w http.ResponseWriter, r *http.Request, body map[string]any, 
 func dialogRoute(w http.ResponseWriter, r *http.Request, str func(string) string) {
 	if r.URL.Path == "/api/dialog/folder" {
 		// Native dialog from the server side: used when the page is not inside the native window.
-		p, err := desktop.OSDialogs(nil).PickFolder("Abrir pasta do projeto")
+		p, err := desktop.OSDialogs(nil).PickFolder(core.M("dialog.chooseFolder").Render(config.LoadSettings().Language))
 		if err != nil {
 			sendJSON(w, 500, map[string]any{"error": err.Error()})
 			return
@@ -92,7 +97,7 @@ func dialogRoute(w http.ResponseWriter, r *http.Request, str func(string) string
 		sendJSON(w, 200, map[string]any{"path": p})
 		return
 	}
-	list, err := desktop.OSDialogs(nil).PickFiles("Anexar arquivos")
+	list, err := desktop.OSDialogs(nil).PickFiles(core.M("dialog.attachFiles").Render(config.LoadSettings().Language))
 	if err != nil {
 		sendJSON(w, 500, map[string]any{"error": err.Error()})
 		return

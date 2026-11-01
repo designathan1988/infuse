@@ -1,0 +1,12 @@
+# Lines the language check lets through, each with the reason it is not a translation.
+# Format: <token><TAB><reason>. A source line containing the token is allowed.
+error|erro|fail	it detects Portuguese error lines in a command's output (a signal, not UI text)
+"erro"	verdict/error protocol code stored and compared by code
+sem-criterios	verdict protocol code stored and compared by code
+"testes"	oracle suggested-check id stored in the criteria and asserted by tests
+rePtWord	the Portuguese word list used to detect the language of the project's own comments
+decisao	stored memory-type keys and their labels (protocol table)
+"arquivo":	stored memory-type key in its protocol table
+"correcao"	stored memory-type key in the memory tool schema
+"oráculo"	the demonstration provider also answers the Portuguese word the user may type
+arquivo: ['mem.type.file'	the memory pane's type table (key = stored protocol value)

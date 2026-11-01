@@ -35,7 +35,7 @@ func streamEvents(w http.ResponseWriter, r *http.Request, s *agent.Session,
 ) {
 	fl, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming não suportado", 500)
+		http.Error(w, "streaming is not supported by this connection", 500)
 		return
 	}
 	w.Header().Set("content-type", "text/event-stream")

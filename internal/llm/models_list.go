@@ -64,14 +64,14 @@ func bridgeModels(ctx context.Context, name string, cfg ProviderConfig) ([]strin
 		if kind == "codex" {
 			label = "o Codex"
 		}
-		return nil, fmt.Errorf("%s não foi encontrado nesta máquina; instale o aplicativo ou o CLI e tente de novo", label)
+		return nil, fmt.Errorf("%s was not found on this machine; install the application or the CLI and try again", label)
 	}
 	c, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(c, cli, "--version")
 	process.NoConsoleWindow(cmd)
 	if _, err := cmd.Output(); err != nil && c.Err() != nil {
-		return nil, fmt.Errorf("não foi possível executar %s: %v", cli, err)
+		return nil, fmt.Errorf("could not run %s: %v", cli, err)
 	}
 	return BridgeModels(kind), nil
 }
@@ -155,7 +155,7 @@ func googleModels(ctx context.Context, client *http.Client, cfg ProviderConfig) 
 func ollamaModels(ctx context.Context, client *http.Client, cfg ProviderConfig) ([]string, error) {
 	b, err := fetchJSON(ctx, client, "ollama", orDefault(cfg.BaseURL, ollamaDefaultBase)+"/api/tags", nil)
 	if err != nil {
-		return nil, fmt.Errorf("Ollama não respondeu (está rodando?): %w", err)
+		return nil, fmt.Errorf("Ollama did not respond (is it running?): %w", err)
 	}
 	var r struct {
 		Models []struct{ Name string } `json:"models"`

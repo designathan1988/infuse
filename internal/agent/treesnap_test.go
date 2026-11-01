@@ -108,12 +108,12 @@ func TestListingAfterRemovalIsFresh(t *testing.T) {
 	testHome(t)
 	root := t.TempDir()
 	_ = os.MkdirAll(filepath.Join(root, "src"), 0o755)
-	_ = os.WriteFile(filepath.Join(root, "src", "legado.js"), []byte("export const a = 1;\n"), 0o644)
-	_ = os.WriteFile(filepath.Join(root, "src", "soma.js"), []byte("export const b = 2;\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "src", "legacy.js"), []byte("export const a = 1;\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "src", "sum.js"), []byte("export const b = 2;\n"), 0o644)
 	WriteMap(root, BuildMap(root)) // the map as it was before the command
-	_ = os.Remove(filepath.Join(root, "src", "legado.js"))
-	out := buildTrailer(root, root, "rm src/legado.js && ls src", nil, 0, &RuleSet{}, nil)
-	if strings.Contains(out, "legado") || !strings.Contains(out, "src: 1 files") {
+	_ = os.Remove(filepath.Join(root, "src", "legacy.js"))
+	out := buildTrailer(root, root, "rm src/legacy.js && ls src", nil, 0, &RuleSet{}, nil)
+	if strings.Contains(out, "legacy") || !strings.Contains(out, "src: 1 files") {
 		t.Fatalf("stale summary: %s", out)
 	}
 	if MayChangeTree("ls -la src && cat a.txt") || !MayChangeTree("mv a b && ls") {

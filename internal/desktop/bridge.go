@@ -100,7 +100,7 @@ func (b *Bridge) Call(method string, params []json.RawMessage) (any, error) {
 	}
 	switch method {
 	case "pickFolder":
-		p, err := b.Dialogs.PickFolder("Abrir pasta do projeto")
+		p, err := b.Dialogs.PickFolder(core.M("dialog.chooseFolder").Render(config.LoadSettings().Language))
 		if err != nil || p == "" {
 			return nil, err
 		}
@@ -108,7 +108,7 @@ func (b *Bridge) Call(method string, params []json.RawMessage) (any, error) {
 		config.RememberProject(p)
 		return p, nil
 	case "pickFiles":
-		list, err := b.Dialogs.PickFiles("Anexar arquivos")
+		list, err := b.Dialogs.PickFiles(core.M("dialog.attachFiles").Render(config.LoadSettings().Language))
 		if err != nil || len(list) == 0 {
 			return nil, err
 		}
@@ -138,7 +138,7 @@ func (b *Bridge) Call(method string, params []json.RawMessage) (any, error) {
 	case "browser":
 		bh, ok := b.Host.(BrowserHost)
 		if !ok {
-			return nil, fmt.Errorf("navegador nativo indisponível nesta plataforma")
+			return nil, fmt.Errorf("native browser unavailable on this platform")
 		}
 		var a BrowserArgs
 		if len(params) > 1 {
@@ -146,7 +146,7 @@ func (b *Bridge) Call(method string, params []json.RawMessage) (any, error) {
 		}
 		return bh.Browser(strArg(0), a)
 	}
-	return nil, fmt.Errorf("método desconhecido: %s", method)
+	return nil, fmt.Errorf("unknown method: %s", method)
 }
 
 // asEscape quotes a string for AppleScript.

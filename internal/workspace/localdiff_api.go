@@ -40,7 +40,7 @@ func LocalDiscard(root, work, session, scope, p string, src SnapshotSource) erro
 	_, base := localFileChanges(root, work, session, scope, src)
 	b, ok := base[p]
 	if !ok {
-		return fmt.Errorf("arquivo sem alteração registrada")
+		return fmt.Errorf("file with no recorded change")
 	}
 	abs := filepath.Join(work, filepath.FromSlash(p))
 	if !core.Within(work, abs) {
@@ -51,7 +51,7 @@ func LocalDiscard(root, work, session, scope, p string, src SnapshotSource) erro
 	}
 	before, ok := b.text(root)
 	if !ok {
-		return fmt.Errorf("a cópia anterior não existe mais")
+		return fmt.Errorf("the previous copy no longer exists")
 	}
 	_ = os.MkdirAll(filepath.Dir(abs), 0o755)
 	return os.WriteFile(abs, []byte(before), 0o644)

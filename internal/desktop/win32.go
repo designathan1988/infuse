@@ -4,7 +4,7 @@ package desktop
 
 // The application window on Windows: a top-level window hosting WebView2 (the Edge runtime that ships
 // with Windows). Its own window procedure gives it: remembered size and position, a title bar that
-// follows the OS light/dark theme, a tray icon (Abrir / Sair), notifications, and the paths of files
+// follows the OS light/dark theme, a tray icon (Open / Quit), notifications, and the paths of files
 // and folders dropped on it (WebView2 hands them over with postMessageWithAdditionalObjects).
 
 import (

@@ -13,7 +13,9 @@ COMO COMECAR
 
 2. Configuracoes (canto inferior esquerdo, ou a aba "Config" do painel):
    - Provedor: anthropic, openai (tambem LM Studio/vLLM/OpenRouter pelo
-     endpoint), google (Gemini) ou ollama (local, sem chave).
+     endpoint), google (Gemini), ollama (local, sem chave) ou as pontes
+     "Claude Code (ponte)" e "Codex (ponte)", que usam o login dos aplicativos
+     Claude e Codex instalados nesta maquina.
    - Chave de API: cole e clique em "Testar e salvar". "Listar modelos do
      provedor" mostra os modelos da sua conta; clique num para usa-lo.
    - Tudo e aplicado ao mudar; nao ha botao Salvar.
@@ -37,10 +39,22 @@ AGENTE COMPLETO, DENTRO DO FILTRO
   - heredoc nunca chega ao bash (o arquivo e escrito corretamente);
   - cada listagem volta com o mapa da pasta; cada escrita volta com quem
     depende do arquivo; suas regras injetam instrucoes no momento certo;
-  - a pasta .infuse\oracle e os caminhos protegidos sao SOMENTE LEITURA para o
+  - a pasta .infuse\oracle, a pasta .infuse\evidence, o settings do projeto, os
+    hooks, o .mcp.json e os registros do infuse sao SOMENTE LEITURA para o
     agente, no executor de ferramentas - nao por instrucao. Tentativas ficam
     registradas no Jornal;
-  - tudo que foi escrito fica no Jornal; vicios, na aba Vicios.
+  - todo arquivo alterado no turno, inclusive por comando de shell, MCP ou
+    subagente, e julgado pelas regras antes de o turno terminar; heredocs sao
+    julgados antes de rodar;
+  - quando voce define criterios em "Pronto", o oraculo roda no fim de cada
+    turno com o mesmo conteudo e o veredito volta para o agente; os criterios
+    ficam ancorados fora do projeto e o veredito e assinado, entao um arquivo
+    editado dentro do projeto nao vale como aprovacao;
+  - a base de arquitetura que voce escolher em .infuse\base.json recusa codigo
+    escrito fora das pastas declaradas;
+  - hooks e servidores MCP so rodam depois que voce aprova, e a aprovacao e
+    assinada: editar o arquivo de aprovacoes nao libera nada;
+  - tudo que foi escrito fica no Jornal; vicios, na aba Vicios, com o remedio.
 
 PERMISSOES (seletor no topo)
   Perguntar        - pede antes de executar comandos, escrever e acessar a web
@@ -69,17 +83,22 @@ PAINEL DIREITO
 
 CUSTO
   O custo estimado aparece no topo; a tabela de precos e editavel em
-  Configuracoes. Ha um limite de gasto por sessao (padrao US$ 20).
-  O contexto e compactado automaticamente ao se aproximar do limite.
+  Configuracoes. Ha um limite de gasto DIARIO (padrao US$ 20), somando todas as
+  sessoes e projetos do dia. O contexto e compactado automaticamente ao se
+  aproximar do limite.
 
 CLAUDE CODE (opcional)
   Se voce continuar usando o Claude Code desktop, o filtro pode ser instalado
   nele em Configuracoes > Integracao com o Claude Code.
 
 O QUE AINDA NAO ESTA NESTA VERSAO (ver SPEC.md e docs/PROMPT-infuse-studio.md)
-  subagentes e revisor independente, cliente MCP, busca na web, bases de
-  arquitetura, executor do oraculo com evidencia, janela nativa, multi-provedor.
+  os scaffolds das bases (criar um projeto novo a partir de uma base) e o mount
+  FUSE/WinFsp. A escolha de base, a recusa de codigo fora dela, o restante do
+  SPEC.md, os subagentes com revisor independente, o cliente MCP, a busca na
+  web, o executor do oraculo com evidencia em snapshot, a janela nativa e o
+  multi-provedor estao implementados.
 
 Tudo fica no seu computador. A interface responde apenas em 127.0.0.1.
-Dados: %USERPROFILE%\.infuse\settings.json (inclui a chave de API) e, em cada
-projeto, a pasta .infuse\ (sessoes, checkpoints, regras, oraculo, jornal).
+Dados: %USERPROFILE%\.infuse\settings.json (as chaves de API ficam no cofre do
+sistema operacional, nao no arquivo) e, em cada projeto, a pasta .infuse\
+(sessoes, checkpoints, regras, base, oraculo, jornal).

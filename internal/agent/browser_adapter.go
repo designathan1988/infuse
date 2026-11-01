@@ -22,6 +22,10 @@ func (tc *ToolContext) AttachImage(b Block) {
 
 func (tc *ToolContext) Clip(s string) string { return tc.clip(s) }
 
+// NoteScreenshot records where the capture looked, so a UI change is not "verified" by a screenshot
+// of some other page.
+func (tc *ToolContext) NoteScreenshot(url string) { tc.S.noteScreenshotAt(url) }
+
 type browserToolAdapter struct{}
 
 func (browserToolAdapter) Category() string { return browser.Tool{}.Category() }
@@ -29,6 +33,5 @@ func (browserToolAdapter) Spec() ToolSpec   { return browser.Tool{}.Spec() }
 func (browserToolAdapter) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
 	return browser.Tool{}.Run(ctx, tc, input)
 }
-
 
 func closeAgentBrowsers() { browser.CloseAgentBrowsers() }

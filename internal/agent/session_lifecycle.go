@@ -39,7 +39,7 @@ func (s *Session) fail(err error) {
 	s.save()
 	s.emit("error", err.Error())
 	s.setState("error")
-	s.endMission("parada", "erro: "+err.Error())
+	s.endMission("parada", "error: "+err.Error())
 }
 
 // ---------------------------------------------------------------- compaction

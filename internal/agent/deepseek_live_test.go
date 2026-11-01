@@ -20,12 +20,12 @@ func TestDeepSeekThinkingWithToolsLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools := []ToolSpec{{Name: "get_date", Description: "Devolve a data de hoje", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`)}}
+	tools := []ToolSpec{{Name: "get_date", Description: "Returns today's date", InputSchema: json.RawMessage(`{"type":"object","properties":{}}`)}}
 	ctx := context.Background()
 	old := []Message{ // an exchange from a session that ran without thinking
-		{Role: "user", Content: []Block{{Type: "text", Text: "Olá"}}},
-		{Role: "assistant", Content: []Block{{Type: "text", Text: "Olá! Como posso ajudar?"}}},
-		{Role: "user", Content: []Block{{Type: "text", Text: "Que dia é hoje? Use a ferramenta get_date e depois responda numa frase."}}},
+		{Role: "user", Content: []Block{{Type: "text", Text: "Hello"}}},
+		{Role: "assistant", Content: []Block{{Type: "text", Text: "Hello! How can I help?"}}},
+		{Role: "user", Content: []Block{{Type: "text", Text: "What day is it today? Use the get_date tool and then answer in one sentence."}}},
 	}
 	r1, err := p.Stream(ctx, ModelRequest{Model: "deepseek-chat", Messages: old, Tools: tools, MaxTokens: 4000, Thinking: 4000}, func(StreamEvent) {})
 	if err != nil {

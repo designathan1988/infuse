@@ -227,7 +227,7 @@ func comCall(obj unsafe.Pointer, slot int, args ...uintptr) uintptr {
 }
 
 func hresultErr(step string, hr uintptr) error {
-	return fmt.Errorf("diálogo do sistema (%s) falhou: HRESULT 0x%08X", step, uint32(hr))
+	return fmt.Errorf("system dialog (%s) failed: HRESULT 0x%08X", step, uint32(hr))
 }
 
 func OSDialogs(owner func() uintptr) NativeDialogs { return winDialogs{owner: owner} }

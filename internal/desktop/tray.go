@@ -3,6 +3,8 @@
 package desktop
 
 import (
+	"infuse/internal/config"
+	"infuse/internal/core"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -41,8 +43,8 @@ func (w *winWindow) removeTray() {
 
 func (w *winWindow) trayMenu() {
 	menu, _, _ := procCreatePopupMenu.Call()
-	open, _ := windows.UTF16PtrFromString("Abrir")
-	quit, _ := windows.UTF16PtrFromString("Sair")
+	open, _ := windows.UTF16PtrFromString(core.M("common.open").Render(config.LoadSettings().Language))
+	quit, _ := windows.UTF16PtrFromString(core.M("common.quit").Render(config.LoadSettings().Language))
 	procAppendMenuW.Call(menu, 0, menuOpen, uintptr(unsafe.Pointer(open)))
 	procAppendMenuW.Call(menu, 0x800, 0, 0) // MF_SEPARATOR
 	procAppendMenuW.Call(menu, 0, menuQuit, uintptr(unsafe.Pointer(quit)))

@@ -13,8 +13,8 @@ func TestSearchSessionsLooksInsideConversations(t *testing.T) {
 	root := t.TempDir()
 	RememberProject(root)
 	s := newSession(root)
-	s.Title = "Projeto Node"
-	s.Messages = []Message{{Role: "assistant", Content: []Block{{Type: "text", Text: "Escolhi CommonJS por ser o caminho mais direto no Node 22, sem build."}}}}
+	s.Title = "Node Project"
+	s.Messages = []Message{{Role: "assistant", Content: []Block{{Type: "text", Text: "I chose CommonJS because it is the most direct path on Node 22, with no build."}}}}
 	s.save()
 	hits := searchSessions("commonjs", 10)
 	if len(hits) != 1 || hits[0].ID != s.ID || !strings.Contains(hits[0].Snippet, "CommonJS") {
@@ -23,7 +23,7 @@ func TestSearchSessionsLooksInsideConversations(t *testing.T) {
 	if len(searchSessions("inexistente-xyz", 10)) != 0 {
 		t.Fatal("false hit")
 	}
-	if got := snippetAround("ção ção ção", 4, 3); !strings.Contains(got, "ção") {
+	if got := snippetAround("λόγος λόγος λόγος", 4, 3); !strings.Contains(got, "λόγος") {
 		t.Fatal(got)
 	}
 }
@@ -52,13 +52,13 @@ func TestConcurrentLoadsShareOneSession(t *testing.T) {
 func TestLocalChangesWithoutGit(t *testing.T) {
 	testHome(t)
 	root := t.TempDir()
-	_ = os.WriteFile(filepath.Join(root, "a.js"), []byte("um\ndois\ntres\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "a.js"), []byte("one\ntwo\nthree\n"), 0o644)
 	s := newSession(root)
 	s.Turn = 1
 	s.checkpointBeforeWrite(filepath.Join(root, "a.js"))
-	s.checkpointBeforeWrite(filepath.Join(root, "novo.js"))
-	_ = os.WriteFile(filepath.Join(root, "a.js"), []byte("um\nDOIS\ntres\nquatro\n"), 0o644)
-	_ = os.WriteFile(filepath.Join(root, "novo.js"), []byte("x\ny\n"), 0o644)
+	s.checkpointBeforeWrite(filepath.Join(root, "new.js"))
+	_ = os.WriteFile(filepath.Join(root, "a.js"), []byte("one\nTWO\nthree\nfour\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "new.js"), []byte("x\ny\n"), 0o644)
 	s.save()
 	other := newSession(root) // another session of the same project sees the project's changes
 	_ = other
@@ -71,16 +71,16 @@ func TestLocalChangesWithoutGit(t *testing.T) {
 		t.Fatalf("%+v", files)
 	}
 	d := LocalDiff(root, root, "", "all", "a.js")
-	if !strings.Contains(d, "-dois") || !strings.Contains(d, "+DOIS") || !strings.Contains(d, "+quatro") || !strings.Contains(d, "@@ -1,3 +1,4 @@") {
+	if !strings.Contains(d, "-two") || !strings.Contains(d, "+TWO") || !strings.Contains(d, "+four") || !strings.Contains(d, "@@ -1,3 +1,4 @@") {
 		t.Fatal(d)
 	}
 	if err := LocalDiscard(root, root, "", "all", "a.js"); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(root, "a.js")); string(b) != "um\ndois\ntres\n" {
+	if b, _ := os.ReadFile(filepath.Join(root, "a.js")); string(b) != "one\ntwo\nthree\n" {
 		t.Fatalf("%q", b)
 	}
-	if err := LocalDiscard(root, root, "", "all", "novo.js"); err != nil || exists(filepath.Join(root, "novo.js")) {
+	if err := LocalDiscard(root, root, "", "all", "new.js"); err != nil || exists(filepath.Join(root, "new.js")) {
 		t.Fatal("new file not removed")
 	}
 }

@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const catalog = JSON.parse(readFileSync(join(root, 'internal/core/catalog.json'), 'utf8'));
+const NAMESPACES = new Set(Object.keys(catalog).map(k => k.split('.')[0]));
+const FILE_EXTS = new Set(['js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'json', 'css', 'html', 'md', 'txt', 'yml', 'yaml', 'toml', 'sh', 'exe', 'py', 'go', 'png', 'svg', 'jpg', 'jpeg', 'webp', 'zip', 'gz', 'whl', 'php', 'rb', 'rs', 'java', 'kt', 'cs', 'vue', 'svelte']);
 const srcDir = join(root, 'ui', 'src');
 const used = new Set();
 const files = [];
@@ -30,6 +32,16 @@ for (const f of files) {
   for (const m of src.matchAll(/data-i18n(?:-ph|-title|-aria)?="([^"]+)"/g)) used.add(m[1]);
   // page section tables pass their labels through t() at render time
   for (const m of src.matchAll(/\['[^']+',\s*'((?:settings|cust)\.[^']+)'\]/g)) used.add(m[1]);
+  // keys reached through a variable (t(a) with a from a table) are still catalog ids: any dotted
+  // literal whose first segment is a namespace the catalog already uses must exist.
+  for (const m of src.matchAll(/'([a-z][a-zA-Z0-9]*\.[a-zA-Z][\w.]*)'/g)) {
+    const key = m[1];
+    if (catalog[key] || key.endsWith('.') || key.includes('/') || key.includes('://')) continue;
+    const ext = key.split('.').pop().toLowerCase();
+    if (FILE_EXTS.has(ext)) continue;
+    if (!NAMESPACES.has(key.split('.')[0])) continue;
+    used.add(key);
+  }
 }
 // dynamic key families (composed at runtime) — always required:
 for (const k of [
@@ -47,5 +59,5 @@ const missingPt = [...used].filter(k => !catalog[k]?.['pt-BR']);
 const missingEn = [...used].filter(k => !catalog[k]?.en);
 if (missingPt.length) { bad++; console.error('MISSING in pt-BR:', missingPt.join(', ')); }
 if (missingEn.length) { bad++; console.error('MISSING in en:', missingEn.join(', ')); }
-console.log(`check-i18n: ${used.size} chaves usadas, ${Object.keys(catalog).length} no catálogo compartilhado`);
+console.log(`check-i18n: ${used.size} keys used, ${Object.keys(catalog).length} in the shared catalog`);
 if (bad) process.exit(1);

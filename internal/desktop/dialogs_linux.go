@@ -28,7 +28,7 @@ func (linuxDialogs) run(gtk, kde []string) (string, error) {
 		}
 		return strings.TrimSpace(string(out)), nil
 	}
-	return "", errors.New("nenhum diálogo de arquivos disponível (instale zenity)")
+	return "", errors.New("no file dialog available (install zenity)")
 }
 
 func (d linuxDialogs) PickFolder(title string) (string, error) {

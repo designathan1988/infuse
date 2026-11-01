@@ -150,7 +150,7 @@ func (webSearchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 		Max   int    `json:"max"`
 	}
 	_ = json.Unmarshal(input, &in)
-	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.Query, Detail: "pesquisa na web"})
+	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.Query, Detail: "web search"})
 	res, engine, err := WebSearch(ctx, in.Query, in.Max)
 	if err != nil {
 		return tc.Say(M("search.failed", "error", errArg(err))), true
@@ -161,7 +161,6 @@ func (webSearchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	}
 	return tc.clip(externalContent(engine+": "+in.Query, b.String())), false
 }
-
 
 // openDefaultBrowser hands an http(s) address to the system's default browser.
 func openDefaultBrowser(u string) error {

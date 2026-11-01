@@ -27,8 +27,9 @@ cmd/infuse        role dispatch, CLI and composition
 
 internal/
   core            wire types, messages and catalogs, paths, JSON/text helpers
-  data            embedded declarative tables (provider presets)
-  config          settings, secret vault, projects, usage ledger, pricing, migrations
+  data            embedded declarative tables (provider presets, vice catalog, starter bases)
+  base            the project's chosen architecture base: folders, data/token homes, out-of-base check
+  config          settings, secret vault, signed approval files, projects, usage ledger, pricing, migrations
   connections     provider presets as a service, connect/disconnect, model discovery
   llm             Provider interface, Anthropic/OpenAI/Gemini/Ollama/mock, SSE, retry, limits
   filter          the interposed shell role: guard, heredoc, transform, rules, watcher, install
@@ -53,6 +54,11 @@ internal/
 - `agent.Session` embeds the persisted `SessionData` and owns every field under one mutex. Only Session
   methods mutate it; the API calls exported methods (`Save`, `Snapshot`, `Send`, `Stop`, missions,
   bans, processes). `SessionData` is the serialized projection.
+- The turn starts with a tree snapshot (`workspace.SnapshotTurn`). Write and Edit are judged as they
+  run (`agent.writeGuards`); every other change to the tree — a shell command, an MCP tool, a
+  generator, a subagent — is judged at the end of the turn by the same policy (`agent/shell_audit.go`).
+  `.infuse/oracle` and `.infuse/evidence` are hashed at turn start; changing them outside the executor
+  blocks the turn.
 - `agent.Registry` (the `sessions` map) owns live sessions; `NewSession`/`LoadSession`/`ListSessions`
   are the only entry points.
 - Events are emitted after a mutation with a monotonically increasing sequence (`Event.Seq`). The UI
@@ -68,6 +74,29 @@ internal/
 - The browser UI is a cache: server snapshots + SSE events. It never writes shared state directly
   (pending sends live in the view, not in the transcript).
 
+## Security anchors
+
+- The agent's shell guard is built against the real project root even when a session works in a
+  worktree, so `../../` cannot reach the project's own records. Path matching is case-insensitive where
+  the filesystem is, protected records are recognized at any depth, symlinks/junctions are resolved on
+  both the read and the write side, and `mklink` is treated as a writer.
+- `.infuse/settings.json`, `.infuse/hooks.json`, `.infuse/base.json`, `.mcp.json` and
+  `.claude/settings.json` are protected: a project file can tighten the policy, never loosen it
+  (`EffectiveSettings` ignores a looser mode or permission).
+- Hooks run through the same guard as any shell command. Hook and MCP approvals are stored with an
+  HMAC whose key lives in the OS vault (private-file fallback for headless hosts); an unsigned or
+  edited approval file approves nothing. MCP tools always go through the permission policy; a server's
+  own read-only hint is not evidence.
+- The oracle's criteria hash is anchored in `~/.infuse/oracle/`, outside the project, and every verdict
+  carries an HMAC over its fields. A criteria/verdict pair edited inside the project no longer verifies.
+  HTTP checks require a server started from the snapshot on a port that was free; the verdict records
+  the child pid.
+- Read-only API routes that read a caller-chosen file, fetch a URL or open a path also require the
+  application token. The agent's browser refuses non-web schemes and `file://`; text captured from a
+  page passes secret redaction.
+- The package-existence check reads a local cache (`~/.infuse/packages.json`); a miss is looked up in
+  the background, never inside the gate path.
+
 ## i18n
 
 - One catalog for the whole application: `internal/core/catalog.json` carries English and pt-BR under
@@ -81,6 +110,9 @@ internal/
 - `TestCatalogIsComplete` and `TestUIMessagesUseCatalogIDs` fail the build on a missing language,
   divergent placeholders, or a translation call whose id is absent from the catalog;
   `scripts/check-i18n.mjs` checks the same contract from the UI side, including dynamic key families.
+- `scripts/check-language.mjs` fails the build on Portuguese outside the catalog (accented letters and
+  decisive words), with a reviewed exception list in `scripts/language-allowlist.txt` for stored
+  protocol values and language-detection tables.
 
 ## Frontend
 
@@ -108,12 +140,26 @@ internal/
 - None in the architecture rules: no Go function is over 60 lines (`TestFunctionsStaySmall` in
   `internal/architecture`), no frontend function or file is (checked by `tools/check-frontend.mjs`),
   and every rule above is enforced by a test or a CI step.
+- OS-level containment is not implemented: the guard, the protected paths and the signed approvals act
+  at the executor and at the file level, not inside a restricted token/Job Object. A command that
+  escapes the command parser is caught by the turn audit (content hash) but can still touch the disk.
+- The C# import resolver is not implemented (Go and Rust are); Java/Kotlin imports are unresolved too.
+- Instruction files are loaded from the project root; per-subfolder instruction files are not loaded
+  when work enters a folder.
+- The unified "Regras" policy surface is not built: settings, bans, filter rules, protected paths and
+  compiled rules still have separate sources; `.infuse/base.json` is edited as a file or through the
+  API, not yet in the UI.
+- Base scaffolds (creating a project from a base with a pre-filled map) and the FUSE/WinFsp mount
+  remain absent.
+- The Contract tool asks the user to confirm verifiable criteria, but a confirmed Contract is not yet a
+  hard prerequisite for the first write.
 - Compatibility route families (`/api/session/<id>` and `/api/sessions/<id>`) are kept so older pages
   and external callers keep working; both dispatch into the same domain methods.
 
 ## Verification
 
 - `go vet ./...`, `go test ./...` and `go test ./internal/architecture`.
+- `node scripts/check-language.mjs` (English only) and `node scripts/check-i18n.mjs` (catalog).
 - Cross builds: `GOOS=windows CGO_ENABLED=0 go build ./...`, `CGO_ENABLED=0 GOOS=linux go build ./...`,
   `CGO_ENABLED=0 GOOS=darwin go build ./...`.
 - Frontend: `node --experimental-vm-modules scripts/check-ui.mjs` parses every module,

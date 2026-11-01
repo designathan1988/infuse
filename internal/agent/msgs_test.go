@@ -52,13 +52,13 @@ func TestMessagesRenderPerLanguageWithNestedReasons(t *testing.T) {
 	if en := m.String(); !strings.Contains(en, "a new diagnosis is required (you returned src/a.ts to a content") {
 		t.Fatal(en)
 	}
-	if pt := m.Render("pt-BR"); !strings.Contains(pt, "é preciso um novo diagnóstico (você devolveu src/a.ts a um conteúdo") {
+	if pt := m.Render("pt-BR"); !strings.Contains(pt, M("redo.revert", "file", "src/a.ts").Render("pt-BR")) {
 		t.Fatal(pt)
 	}
 	// the user's version of a tool output: infuse's own message replaced, the rest kept
 	out := "file content here\n" + m.String()
 	d := displayFor("pt-BR", out, []Msg{m})
-	if !strings.HasPrefix(d, "file content here\n[infuse] Bloqueado: é preciso um novo diagnóstico") {
+	if d != "file content here\n"+m.Render("pt-BR") {
 		t.Fatal(d)
 	}
 	if displayFor("en", out, []Msg{m}) != "" {

@@ -10,9 +10,9 @@ import (
 )
 
 var convo = []Message{
-	{Role: "user", Content: []Block{{Type: "text", Text: "oi"}}},
-	{Role: "assistant", Content: []Block{{Type: "text", Text: "vou ler"}, {Type: "tool_use", ID: "c1", Name: "Read", Input: json.RawMessage(`{"path":"a"}`)}}},
-	{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "c1", Content: "conteúdo"}}},
+	{Role: "user", Content: []Block{{Type: "text", Text: "hi"}}},
+	{Role: "assistant", Content: []Block{{Type: "text", Text: "I will read"}, {Type: "tool_use", ID: "c1", Name: "Read", Input: json.RawMessage(`{"path":"a"}`)}}},
+	{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "c1", Content: "content"}}},
 }
 
 func testHome(t *testing.T) {

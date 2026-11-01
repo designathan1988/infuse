@@ -109,7 +109,7 @@ func RepairTranscript(msgs []Message) []Message {
 		var missing []Block
 		for _, b := range m.Content {
 			if b.Type == "tool_use" && !answered[b.ID] {
-				missing = append(missing, Block{Type: "tool_result", ToolUseID: b.ID, Content: "sem resultado: a execução foi interrompida", IsError: true})
+				missing = append(missing, Block{Type: "tool_result", ToolUseID: b.ID, Content: "no result: the execution was interrupted", IsError: true})
 			}
 		}
 		if len(missing) > 0 {

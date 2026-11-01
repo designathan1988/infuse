@@ -38,22 +38,24 @@ func takeGitSnapshot(workDir, evDir, snap string) (string, string, func(), error
 		return strings.TrimSpace(string(out)), err
 	}
 	if _, err := git("add", "-A", "--", ".", ":(exclude).infuse"); err != nil {
-		return "", "", nil, errors.New("git add (índice temporário) falhou")
+		return "", "", nil, errors.New("git add (temporary index) failed")
 	}
 	tree, err := git("write-tree")
 	if err != nil {
-		return "", "", nil, errors.New("git write-tree falhou: " + tree)
+		return "", "", nil, errors.New("git write-tree failed: " + tree)
 	}
 	parent := []string{}
 	if head, err := git("rev-parse", "--verify", "HEAD"); err == nil && head != "" {
 		parent = []string{"-p", head}
 	}
-	commit, err := git(append(append([]string{"commit-tree", tree}, parent...), "-m", "infuse oracle snapshot "+filepath.Base(evDir))...)
+	// the snapshot is infuse's own commit: it must not depend on the machine having a git identity
+	args := append([]string{"-c", "user.name=infuse", "-c", "user.email=oracle@infuse.local", "commit-tree", tree}, parent...)
+	commit, err := git(append(args, "-m", "infuse oracle snapshot "+filepath.Base(evDir))...)
 	if err != nil {
-		return "", "", nil, errors.New("git commit-tree falhou: " + commit)
+		return "", "", nil, errors.New("git commit-tree failed: " + commit)
 	}
 	if out, err := workspace.GitRun(workDir, "worktree", "add", "--detach", snap, commit); err != nil {
-		return "", "", nil, errors.New("git worktree add falhou: " + strings.TrimSpace(out))
+		return "", "", nil, errors.New("git worktree add failed: " + strings.TrimSpace(out))
 	}
 	linkDependencies(workDir, snap)
 	_ = os.WriteFile(filepath.Join(evDir, "snapshot.txt"), []byte("git commit "+commit+"\ntree "+tree+"\n"), 0o644)

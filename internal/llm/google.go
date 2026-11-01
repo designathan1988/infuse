@@ -18,7 +18,7 @@ func (p *googleProvider) Name() string { return "google" }
 
 func (p *googleProvider) Stream(ctx context.Context, req ModelRequest, emit func(StreamEvent)) (ModelResult, error) {
 	if p.key == "" {
-		return ModelResult{}, errors.New("chave de API do Google não configurada")
+		return ModelResult{}, errors.New("Google API key not configured")
 	}
 	url := p.base + "/v1beta/models/" + req.Model + ":streamGenerateContent?alt=sse"
 	resp, err := postJSON(ctx, p.client, url, map[string]string{"x-goog-api-key": p.key}, googleBody(req))

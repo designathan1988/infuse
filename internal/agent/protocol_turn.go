@@ -12,44 +12,48 @@ import (
 // End-of-turn obligations and task closure.
 
 func (s *Session) turnObligation(ctx context.Context) Msg {
-	s.Mu.Lock()
-	changed := append([]CheckpointFile{}, s.Checkpoints[s.Turn]...)
-	asks := s.gate.obligationAsks
-	var open []string
-	for _, t := range s.Tasks { // the session's plan, whichever turn registered it
-		if t.Status != "done" && t.Status != "blocked" {
-			open = append(open, t.Text)
-		}
-	}
-	s.Mu.Unlock()
-	if asks >= 6 { // the agent keeps refusing: the turn ends, and infuse closes what was left as blocked
+	changed, open, asks := s.turnState()
+	if asks >= 6 { // the agent keeps refusing: the turn ends, unverified — never as done
 		s.closeOpenTasks(M("plan.closed_note").Render(s.uiLang())) // shown only in the plan pane
+		s.markUnverified()
 		return Msg{}
+	}
+	s.Mu.Lock()
+	snapErr := s.snapshotErr
+	s.Mu.Unlock()
+	if snapErr != nil { // without the initial tree there is nothing to compare against: fail closed
+		return M("turn.snapshot", "error", snapErr.Error())
 	}
 	if len(open) > 0 {
 		return M("turn.open_tasks", "tasks", strings.Join(open, "; "))
 	}
+	// whatever changed the tree outside the write tools is judged before anything else
+	if why := s.auditShellWrites(); !why.Empty() {
+		return why
+	}
+	// a turn that only started a server changed no file and still owes an account of it
+	if why := s.missingDeclaredProcs(); !why.Empty() {
+		return why
+	}
 	if len(changed) == 0 {
+		// A turn that changed nothing still owes the oracle its verdict: the content-hash cache reuses
+		// the approved run, so the check is cheap, and a criterion can never quietly stop governing.
+		if why := s.oracleObligation(ctx); !why.Empty() {
+			return why
+		}
 		return Msg{}
 	}
 	// the project's checker on every file changed in the turn
-	var problems []string
-	for _, c := range changed {
-		abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
-		if _, err := os.Stat(abs); err != nil {
-			continue
-		}
-		if d := fileDiagnostics(s.Root, abs); d != "" {
-			problems = append(problems, c.Path+":\n"+d)
-		}
-	}
-	if len(problems) > 0 {
-		return M("turn.checker", "problems", truncate(strings.Join(problems, "\n\n"), 4000))
+	if why := s.checkerObligation(changed); !why.Empty() {
+		return why
 	}
 	if why := s.missingVerification(); !why.Empty() {
 		return why
 	}
 	if why := s.missingReport(); !why.Empty() {
+		return why
+	}
+	if why := s.oracleObligation(ctx); !why.Empty() { // the verdict, run by infuse on the current tree
 		return why
 	}
 	// the mandatory independent review, once per turn (its findings must be answered)
@@ -68,6 +72,84 @@ func (s *Session) turnObligation(ctx context.Context) Msg {
 	return Msg{}
 }
 
+// checkerObligation runs the project's checker on every file the turn changed.
+func (s *Session) checkerObligation(changed []CheckpointFile) Msg {
+	var problems []string
+	for _, c := range changed {
+		abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
+		if _, err := os.Stat(abs); err != nil {
+			continue
+		}
+		if d := fileDiagnostics(s.Root, abs); d != "" {
+			problems = append(problems, c.Path+":\n"+d)
+		}
+	}
+	if len(problems) > 0 {
+		return M("turn.checker", "problems", truncate(strings.Join(problems, "\n\n"), 4000))
+	}
+	return Msg{}
+}
+
+// markUnverified records a turn that ended with obligations still open: the user sees it, the journal
+// keeps it, and the turn is never counted as done.
+func (s *Session) markUnverified() {
+	Journal(s.Root, JournalEntry{Kind: "gate", Detail: "turn ended unverified: obligations remained after six refusals"})
+	s.emitMsg("gate", M("turn.unverified"))
+}
+
+// turnState is what the obligations need: the files the turn changed (by any tool), the plan's open
+// tasks and how many times the agent was already sent back.
+func (s *Session) turnState() (changed []CheckpointFile, open []string, asks int) {
+	s.Mu.Lock()
+	changed = append([]CheckpointFile{}, s.Checkpoints[s.Turn]...)
+	asks = s.gate.obligationAsks
+	for _, t := range s.Tasks {
+		if t.Status != "done" && t.Status != "blocked" {
+			open = append(open, t.Text)
+		}
+	}
+	s.Mu.Unlock()
+	for _, ch := range s.ungatedChanges() {
+		if !ch.Deleted {
+			changed = append(changed, CheckpointFile{Path: ch.Path, New: ch.New})
+		}
+	}
+	return changed, open, asks
+}
+
+// missingDeclaredProcs: a turn never ends leaving a background process it did not account for. Every
+// running process must be named in the turn's Report (its id and what it serves) or stopped.
+func (s *Session) missingDeclaredProcs() Msg {
+	s.Mu.Lock()
+	start := 0
+	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) {
+		start = s.TurnStarts[s.Turn-1]
+	}
+	var report strings.Builder
+	for _, m := range s.Messages[min(start, len(s.Messages)):] {
+		for _, b := range m.Content {
+			if b.Type == "tool_use" && b.Name == "Report" {
+				report.Write(b.Input)
+				report.WriteString("\n")
+			}
+		}
+	}
+	var open []string
+	for _, p := range s.procs {
+		if p.State != "running" {
+			continue
+		}
+		if !regexp.MustCompile(`\b` + regexp.QuoteMeta(p.ID) + `\b`).MatchString(report.String()) {
+			open = append(open, p.ID+" ("+truncate(p.Command, 80)+")")
+		}
+	}
+	s.Mu.Unlock()
+	if len(open) == 0 {
+		return Msg{}
+	}
+	return M("turn.open_procs", "items", strings.Join(open, "; "))
+}
+
 // closeOpenTasks marks every open task blocked with infuse's note: the plan never shows work as
 // ongoing once the agent has stopped.
 func (s *Session) closeOpenTasks(note string) {
@@ -81,7 +163,7 @@ func (s *Session) closeOpenTasks(note string) {
 		}
 	}
 	if changed {
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "plano encerrado com tarefas abertas"})
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "plan closed with open tasks"})
 		s.setTasks(tasks)
 	}
 }
