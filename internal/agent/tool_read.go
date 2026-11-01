@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -75,11 +76,20 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	}
 	tc.S.noteCoverage(abs, len(lines), start, shown)
 	tc.S.markRead(abs)
-	out := sb.String()
+	out := sb.String() + tc.readContext(abs)
+	return tc.clip(out), false
+}
+
+// readContext is what infuse adds to a file's content: its dependents and the rules of its folder.
+func (tc *ToolContext) readContext(abs string) string {
+	var out string
 	if m := LoadMap(tc.Root); m != nil {
 		if d := DependentsMsg(m, relTo(tc.Root, abs)); !d.Empty() {
 			out += "\n" + tc.Say(d)
 		}
 	}
-	return tc.clip(out), false
+	if inst := tc.S.localInstructions(filepath.Dir(abs)); inst != "" {
+		out += "\n\n" + tc.Say(M("read.localInstructions")) + "\n" + inst
+	}
+	return out
 }

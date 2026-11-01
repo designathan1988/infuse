@@ -114,6 +114,9 @@ func (tc *ToolContext) afterWrite(abs string) []string {
 	Journal(tc.Root, JournalEntry{Kind: "write", Path: rel, Bytes: size, Detail: "agent"})
 	tc.S.scheduleMapRefresh()
 	var lines []string
+	if inst := tc.S.localInstructions(filepath.Dir(abs)); inst != "" {
+		lines = append(lines, tc.Say(M("read.localInstructions"))+"\n"+inst)
+	}
 	if m := LoadMap(tc.Root); m != nil {
 		if d := DependentsMsg(m, rel); !d.Empty() {
 			lines = append(lines, tc.Say(d))

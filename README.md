@@ -35,7 +35,7 @@ status, diff, discard and commit; a `mock` provider to try everything without a 
 | `infuse.exe` (double-click) / `infuse ui` | the application window (native WebView2 / WKWebView / WebKitGTK): projects and sessions, chat with streaming and inline approvals, files/diff/git/terminal, Pronto, Regras, Jornal, Vícios, Mapa, Config |
 | `infuse serve [port]` | the same UI served on 127.0.0.1 without a window (development) |
 | `bash.exe` (the same file, copied by install) | the interposed shell every agent command passes through |
-| `infuse <command>` | CLI: `claude`, `codex`, `gemini`, `install`, `uninstall`, `status`, `map`, `journal`, `lessons`, `rules`, `watch` |
+| `infuse <command>` | CLI: `claude`, `codex`, `gemini`, `init <base> [dir]`, `install`, `uninstall`, `status`, `map`, `journal`, `lessons`, `rules`, `watch` |
 
 How external agents are caught: `install` points Claude Code at the copied shell through
 `CLAUDE_CODE_GIT_BASH_PATH` on Windows and `CLAUDE_CODE_SHELL` on macOS/Linux. The launcher
@@ -59,6 +59,7 @@ tool-less pipe and execute every tool inside infuse.
 - User rules (`~/.infuse/rules.json`, `<project>/.infuse/rules.json`): command / write / list / always → replace, say, infuse, infuseFile, vice.
 - An empty `.infuse/base.json` means no base. `{"base":"web"}` chooses a starter (api, web, cli,
   interactive); a full object declares custom folders; code written outside the chosen folders is refused.
+  `infuse init <base> [dir]` scaffolds a starter's folders and writes its base document.
 - Hook and MCP approvals are signed with a key kept outside the project: an approval file the agent
   edits no longer approves anything.
 

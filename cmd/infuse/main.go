@@ -11,6 +11,7 @@ package main
 import (
 	"fmt"
 	"infuse/internal/api"
+	"infuse/internal/base"
 	"infuse/internal/core"
 	"infuse/internal/desktop"
 	"infuse/internal/filter"
@@ -70,6 +71,8 @@ func runCommand(command string, args []string) int {
 		api.Start(false)
 	case "claude", "codex", "gemini":
 		return launchAgent(command, args)
+	case "init":
+		return initCommand(args)
 	case "install":
 		return installCommand()
 	case "uninstall":
@@ -89,9 +92,31 @@ func runCommand(command string, args []string) int {
 	case "version", "--version", "-v":
 		fmt.Println("infuse", version)
 	default:
-		fmt.Println("usage: infuse [ui | claude | codex | gemini | install | uninstall | status | map | journal [n] | lessons | rules | shell -c <cmd> | watch <root> | version]")
+		fmt.Println("usage: infuse [ui | claude | codex | gemini | init <base> [dir] | install | uninstall | status | map | journal [n] | lessons | rules | shell -c <cmd> | watch <root> | version]")
 		return 1
 	}
+	return 0
+}
+
+// initCommand creates a project structure from a starter base (api, web, cli, interactive).
+func initCommand(args []string) int {
+	name := "web"
+	if len(args) > 0 {
+		name = args[0]
+	}
+	dir := ""
+	if len(args) > 1 {
+		dir = args[1]
+	}
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	b, err := base.Scaffold(dir, name)
+	if err != nil {
+		fmt.Println("[infuse] ERROR:", err)
+		return 1
+	}
+	fmt.Printf("[infuse] base %s created in %s\n[infuse] %s\n", b.Name, dir, b.Summary())
 	return 0
 }
 

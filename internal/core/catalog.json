@@ -3431,6 +3431,10 @@
     "en": "binary file ({bytes} bytes)",
     "pt-BR": "arquivo binário ({bytes} bytes)"
   },
+  "read.localInstructions": {
+    "en": "[infuse] Instructions for this folder (they apply to files under it):",
+    "pt-BR": "[infuse] Instruções desta pasta (valem para os arquivos dentro dela):"
+  },
   "read.continues": {
     "en": "[continues: the file has {lines} lines; read on from here with Read offset={offset}]",
     "pt-BR": "[continua: o arquivo tem {lines} linhas; leia a partir daqui com Read offset={offset}]"

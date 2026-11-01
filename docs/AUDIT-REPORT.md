@@ -362,17 +362,16 @@ are green. Nothing was committed.
    deny-write ACLs is not implemented. The command guard plus the content-hash turn audit catch what
    the parser sees; a process that writes through a path the parser misses reaches the disk before the
    turn ends.
-2. **C#/Java/Kotlin import resolution** is still absent (Go and Rust now resolve).
-3. **Per-subfolder instruction files** are not loaded when work enters a folder.
-4. **The unified Regras policy surface** is not built; `.infuse/base.json` has no UI editor yet.
-5. **Contract is not a hard gate** on the first write; the criteria linter only refuses structurally
+2. **The unified Regras policy surface** is not built; `.infuse/base.json` has no UI editor yet.
+3. **Contract is not a hard gate** on the first write; the criteria linter only refuses structurally
    empty checks.
-6. **Base scaffolds and FUSE/WinFsp** remain absent.
-7. **Approvals/verdict keys** fall back to a private file (`~/.infuse/signing.key`, `oracle-hmac.key`)
+4. **Base scaffolds are basic** (`infuse init <base>` creates the folders and the base document); the
+   pre-filled map and a visual creation flow are absent, as is FUSE/WinFsp.
+5. **Approvals/verdict keys** fall back to a private file (`~/.infuse/signing.key`, `oracle-hmac.key`)
    when the OS vault is unavailable; that file is protected only by file permissions.
-8. **The launcher and the signed approval flow were not exercised live** in this pass (unit/build
+6. **The launcher and the signed approval flow were not exercised live** in this pass (unit/build
    evidence only); the native window was not opened on the user's screen.
-9. **Doc suggestions** carry the installed version in the reason (npm) and in the URL (Go), but the
+7. **Doc suggestions** carry the installed version in the reason (npm) and in the URL (Go), but the
    npm/python documentation URLs themselves are still version-less; Python versions are not read from
    the manifest.
 

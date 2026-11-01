@@ -33,6 +33,8 @@ func resolveImports(root string, m *ProjectMap) {
 				if rel, ok := resolveRustImport(f.Path, spec, m); ok {
 					f.Imports[i] = rel
 				}
+			case "cs", "java", "kotlin":
+				resolveNamespacedImport(f, i, spec, m)
 			}
 		}
 		f.Imports = dedupe(f.Imports, extra...)
@@ -139,6 +141,24 @@ func goModule(root string) string {
 		}
 	}
 	return ""
+}
+
+// resolveNamespacedImport maps a using/import to a file that declares that namespace or package.
+func resolveNamespacedImport(f *FileInfo, i int, spec string, m *ProjectMap) {
+	var cands []string
+	for p, t := range m.Files {
+		if t.Namespace == "" || p == f.Path {
+			continue
+		}
+		if t.Namespace == spec || strings.HasPrefix(t.Namespace, spec+".") || strings.HasPrefix(spec, t.Namespace+".") {
+			cands = append(cands, p)
+		}
+	}
+	if len(cands) == 0 {
+		return
+	}
+	sort.Strings(cands)
+	f.Imports[i] = cands[0]
 }
 
 // resolveRustImport maps use/mod paths to a file in the map: crate::, self::, super:: and mod names.

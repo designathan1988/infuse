@@ -20,6 +20,7 @@ type FileInfo struct {
 	Lang       string   `json:"lang"`
 	Lines      int      `json:"lines"`
 	Bytes      int64    `json:"bytes"`
+	Namespace  string   `json:"namespace,omitempty"` // C# namespace / Java-Kotlin package
 	Exports    []string `json:"exports"`
 	Imports    []string `json:"imports"`
 	Dependents []string `json:"dependents"`
@@ -76,6 +77,11 @@ var (
 	reImpGo1 = regexp.MustCompile(`(?m)^\s*import\s+(?:[\w.]+\s+)?"([^"]+)"`)
 	reImpRs1 = regexp.MustCompile(`(?m)^\s*(?:pub\s+)?use\s+([\w:]+)`)
 	reImpRs2 = regexp.MustCompile(`(?m)^\s*mod\s+(\w+)\s*;`)
+	reImpCs  = regexp.MustCompile(`(?m)^\s*using\s+([\w.]+)\s*;`)
+	reImpJv  = regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([\w.]+)`)
+
+	reNamespace = regexp.MustCompile(`(?m)^\s*namespace\s+([\w.]+)`)
+	rePackage   = regexp.MustCompile(`(?m)^\s*package\s+([\w.]+)`)
 )
 
 func BuildMap(root string) *ProjectMap {
@@ -134,7 +140,7 @@ func walkDir(root, dir string, m *ProjectMap) int {
 		if len(text) > 0 {
 			lines = strings.Count(text, "\n") + 1
 		}
-		fi := &FileInfo{Path: relFile, Lang: lang, Lines: lines, Bytes: st.Size(), Exports: extractExports(text, lang), Imports: extractImports(text, lang), Dependents: []string{}}
+		fi := &FileInfo{Path: relFile, Lang: lang, Lines: lines, Bytes: st.Size(), Namespace: namespaceOf(text, lang), Exports: extractExports(text, lang), Imports: extractImports(text, lang), Dependents: []string{}}
 		m.Files[relFile] = fi
 		info.Files = append(info.Files, name)
 		info.Lines += lines
@@ -215,8 +221,24 @@ func extractImports(text, lang string) []string {
 	case "rs":
 		addAll(set, reImpRs1, text)
 		addAll(set, reImpRs2, text)
+	case "cs":
+		addAll(set, reImpCs, text)
+	case "java", "kotlin":
+		addAll(set, reImpJv, text)
 	}
 	return keys(set)
+}
+
+// namespaceOf reads the namespace (C#) or package (Java/Kotlin) a file declares.
+func namespaceOf(text, lang string) string {
+	re := reNamespace
+	if lang == "java" || lang == "kotlin" {
+		re = rePackage
+	}
+	if m := re.FindStringSubmatch(text); len(m) > 1 {
+		return m[1]
+	}
+	return ""
 }
 
 // DescribeDependents: who depends on a file — infused when the agent writes it (English).

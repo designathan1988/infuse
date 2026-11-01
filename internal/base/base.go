@@ -66,6 +66,28 @@ func Load(root string) *Base {
 	return &custom
 }
 
+// Scaffold creates a starter base's folders in root, records the choice and writes a short document
+// describing the structure. Existing files are never touched.
+func Scaffold(root, name string) (Base, error) {
+	b, ok := starter(name)
+	if !ok {
+		return Base{}, fmt.Errorf("unknown base %q (catalog: %s)", name, catalogNames())
+	}
+	for _, d := range b.Folders {
+		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(d)), 0o755); err != nil {
+			return b, err
+		}
+	}
+	if err := Save(root, name, nil); err != nil {
+		return b, err
+	}
+	dir := filepath.Join(root, "docs", "architecture")
+	_ = os.MkdirAll(dir, 0o755)
+	doc := "# Architecture base: " + b.Name + "\n\n" + b.Description + "\n\n" + b.Summary() + "\n"
+	_ = os.WriteFile(filepath.Join(dir, "base.md"), []byte(doc), 0o644)
+	return b, nil
+}
+
 // Save records a starter by name or a full custom base.
 func Save(root string, starterName string, custom *Base) error {
 	if starterName != "" {

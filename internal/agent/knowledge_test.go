@@ -28,6 +28,25 @@ func TestLessonsCarryTheirRemedy(t *testing.T) {
 	}
 }
 
+// A folder's instruction file is shown once, when work enters that folder.
+func TestFolderInstructionsLoadOnce(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(root, "src", "api"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "src", "CLAUDE.md"), []byte("folder rule: no globals"), 0o644)
+	s := newSession(root)
+	got := s.localInstructions(filepath.Join(root, "src", "api"))
+	if !strings.Contains(got, "no globals") || !strings.Contains(got, "src/CLAUDE.md") {
+		t.Fatalf("folder instructions missing: %q", got)
+	}
+	if again := s.localInstructions(filepath.Join(root, "src", "api")); again != "" {
+		t.Fatalf("folder instructions repeated: %q", again)
+	}
+	if rootOnly := s.localInstructions(root); rootOnly != "" {
+		t.Fatalf("root instructions are already in the prompt: %q", rootOnly)
+	}
+}
+
 // GEMINI.md, .cursorrules and copilot instructions are instruction layers like CLAUDE.md/AGENTS.md.
 func TestForeignInstructionFilesAreInjected(t *testing.T) {
 	testHome(t)

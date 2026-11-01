@@ -96,6 +96,8 @@ internal/
   page passes secret redaction.
 - The package-existence check reads a local cache (`~/.infuse/packages.json`); a miss is looked up in
   the background, never inside the gate path.
+- Folder-level instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, .cursorrules) load once per session
+  when a Read or Write enters their folder, never as a repeated prefix.
 
 ## i18n
 
@@ -143,14 +145,11 @@ internal/
 - OS-level containment is not implemented: the guard, the protected paths and the signed approvals act
   at the executor and at the file level, not inside a restricted token/Job Object. A command that
   escapes the command parser is caught by the turn audit (content hash) but can still touch the disk.
-- The C# import resolver is not implemented (Go and Rust are); Java/Kotlin imports are unresolved too.
-- Instruction files are loaded from the project root; per-subfolder instruction files are not loaded
-  when work enters a folder.
 - The unified "Regras" policy surface is not built: settings, bans, filter rules, protected paths and
   compiled rules still have separate sources; `.infuse/base.json` is edited as a file or through the
   API, not yet in the UI.
-- Base scaffolds (creating a project from a base with a pre-filled map) and the FUSE/WinFsp mount
-  remain absent.
+- Base scaffolds are basic: `infuse init <base>` creates the folders and the base document, but the
+  pre-filled map and a visual creation flow are not built. The FUSE/WinFsp mount remains absent.
 - The Contract tool asks the user to confirm verifiable criteria, but a confirmed Contract is not yet a
   hard prerequisite for the first write.
 - Compatibility route families (`/api/session/<id>` and `/api/sessions/<id>`) are kept so older pages

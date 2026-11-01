@@ -33,6 +33,18 @@ func TestGoDependentsResolve(t *testing.T) {
 	}
 }
 
+// C# using statements resolve through the namespace each file declares.
+func TestCSharpDependentsResolve(t *testing.T) {
+	root := t.TempDir()
+	writeMapFile(t, root, "src/Data/Repo.cs", "namespace App.Data;\npublic class Repo {}\n")
+	writeMapFile(t, root, "src/App/Service.cs", "using App.Data;\nnamespace App.Services { public class S { private Repo r; } }\n")
+	m := BuildMap(root)
+	repo := m.Files["src/Data/Repo.cs"]
+	if repo == nil || len(repo.Dependents) == 0 || repo.Dependents[0] != "src/App/Service.cs" {
+		t.Fatalf("C# import not resolved: %+v", repo)
+	}
+}
+
 // Rust use/mod paths resolve to the file they name.
 func TestRustDependentsResolve(t *testing.T) {
 	root := t.TempDir()

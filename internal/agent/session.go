@@ -84,6 +84,8 @@ type Session struct {
 	lastOracleRun string // the last executor run of this session, reused by missions instead of running twice
 	lastOracleSum string
 	lastOracleErr string // the failing checks of that run, for the mission's next message
+
+	localInstrSeen map[string]bool // folder instruction files already shown in this session
 	mapTimer      *time.Timer
 	settings      Settings
 	inflight      []Block               // results of the current reply's tool calls, before they join the transcript
