@@ -1,8 +1,8 @@
 package core
 
 // The message catalog: protocol, gates, tools, guard, shell trailer and every interface string, with
-// English and pt-BR side by side. It is data, not code; stable ui.* ids are shared with the browser and
-// served by /api/i18n, so Go and the UI can never drift.
+// English and pt-BR side by side. It is data, not code: the same catalog is used by Go and served
+// by /api/i18n to the UI, so the two can never drift.
 
 import (
 	_ "embed"

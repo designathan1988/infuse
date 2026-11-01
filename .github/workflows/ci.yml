@@ -25,9 +25,14 @@ jobs:
       - name: build (macOS, no cgo)
         run: CGO_ENABLED=0 GOOS=darwin go build ./...
       - name: frontend syntax
-        run: |
-          for f in $(find ui -name '*.js' -not -path '*/vendor/*'); do node --check "$f"; done
+        run: node --experimental-vm-modules scripts/check-ui.mjs
       - name: frontend architecture
         run: node tools/check-frontend.mjs
+      - name: i18n coverage
+        run: node scripts/check-i18n.mjs
+      - name: design tokens regenerated
+        run: |
+          node scripts/gen-tokens.mjs
+          git diff --exit-code ui/css/tokens.css
       - name: locale data
         run: node -e "JSON.parse(require('fs').readFileSync('internal/core/catalog.json','utf8'))"

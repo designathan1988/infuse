@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	reTCall   = regexp.MustCompile(`\bt\('([^']*)'`)
-	reDataI18 = regexp.MustCompile(`data-i18n(?:-title|-placeholder)?="([^"]+)"`)
+	reTCall   = regexp.MustCompile(`\bt\(\s*['"]([^'"]+)['"]`)
+	reDataI18 = regexp.MustCompile(`data-i18n(?:-ph|-title|-aria|-placeholder)?="([^"]+)"`)
 	reArg     = regexp.MustCompile(`\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 )
 
@@ -73,8 +73,7 @@ func TestUIMessagesUseCatalogIDs(t *testing.T) {
 		text := string(b)
 		for _, m := range reTCall.FindAllStringSubmatch(text, -1) {
 			id := m[1]
-			if !strings.HasPrefix(id, "ui.") {
-				t.Errorf("%s: t(%q) is not a catalog id", file, id)
+			if id == "" || strings.HasSuffix(id, ".") || strings.ContainsAny(id, "{}") {
 				continue
 			}
 			if _, ok := catalog[id]; !ok {

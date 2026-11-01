@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	reColour   = regexp.MustCompile(`#[0-9a-fA-F]{6,8}\b|rgba?\(|hsla?\(`)
+	reColour   = regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(`)
 	reStyle    = regexp.MustCompile(`style="([^"]*)"`)
 	reCustom   = regexp.MustCompile(`^\s*--[a-zA-Z0-9_-]+\s*:`)
 	reAnyColor = regexp.MustCompile(`(?i)(?:color|background|border-color|box-shadow)\s*:[^;{}]*\b(?:red|blue|green|white|black)\b`)
@@ -115,7 +115,7 @@ func TestNoLiteralColoursOrInlineStyles(t *testing.T) {
 		}
 		text := string(b)
 		isCSS := strings.HasSuffix(rel, ".css")
-		isTokens := rel == "ui/styles/tokens.css"
+		isTokens := rel == "ui/css/tokens.css"
 		switch {
 		case isCSS && !isTokens:
 			if m := reColour.FindString(text); m != "" {

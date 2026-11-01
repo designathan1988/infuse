@@ -63,11 +63,11 @@ func TestChangedScreenMustBeLookedAt(t *testing.T) {
 	testHome(t)
 	s := newSession(t.TempDir())
 	s.noteUIChange("src/components/Card.tsx")
-	wantMsg(t, s.missingScreenshot(), "ui.no_screenshot")
+	wantMsg(t, s.missingScreenshot(), "agent.no_screenshot")
 	s.noteScreenshot()
 	wantMsg(t, s.missingScreenshot(), "")
 	s.noteUIChange("src/styles/app.css") // a change after the photo needs a new one
-	wantMsg(t, s.missingScreenshot(), "ui.no_screenshot")
+	wantMsg(t, s.missingScreenshot(), "agent.no_screenshot")
 	s.resetTurnLocks()
 	s.noteUIChange("src/util/math.ts") // not a screen
 	wantMsg(t, s.missingScreenshot(), "")

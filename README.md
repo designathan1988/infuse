@@ -59,8 +59,9 @@ go vet ./...
 `cmd/infuse` is role dispatch and wiring only. The domains live in `internal/`: `core` (types,
 messages, paths), `config`/`connections`/`llm`, `filter` (the interposed shell), `knowledge`,
 `browser`, `mcp`, `oracle`, `workspace`, `terminal`, `scheduler`, `agent` (session loop, gates,
-tools), `api` (HTTP/SSE), `desktop` (window, WebView2, dialogs). The frontend is `ui/js` (one file
-per area and pane), `ui/styles` (tokens and area CSS) and `internal/core/catalog.json` (the shared message catalog). The
-architecture rules are executable: `go test ./internal/architecture`.
+tools), `api` (HTTP/SSE), `desktop` (window, WebView2, dialogs). The frontend is `ui/src` (ES modules:
+core, components, one module per pane/page), `ui/css` with the DTCG sources in `ui/tokens`, and
+`internal/core/catalog.json` (the single message catalog used by Go and the UI). The architecture
+rules are executable: `go test ./internal/architecture`.
 
 `legacy/ts` holds the original TypeScript implementation of slice 1, kept for reference.

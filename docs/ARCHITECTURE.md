@@ -15,10 +15,10 @@ that way, and the known debt that remains.
    browser UI; `ui` keeps only a cache.
 5. Data that describes behaviour is a table: provider presets (`internal/data/providers.json`), tool
    registration (`internal/agent/tool_register.go`), route groups (`internal/api/appGroups.go`,
-   `studioGroups.go`), pane registry (`ui/js/panes/core.js`).
-6. User-facing text comes from catalogs, never from literals in handlers: Go through `core.M`, the UI
-   through `t('ui.…')`. Both read the same embedded catalog (`internal/core/catalog.json` for the interface,
-   `core.RegisterMessages` catalogs for Go), with stable ids and English for the model.
+   `studioGroups.go`), pane registry (`ui/src/panes/index.js`).
+6. User-facing text comes from one catalog, never from literals in handlers: Go through `core.M`, the UI
+   through `t('area.subject')`. Both read `internal/core/catalog.json`; the UI receives it from
+   `/api/i18n` at boot, so there is no second translation table to drift.
 
 ## Packages
 
@@ -70,34 +70,38 @@ internal/
 
 ## i18n
 
-- Go: `core.Msg` is an identifier plus named arguments; `internal/core/catalog.json` carries English
-  and pt-BR. The model reads English; the user reads their configured language.
-- UI: messages have stable ids (`ui.<area>.<slug>.<hash>`) in `internal/core/catalog.json`, embedded into
-  `core` and served by `/api/i18n`; `t(id, args)` renders the current language and falls back to the
-  Portuguese source only for labels that arrive as data. Static markup carries `data-i18n`,
-  `data-i18n-title` or `data-i18n-placeholder`, applied once at boot and again when the language changes.
-  There is no `MutationObserver`; switching language re-renders the interface in place.
-- `TestUICatalogIsComplete` and `TestUIMessagesUseCatalogIDs` fail the build on a missing language,
-  divergent placeholders, a literal sentence used as a key, or an id absent from the catalog.
+- One catalog for the whole application: `internal/core/catalog.json` carries English and pt-BR under
+  stable semantic ids (`common.cancel`, `chat.send`, `panes.changes.title`). Go registers the same data
+  through `core.RegisterMessages`; the UI loads it once from `/api/i18n`.
+- The model reads English; the user reads their configured language. Messages use a small ICU subset
+  (`{name}`, `plural`, `select`, `number`, `date`) rendered with `Intl.PluralRules` and
+  `Intl.DateTimeFormat` in the browser, so categories are real CLDR categories.
+- Static markup carries `data-i18n`, `data-i18n-ph`, `data-i18n-title` or `data-i18n-aria`, applied at
+  boot and on every language switch. There is no `MutationObserver` and no per-string catalog file.
+- `TestCatalogIsComplete` and `TestUIMessagesUseCatalogIDs` fail the build on a missing language,
+  divergent placeholders, or a translation call whose id is absent from the catalog;
+  `scripts/check-i18n.mjs` checks the same contract from the UI side, including dynamic key families.
 
 ## Frontend
 
-- `ui/index.html` is the shell: CSS links in order, classic scripts in dependency order, `boot.js` last.
-- `ui/js/store.js` is the state container: `dispatch` is the only writer, state is deep-frozen after
-  every action, and modules subscribe to receive the new `S`. `ui/js/state.js` holds the reducer,
-  action creators and selectors; server data is a cache fed by the API and SSE, and live-session
-  events are folded in by the reducer.
-- `ui/js/runtime.js` holds what is not application state: DOM nodes per view, scroll/fold/attachment
-  runtime, and the SSE connections. That keeps the store plain and freezable.
-- `ui/js/core.js` holds shared helpers, the API client and the native bridge.
-- One file per area: `sidebar`, `session`, `chat`, `feed_live`, `feed_tools`, `feed_cards`,
-  `markdown`, `composer`, `rail`, `overlays`, `boot`.
-- One file per pane (`ui/js/panes/*`) and per page (`ui/js/pages/*`); the registry in
-  `panes/core.js` is loaded after the pane implementations it names.
-- `ui/styles/tokens.css` is the only file with colour literals; every other rule reads tokens.
-  `ui/styles/utilities.css` holds the one-off layout classes that used to be inline declarations.
-- Dynamic geometry travels as CSS custom properties (`--w`, `--pane-width`); the architecture test
-  refuses a static `style="…"` declaration and any colour literal outside the token file.
+- `ui/index.html` is the shell: the CSS cascade in a fixed order and one ES-module entry point
+  (`/src/app.js`). There is no bundler and no runtime dependency.
+- `ui/src/core/` owns the shared primitives: `api.js` is the only HTTP client, `signals.js` the reactive
+  primitive, `store.js` the single store (server cache, live sessions, UI preferences), `i18n.js` the
+  catalog renderer, and `dom.js`/`markdown.js`/`fmt.js` the small utilities.
+- `ui/src/components/` holds the reusable interface (sidebar, view, transcript, composer, rail, menus,
+  dialogs, data table). `ui/src/panes/` and `ui/src/pages/` expose one module per pane/page behind
+  registries in `panes/index.js` and the page modules; large pages are split into section modules.
+- State has one direction: server snapshots and SSE events update signals; effects re-render only the
+  affected subtree by keyed reconciliation. Components never mutate server state directly; actions in
+  the store call the API.
+- Design tokens are DTCG JSON in `ui/tokens/` (primitives, light/dark colours, sizes). `scripts/gen-tokens.mjs`
+  generates `ui/css/tokens.css`, the only file with colour literals. Components read tokens from the
+  cascade; dynamic geometry travels as CSS custom properties (`--w`, pane sizes). Static `style="…"`
+  declarations and colour literals elsewhere are rejected by `tools/check-frontend.mjs`.
+- CSS uses cascade layers (`reset, tokens, base, layout, components, utilities`) with base,
+  layout and component files linked in order. Shared classes live in the design system, not in feature
+  modules.
 
 ## Known debt
 
@@ -112,6 +116,8 @@ internal/
 - `go vet ./...`, `go test ./...` and `go test ./internal/architecture`.
 - Cross builds: `GOOS=windows CGO_ENABLED=0 go build ./...`, `CGO_ENABLED=0 GOOS=linux go build ./...`,
   `CGO_ENABLED=0 GOOS=darwin go build ./...`.
-- Frontend: `node --check` on every `ui/js` file, `tools/check-frontend.mjs` for file/function size,
-  inline styles and colour literals, and every screen/pane exercised in the preview.
+- Frontend: `node --experimental-vm-modules scripts/check-ui.mjs` parses every module,
+  `tools/check-frontend.mjs` enforces file/function size and the no-inline/no-literal rules,
+  `scripts/check-i18n.mjs` verifies catalog coverage, and `scripts/gen-tokens.mjs` must reproduce
+  `ui/css/tokens.css`. Every screen and pane is exercised in the preview.
 - CI runs all of the above (`.github/workflows/ci.yml`).

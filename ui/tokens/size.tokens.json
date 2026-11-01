@@ -1,0 +1,197 @@
+{
+  "$description": "infuse UI — non-color scales: spacing (enumerated), type, radius, elevation, motion, layering. Theme-independent.",
+  "space": {
+    "$type": "dimension",
+    "0": {
+      "$value": "0px"
+    },
+    "1": {
+      "$value": "2px"
+    },
+    "2": {
+      "$value": "4px"
+    },
+    "3": {
+      "$value": "6px"
+    },
+    "4": {
+      "$value": "8px"
+    },
+    "5": {
+      "$value": "10px"
+    },
+    "6": {
+      "$value": "12px"
+    },
+    "7": {
+      "$value": "14px"
+    },
+    "8": {
+      "$value": "16px"
+    },
+    "9": {
+      "$value": "18px"
+    },
+    "10": {
+      "$value": "20px"
+    },
+    "11": {
+      "$value": "22px"
+    },
+    "14": {
+      "$value": "28px"
+    },
+    "18": {
+      "$value": "36px"
+    }
+  },
+  "font": {
+    "size": {
+      "$type": "dimension",
+      "2xs": {
+        "$value": "9.5px"
+      },
+      "xs": {
+        "$value": "10.5px"
+      },
+      "sm": {
+        "$value": "11.5px"
+      },
+      "md": {
+        "$value": "12.5px"
+      },
+      "base": {
+        "$value": "13.5px"
+      },
+      "body": {
+        "$value": "14px"
+      },
+      "lg": {
+        "$value": "15px"
+      },
+      "xl": {
+        "$value": "17px"
+      },
+      "2xl": {
+        "$value": "22px"
+      },
+      "3xl": {
+        "$value": "26px"
+      }
+    }
+  },
+  "size": {
+    "$type": "dimension",
+    "icon": {
+      "$value": "16px"
+    },
+    "icon-lg": {
+      "$value": "20px"
+    },
+    "hitbox": {
+      "$value": "28px"
+    },
+    "sidebar": {
+      "$value": "264px"
+    },
+    "rail": {
+      "$value": "280px"
+    },
+    "pane": {
+      "$value": "520px"
+    },
+    "chat": {
+      "$value": "760px"
+    },
+    "icon-xs": {
+      "$value": "13px"
+    },
+    "avatar": {
+      "$value": "22px"
+    },
+    "comment": {
+      "$value": "8px"
+    }
+  },
+  "radius": {
+    "$type": "dimension",
+    "xs": {
+      "$value": "4px"
+    },
+    "sm": {
+      "$value": "6px"
+    },
+    "md": {
+      "$value": "8px"
+    },
+    "lg": {
+      "$value": "10px"
+    },
+    "xl": {
+      "$value": "12px"
+    },
+    "2xl": {
+      "$value": "14px"
+    },
+    "full": {
+      "$value": "999px"
+    }
+  },
+  "border": {
+    "$type": "dimension",
+    "1": {
+      "$value": "1px"
+    }
+  },
+  "shadow": {
+    "$type": "shadow",
+    "card": {
+      "$value": "0 1px 2px rgba(0,0,0,.04),0 8px 28px rgba(0,0,0,.08)"
+    },
+    "pop": {
+      "$value": "0 12px 40px rgba(0,0,0,.16)"
+    },
+    "1": {
+      "$value": "0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.4)"
+    },
+    "2": {
+      "$value": "0 16px 48px rgba(0,0,0,.5)"
+    }
+  },
+  "z": {
+    "$type": "number",
+    "raised": {
+      "$value": 8
+    },
+    "side": {
+      "$value": 20
+    },
+    "menu": {
+      "$value": 60
+    },
+    "modal": {
+      "$value": 70
+    },
+    "drop": {
+      "$value": 90
+    },
+    "toast": {
+      "$value": 95
+    }
+  },
+  "duration": {
+    "$type": "duration",
+    "fast": {
+      "$value": "120ms"
+    },
+    "normal": {
+      "$value": "200ms"
+    },
+    "slow": {
+      "$value": "400ms"
+    },
+    "spin": {
+      "$value": "800ms"
+    }
+  }
+}

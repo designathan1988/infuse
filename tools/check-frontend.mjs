@@ -101,7 +101,7 @@ for (const file of walk(join(root, 'ui'))) {
     }
   }
   if (!file.endsWith('tokens.css') && (file.endsWith('.css') || file.endsWith('.js') || file.endsWith('.html'))) {
-    const colour = text.match(/#[0-9a-fA-F]{6,8}\b|rgba?\(|hsla?\(/);
+    const colour = text.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
     if (colour) errors.push(`${rel}: colour literal ${colour[0]} outside tokens.css`);
   }
 }

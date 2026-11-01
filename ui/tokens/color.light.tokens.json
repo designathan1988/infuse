@@ -1,0 +1,129 @@
+{
+  "$description": "infuse UI — semantic color, light theme. Component CSS only ever references these.",
+  "color": {
+    "$type": "color",
+    "app": {
+      "$value": "{color.neutral.50}"
+    },
+    "sidebar": {
+      "$value": "{color.neutral.100}"
+    },
+    "surface": {
+      "$value": "{color.neutral.0}"
+    },
+    "surface-2": {
+      "$value": "{color.neutral.150}"
+    },
+    "surface-3": {
+      "$value": "{color.neutral.200}"
+    },
+    "border": {
+      "$value": "{color.neutral.250}"
+    },
+    "border-strong": {
+      "$value": "{color.neutral.300}"
+    },
+    "text": {
+      "$value": "{color.neutral.900}"
+    },
+    "text-secondary": {
+      "$value": "{color.neutral.800}"
+    },
+    "text-tertiary": {
+      "$value": "#99998f"
+    },
+    "accent": {
+      "$value": "{color.blue.600}"
+    },
+    "accent-soft": {
+      "$value": "{color.blue.100}"
+    },
+    "ok": {
+      "$value": "{color.green.700}"
+    },
+    "ok-soft": {
+      "$value": "{color.green.100}"
+    },
+    "warn": {
+      "$value": "{color.amber.600}"
+    },
+    "warn-soft": {
+      "$value": "{color.amber.100}"
+    },
+    "bad": {
+      "$value": "{color.red.700}"
+    },
+    "bad-soft": {
+      "$value": "{color.red.100}"
+    },
+    "diff-add": {
+      "$value": "{color.green.200}"
+    },
+    "diff-add-text": {
+      "$value": "{color.green.600}"
+    },
+    "diff-del": {
+      "$value": "{color.red.200}"
+    },
+    "diff-del-text": {
+      "$value": "{color.red.600}"
+    },
+    "user-bubble": {
+      "$value": "{color.neutral.1030}"
+    },
+    "overlay": {
+      "$value": "rgba(0,0,0,.22)"
+    },
+    "on-accent": {
+      "$value": "{color.neutral.0}"
+    },
+    "selection": {
+      "$value": "{color.blue.400}"
+    },
+    "chart-1": {
+      "$value": "#4c6fd6"
+    },
+    "chart-2": {
+      "$value": "#7a6cc9"
+    },
+    "chart-3": {
+      "$value": "#a86ac1"
+    },
+    "chart-4": {
+      "$value": "#c96aa4"
+    },
+    "chart-5": {
+      "$value": "#d47a84"
+    },
+    "chart-6": {
+      "$value": "#d69666"
+    },
+    "knob": {
+      "$value": "{color.neutral.0}"
+    }
+  },
+  "shadow": {
+    "$type": "shadow",
+    "card": {
+      "$value": "{shadow.card}"
+    },
+    "pop": {
+      "$value": "0 12px 40px rgba(0,0,0,.16), 0 0 0 1px {color.border}"
+    },
+    "1": {
+      "$value": "{shadow.card}, 0 0 0 1px {color.border}"
+    },
+    "2": {
+      "$value": "{shadow.pop}, 0 0 0 1px {color.border-strong}"
+    },
+    "chip": {
+      "$value": "0 1px 2px rgba(0,0,0,.12)"
+    },
+    "jump": {
+      "$value": "0 4px 14px rgba(0,0,0,.18)"
+    },
+    "toc": {
+      "$value": "0 8px 30px rgba(0,0,0,.2)"
+    }
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "$description": "infuse UI — primitive palette and font stacks (W3C DTCG .tokens.json). Never used directly by components; semantic tokens reference these.",
+  "color": {
+    "$type": "color",
+    "neutral": {
+      "0":    { "$value": "#ffffff" },
+      "50":   { "$value": "#fbfbfa" },
+      "100":  { "$value": "#f4f4f2" },
+      "150":  { "$value": "#f1f1ef" },
+      "200":  { "$value": "#e8e8e5" },
+      "250":  { "$value": "#e5e5e2" },
+      "300":  { "$value": "#d3d3cf" },
+      "800":  { "$value": "#66665f" },
+      "900":  { "$value": "#1f1f1d" },
+      "950":  { "$value": "#1c1c1b" },
+      "960":  { "$value": "#171716" },
+      "970":  { "$value": "#232322" },
+      "980":  { "$value": "#2a2a28" },
+      "990":  { "$value": "#333331" },
+      "995":  { "$value": "#2e2e2c" },
+      "1000": { "$value": "#43433f" },
+      "1005": { "$value": "#ececea" },
+      "1010": { "$value": "#a8a8a1" },
+      "1020": { "$value": "#74746d" },
+      "1030": { "$value": "#f1f0ec" },
+      "1040": { "$value": "#2a2a27" }
+    },
+    "blue": {
+      "100": { "$value": "#eef2fc" },
+      "300": { "$value": "#8aa6f4" },
+      "400": { "$value": "#cfdcf8" },
+      "600": { "$value": "#4c6fd6" },
+      "900": { "$value": "#252c40" }
+    },
+    "green": {
+      "100": { "$value": "#e8f4ec" },
+      "200": { "$value": "#e6f5ea" },
+      "600": { "$value": "#1d6a32" },
+      "700": { "$value": "#2c7a46" },
+      "800": { "$value": "#80d197" },
+      "900": { "$value": "#1d2f23" }
+    },
+    "amber": {
+      "100": { "$value": "#fbf3e2" },
+      "600": { "$value": "#a0620c" },
+      "800": { "$value": "#e3b65c" },
+      "900": { "$value": "#33291a" }
+    },
+    "red": {
+      "100": { "$value": "#fbeaea" },
+      "200": { "$value": "#fcebeb" },
+      "600": { "$value": "#a0292d" },
+      "700": { "$value": "#b83a3e" },
+      "800": { "$value": "#f19497" },
+      "900": { "$value": "#3a2021" },
+      "950": { "$value": "#3a2224" }
+    }
+  },
+  "font": {
+    "$type": "fontFamily",
+    "mono": { "$value": "\"Cascadia Code\",\"Cascadia Mono\",ui-monospace,Consolas,\"SF Mono\",Menlo,monospace" },
+    "sans": { "$value": "\"Segoe UI Variable Text\",\"Segoe UI\",system-ui,-apple-system,Roboto,sans-serif" }
+  }
+}

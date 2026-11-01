@@ -87,7 +87,7 @@ func (s *Session) missingScreenshot() Msg {
 	if l.uiChangeSeq == 0 || l.shotSeq >= l.uiChangeSeq {
 		return Msg{}
 	}
-	return M("ui.no_screenshot", "files", strings.Join(firstN(dedupe(l.uiChanged), 6), ", "))
+	return M("agent.no_screenshot", "files", strings.Join(firstN(dedupe(l.uiChanged), 6), ", "))
 }
 
 // ---------------------------------------------------------------- C3: large removals are grounded
