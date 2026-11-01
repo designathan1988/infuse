@@ -105,7 +105,10 @@ What escapes: what the model thinks (touches nothing) and the final message it w
 > root and a private temp/cache, protects `.infuse` with a Medium label, and runs MSYS2 from a private
 > runtime copy, so Git Bash, Go, Git and npm work while writes and deletes outside the project are
 > denied. The sandbox contains mistakes and file tampering, not a hostile same-user process using
-> Explorer/COM brokers, and leaves network access open. The FUSE/WinFsp mount is the remaining slice.
+> Explorer/COM brokers, and leaves network access open. The WinFsp mount is delivered as
+> `infuse mount <drive|dir> [project]`: writes through the mounted view are journaled and pass the
+> base/protected-path policy before reaching disk. Wiring the mount into every Studio session
+> automatically is a product decision left open; sessions currently use the real project tree.
 
 
 1. **Minimal filter** — launcher + interposed shell (heredoc → write) + map v0 + write watcher. ← this one

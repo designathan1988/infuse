@@ -103,7 +103,10 @@ CLAUDE CODE (opcional)
   nele em Configuracoes > Integracao com o Claude Code.
 
 O QUE AINDA NAO ESTA NESTA VERSAO (ver SPEC.md e docs/PROMPT-infuse-studio.md)
-  - o mount FUSE/WinFsp.
+  - o mount automatico de toda sessao do Studio: o comando
+    "infuse mount <unidade|pasta> [projeto]" ja monta o projeto pelo WinFsp
+    (com o WinFsp instalado), aplica a base e as pastas protegidas em cada
+    escrita e registra no jornal, mas as sessoes ainda usam a arvore real.
   O sandbox de escrita em nivel de SO esta ativo: no Linux pelo Landlock e no
   Windows por um token Low WRITE_RESTRICTED que escreve apenas na raiz do
   projeto e em um cache/temp privados, mantem .infuse em integridade Media e

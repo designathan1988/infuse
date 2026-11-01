@@ -75,6 +75,9 @@ tool-less pipe and execute every tool inside infuse.
 - Agent commands run in an OS deny-write sandbox: Landlock on Linux; on Windows a Low
   `WRITE_RESTRICTED` token that writes only in the work root and a private temp/cache, keeps `.infuse`
   at Medium integrity, and runs MSYS2 from a private runtime so Git Bash, Go, Git and npm keep working.
+- `infuse mount <drive|dir> [project] [--timeout seconds]` exposes the project through WinFsp. Every
+  write is journaled and passes the base/protected-path policy before it reaches disk; `.infuse`,
+  protected files and out-of-base code are refused. WinFsp must be installed.
 
 ## Build
 

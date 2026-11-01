@@ -201,8 +201,14 @@ internal/
   base editor yet.
 - Base scaffolds create the folders, the base document, a generated map and a starter README in each
   base folder (`infuse init <base>` or Customize > Base, which also applies a base to the current
-  project and creates a project from one). Re-scaffolding never overwrites an existing file. The
-  FUSE/WinFsp mount remains absent.
+  project and creates a project from one). Re-scaffolding never overwrites an existing file.
+- The WinFsp mount is delivered as `infuse mount <drive|dir> [project] [--timeout seconds]`
+  (`internal/mountwin`, cgofuse's no-cgo Windows host). It is a passthrough view whose writes pass the
+  base/protected-path policy, are journaled, and resolve junctions/symlinks before checking that the
+  target stays inside the root. `.infuse`, protected globs and out-of-base code are refused. The mount
+  runs in the infuse process (medium integrity), so its in-process policy is the write perimeter for
+  tools that use it; Studio sessions are not mounted automatically yet, and a pre-existing hard link
+  can alias a file outside the root.
 - The Contract is a hard gate for work with more than one planned step; single-step work proceeds
   without it, and the gate can be turned off in Regras.
 - Compatibility route families (`/api/session/<id>` and `/api/sessions/<id>`) are kept so older pages
