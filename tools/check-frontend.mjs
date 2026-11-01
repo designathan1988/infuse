@@ -106,6 +106,18 @@ for (const file of walk(join(root, 'ui'))) {
   }
 }
 
+// Every custom property a rule reads must be defined somewhere (tokens.css, a component, or a
+// dynamic style). This caught the zero-width switches caused by a missing --space-13.
+const defs = new Set();
+const uses = new Map();
+for (const file of walk(join(root, 'ui'))) {
+  const text = readFileSync(file, 'utf8');
+  const rel = relative(root, file).replaceAll('\\', '/');
+  for (const m of text.matchAll(/(--[\w-]+)\s*:/g)) defs.add(m[1]);
+  for (const m of text.matchAll(/var\((--[\w-]+)/g)) if (!uses.has(m[1])) uses.set(m[1], rel);
+}
+for (const [name, rel] of uses) if (!defs.has(name)) errors.push(`${rel}: undefined CSS variable ${name}`);
+
 if (errors.length) {
   for (const e of errors) console.error(e);
   process.exit(1);

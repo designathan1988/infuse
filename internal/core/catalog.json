@@ -1239,6 +1239,10 @@
   "en": "The project’s style, counted in its own files (indentation, quotes, modules, file names, tests, comment language). The agent follows these rules when writing. Edit freely — it saves on its own.",
   "pt-BR": "O estilo do projeto, contado nos próprios arquivos (indentação, aspas, módulos, nomes de arquivo, testes, idioma dos comentários). O agente segue estas regras ao escrever. Edite à vontade — salva sozinho."
  },
+ "cust.conventionsPlaceholder": {
+  "en": "Conventions the code already follows…",
+  "pt-BR": "Convenções que o código já segue…"
+ },
  "cust.docs": {
   "en": "Pinned docs",
   "pt-BR": "Documentação fixada"
@@ -1266,6 +1270,10 @@
  "cust.instructionsDesc": {
   "en": "Project memory (.infuse/memory.md), read by the agent at the start of each turn. CLAUDE.md, AGENTS.md and INFUSE.md files in the folder are also read.",
   "pt-BR": "Memória do projeto (.infuse/memory.md), lida pelo agente no início de cada turno. Arquivos CLAUDE.md, AGENTS.md e INFUSE.md da pasta também são lidos."
+ },
+ "cust.instructionsPlaceholder": {
+  "en": "What should the agent know about this project? Architecture, commands, constraints…",
+  "pt-BR": "O que o agente deve saber sobre este projeto? Arquitetura, comandos, restrições…"
  },
  "cust.name": {
   "en": "Name",
@@ -3031,6 +3039,10 @@
   "en": "No plan yet. Use Plan mode (Shift+Tab or /plan) to have the agent propose before editing.",
   "pt-BR": "Nenhum plano ainda. Use o modo Plano (Shift+Tab ou /plan) para o agente propor antes de editar."
  },
+ "plan.noTasks": {
+  "en": "No agent tasks yet.",
+  "pt-BR": "Nenhuma tarefa do agente ainda."
+ },
  "plan.no_proof": {
   "en": "plan refused: every open task needs a proof (the command, the page or the file that will prove it works). Without proof: {tasks}",
   "pt-BR": "plano recusado: cada tarefa aberta precisa de proof (o comando, a página ou o arquivo que comprovará que funciona). Sem proof: {tasks}"
@@ -3904,8 +3916,8 @@
   "pt-BR": "Fechar a janela deixa as sessões rodando em segundo plano"
  },
  "settings.code": {
-  "en": "Code & worktrees",
-  "pt-BR": "Código e worktrees"
+  "en": "Sessions & worktrees",
+  "pt-BR": "Sessões e worktrees"
  },
  "settings.codeTitle": {
   "en": "Sessions and worktrees",

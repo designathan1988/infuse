@@ -14,7 +14,7 @@ export function mount(pb, extra, c) {
       const st = x.status === 'in_progress' && !(L && busy(L)) ? 'stopped' : x.status;
       const [ic, cls] = PLAN_ICON[st] || PLAN_ICON.pending;
       return `<div class="plan-task ${st}"><span class="result-badge rst ${cls}">${ic}</span><span class="grow"><span class="tt">${esc(x.text)}</span>${x.proof ? `<span class="pf">${t('plan.proof')}: <code>${esc(x.proof)}</code></span>` : ''}${x.note ? `<span class="pn">${esc(t(x.note))}</span>` : ''}</span></div>`;
-    }).join('') : `<div class="empty">${t('tasks.empty')}</div>`}${running ? `<div class="status mt-5" role="status"><span class="spin"></span>${t('live.runningTool')} ${esc(running.name)}</div>` : ''}</div>`;
+    }).join('') : `<div class="empty">${t('plan.noTasks')}</div>`}${running ? `<div class="status mt-5" role="status"><span class="spin"></span>${t('live.runningTool')} ${esc(running.name)}</div>` : ''}</div>`;
   });
   return {};
 }

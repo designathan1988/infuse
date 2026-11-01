@@ -266,7 +266,7 @@ async function conventionsSection(el, root) {
     h(`<p class="lead">${t('cust.conventionsDesc')}</p>`)
   );
   const r = await api('/api/conventions', { root }).catch(() => ({}));
-  const ta = h(`<textarea class="doc-editor preview-min">${esc(r.text || '')}</textarea>`);
+  const ta = h(`<textarea class="doc-editor preview-min" placeholder="${esc(t('cust.conventionsPlaceholder'))}">${esc(r.text || '')}</textarea>`);
   const st = h('<span class="faint" aria-live="polite"></span>');
   ta.oninput = debounce(async () => {
     await api('/api/conventions', { body: { text: ta.value }, root }).catch(() => { });
@@ -284,7 +284,7 @@ async function conventionsSection(el, root) {
 async function instructionsSection(el, root) {
   el.append(h(`<h1>${t('cust.instructions')}</h1>`), h(`<p class="lead">${t('cust.instructionsDesc')}</p>`));
   const r = await api('/api/memory', { root }).catch(() => ({}));
-  const ta = h(`<textarea class="doc-editor instructions-min">${esc(r.content || '')}</textarea>`);
+  const ta = h(`<textarea class="doc-editor instructions-min" placeholder="${esc(t('cust.instructionsPlaceholder'))}">${esc(r.content || '')}</textarea>`);
   const st = h('<span class="faint" aria-live="polite"></span>');
   ta.oninput = debounce(async () => {
     await api('/api/memory', { method: 'PUT', body: { content: ta.value }, root }).catch(() => { });

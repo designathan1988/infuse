@@ -20,6 +20,7 @@
   a { color: var(--color-accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; border-radius: var(--radius-xs); }
+  input:focus-visible, textarea:focus-visible { outline: none; }
   img { max-width: 100%; }
 
   ::-webkit-scrollbar { width: var(--space-5); height: var(--space-5); }
@@ -37,8 +38,8 @@
   .grow { flex: 1; min-width: 0; }
   .trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .muted { color: var(--color-text-secondary); }
-  .faint { color: var(--color-text-tertiary); font-size: var(--font-size-md); }
-  .mono { font-family: var(--font-mono); font-size: var(--font-size-md); }
+  .faint { color: var(--color-text-tertiary); font-size: 12px; }
+  .mono { font-family: var(--font-mono); font-size: 12px; }
   .add { color: var(--color-diff-add-text); }
   .del { color: var(--color-diff-del-text); }
   .hidden { display: none !important; }

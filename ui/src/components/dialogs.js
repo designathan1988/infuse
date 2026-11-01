@@ -79,10 +79,10 @@ export async function contextDialog() {
   const u = L.snap.get()?.usage || {};
   const dlg = h(`<div class="dialog" aria-label="${esc(t('context.title'))}"><div class="dh">${t('context.title')}</div><div class="db dialog-body-pad"></div></div>`);
   overlay(dlg);
-  const pct = x => Math.round(x / (r.limit || 200000) * 100);
+  const barPct = x => Math.round(x / (r.total || 1) * 100);
   dlg.querySelector('.db').innerHTML = `
-    <div class="context-bar">${(r.categories || []).map((c, i) => `<i class="chart-seg cat-${i % 6 + 1}" style="--w:${pct(c.tokens)}%"></i>`).join('')}</div>
-    <table class="data-table">${(r.categories || []).map((c, i) => `<tr><td><span class="chart-dot cat-${i % 6 + 1}"></span> ${esc(t(c.name))}</td><td class="mono">${ktok(c.tokens)}</td><td class="faint">${pct(c.tokens)}%</td></tr>`).join('')}
+    <div class="context-bar">${(r.categories || []).map((c, i) => `<i class="chart-seg cat-${i % 6 + 1}" style="--w:${barPct(c.tokens)}%"></i>`).join('')}</div>
+    <table class="data-table">${(r.categories || []).map((c, i) => `<tr><td><span class="chart-dot cat-${i % 6 + 1}"></span> ${esc(t(c.name))}</td><td class="mono">${ktok(c.tokens)}</td><td class="faint">${barPct(c.tokens)}%</td></tr>`).join('')}
     <tr><td><b>${t('context.total')}</b></td><td class="mono"><b>${ktok(r.total)}</b></td><td class="faint">${t('common.of')} ${ktok(r.limit)}</td></tr></table>
     <h4 class="context-h4">${t('context.thisSession')}</h4>
     <div class="kv-row"><span>${t('context.input')}</span><span class="mono">${ktok((u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0))} tokens</span></div>

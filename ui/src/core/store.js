@@ -269,11 +269,12 @@ export const curDir = () => { const v = focusedView(); const L = v?.sid ? liveOf
 export const ctxLimit = L => L?.snap.get()?.contextLimit || cache.settings.get().contextLimit || 1000000;
 
 export function setFocus(i) { if (i >= 0 && i !== ui.focus.get()) ui.focus.set(i); }
+const focusPrompt = v => setTimeout(() => v?._promptEl?.focus(), 30);
 
 export async function openSession(root, id, force = false) {
   const v = focusedView() || (ui.views.set([newViewDraft()]), ui.views.get()[0]);
   const already = ui.views.get().findIndex((x, i) => x.sid === id && i !== ui.focus.get());
-  if (already >= 0 && !force) { setFocus(already); return; }
+  if (already >= 0 && !force) { setFocus(already); focusPrompt(ui.views.get()[already]); return; }
   v.sid = id; v.root = root;
   setUnread(id, false);
   const L = connect(root, id);
@@ -285,12 +286,14 @@ export async function openSession(root, id, force = false) {
   prefs.recent = [id, ...prefs.recent.filter(x => x !== id)].slice(0, 20);
   pref('lastRoot', root); savePrefs();
   ui.views.set([...ui.views.get()]);
+  focusPrompt(v);
   bus.emit('sessions-changed');
 }
 export function newSessionScreen(root) {
   const v = focusedView();
   v.sid = ''; if (root) v.draft.root = root;
   ui.views.set([...ui.views.get()]);
+  focusPrompt(v);
 }
 export function openInSplit(root, id, fromMenu) {
   if (ui.views.get().length < 2) ui.views.set([...ui.views.get(), newViewDraft()]);
