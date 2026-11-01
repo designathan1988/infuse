@@ -191,10 +191,11 @@ func listSessions(root string) []SessionData {
 	entries, _ := os.ReadDir(sessionsDir(root))
 	var out []SessionData
 	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".json") {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".json") || strings.Contains(strings.TrimSuffix(name, ".json"), ".") {
 			continue
 		}
-		p := filepath.Join(sessionsDir(root), e.Name())
+		p := filepath.Join(sessionsDir(root), name)
 		info, err := e.Info()
 		if err != nil {
 			continue
@@ -207,7 +208,7 @@ func listSessions(root string) []SessionData {
 			continue
 		}
 		var d SessionData
-		if readJSON(p, &d) == nil {
+		if readJSON(p, &d) == nil && d.ID != "" {
 			_, _ = d.Upgrade(nil)
 			d.Messages = nil
 			d.Checkpoints = nil

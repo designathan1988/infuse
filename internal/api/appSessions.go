@@ -53,6 +53,9 @@ func newSessionRoute(w http.ResponseWriter, root string, str func(string) string
 	if v := str("effort"); v != "" {
 		s.Effort = v
 	}
+	if v := str("title"); v != "" {
+		s.Title = v
+	}
 	s.Mu.Unlock()
 	if boolean("worktree") {
 		wt, branch, err := workspace.CreateWorktree(root, str("title"))
