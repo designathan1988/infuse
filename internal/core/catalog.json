@@ -2359,6 +2359,14 @@
     "en": "Nothing here yet.",
     "pt-BR": "Nada aqui ainda."
   },
+  "map.fileCount": {
+    "en": "{count, plural, one {# file} other {# files}}",
+    "pt-BR": "{count, plural, one {# arquivo} other {# arquivos}}"
+  },
+  "map.features": {
+    "en": "Features (where each one lives)",
+    "pt-BR": "Funcionalidades (onde cada uma vive)"
+  },
   "map.files": {
     "en": "files",
     "pt-BR": "arquivos"
@@ -2367,6 +2375,10 @@
     "en": "Files too large",
     "pt-BR": "Arquivos grandes demais"
   },
+  "map.lineCount": {
+    "en": "{count, plural, one {# line} other {# lines}}",
+    "pt-BR": "{count, plural, one {# linha} other {# linhas}}"
+  },
   "map.lines": {
     "en": "lines",
     "pt-BR": "linhas"
@@ -2374,6 +2386,10 @@
   "map.regenerate": {
     "en": "Regenerate",
     "pt-BR": "Regerar"
+  },
+  "map.routes": {
+    "en": "HTTP routes",
+    "pt-BR": "Rotas HTTP"
   },
   "mcp.addConnector": {
     "en": "Add connector",

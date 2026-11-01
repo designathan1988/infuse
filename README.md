@@ -57,13 +57,16 @@ tool-less pipe and execute every tool inside infuse.
 - Command output comes back with what was written, who depends on it, the map of what was listed, and whatever your rules inject.
 - A per-project watcher starts on first use and journals every write by any tool within milliseconds.
 - Project map (exports, imports, dependents, hotspots), generated from code only; Go and Rust imports
-  resolve to the file they name, so dependents are real for those languages too.
+  resolve to the file they name, so dependents are real for those languages too. The map also carries a
+  deterministic feature→where index (feature folders, HTTP route literals and filename-prefix fallback)
+  and the HTTP surface, shown in the Map pane, in `MAP.md` and in the agent's prompt.
 - Lessons carry the deterministic signature and the remedy from the base vice catalog; Glob/Grep
   results carry the same directory map as LS.
 - User rules (`~/.infuse/rules.json`, `<project>/.infuse/rules.json`): command / write / list / always → replace, say, infuse, infuseFile, vice.
 - An empty `.infuse/base.json` means no base. `{"base":"web"}` chooses a starter (api, web, cli,
   interactive); a full object declares custom folders; code written outside the chosen folders is refused.
-  `infuse init <base> [dir]` scaffolds a starter's folders and writes its base document.
+  `infuse init <base> [dir]` scaffolds a starter's folders, its base document, a generated map and a
+  starter README inside each base folder; a starter never overwrites a file the project already has.
 - The behaviour policy (`.infuse/policy.json` and `~/.infuse/policy.json`) is edited in Regras: work
   method toggles and ask budget, architecture and convention enforcement, permissions, prohibitions and
   done criteria. Multi-step work needs a user-confirmed Contract bound to the current request.

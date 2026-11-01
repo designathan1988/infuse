@@ -20,8 +20,20 @@ export function mount(pb, extra, c) {
       rows: dirs,
       empty: 'map.empty'
     });
-    pb.innerHTML = `<div class="pane-list"><div class="faint mb-4">${Object.keys(m.files || {}).length} ${t('common.files')} · ${fmtDateTime(m.generatedAt || Date.now())}</div>
-      ${(m.hotspots || []).length ? `<div class="rail-card mb-5"><b>${t('map.hotspots')}</b>${m.hotspots.map(x => `<div class="mono path-link" data-path="${esc(x.path)}" tabindex="0" role="button">${esc(x.path)} — ${x.lines} ${t('common.lines')}</div>`).join('')}</div>` : ''}</div>`;
+    const features = m.features || [];
+    const featurePath = p => /\.[^/]+$/.test(p)
+      ? `<span class="mono path-link" data-path="${esc(p)}" tabindex="0" role="button">${esc(p)}</span>`
+      : `<span class="mono">${esc(p)}</span>`;
+    const featureCard = features.length ? `<div class="rail-card mb-5"><b>${t('map.features')}</b>${features.slice(0, 30).map(f => `<div class="mb-2">
+        <div><span class="mono">${esc(f.name)}</span> <span class="faint">· ${t('map.fileCount', { count: f.files })} · ${t('map.lineCount', { count: f.lines })}</span></div>
+        <div class="faint">${(f.paths || []).map(featurePath).join(' · ')}${f.pathCount > (f.paths || []).length ? ` · +${f.pathCount - f.paths.length}` : ''}</div>
+        ${(f.routes || []).length ? `<div class="mono">${f.routes.map(r => esc(r)).join(' · ')}</div>` : ''}
+      </div>`).join('')}</div>` : '';
+    const routes = m.routes || [];
+    const routeCard = routes.length ? `<div class="rail-card mb-5"><b>${t('map.routes')}</b>${routes.slice(0, 40).map(r => `<div class="mono path-link" data-path="${esc(r.file)}" tabindex="0" role="button"><span class="faint">${esc(r.method)}</span> ${esc(r.path)} — ${esc(r.file)}</div>`).join('')}</div>` : '';
+    pb.innerHTML = `<div class="pane-list"><div class="faint mb-4">${t('map.fileCount', { count: Object.keys(m.files || {}).length })} · ${fmtDateTime(m.generatedAt || Date.now())}</div>
+      ${featureCard}${routeCard}
+      ${(m.hotspots || []).length ? `<div class="rail-card mb-5"><b>${t('map.hotspots')}</b>${m.hotspots.map(x => `<div class="mono path-link" data-path="${esc(x.path)}" tabindex="0" role="button">${esc(x.path)} — ${t('map.lineCount', { count: x.lines })}</div>`).join('')}</div>` : ''}</div>`;
     pb.querySelector('.pane-list').appendChild(table.el);
     $$('[data-path]', pb).forEach(x => x.onclick = () => import('./index.js').then(p => p.openFileInPane(x.dataset.path)));
   };

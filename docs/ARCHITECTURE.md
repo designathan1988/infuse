@@ -124,6 +124,12 @@ internal/
   code folders that sit outside the base, alongside the base's rules. Each folder also carries its
   responsibility (entry point, transport, domain, data owner, tokens…), so the map answers "what lives
   here" and not only "how large is it".
+- The map also answers "where is feature X": `projectmap` builds a deterministic feature index from
+  feature folders (`features/`, `modules/`, `pages/`, `commands/`, `routes/`, `handlers/`…), HTTP route
+  literals in every supported language, and a filename-prefix fallback (two or more files sharing a
+  prefix). Routes fold into the feature named by their first static path segment. The index is sorted
+  and bounded (60 features, 400 routes), reaches the agent prompt, `/api/map` and `MAP.md`, and the Map
+  pane renders it with clickable files.
 
 ## i18n
 
@@ -182,9 +188,10 @@ internal/
   settings file still stores scalars the policy overlays and writes back, so the two remain linked
   until a later migration; `.infuse/base.json` is chosen as a file or through the API, with no visual
   base editor yet.
-- Base scaffolds create the folders, the base document and a generated map (`infuse init <base>` or
-  Customize > Base, which also applies a base to the current project and creates a project from one).
-  Content scaffolds (starter files inside each folder) and the FUSE/WinFsp mount remain absent.
+- Base scaffolds create the folders, the base document, a generated map and a starter README in each
+  base folder (`infuse init <base>` or Customize > Base, which also applies a base to the current
+  project and creates a project from one). Re-scaffolding never overwrites an existing file. The
+  FUSE/WinFsp mount remains absent.
 - The Contract is a hard gate for work with more than one planned step; single-step work proceeds
   without it, and the gate can be turned off in Regras.
 - Compatibility route families (`/api/session/<id>` and `/api/sessions/<id>`) are kept so older pages

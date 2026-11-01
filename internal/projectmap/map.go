@@ -23,6 +23,7 @@ type FileInfo struct {
 	Namespace  string   `json:"namespace,omitempty"` // C# namespace / Java-Kotlin package
 	Exports    []string `json:"exports"`
 	Imports    []string `json:"imports"`
+	Routes     []Route  `json:"routes,omitempty"`
 	Dependents []string `json:"dependents"`
 }
 
@@ -44,6 +45,8 @@ type ProjectMap struct {
 	Root        string               `json:"root"`
 	Files       map[string]*FileInfo `json:"files"`
 	Dirs        map[string]*DirInfo  `json:"dirs"`
+	Features    []Feature            `json:"features"`
+	Routes      []Route              `json:"routes"`
 	Hotspots    []Hotspot            `json:"hotspots"`
 }
 
@@ -88,6 +91,7 @@ func BuildMap(root string) *ProjectMap {
 	m := &ProjectMap{GeneratedAt: time.Now().UnixMilli(), Root: root, Files: map[string]*FileInfo{}, Dirs: map[string]*DirInfo{}}
 	walkDir(root, root, m)
 	resolveImports(root, m)
+	m.Features, m.Routes = buildFeatures(m)
 	for _, f := range m.Files {
 		if f.Lines >= hotspotLines {
 			m.Hotspots = append(m.Hotspots, Hotspot{f.Path, f.Lines, fmt.Sprintf("file holds %d lines; responsibilities are likely accumulating here", f.Lines)})
@@ -140,7 +144,7 @@ func walkDir(root, dir string, m *ProjectMap) int {
 		if len(text) > 0 {
 			lines = strings.Count(text, "\n") + 1
 		}
-		fi := &FileInfo{Path: relFile, Lang: lang, Lines: lines, Bytes: st.Size(), Namespace: namespaceOf(text, lang), Exports: extractExports(text, lang), Imports: extractImports(text, lang), Dependents: []string{}}
+		fi := &FileInfo{Path: relFile, Lang: lang, Lines: lines, Bytes: st.Size(), Namespace: namespaceOf(text, lang), Exports: extractExports(text, lang), Imports: extractImports(text, lang), Routes: extractRoutes(text, lang, name, relFile), Dependents: []string{}}
 		m.Files[relFile] = fi
 		info.Files = append(info.Files, name)
 		info.Lines += lines
@@ -274,6 +278,7 @@ func WriteMap(root string, m *ProjectMap) {
 	for _, d := range dirs {
 		md.WriteString(DescribeDir(m, d) + "\n")
 	}
+	appendFeaturesMD(&md, m)
 	if len(m.Hotspots) > 0 {
 		md.WriteString("\n## Hotspots\n")
 		for _, h := range m.Hotspots {
@@ -310,7 +315,8 @@ func LoadOrBuildMap(root string) *ProjectMap {
 				return e.m
 			}
 		}
-		if m := LoadMap(root); m != nil {
+		// A map written before the feature index has no features/routes keys: rebuild it once.
+		if m := LoadMap(root); m != nil && m.Features != nil && m.Routes != nil {
 			mapCache.Store(root, mapCacheEntry{st.ModTime().UnixNano(), st.Size(), m})
 			return m
 		}

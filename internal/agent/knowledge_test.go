@@ -29,6 +29,19 @@ func TestLessonsCarryTheirRemedy(t *testing.T) {
 	}
 }
 
+// The generated feature index reaches the agent prompt.
+func TestPromptCarriesTheFeatureIndex(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	dir := filepath.Join(root, "src", "features", "billing")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "api.ts"), []byte("export const load = 1\n"), 0o644)
+	p := buildSystemPrompt(newSession(root), &RuleSet{})
+	if !strings.Contains(p, "Feature index") || !strings.Contains(p, "billing") {
+		t.Fatalf("feature index missing from the prompt:\n%s", p)
+	}
+}
+
 // A folder's instruction file is shown once, when work enters that folder.
 func TestFolderInstructionsLoadOnce(t *testing.T) {
 	testHome(t)

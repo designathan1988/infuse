@@ -4,6 +4,12 @@
     "description": "HTTP service: transport, domain, storage and contracts in separate layers.",
     "folders": ["cmd", "internal/api", "internal/domain", "internal/store", "internal/config", "internal/platform", "tests"],
     "roles": {"cmd": "entry point", "internal/api": "transport", "internal/domain": "domain rules", "internal/store": "data owner", "internal/config": "configuration", "internal/platform": "platform adapters", "tests": "tests"},
+    "starters": {
+      "internal/domain/README.md": "# Domain\n\nRules and types that do not depend on HTTP, storage or the platform. Import only the standard library and this folder.\n",
+      "internal/store/README.md": "# Data owner\n\nEvery persisted record has one owner here. Migrations live beside the schema.\n",
+      "internal/api/README.md": "# Transport\n\nHTTP handlers translate requests into domain calls. No business rules here.\n",
+      "cmd/README.md": "# Entry point\n\nWiring only: configuration, adapters and the server lifecycle.\n"
+    },
     "dataDir": "internal/store",
     "tokens": "",
     "maxFileLines": 400
@@ -13,6 +19,13 @@
     "description": "Browser application: components, pages, core primitives, styles from tokens.",
     "folders": ["src", "src/core", "src/components", "src/pages", "src/panes", "ui", "ui/css", "ui/tokens", "tests", "public"],
     "roles": {"src": "source", "src/core": "shared primitives", "src/components": "UI components", "src/pages": "pages", "src/panes": "panels", "ui": "styles", "ui/tokens": "design tokens", "tests": "tests", "public": "static assets"},
+    "starters": {
+      "src/core/README.md": "# Shared primitives\n\nSmall, dependency-free helpers used by every feature. No imports from components or pages.\n",
+      "src/components/README.md": "# UI components\n\nReusable presentational components. A component receives data and emits events; it does not fetch.\n",
+      "src/pages/README.md": "# Pages\n\nOne file per page, composing components and core primitives.\n",
+      "src/data/README.md": "# Data\n\nTables and typed fixtures. Behaviour data lives here, not in conditionals.\n",
+      "ui/tokens/README.md": "# Design tokens\n\nThe only source of colours and sizes; generate the CSS from these files.\n"
+    },
     "dataDir": "src/data",
     "tokens": "ui/tokens",
     "maxFileLines": 400
@@ -22,6 +35,10 @@
     "description": "Command-line tool: command dispatch, one file per command, shared core.",
     "folders": ["cmd", "internal", "internal/commands", "internal/core", "tests"],
     "roles": {"cmd": "entry point", "internal/commands": "one command per file", "internal/core": "shared core", "tests": "tests"},
+    "starters": {
+      "internal/commands/README.md": "# Commands\n\nOne file per command: parse arguments, call the core, print the result.\n",
+      "internal/core/README.md": "# Core\n\nShared logic with no terminal or file-system side effects.\n"
+    },
     "dataDir": "internal/data",
     "tokens": "",
     "maxFileLines": 400
@@ -31,6 +48,11 @@
     "description": "Interactive application: engine, state, input, rendering, assets and tests separated.",
     "folders": ["src", "src/engine", "src/state", "src/input", "src/render", "src/ui", "assets", "tests"],
     "roles": {"src/engine": "simulation/engine", "src/state": "state owner", "src/input": "input", "src/render": "rendering", "src/ui": "interface", "assets": "assets", "tests": "tests"},
+    "starters": {
+      "src/state/README.md": "# State owner\n\nThe single owner of mutable state; systems read and mutate it through declared operations.\n",
+      "src/engine/README.md": "# Engine\n\nSimulation and update loop. No rendering or input handling here.\n",
+      "src/render/README.md": "# Rendering\n\nReads state and draws it; never mutates state.\n"
+    },
     "dataDir": "src/data",
     "tokens": "src/ui/tokens",
     "maxFileLines": 400

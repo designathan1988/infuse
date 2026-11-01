@@ -63,6 +63,9 @@ func writePromptGrounds(b *strings.Builder, s *Session, rules *RuleSet) {
 	if m := LoadOrBuildMap(s.Root); m != nil {
 		b.WriteString("\n## Project map (generated from the code)\n")
 		b.WriteString(DescribeDir(m, ".") + "\n")
+		if fs := m.FeatureSummary(12); fs != "" {
+			b.WriteString("Feature index (where each feature lives; generated from the code):\n" + fs)
+		}
 		if len(m.Hotspots) > 0 {
 			b.WriteString("Files that are too large (avoid adding responsibilities to them):\n")
 			for i, h := range m.Hotspots {

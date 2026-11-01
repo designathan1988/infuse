@@ -88,8 +88,11 @@ What escapes: what the model thinks (touches nothing) and the final message it w
 > same write rules before the turn can end — heredocs before they run, everything else at the turn
 > boundary. Slice 2 is partially delivered: the starter bases (api, web, cli, interactive), the
 > `.infuse/base.json` choice, out-of-base refusal and scaffolding (`infuse init <base>` or Customize >
-> Base creates the folders, the base document and a generated map; the same surface applies a base and
-> creates a project from one) exist. Slice 3 is delivered and anchored. Slice 5's vice catalog now
+> Base creates the folders, the base document, a generated map and a starter README inside each base
+> folder; the same surface applies a base and creates a project from one) exist. The map carries the
+> feature→where index of Slice 1 — feature folders, HTTP route literals and a filename-prefix fallback,
+> sorted and bounded — in the prompt, the Map pane and `MAP.md`. Slice 3 is delivered and anchored.
+> Slice 5's vice catalog now
 > ships as a data table (`internal/data/vices.json`)
 > and lessons carry signature + remedy. Also delivered: tools, permissions, sessions, checkpoints,
 > compaction, git, subagents with an independent reviewer, the MCP client, web search, the desktop

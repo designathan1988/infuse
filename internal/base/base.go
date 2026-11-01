@@ -16,8 +16,9 @@ import (
 type Base struct {
 	Name         string            `json:"name"`
 	Description  string            `json:"description,omitempty"`
-	Folders      []string          `json:"folders"`         // where the project's own code may live, relative to the root
-	Roles        map[string]string `json:"roles,omitempty"` // folder → its responsibility (module meaning)
+	Folders      []string          `json:"folders"`            // where the project's own code may live, relative to the root
+	Roles        map[string]string `json:"roles,omitempty"`    // folder → its responsibility (module meaning)
+	Starters     map[string]string `json:"starters,omitempty"` // relative path → starter file content (never overwrites)
 	DataDir      string            `json:"dataDir,omitempty"`
 	Tokens       string            `json:"tokens,omitempty"`
 	MaxFileLines int               `json:"maxFileLines,omitempty"`
@@ -81,6 +82,14 @@ func Scaffold(root, name string) (Base, error) {
 	}
 	if err := Save(root, name, nil); err != nil {
 		return b, err
+	}
+	for rel, content := range b.Starters {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if _, err := os.Stat(p); err == nil {
+			continue // never overwrite a file the user already edited
+		}
+		_ = os.MkdirAll(filepath.Dir(p), 0o755)
+		_ = os.WriteFile(p, []byte(content), 0o644)
 	}
 	dir := filepath.Join(root, "docs", "architecture")
 	_ = os.MkdirAll(dir, 0o755)
