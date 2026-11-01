@@ -103,16 +103,17 @@ CLAUDE CODE (opcional)
   nele em Configuracoes > Integracao com o Claude Code.
 
 O QUE AINDA NAO ESTA NESTA VERSAO (ver SPEC.md e docs/PROMPT-infuse-studio.md)
-  - o sandbox de escrita em nivel de SO para o Bash no Windows: o Git Bash
-    (MSYS2) nao inicia sob integridade baixa nem sob AppContainer sem ACL de
-    administrador; no Windows valem os portoes do filtro, a auditoria do turno
-    e o Job Object. No Linux o Landlock esta ativo.
-  - arquivos iniciais dentro das pastas da base (o scaffold cria a estrutura, o
-    documento e o mapa) e o mount FUSE/WinFsp.
-  A escolha de base, a recusa de codigo fora dela, o restante do SPEC.md, os
-  subagentes com revisor independente, o cliente MCP, a busca na web, o
-  executor do oraculo com evidencia em snapshot, a janela nativa e o
-  multi-provedor estao implementados.
+  - o mount FUSE/WinFsp.
+  O sandbox de escrita em nivel de SO esta ativo: no Linux pelo Landlock e no
+  Windows por um token Low WRITE_RESTRICTED que escreve apenas na raiz do
+  projeto e em um cache/temp privados, mantem .infuse em integridade Media e
+  roda o MSYS2 a partir de uma copia privada do runtime, para que Git Bash,
+  Go, Git e npm continuem funcionando sem poderem escrever fora do projeto.
+  Os arquivos iniciais das pastas da base, a escolha de base, a recusa de
+  codigo fora dela, o restante do SPEC.md, os subagentes com revisor
+  independente, o cliente MCP, a busca na web, o executor do oraculo com
+  evidencia em snapshot, a janela nativa e o multi-provedor estao
+  implementados.
 
 Tudo fica no seu computador. A interface responde apenas em 127.0.0.1.
 Dados: %USERPROFILE%\.infuse\settings.json (as chaves de API ficam no cofre do

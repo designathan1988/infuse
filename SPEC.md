@@ -99,10 +99,13 @@ What escapes: what the model thinks (touches nothing) and the final message it w
 > bridges and the `infuse claude|codex|gemini` launcher. The behaviour policy is one versioned document
 > edited in the Regras surface (permissions/prohibitions, work method, architecture, conventions, done),
 > and multi-step work needs a user-confirmed Contract before the first write; criteria can require the
-> user's acceptance of a high-stakes delivery even when the executor passes. OS containment is partial:
-> every agent process runs in a Job Object on Windows, and Linux commands run under a Landlock ruleset;
-> a deny-write OS sandbox for Git Bash on Windows is blocked by the MSYS2 runtime and remains the open
-> item, together with the FUSE/WinFsp mount.
+> user's acceptance of a high-stakes delivery even when the executor passes. OS containment is
+> delivered for the commands infuse launches: every agent process runs in a Job Object; Linux commands
+> run under a Landlock ruleset; on Windows a Low `WRITE_RESTRICTED` token grants write only in the work
+> root and a private temp/cache, protects `.infuse` with a Medium label, and runs MSYS2 from a private
+> runtime copy, so Git Bash, Go, Git and npm work while writes and deletes outside the project are
+> denied. The sandbox contains mistakes and file tampering, not a hostile same-user process using
+> Explorer/COM brokers, and leaves network access open. The FUSE/WinFsp mount is the remaining slice.
 
 
 1. **Minimal filter** — launcher + interposed shell (heredoc → write) + map v0 + write watcher. ← this one

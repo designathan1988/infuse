@@ -174,15 +174,26 @@ internal/
 - None in the architecture rules: no Go function is over 60 lines (`TestFunctionsStaySmall` in
   `internal/architecture`), no frontend function or file is (checked by `tools/check-frontend.mjs`),
   and every rule above is enforced by a test or a CI step.
-- OS-level containment is partial. Every agent process (Bash, hooks, MCP servers, executor checks and
-  servers) runs in a Windows Job Object that ends the tree with infuse. On Linux the command goes
-  through the hidden `__sandbox` wrapper, which applies a Landlock ruleset (read everywhere; write only
-  in the work root and a sandbox temp; `.infuse` and the protected paths are not granted) and then
-  execs the target. **Windows has no deny-write OS sandbox for the Bash tool**: the low-integrity probe
-  works for cmd/PowerShell, but MSYS2's global `\BaseNamedObjects\msys-2.0…` denies a low-integrity
-  process, and AppContainer would require administrator ACL grants on `Program Files`. The string
-  gates and the content-hash turn audit remain the write perimeter there; the evidence is in
-  `docs/AUDIT-REPORT.md` §9.
+- OS-level containment is delivered on both platforms for the commands infuse launches. Every agent
+  process (Bash, hooks, MCP servers, executor checks and servers) runs in a Windows Job Object that
+  ends the tree with infuse. On Linux the hidden `__sandbox` wrapper applies a Landlock ruleset (read
+  everywhere; write only in the work root and a sandbox temp; `.infuse` and protected paths are not
+  granted). On Windows the wrapper creates a `WRITE_RESTRICTED` token with the logon SID, Everyone,
+  the user SID and a capability SID derived from the work root, lowers it to Low integrity, grants the
+  capability write on the root and on a private temp/cache, and labels the root Low; `.infuse` and
+  protected paths carry a protected Medium label, so the confined process cannot rewrite the records.
+  Write access requires both the normal and the restricting access checks, and the Low label closes the
+  parent-directory `FILE_DELETE_CHILD` path, so writes and deletes outside the root fail while reads
+  stay allowed. MSYS2 is started from a private copy of the runtime (linked or copied once per Git
+  version) so its per-installation shared memory and signal pipe do not collide with the user's Git
+  Bash. Toolchain caches (Go modules/build, npm, pnpm, pip, Playwright and XDG) are redirected to the
+  granted cache, so real builds work without opening `%USERPROFILE%`. Tests: `internal/sandbox`
+  (`TestWindowsSandboxWritesInside`, `TestWindowsSandboxBlocksOutsideWrites`,
+  `TestWindowsSandboxProtectsInfuseRecords`, `TestWindowsSandboxBuildsPrivateMSYS`). The residual risks
+  are same-user brokers (Explorer/COM can start a medium process on the user's behalf), network access
+  (not restricted), the standing Low labels on the workspace (other Low processes can then write where
+  the DACL allows), hard links that alias files outside the root, and the private runtime copy per Git
+  version; the evidence is in `docs/AUDIT-REPORT.md` §9.
 - The behaviour policy and the Regras surface are delivered (groups for permissions/prohibitions,
   method, architecture, conventions and done, plus the filter rules in the same pane). The legacy
   settings file still stores scalars the policy overlays and writes back, so the two remain linked

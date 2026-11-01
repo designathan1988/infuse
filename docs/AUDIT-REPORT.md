@@ -358,7 +358,7 @@ the feature index and base starter files below were added after that commit.
 | Session persistence | `save` serializes under the session lock; a finishing turn and a mission step no longer read/write `SessionData` at the same time (found by the race detector in the mission test) | race suite, `TestMissionRunsUntilCriteriaPassOrBudget` under `-race` |
 | Behaviour policy | one versioned `.infuse/policy.json` / `~/.infuse/policy.json` per scope, edited in Regras (permissions, prohibitions, work method, architecture, conventions, done); a corrupt policy blocks every turn; prohibitions become typed session bans; the file is protected from the agent | `internal/policy` tests, `TestPolicyAppliesToTheSession`, `TestCorruptPolicyBlocksTheSession`; Chrome 2× `policy__regras*` screenshots, `policy-ui-final.summary.json` (237 requests, 0 console/HTTP errors) |
 | Contract | multi-step work cannot write before the user confirms the agent's restatement, bound to the current request; a new request needs a new confirmation; single-step work skips it; policy toggle | `TestMultiStepWorkNeedsAConfirmedContract`, `TestContractGateOnlyAppliesToWritingCommands` |
-| OS containment | every agent process (Bash, hooks, MCP, executor checks/servers) runs in a kill-on-close Job Object; on Linux the hidden `__sandbox` wrapper applies Landlock (read everywhere, write only in the work root and sandbox temp; `.infuse` not granted) before exec | build-tagged code, `TestPolicy...` unaffected; Windows low-integrity/AppContainer probe documented below; Linux cross-builds |
+| OS containment | every agent process (Bash, hooks, MCP, executor checks/servers) runs in a kill-on-close Job Object; on Linux the hidden `__sandbox` wrapper applies Landlock (read everywhere, write only in the work root and sandbox temp; `.infuse` not granted) before exec; on Windows the wrapper creates a `WRITE_RESTRICTED` Low-integrity token (logon SID, Everyone, user SID, work-root capability SID), grants write on the work root and private temp/cache, labels the root Low and `.infuse`/protected paths Medium, and runs MSYS2 from a private per-Git-version runtime copy; toolchain caches are redirected so builds work without opening `%USERPROFILE%` | `TestWindowsSandboxWritesInside`, `TestWindowsSandboxBlocksOutsideWrites`, `TestWindowsSandboxProtectsInfuseRecords`, `TestWindowsSandboxBuildsPrivateMSYS`, `TestNormalizeMixedPath`, `TestWrapUsesTheHiddenWrapper`; live GUI-binary evidence in `docs/audit/logs/windows-sandbox-evidence.txt` (Go build, npm install, git commit, outside write/delete denied, native Node write denied); Linux cross-builds |
 | Visual evidence | a capture is bound to the measured HTML when the criteria declare `Expect.Contains`, in addition to the origin check | `TestScreenshotHTMLMustShowWhatTheCriteriaMeasure`, `TestScreenshotWithoutContentRequirementUsesOriginOnly` |
 | Doc suggestions | Python versions are read from requirements.txt/pyproject (exact pin, `~=`, lower bound); Django, pytest and Express use verified versioned docs URLs, other vendors keep stable URLs | `TestSuggestDocsPinsPythonVersions`, `TestSuggestDocsFallsBackWithoutVersions`, `TestSuggestDocsReadsPoetryVersions`, `TestSuggestDocsPrefersExactPin` |
 | Dependencies | every turn snapshot records a fingerprint of the lockfiles and the installed entrypoints; the executor refuses a verdict when they change while the checks run (the snapshot junctions the live dependency directories) | `TestDependencyFingerprintFollowsLockfilesAndEntrypoints`, `TestDependencyChangeDuringChecksInvalidatesTheVerdict` |
@@ -369,17 +369,20 @@ the feature index and base starter files below were added after that commit.
 
 ### Remaining risks after this pass
 
-1. **Windows has no deny-write OS sandbox for the Bash tool.** Probes on this machine proved that an
-   unprivileged low-integrity token plus a low-integrity directory label confines `cmd.exe` (writes in
-   the marked tree succeed; writes to `%USERPROFILE%` and sibling medium dirs fail; reads everywhere
-   work) and that a kill-on-close Job Object attaches. Git Bash cannot start under that token:
-   MSYS2/Cygwin creates `\BaseNamedObjects\msys-2.0S5-…` as a medium-integrity object and a low-integrity
-   process is denied (`0xc0000142`). AppContainer is the other candidate, but its package SID needs ACL
-   grants on `Program Files`/`System32`, which require an administrator; the supported launch path is
-   also `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`, unavailable through `os/exec`. On Windows the
-   write perimeter is therefore the guard + content-hash turn audit + Job Object lifetime; on Linux
-   Landlock is implemented and fail-closed, but was cross-built only (no Linux host was available for a
-   live smoke test). The viable next steps are a patched MSYS2 runtime or a different sandboxed shell.
+1. **Windows OS containment is delivered for the commands infuse launches, with residual risks.**
+   The earlier dead ends were real: Low integrity alone fails because Cygwin's shared namespace and
+   signal pipe are medium objects, and AppContainer needs administrator ACLs on `Program Files` and a
+   namespace fix in the MSYS2 runtime. The working mechanism is a `WRITE_RESTRICTED` Low token whose
+   restricting SIDs include the user (for MSYS2's per-user pipe and shared memory), a capability SID
+   granted write on the work root, a Low label on the root, and a protected Medium label on `.infuse`
+   and the protected paths; MSYS2 runs from a private runtime copy so its installation namespace does
+   not collide with the user's Git Bash. Residual risks: same-user brokers (Explorer/COM can start a
+   medium process on the user's behalf) mean this contains agent mistakes and file tampering, not a
+   hostile same-user process; network access is not restricted; the Low labels stand on the workspace
+   after the command (other Low processes can then write where the DACL allows); a hard link can alias
+   a file outside the root; the private runtime costs a ~119 MB copy once per Git version (old versions
+   pruned); caches are redirected to `~/.infuse/sandbox/cache`. On Linux Landlock is implemented and
+   fail-closed but was cross-built only (no Linux host was available for a live smoke test).
 2. **The FUSE/WinFsp mount is absent.** Base scaffolds create the folders, the base document, a
    generated map and a starter README in every base folder (`infuse init <base>` or Customize > Base,
    which also applies a base and creates a project from one); a re-scaffold never overwrites a file the

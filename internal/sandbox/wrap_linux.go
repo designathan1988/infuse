@@ -11,7 +11,7 @@ import (
 )
 
 func Wrap(argv []string, root string, protected []string) []string {
-	if len(argv) == 0 || root == "" || !supportedArch() {
+	if len(argv) == 0 || root == "" || !supportedArch() || testBinary() {
 		return argv
 	}
 	self, err := os.Executable()

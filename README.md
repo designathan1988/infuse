@@ -72,6 +72,9 @@ tool-less pipe and execute every tool inside infuse.
   done criteria. Multi-step work needs a user-confirmed Contract bound to the current request.
 - Hook and MCP approvals are signed with a key kept outside the project: an approval file the agent
   edits no longer approves anything.
+- Agent commands run in an OS deny-write sandbox: Landlock on Linux; on Windows a Low
+  `WRITE_RESTRICTED` token that writes only in the work root and a private temp/cache, keeps `.infuse`
+  at Medium integrity, and runs MSYS2 from a private runtime so Git Bash, Go, Git and npm keep working.
 
 ## Build
 
