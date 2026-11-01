@@ -43,8 +43,9 @@ func rememberProjectMode(root, mode string) {
 		return
 	}
 	list := config.LoadProjects()
+	key := config.RootKey(root)
 	for i := range list {
-		if list[i].Root == root {
+		if config.RootKey(list[i].Root) == key {
 			list[i].Mode = mode
 		}
 	}
@@ -52,8 +53,9 @@ func rememberProjectMode(root, mode string) {
 }
 
 func projectMode(root string) string {
+	key := config.RootKey(root)
 	for _, p := range config.LoadProjects() {
-		if p.Root == root {
+		if config.RootKey(p.Root) == key {
 			return p.Mode
 		}
 	}

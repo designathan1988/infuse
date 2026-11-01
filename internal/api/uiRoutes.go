@@ -56,8 +56,9 @@ func projectsRoute(w http.ResponseWriter, r *http.Request, body map[string]any, 
 		sendJSON(w, 200, config.LoadProjects())
 	case "/api/projects/remove":
 		var out []config.ProjectEntry
+		key := config.RootKey(str("root"))
 		for _, p := range config.LoadProjects() {
-			if p.Root != str("root") {
+			if config.RootKey(p.Root) != key {
 				out = append(out, p)
 			}
 		}
