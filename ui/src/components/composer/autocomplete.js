@@ -30,7 +30,10 @@ async function autocomplete(st) {
       .sort((a, b) => (a.toLowerCase().indexOf(q) - b.toLowerCase().indexOf(q)) || a.length - b.length).slice(0, 50)
       .map(f => ({ v: f, d: f.endsWith('/') ? t('common.folder') : '' }));
   } else {
-    items = (await commandsOf(root)).filter(c => c.name.startsWith(q)).map(c => ({ v: c.name, d: c.builtin ? t(c.description) : c.description }));
+    items = (await commandsOf(root)).filter(c => c.name.startsWith(q)).map(c => ({
+      v: c.name,
+      d: (c.group ? t('slash.group.' + c.group) + ' · ' : '') + (c.builtin ? t(c.description) : c.description) + (c.args ? ' ' + c.args : ''),
+    }));
   }
   if (!items.length) return hide(st);
   st.AC = { kind: m[2], items, i: 0 };

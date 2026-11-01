@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"infuse/internal/journal"
+	"infuse/internal/knowledge"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -44,6 +45,28 @@ func TestFolderInstructionsLoadOnce(t *testing.T) {
 	}
 	if rootOnly := s.localInstructions(root); rootOnly != "" {
 		t.Fatalf("root instructions are already in the prompt: %q", rootOnly)
+	}
+}
+
+// Rules compiled from an older instruction text stay enforced but are labeled stale in the prompt.
+func TestStaleCompiledRulesAreLabeledAndEnforced(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	_ = os.WriteFile(filepath.Join(root, "CLAUDE.md"), []byte("Read docs/guide.md before changing anything.\n"), 0o644)
+	_ = os.MkdirAll(filepath.Join(root, "docs"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "docs", "guide.md"), []byte("# Guide\n"), 0o644)
+	_ = os.MkdirAll(filepath.Join(root, ".infuse"), 0o755)
+	stale := `{"hash":"old","compiled":1,"model":"mock","stale":true,"rules":[{"kind":"read","path":"docs/guide.md","quote":"Read docs/guide.md before changing anything."}]}`
+	if err := os.WriteFile(filepath.Join(root, ".infuse", "project-rules.json"), []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	knowledge.InvalidateRules(root)
+	p := instructionsPrompt(root)
+	if !strings.Contains(p, "compiled from an earlier version") || !strings.Contains(p, "docs/guide.md") {
+		t.Fatalf("stale rules not labeled/enforced: %q", p)
+	}
+	if !knowledge.LoadProjectRules(root).Stale {
+		t.Fatal("the stale flag did not reach the rules")
 	}
 }
 

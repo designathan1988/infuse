@@ -50,8 +50,9 @@ AGENTE COMPLETO, DENTRO DO FILTRO
     turno com o mesmo conteudo e o veredito volta para o agente; os criterios
     ficam ancorados fora do projeto e o veredito e assinado, entao um arquivo
     editado dentro do projeto nao vale como aprovacao;
-  - a base de arquitetura que voce escolher em .infuse\base.json recusa codigo
-    escrito fora das pastas declaradas;
+  - a base de arquitetura (Personalizar > Base de arquitetura) define as pastas
+    do projeto, recusa codigo escrito fora delas e cria um projeto novo a partir
+    da base, com o mapa ja gerado;
   - hooks e servidores MCP so rodam depois que voce aprova, e a aprovacao e
     assinada: editar o arquivo de aprovacoes nao libera nada;
   - a aba Regras tem UMA politica de comportamento: metodo de trabalho, limite
@@ -104,8 +105,8 @@ O QUE AINDA NAO ESTA NESTA VERSAO (ver SPEC.md e docs/PROMPT-infuse-studio.md)
     (MSYS2) nao inicia sob integridade baixa nem sob AppContainer sem ACL de
     administrador; no Windows valem os portoes do filtro, a auditoria do turno
     e o Job Object. No Linux o Landlock esta ativo.
-  - os scaffolds completos das bases (mapa pre-preenchido e criacao visual) e o
-    mount FUSE/WinFsp.
+  - arquivos iniciais dentro das pastas da base (o scaffold cria a estrutura, o
+    documento e o mapa) e o mount FUSE/WinFsp.
   A escolha de base, a recusa de codigo fora dela, o restante do SPEC.md, os
   subagentes com revisor independente, o cliente MCP, a busca na web, o
   executor do oraculo com evidencia em snapshot, a janela nativa e o

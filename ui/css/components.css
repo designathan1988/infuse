@@ -589,3 +589,6 @@
 
 /* Policy fields are lists, not documents: keep them compact inside the Rules pane. */
 .policy-mount textarea.doc-editor { min-height: 72px; }
+
+/* The base project name is an editable field, not a label: give it the same relief as a select. */
+.doc-editor-box.base-create input.name { box-shadow: 0 1px 0 var(--color-border); padding-bottom: var(--space-2); }

@@ -36,6 +36,7 @@ type ProjectRules struct {
 	Commands    []string // commands they declare for verifying the work
 	AfterChange []string // the declared commands to run after changes
 	Missing     []string // instruction files deleted from the working tree (read from git)
+	Stale       bool     // the compiled rules are from an older instruction text (the latest compilation failed)
 	Text        string   // all instruction text, @imports resolved
 }
 
@@ -133,6 +134,7 @@ func applyCompiledRules(root string, r *ProjectRules, addRequired func(string)) 
 	if c == nil {
 		return
 	}
+	r.Stale = c.Stale
 	for _, cr := range c.Rules {
 		if cr.Disabled {
 			continue

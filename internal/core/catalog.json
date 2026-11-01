@@ -1479,6 +1479,70 @@
     "en": "Command saved",
     "pt-BR": "Comando salvo"
   },
+  "cust.base": {
+    "en": "Architecture base",
+    "pt-BR": "Base de arquitetura"
+  },
+  "cust.baseDesc": {
+    "en": "The structure this project follows: where code, data and tokens live. The agent refuses code written outside it.",
+    "pt-BR": "A estrutura que este projeto segue: onde ficam o código, os dados e os tokens. O agente recusa código escrito fora dela."
+  },
+  "base.current": {
+    "en": "Current base",
+    "pt-BR": "Base atual"
+  },
+  "base.none": {
+    "en": "No base chosen",
+    "pt-BR": "Nenhuma base escolhida"
+  },
+  "base.choose": {
+    "en": "Choose a starter",
+    "pt-BR": "Escolha uma base"
+  },
+  "base.apply": {
+    "en": "Use this base",
+    "pt-BR": "Usar esta base"
+  },
+  "base.applied": {
+    "en": "Base applied; the map is updated.",
+    "pt-BR": "Base aplicada; o mapa foi atualizado."
+  },
+  "base.createTitle": {
+    "en": "Create a project from this base",
+    "pt-BR": "Criar um projeto a partir desta base"
+  },
+  "base.createDesc": {
+    "en": "Pick a name and a parent folder: the folders and the base document are created, with the map already generated.",
+    "pt-BR": "Escolha um nome e uma pasta: as pastas e o documento da base são criados, com o mapa já gerado."
+  },
+  "base.name": {
+    "en": "Project name",
+    "pt-BR": "Nome do projeto"
+  },
+  "base.chooseFolder": {
+    "en": "Choose folder",
+    "pt-BR": "Escolher pasta"
+  },
+  "base.created": {
+    "en": "Project created at {path}.",
+    "pt-BR": "Projeto criado em {path}."
+  },
+  "base.desc.api": {
+    "en": "HTTP service: transport, domain, storage and contracts in separate layers.",
+    "pt-BR": "Serviço HTTP: transporte, domínio, armazenamento e contratos em camadas separadas."
+  },
+  "base.desc.web": {
+    "en": "Browser application: components, pages, core primitives, styles from tokens.",
+    "pt-BR": "Aplicação de navegador: componentes, páginas, primitivas, estilos a partir de tokens."
+  },
+  "base.desc.cli": {
+    "en": "Command-line tool: command dispatch, one file per command, shared core.",
+    "pt-BR": "Ferramenta de linha de comando: despacho de comandos, um arquivo por comando, núcleo compartilhado."
+  },
+  "base.desc.interactive": {
+    "en": "Interactive application: engine, state, input, rendering, assets and tests separated.",
+    "pt-BR": "Aplicação interativa: motor, estado, entrada, renderização, assets e testes separados."
+  },
   "cust.commands": {
     "en": "Slash commands",
     "pt-BR": "Comandos de barra"
@@ -2142,6 +2206,10 @@
   "instr.compile_failed": {
     "en": "[infuse] The project's instructions could not be compiled into rules ({error}). The rules compiled from the previous version stay in force, with their required reading and verification commands; infuse tries again at the next message.",
     "pt-BR": "[infuse] Não foi possível compilar as instruções do projeto em regras ({error}). As regras compiladas da versão anterior continuam valendo, com a leitura obrigatória e os comandos de verificação delas; o infuse tenta de novo na próxima mensagem."
+  },
+  "instr.rules_stale": {
+    "en": "these rules were compiled from an earlier version of the instructions and the latest compilation failed: they stay in force, but verify them against the current text.",
+    "pt-BR": "estas regras foram compiladas de uma versão anterior das instruções e a última compilação falhou: elas continuam valendo, mas confira-as contra o texto atual."
   },
   "instr.compiling": {
     "en": "[infuse] Reading the project's instructions to extract the rules (each one checked against the text)…",
@@ -5630,6 +5698,30 @@
   "slash.btw": {
     "en": "A side question, outside the history",
     "pt-BR": "Pergunta paralela, fora do histórico"
+  },
+  "slash.group.session": {
+    "en": "Session",
+    "pt-BR": "Sessão"
+  },
+  "slash.group.model": {
+    "en": "Model",
+    "pt-BR": "Modelo"
+  },
+  "slash.group.view": {
+    "en": "View",
+    "pt-BR": "Visualização"
+  },
+  "slash.group.tools": {
+    "en": "Tools",
+    "pt-BR": "Ferramentas"
+  },
+  "slash.group.help": {
+    "en": "Help",
+    "pt-BR": "Ajuda"
+  },
+  "slash.group.custom": {
+    "en": "Custom",
+    "pt-BR": "Personalizado"
   },
   "slash.clear": {
     "en": "New session in this project",

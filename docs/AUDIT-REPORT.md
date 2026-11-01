@@ -351,7 +351,7 @@ are green. Nothing was committed.
 | Oracle | criteria anchored outside the project; verdicts HMAC-signed; HTTP checks without a snapshot server refused; port must be free and the answering child alive; cache keyed by file content; no-edit turns still run the oracle; missions reuse the turn's verdict; background claims resolve against the final exit code | `TestCriteriaEditedInsideTheProjectAreRefused`, `TestVerdictSignatureDetectsTampering`, `TestHTTPCheckWithoutSnapshotServerIsRefused`, `TestMissionRunsUntilCriteriaPassOrBudget` |
 | Knowledge | vice catalog (`internal/data/vices.json`) with signature + remedy rendered in the prompt; reviewer/subagents/auditor receive map, conventions, lessons and digested facts; digest cap raised to 200 with an overflow notice and per-document failures surfaced; comment language reported as an observation, not a convention; GEMINI.md/.cursorrules/copilot instructions injected; Go and Rust imports resolve to dependents; Glob/Grep carry the directory map; map freshness stated | `TestLessonsCarryTheirRemedy`, `TestGoDependentsResolve`, `TestRustDependentsResolve`, `TestForeignInstructionFilesAreInjected`, updated `TestConventionsAreCountedFromTheCode` |
 | Determinism | package-existence gate reads a local cache and refreshes off the gate path; the parsed map is cached while its file is unchanged | `TestPackageLookupRunsOffTheGatePath`, `TestInventedPackagesAreRefused` |
-| Bases | starter catalog (api, web, cli, interactive), `{"base":"web"}` or a custom base in `.infuse/base.json`, out-of-base refusal on Write, heredoc and shell audit | `TestStarterAndCustomBases`, `TestNoBaseMeansNoCheck` |
+| Bases | starter catalog (api, web, cli, interactive), `{"base":"web"}` or a custom base in `.infuse/base.json`, out-of-base refusal on Write, heredoc and shell audit; Customize > Base applies a starter and scaffolds a new project with folders, base document and a generated map; the prompt states intended vs. actual folders | `TestStarterAndCustomBases`, `TestNoBaseMeansNoCheck`, `TestBaseAPIListsAppliesAndScaffolds`, `TestBaseGroundsShowsIntendedVersusActual`; Chrome 2× `base__customize__light__pt-br__before/after.png`, `...__en__after.png`, `base-ui.summary.json` (211 requests, 0 console/HTTP errors) |
 | Universal interposition | `infuse claude|codex|gemini` installs the shim and starts the CLI with `SHELL`/`PATH` pointed at it; the Studio's app launcher goes through it instead of opening a raw CLI | build + `desktop` tests; live CLI not exercised in this pass |
 | Session persistence | `save` serializes under the session lock; a finishing turn and a mission step no longer read/write `SessionData` at the same time (found by the race detector in the mission test) | race suite, `TestMissionRunsUntilCriteriaPassOrBudget` under `-race` |
 | Behaviour policy | one versioned `.infuse/policy.json` / `~/.infuse/policy.json` per scope, edited in Regras (permissions, prohibitions, work method, architecture, conventions, done); a corrupt policy blocks every turn; prohibitions become typed session bans; the file is protected from the agent | `internal/policy` tests, `TestPolicyAppliesToTheSession`, `TestCorruptPolicyBlocksTheSession`; Chrome 2× `policy__regras*` screenshots, `policy-ui-final.summary.json` (237 requests, 0 console/HTTP errors) |
@@ -360,6 +360,8 @@ are green. Nothing was committed.
 | Visual evidence | a capture is bound to the measured HTML when the criteria declare `Expect.Contains`, in addition to the origin check | `TestScreenshotHTMLMustShowWhatTheCriteriaMeasure`, `TestScreenshotWithoutContentRequirementUsesOriginOnly` |
 | Doc suggestions | Python versions are read from requirements.txt/pyproject (exact pin, `~=`, lower bound); Django, pytest and Express use verified versioned docs URLs, other vendors keep stable URLs | `TestSuggestDocsPinsPythonVersions`, `TestSuggestDocsFallsBackWithoutVersions`, `TestSuggestDocsReadsPoetryVersions`, `TestSuggestDocsPrefersExactPin` |
 | Dependencies | every turn snapshot records a fingerprint of the lockfiles and the installed entrypoints; the executor refuses a verdict when they change while the checks run (the snapshot junctions the live dependency directories) | `TestDependencyFingerprintFollowsLockfilesAndEntrypoints`, `TestDependencyChangeDuringChecksInvalidatesTheVerdict` |
+| Knowledge freshness | a failed instruction recompilation keeps the old rules in force but labeled stale in the prompt and in the message; the blob store keeps 50 turns per session and drops unreferenced content; the base states intended-vs-actual folders | `TestStaleCompiledRulesAreLabeledAndEnforced`, `TestPruneTreeKeepsRecentTurnsAndReferencedBlobs`, `TestBaseGroundsShowsIntendedVersusActual` |
+| Command registry | built-in slash commands are a data table with group and execution locus, custom commands join the same registry, and the composer menu renders them grouped | `TestBuiltinCommandsComeFromTheTable`; Chrome 2× `slash__commands__light__pt-br__after.png` / `...__en__after.png`, `slash-menu.summary.json` (204 requests, 0 console/HTTP errors) |
 | Interface / rail | the "session details" button was visible on the new-session screen while CSS hid the rail unconditionally, so it did nothing; the control is now hidden when there is no session and toggles the rail in a session (280 px ↔ 0, `aria-pressed` follows) | Chrome via Playwright, headless, 2× (2880×1800): `hardening__home__light__pt-br__before-repro.png` / `...__after.png`, `hardening__session-rail-open__light__pt-br__after.png` / `...-closed...`, `hardening__settings__*`, `hardening__customize__*`, dark and English pairs; logs `docs/audit/logs/hardening-pass.summary.json` — 208 requests, 0 console errors, 0 HTTP ≥ 400 |
 
 ### Remaining risks after this pass
@@ -375,8 +377,9 @@ are green. Nothing was committed.
    write perimeter is therefore the guard + content-hash turn audit + Job Object lifetime; on Linux
    Landlock is implemented and fail-closed, but was cross-built only (no Linux host was available for a
    live smoke test). The viable next steps are a patched MSYS2 runtime or a different sandboxed shell.
-2. **Base scaffolds are basic** (`infuse init <base>` creates the folders and the base document); the
-   pre-filled map and a visual creation flow are absent, as is FUSE/WinFsp.
+2. **Base scaffolds create structure, not content** (`infuse init <base>` or Customize > Base creates
+   the folders, the base document and a generated map; the same surface applies a base and creates a
+   project from one). Starter files inside the folders and FUSE/WinFsp are absent.
 3. **Approvals/verdict keys** fall back to a private file (`~/.infuse/signing.key`, `oracle-hmac.key`)
    when the OS vault is unavailable. On Windows the fallback file holds a DPAPI blob (same user, same
    machine; a copied file signs nothing) and legacy plain keys are migrated on first use; on Unix the
@@ -392,7 +395,12 @@ are green. Nothing was committed.
    still stores the scalar values the policy overlays; the Regras UI writes both through the session
    reload, so the two are linked until a later storage migration.
 8. **Regras UI** was verified in Chrome via Playwright at 2× in light/dark and pt-BR/en with zero console
-   or HTTP errors; the base editor is not part of that pane yet.
+   or HTTP errors; the base editor lives in Customize > Base.
+9. **Map depth**: the map lists files, exports, imports/dependents, hotspots, freshness and the base's
+   intended-vs-actual folders; feature→where and module responsibility/data-owner projections beyond the
+   base intent are not built.
+10. **User acceptance gate by risk** (Block 4.6) is not built: high-stakes deliveries end on the executor
+    verdict and the independent review, without a separate one-click acceptance step.
 
 ### Corrections to `PROMPT-INFUSE-FULL-AUDIT.md` (the master execution prompt)
 
@@ -418,3 +426,7 @@ it is handed to an executor:
     force is now stated in the message.
 11. The audit contains 194 screenshots under `docs/audit/screens/`, not 155.
 12. SPEC §7 listed one future slice, not three; the README omitted 13 tools, not 14+.
+13. Block 1's Windows requirement (a deny-write OS sandbox around the agent's Bash) is not achievable
+    with the bundled Git Bash: the low-integrity and AppContainer probes are documented in the remaining
+    risks; Job Objects and the Linux Landlock wrapper are in place, and the Windows write perimeter stays
+    with the guard and the turn audit until a patched MSYS2 runtime or another shell is available.

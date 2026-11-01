@@ -35,7 +35,7 @@ const HOOK_PRESETS = [
 
 export async function openCustomize(section = 'commands') {
   const sections = [
-    ['commands', 'cust.commands'], ['skills', 'cust.skills'], ['connectors', 'cust.connectors'],
+    ['base', 'cust.base'], ['commands', 'cust.commands'], ['skills', 'cust.skills'], ['connectors', 'cust.connectors'],
     ['hooks', 'cust.hooks'], ['docs', 'cust.docs'], ['conventions', 'cust.conventions'], ['instructions', 'cust.instructions']
   ];
   const el = pageShell('customize', sections, section, openCustomize);
@@ -43,6 +43,7 @@ export async function openCustomize(section = 'commands') {
   if (!root) { el.append(h(`<div class="empty">${t('cust.needProject')}</div>`)); return; }
   el.append(h(`<p class="faint field-note">${esc(projectLabel(root))} · ${esc(root)}</p>`));
 
+  if (section === 'base') return baseSection(el, root);
   if (section === 'commands') return commandsSection(el, root);
   if (section === 'connectors') return connectorsSection(el, root);
   if (section === 'hooks') return hooksSection(el, root);
@@ -50,6 +51,50 @@ export async function openCustomize(section = 'commands') {
   if (section === 'conventions') return conventionsSection(el, root);
   if (section === 'skills') return skillsSection(el, root);
   if (section === 'instructions') return instructionsSection(el, root);
+}
+
+// The architecture base: what the project follows, and a starter to create a new project from.
+async function baseSection(el, root) {
+  const view = await api('/api/base', { root }).catch(e => ({ error: String(e) }));
+  el.append(
+    h(`<div class="row"><h1 class="grow">${t('cust.base')}</h1></div>`),
+    h(`<p class="lead">${t('cust.baseDesc')}</p>`)
+  );
+  if (view.error) { el.append(h(`<div class="empty">${esc(view.error)}</div>`)); return; }
+  const options = (view.catalog || []).map(b =>
+    `<option value="${esc(b.name)}" ${b.name === view.name ? 'selected' : ''}>${esc(b.name)} — ${esc(t('base.desc.' + b.name))}</option>`).join('');
+  const card = h(`<div class="doc-editor-box field-my">
+      <div class="rules-help-title">${t('base.current')}</div>
+      <p class="lead">${esc(view.name || t('base.none'))}</p>
+      <div class="faint mono">${esc(view.file || '')}</div>
+      ${view.summary ? `<div class="faint mt-4">${esc(view.summary)}</div>` : ''}
+      <div class="row mt-6"><select class="field-select starter" aria-label="${esc(t('base.choose'))}">${options}</select><button class="btn pri apply">${t('base.apply')}</button></div>
+    </div>`);
+  el.append(card);
+  card.querySelector('.apply').onclick = async () => {
+    const r = await api('/api/base', { method: 'PUT', body: { base: card.querySelector('.starter').value }, root }).catch(e => ({ error: String(e) }));
+    if (r.error) { toast(r.error); return; }
+    toast(t('base.applied'));
+    openCustomize('base');
+  };
+  const make = h(`<div class="doc-editor-box field-my mt-7 base-create">
+      <div class="rules-help-title">${t('base.createTitle')}</div>
+      <p class="lead">${t('base.createDesc')}</p>
+      <div class="row mt-4"><input class="field-select name" placeholder="${esc(t('base.name'))}" aria-label="${esc(t('base.name'))}"><select class="field-select starter2" aria-label="${esc(t('base.choose'))}">${options}</select><button class="btn line choose">${t('base.chooseFolder')}</button></div>
+      <div class="faint status mt-3"></div>
+    </div>`);
+  el.append(make);
+  make.querySelector('.choose').onclick = async () => {
+    const pick = await api('/api/dialog/folder').catch(e => ({ error: String(e) }));
+    if (pick.error) { toast(pick.error); return; }
+    if (!pick.path) return;
+    const name = make.querySelector('.name').value.trim();
+    const r = await api('/api/base/scaffold', { method: 'POST', body: { parent: pick.path, name, base: make.querySelector('.starter2').value } }).catch(e => ({ error: String(e) }));
+    if (r.error) { toast(r.error); return; }
+    make.querySelector('.status').textContent = t('base.created', { path: r.root });
+    const projects = await api('/api/projects').catch(() => null);
+    if (projects) cache.projects.set(projects);
+  };
 }
 
 async function commandsSection(el, root) {

@@ -37,6 +37,8 @@ func appCoreRoutes(w http.ResponseWriter, r *http.Request, body map[string]any, 
 		rulesRoute(w, r, body, root, str, qmap)
 	case "/api/policy":
 		policyRoute(w, r, body, root, qmap)
+	case "/api/base", "/api/base/scaffold":
+		baseRoute(w, r, body, root, str)
 	default:
 		return false
 	}

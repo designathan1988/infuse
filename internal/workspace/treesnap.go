@@ -145,6 +145,7 @@ func SnapshotTurn(root, work, session string, turn int) error {
 		journal.Journal(root, journal.JournalEntry{Kind: "gate", Detail: "turn snapshot failed: " + err.Error()})
 		return err
 	}
+	PruneTree(root) // keep the newest turns of each session; drop content no kept manifest refers to
 	return nil
 }
 

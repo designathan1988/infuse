@@ -4,8 +4,10 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"infuse/internal/agent"
 	"infuse/internal/core"
+	"infuse/internal/data"
 	"infuse/internal/filter"
 	"infuse/internal/journal"
 	"infuse/internal/platform/process"
@@ -78,6 +80,9 @@ func runTerminal(root, cwd, command string) terminalResult {
 type slashCommand struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Group       string `json:"group,omitempty"` // session | model | view | tools | help | custom
+	Locus       string `json:"locus,omitempty"` // client | server | tool | custom
+	Args        string `json:"args,omitempty"`
 	Prompt      string `json:"prompt,omitempty"` // custom: the file body, with $ARGUMENTS
 	Builtin     bool   `json:"builtin"`
 }
@@ -85,30 +90,7 @@ type slashCommand struct {
 // listCommands: built-ins the window handles, plus custom ones from <project>/.infuse/commands/*.md and
 // ~/.infuse/commands/*.md (also read from .claude/commands for compatibility).
 func listCommands(root string) []slashCommand {
-	out := []slashCommand{
-		{Name: "clear", Description: "slash.clear", Builtin: true},
-		{Name: "compact", Description: "slash.compact", Builtin: true},
-		{Name: "model", Description: "slash.model", Builtin: true},
-		{Name: "mode", Description: "slash.mode", Builtin: true},
-		{Name: "rewind", Description: "slash.rewind", Builtin: true},
-		{Name: "diff", Description: "slash.diff", Builtin: true},
-		{Name: "cost", Description: "slash.cost", Builtin: true},
-		{Name: "vim", Description: "slash.vim", Builtin: true},
-		{Name: "copy", Description: "slash.copy", Builtin: true},
-		{Name: "export", Description: "slash.export", Builtin: true},
-		{Name: "btw", Description: "slash.btw", Builtin: true},
-		{Name: "mission", Description: "slash.mission", Builtin: true},
-		{Name: "plan", Description: "slash.plan", Builtin: true},
-		{Name: "effort", Description: "slash.effort", Builtin: true},
-		{Name: "config", Description: "slash.config", Builtin: true},
-		{Name: "resume", Description: "slash.resume", Builtin: true},
-		{Name: "rename", Description: "slash.rename", Builtin: true},
-		{Name: "review", Description: "slash.review", Builtin: true},
-		{Name: "init", Description: "slash.initDesc", Builtin: true},
-		{Name: "memory", Description: "slash.memory", Builtin: true},
-		{Name: "terminal", Description: "slash.terminal", Builtin: true},
-		{Name: "help", Description: "slash.help", Builtin: true},
-	}
+	out := builtinCommands()
 	seen := map[string]bool{}
 	for _, dir := range []string{
 		filepath.Join(root, core.InfuseDirName, "commands"), filepath.Join(root, ".claude", "commands"),
@@ -139,9 +121,19 @@ func listCommands(root string) []slashCommand {
 			if desc == "" {
 				desc = core.Truncate(strings.SplitN(strings.TrimSpace(body), "\n", 2)[0], 80)
 			}
-			out = append(out, slashCommand{Name: name, Description: desc, Prompt: body})
+			out = append(out, slashCommand{Name: name, Description: desc, Prompt: body, Group: "custom", Locus: "custom"})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Builtin && !out[j].Builtin })
 	return out
+}
+
+// builtinCommands is the declarative table of commands the window handles (internal/data/commands.json).
+func builtinCommands() []slashCommand {
+	var list []slashCommand
+	_ = json.Unmarshal(data.Read("commands.json"), &list)
+	for i := range list {
+		list[i].Builtin = true
+	}
+	return list
 }

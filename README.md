@@ -23,7 +23,8 @@ journaled as `blocked`; native folder/file dialogs (`IFileOpenDialog`, NSOpenPan
 automatic context compaction; cost tracking with an editable price table; layered instructions
 (CLAUDE.md, AGENTS.md, GEMINI.md, .cursorrules, copilot instructions); a project memory; a read-only
 oracle anchored outside the project and signed with an HMAC the project cannot produce; an architecture
-base (`base.json`) enforced on every write; one behaviour policy edited in Regras (permissions,
+base (`base.json`) enforced on every write, chosen and scaffolded from Customize > Architecture base
+(folders, base document and generated map); one behaviour policy edited in Regras (permissions,
 prohibitions, work method, architecture, conventions, definition of done) with a confirmed Contract
 before multi-step work; an interposed launcher (`infuse claude|codex|gemini`); git status, diff,
 discard and commit; a `mock` provider to try everything without a key. Every agent process runs in a

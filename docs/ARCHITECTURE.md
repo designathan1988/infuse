@@ -13,9 +13,10 @@ that way, and the known debt that remains.
 4. State has one owner: a running conversation is an `agent.Session`; the UI snapshot is a projection
    (`agent.Session.Snapshot`), never a second source of truth. The server is the source of truth for the
    browser UI; `ui` keeps only a cache.
-5. Data that describes behaviour is a table: provider presets (`internal/data/providers.json`), tool
-   registration (`internal/agent/tool_register.go`), route groups (`internal/api/appGroups.go`,
-   `studioGroups.go`), pane registry (`ui/src/panes/index.js`).
+5. Data that describes behaviour is a table: provider presets (`internal/data/providers.json`), built-in
+   slash commands (`internal/data/commands.json`, with group and execution locus; custom
+   `.infuse/commands/*.md` join the same registry), tool registration (`internal/agent/tool_register.go`),
+   route groups (`internal/api/appGroups.go`, `studioGroups.go`), pane registry (`ui/src/panes/index.js`).
 6. User-facing text comes from one catalog, never from literals in handlers: Go through `core.M`, the UI
    through `t('area.subject')`. Both read `internal/core/catalog.json`; the UI receives it from
    `/api/i18n` at boot, so there is no second translation table to drift.
@@ -112,6 +113,12 @@ internal/
   `node_modules/.bin`/`.venv/bin`). The executor compares it before and after the checks, because the
   snapshot junctions the live dependency directories: a manifest or runner that changes while the
   checks run invalidates the verdict instead of approving a tree it no longer measured.
+- The blob store is pruned at every snapshot: each session keeps its newest 50 turn manifests and the
+  content they reference; older blobs (and orphans) are removed.
+- A failed instruction recompilation keeps the previous compiled rules in force but marks them stale
+  (`project-rules.json` `stale:true`); the prompt labels them and the compile-failure message says so.
+- The base states intended vs. actual: the prompt lists declared folders that do not exist yet and
+  code folders that sit outside the base, alongside the base's rules.
 
 ## i18n
 
@@ -170,8 +177,9 @@ internal/
   settings file still stores scalars the policy overlays and writes back, so the two remain linked
   until a later migration; `.infuse/base.json` is chosen as a file or through the API, with no visual
   base editor yet.
-- Base scaffolds are basic: `infuse init <base>` creates the folders and the base document, but the
-  pre-filled map and a visual creation flow are not built. The FUSE/WinFsp mount remains absent.
+- Base scaffolds create the folders, the base document and a generated map (`infuse init <base>` or
+  Customize > Base, which also applies a base to the current project and creates a project from one).
+  Content scaffolds (starter files inside each folder) and the FUSE/WinFsp mount remain absent.
 - The Contract is a hard gate for work with more than one planned step; single-step work proceeds
   without it, and the gate can be turned off in Regras.
 - Compatibility route families (`/api/session/<id>` and `/api/sessions/<id>`) are kept so older pages

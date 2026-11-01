@@ -29,6 +29,7 @@ type CompiledRules struct {
 	Model    string         `json:"model"`
 	Rules    []CompiledRule `json:"rules"`
 	Dropped  []core.Msg     `json:"rejected,omitempty"` // proposals rejected by the quote check, with why (as messages)
+	Stale    bool           `json:"stale,omitempty"`    // a later compilation failed: these rules are from an older instruction text
 }
 
 func CompiledRulesFile(root string) string {
