@@ -56,6 +56,32 @@ func TestExecutorVerdictFromEvidence(t *testing.T) {
 	}
 }
 
+// The snapshot junctions node_modules: a check that rewrites an installed runner while it runs
+// invalidates the verdict instead of approving a tree it no longer measured.
+func TestDependencyChangeDuringChecksInvalidatesTheVerdict(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	bin := filepath.Join(root, "node_modules", ".bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "runner"), []byte("original\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package-lock.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSpec(t, root, `{"checks":[{"id":"tamper","kind":"command","run":"echo poisoned > node_modules/.bin/runner && echo ok","expect":{"contains":"ok"}}]}`)
+	v, _ := RunOracle(context.Background(), root, root, "")
+	if v.Verdict != "erro" || v.Dependencies == "" {
+		t.Fatalf("the dependency change did not invalidate the verdict: %+v", v)
+	}
+	b, err := os.ReadFile(filepath.Join(bin, "runner"))
+	if err != nil || string(b) != "poisoned\n" {
+		t.Fatalf("the check did not write through the live dependency directory: %q %v", b, err)
+	}
+}
+
 // An HTTP check without a server started from the snapshot would measure whatever answers the
 // address: it is refused, not run with a warning.
 func TestHTTPCheckWithoutSnapshotServerIsRefused(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type ReportClaim struct {
@@ -192,6 +193,16 @@ func (reportTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 	return strings.Join(lines, "\n"), false
 }
 
+// Contract is the user-confirmed restatement of a request: the goal, the verifiable criteria and the
+// request text it belongs to. A new request needs a new confirmation.
+type Contract struct {
+	Goal     string   `json:"goal"`
+	Criteria []string `json:"criteria"`
+	Request  string   `json:"request"`
+	Turn     int      `json:"turn"`
+	At       int64    `json:"at"`
+}
+
 type contractTool struct{}
 
 func (contractTool) Category() string { return "ui" }
@@ -223,12 +234,17 @@ func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMess
 	if strings.TrimSpace(ans) != confirm {
 		return tc.Say(M("contract.changes", "answer", ans)), false
 	}
+	request := tc.S.turnRequest()
 	for _, c := range in.Criteria {
 		it := MemoryItem{Type: "criterio", Text: c, Priority: 3, Origin: "usuario", Session: tc.S.ID}
 		if normalizeMemory(&it) == nil {
 			_ = tc.S.editMemory("session", func(items []MemoryItem) []MemoryItem { return append(items, it) })
 		}
 	}
+	tc.S.Mu.Lock()
+	tc.S.Contract = &Contract{Goal: in.Goal, Criteria: in.Criteria, Request: request, Turn: tc.S.Turn, At: time.Now().UnixMilli()}
+	tc.S.Mu.Unlock()
+	tc.S.save()
 	tc.S.emit("memory", map[string]any{"action": "contract"})
 	return tc.Say(M("contract.confirmed")), false
 }

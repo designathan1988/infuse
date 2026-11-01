@@ -18,6 +18,7 @@ import (
 
 	"infuse/internal/core"
 	"infuse/internal/platform/process"
+	"infuse/internal/sandbox"
 )
 
 // hasHTTPChecks reports whether any check needs a server.
@@ -42,7 +43,8 @@ func startServer(ctx context.Context, snapDir, evDir string, s OracleSpec) (func
 	if err != nil {
 		return nil, 0, err
 	}
-	cmd := exec.Command(core.FindRealBash(), "-c", s.Server)
+	argv := sandbox.Wrap([]string{core.FindRealBash(), "-c", s.Server}, snapDir, nil)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	process.NoConsoleWindow(cmd)
 	cmd.Dir = snapDir
 	cmd.Env = append(os.Environ(), "CI=1", "INFUSE_ORACLE=1", "PORT="+portOf(firstURL(s)))

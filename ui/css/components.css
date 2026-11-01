@@ -586,3 +586,6 @@
   .dialog .db.dialog-body-pad { padding: 0 var(--space-9) var(--space-8); }
   .dialog .db.palette-list { padding: var(--space-3); }
 }
+
+/* Policy fields are lists, not documents: keep them compact inside the Rules pane. */
+.policy-mount textarea.doc-editor { min-height: 72px; }

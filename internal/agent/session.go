@@ -62,6 +62,7 @@ type SessionData struct {
 	Plan        string                   `json:"plan,omitempty"`       // the latest plan proposed in plan mode
 	LastInput   int                      `json:"lastInput,omitempty"`  // context size of the latest request
 	Memory      []MemoryItem             `json:"memory,omitempty"`     // structured memory of this session only
+	Contract    *Contract                `json:"contract,omitempty"`   // the user-confirmed restatement that opened the current task
 	Pinned      bool                     `json:"pinned,omitempty"`     // shown at the top of the sidebar
 	Mission     *Mission                 `json:"mission,omitempty"`    // the session's mission, running or ended
 	PinnedMsgs  []int                    `json:"pinnedMsgs,omitempty"` // messages the user pinned (indices)
@@ -81,6 +82,7 @@ type Session struct {
 	allowAlways   map[string]bool
 	lastError     string
 	snapshotErr   error  // the turn snapshot failed: the turn cannot be audited, so it cannot end clean
+	policyErr     error  // the behaviour policy is unreadable: no turn may run on an unknown policy
 	lastOracleRun string // the last executor run of this session, reused by missions instead of running twice
 	lastOracleSum string
 	lastOracleErr string // the failing checks of that run, for the mission's next message

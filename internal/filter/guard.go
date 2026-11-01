@@ -43,6 +43,7 @@ var internalRels = []string{
 	".infuse/sessions", ".infuse/checkpoints", ".infuse/tree", ".infuse/journal.jsonl",
 	".infuse/watcher.json", ".infuse/architecture.json", ".infuse/conventions.json",
 	".infuse/project-rules.json", ".infuse/settings.json", ".infuse/hooks.json", ".infuse/base.json",
+	".infuse/policy.json",
 }
 
 // externalRels are files shared with other agents that the agent must never rewrite, although they

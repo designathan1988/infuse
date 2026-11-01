@@ -117,3 +117,9 @@ State: **covered** (lock in code, with a test) · **partial** · **missing**.
 | Package gate reads a local cache; map parsed once per file generation | network and re-parsing in the gate path | covered (`locks_test.go`) |
 | Base `.infuse/base.json` refuses code outside its folders | work with no intended structure | covered (`base_test.go`) |
 | `infuse claude|codex|gemini` and the app launcher start external CLIs through the shim | the Studio launching unfiltered agents | build + desktop tests |
+| One behaviour policy per scope, edited in Regras; protected from the agent; corrupt policy blocks every turn; prohibitions become typed bans | scattered behaviour sources and a silent weaker fallback | covered (`internal/policy`, `policy_session_test.go`) |
+| A confirmed Contract bound to the current request before multi-step work writes | starting work on an unconfirmed reading of the order | covered (`contract_gate_test.go`) |
+| Job Objects for every agent process; Landlock wrapper on Linux (read everywhere, write only the work root and sandbox temp; `.infuse` never granted) | processes outliving infuse; writes outside the project on Linux | covered (build-tagged; Windows blocker documented) |
+| A screenshot is bound to the HTML the criteria measure, not only to the origin | a capture of another page/state satisfying the visual gate | covered (`locks_screenshot_test.go`) |
+| Python dependency versions are read from the manifests; Django/pytest/Express use verified versioned docs URLs | docs for a version other than the one installed | covered (`docs_version_test.go`) |
+| Turn snapshots record a dependency fingerprint; the executor refuses a verdict when lockfiles or installed runners change while the checks run | poisoned `node_modules/.bin` runner or a lockfile edited during measurement | covered (`deps_test.go`, oracle executor test) |

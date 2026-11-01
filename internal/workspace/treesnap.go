@@ -31,11 +31,12 @@ const (
 )
 
 type treeManifest struct {
-	Work      string            `json:"work"`
-	At        int64             `json:"at"`
-	Turn      int               `json:"turn"`
-	Files     map[string]string `json:"files"`     // slash path → sha1 of the content
-	Protected map[string]string `json:"protected"` // .infuse/oracle and .infuse/evidence → sha1
+	Work         string            `json:"work"`
+	At           int64             `json:"at"`
+	Turn         int               `json:"turn"`
+	Files        map[string]string `json:"files"`        // slash path → sha1 of the content
+	Protected    map[string]string `json:"protected"`    // .infuse/oracle and .infuse/evidence → sha1
+	Dependencies string            `json:"dependencies"` // lockfiles + installed entrypoints at the turn start
 }
 
 func treeDir(root string) string { return filepath.Join(root, core.InfuseDirName, "tree") }
@@ -135,7 +136,11 @@ func walkTree(root, work string, store bool) map[string]string {
 // SnapshotTurn records the tree at the start of a session's turn. The error is returned so the
 // session can fail closed: without the initial tree the turn cannot be audited.
 func SnapshotTurn(root, work, session string, turn int) error {
-	m := treeManifest{Work: filepath.Clean(work), At: time.Now().UnixMilli(), Turn: turn, Files: walkTree(root, work, true), Protected: protectedHashes(root)}
+	m := treeManifest{
+		Work: filepath.Clean(work), At: time.Now().UnixMilli(), Turn: turn,
+		Files: walkTree(root, work, true), Protected: protectedHashes(root),
+		Dependencies: DependencyFingerprint(work),
+	}
 	if err := core.WriteJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), m); err != nil {
 		journal.Journal(root, journal.JournalEntry{Kind: "gate", Detail: "turn snapshot failed: " + err.Error()})
 		return err

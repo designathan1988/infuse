@@ -13,16 +13,13 @@ import (
 
 func (s *Session) turnObligation(ctx context.Context) Msg {
 	changed, open, asks := s.turnState()
-	if asks >= 6 { // the agent keeps refusing: the turn ends, unverified — never as done
+	if asks >= s.askBudget() { // the agent keeps refusing: the turn ends, unverified — never as done
 		s.closeOpenTasks(M("plan.closed_note").Render(s.uiLang())) // shown only in the plan pane
 		s.markUnverified()
 		return Msg{}
 	}
-	s.Mu.Lock()
-	snapErr := s.snapshotErr
-	s.Mu.Unlock()
-	if snapErr != nil { // without the initial tree there is nothing to compare against: fail closed
-		return M("turn.snapshot", "error", snapErr.Error())
+	if why := s.turnStateErrors(); !why.Empty() {
+		return why
 	}
 	if len(open) > 0 {
 		return M("turn.open_tasks", "tasks", strings.Join(open, "; "))
@@ -68,6 +65,21 @@ func (s *Session) turnObligation(ctx context.Context) Msg {
 				return M("turn.review", "findings", out)
 			}
 		}
+	}
+	return Msg{}
+}
+
+// turnStateErrors: a turn cannot be judged without its starting tree, and never runs on an unreadable
+// policy. Both are fail-closed.
+func (s *Session) turnStateErrors() Msg {
+	s.Mu.Lock()
+	snapErr, polErr := s.snapshotErr, s.policyErr
+	s.Mu.Unlock()
+	if snapErr != nil {
+		return M("turn.snapshot", "error", snapErr.Error())
+	}
+	if polErr != nil {
+		return M("policy.invalid", "error", polErr.Error())
 	}
 	return Msg{}
 }

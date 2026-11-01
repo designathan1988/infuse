@@ -29,6 +29,9 @@ internal/
   core            wire types, messages and catalogs, paths, JSON/text helpers
   data            embedded declarative tables (provider presets, vice catalog, starter bases)
   base            the project's chosen architecture base: folders, data/token homes, out-of-base check
+  policy          the user's behaviour policy: permissions, prohibitions, method, architecture,
+                  conventions and done, per global/project scope
+  sandbox         OS containment: Job Objects (Windows) and the Landlock wrapper (Linux)
   config          settings, secret vault, signed approval files, projects, usage ledger, pricing, migrations
   connections     provider presets as a service, connect/disconnect, model discovery
   llm             Provider interface, Anthropic/OpenAI/Gemini/Ollama/mock, SSE, retry, limits
@@ -84,9 +87,9 @@ internal/
   `.claude/settings.json` are protected: a project file can tighten the policy, never loosen it
   (`EffectiveSettings` ignores a looser mode or permission).
 - Hooks run through the same guard as any shell command. Hook and MCP approvals are stored with an
-  HMAC whose key lives in the OS vault (private-file fallback for headless hosts); an unsigned or
-  edited approval file approves nothing. MCP tools always go through the permission policy; a server's
-  own read-only hint is not evidence.
+  HMAC whose key lives in the OS vault; the fallback file is DPAPI-encrypted on Windows (legacy plain
+  keys migrate on first use) and `0600` on Unix. An unsigned or edited approval file approves nothing.
+  MCP tools always go through the permission policy; a server's own read-only hint is not evidence.
 - The oracle's criteria hash is anchored in `~/.infuse/oracle/`, outside the project, and every verdict
   carries an HMAC over its fields. A criteria/verdict pair edited inside the project no longer verifies.
   HTTP checks require a server started from the snapshot on a port that was free; the verdict records
@@ -98,6 +101,17 @@ internal/
   the background, never inside the gate path.
 - Folder-level instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, .cursorrules) load once per session
   when a Read or Write enters their folder, never as a repeated prefix.
+- `.infuse/policy.json` and `~/.infuse/policy.json` are the behaviour policy: the Regras surface edits
+  them, the agent may not write them, and a corrupt policy blocks every turn instead of falling back to
+  weaker defaults. Prohibitions become typed session bans (tool/command/path/action) enforced by the
+  same banCheck used for the user's own prohibitions. Multi-step work additionally needs a
+  user-confirmed Contract bound to the current request before the first write.
+- `.infuse/policy.json` and `.infuse/base.json` are protected by the guard; a project policy may only
+  add protections, never remove the filter's own gates.
+- Every turn snapshot records a dependency fingerprint (lockfiles plus the installed entrypoints under
+  `node_modules/.bin`/`.venv/bin`). The executor compares it before and after the checks, because the
+  snapshot junctions the live dependency directories: a manifest or runner that changes while the
+  checks run invalidates the verdict instead of approving a tree it no longer measured.
 
 ## i18n
 
@@ -142,16 +156,24 @@ internal/
 - None in the architecture rules: no Go function is over 60 lines (`TestFunctionsStaySmall` in
   `internal/architecture`), no frontend function or file is (checked by `tools/check-frontend.mjs`),
   and every rule above is enforced by a test or a CI step.
-- OS-level containment is not implemented: the guard, the protected paths and the signed approvals act
-  at the executor and at the file level, not inside a restricted token/Job Object. A command that
-  escapes the command parser is caught by the turn audit (content hash) but can still touch the disk.
-- The unified "Regras" policy surface is not built: settings, bans, filter rules, protected paths and
-  compiled rules still have separate sources; `.infuse/base.json` is edited as a file or through the
-  API, not yet in the UI.
+- OS-level containment is partial. Every agent process (Bash, hooks, MCP servers, executor checks and
+  servers) runs in a Windows Job Object that ends the tree with infuse. On Linux the command goes
+  through the hidden `__sandbox` wrapper, which applies a Landlock ruleset (read everywhere; write only
+  in the work root and a sandbox temp; `.infuse` and the protected paths are not granted) and then
+  execs the target. **Windows has no deny-write OS sandbox for the Bash tool**: the low-integrity probe
+  works for cmd/PowerShell, but MSYS2's global `\BaseNamedObjects\msys-2.0…` denies a low-integrity
+  process, and AppContainer would require administrator ACL grants on `Program Files`. The string
+  gates and the content-hash turn audit remain the write perimeter there; the evidence is in
+  `docs/AUDIT-REPORT.md` §9.
+- The behaviour policy and the Regras surface are delivered (groups for permissions/prohibitions,
+  method, architecture, conventions and done, plus the filter rules in the same pane). The legacy
+  settings file still stores scalars the policy overlays and writes back, so the two remain linked
+  until a later migration; `.infuse/base.json` is chosen as a file or through the API, with no visual
+  base editor yet.
 - Base scaffolds are basic: `infuse init <base>` creates the folders and the base document, but the
   pre-filled map and a visual creation flow are not built. The FUSE/WinFsp mount remains absent.
-- The Contract tool asks the user to confirm verifiable criteria, but a confirmed Contract is not yet a
-  hard prerequisite for the first write.
+- The Contract is a hard gate for work with more than one planned step; single-step work proceeds
+  without it, and the gate can be turned off in Regras.
 - Compatibility route families (`/api/session/<id>` and `/api/sessions/<id>`) are kept so older pages
   and external callers keep working; both dispatch into the same domain methods.
 

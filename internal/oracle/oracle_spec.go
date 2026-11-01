@@ -80,20 +80,21 @@ func checkTarget(c OracleCheck) string {
 }
 
 type Verdict struct {
-	Run      string        `json:"run"`
-	Started  int64         `json:"started"`
-	Finished int64         `json:"finished"`
-	Snapshot string        `json:"snapshot"` // git commit or sha256 of the file manifest
-	Verdict  string        `json:"verdict"`  // aprovado | reprovado | sem-criterios | erro
-	Summary  string        `json:"summary"`
-	Checks   []CheckResult `json:"checks"`
-	Session  string        `json:"session,omitempty"`
-	Turn     int           `json:"turn,omitempty"`     // the session turn this verdict belongs to
-	SpecHash string        `json:"specHash,omitempty"` // sha256 of the criteria the run used
-	Criteria int           `json:"criteria,omitempty"` // how many checks the criteria had
-	Warnings []string      `json:"warnings,omitempty"` // limits of the run, stated with the verdict
-	ServerPID int          `json:"serverPid,omitempty"` // the process the checks talked to, when the criteria declared one
-	Signature string       `json:"signature,omitempty"` // HMAC over every other field, key kept outside the project
+	Run          string        `json:"run"`
+	Started      int64         `json:"started"`
+	Finished     int64         `json:"finished"`
+	Snapshot     string        `json:"snapshot"` // git commit or sha256 of the file manifest
+	Verdict      string        `json:"verdict"`  // aprovado | reprovado | sem-criterios | erro
+	Summary      string        `json:"summary"`
+	Checks       []CheckResult `json:"checks"`
+	Session      string        `json:"session,omitempty"`
+	Turn         int           `json:"turn,omitempty"`         // the session turn this verdict belongs to
+	SpecHash     string        `json:"specHash,omitempty"`     // sha256 of the criteria the run used
+	Criteria     int           `json:"criteria,omitempty"`     // how many checks the criteria had
+	Warnings     []string      `json:"warnings,omitempty"`     // limits of the run, stated with the verdict
+	ServerPID    int           `json:"serverPid,omitempty"`    // the process the checks talked to, when the criteria declared one
+	Dependencies string        `json:"dependencies,omitempty"` // lockfiles + installed entrypoints the run measured
+	Signature    string        `json:"signature,omitempty"`    // HMAC over every other field, key kept outside the project
 
 	// SpecVerified is set when the verdict is read: the criteria stored with the run still hash to
 	// the value the verdict recorded and the verdict's signature verifies, so neither was edited after.

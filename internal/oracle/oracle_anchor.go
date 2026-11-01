@@ -6,7 +6,6 @@ package oracle
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -64,26 +63,13 @@ func short(hash string) string {
 	return hash
 }
 
-// signingKey returns the HMAC key from the OS vault. A private file is the fallback when the vault is
-// unavailable (headless Linux); it is never inside the project.
+// verdictSigningFile is the fallback key store when the OS vault is unavailable.
+func verdictSigningFile() string {
+	return filepath.Join(core.InfuseHome(), "oracle-hmac.key")
+}
+
 func signingKey() []byte {
-	if k, err := config.SecretGet(hmacSecretName); err == nil && len(k) >= 32 {
-		if b, derr := hex.DecodeString(k); derr == nil && len(b) >= 32 {
-			return b
-		}
-		return []byte(k)
-	}
-	p := filepath.Join(core.InfuseHome(), "oracle-hmac.key")
-	if b, err := os.ReadFile(p); err == nil && len(b) >= 32 {
-		return b
-	}
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	if err := config.SecretSet(hmacSecretName, hex.EncodeToString(b)); err != nil {
-		_ = os.MkdirAll(filepath.Dir(p), 0o755)
-		_ = os.WriteFile(p, b, 0o600)
-	}
-	return b
+	return config.SigningKey(hmacSecretName, verdictSigningFile())
 }
 
 // signVerdict signs every field of the verdict except the signature itself.

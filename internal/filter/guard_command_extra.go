@@ -7,6 +7,45 @@ import (
 	"strings"
 )
 
+// CommandMayWrite reports whether a shell command can change the filesystem: heredocs into files,
+// redirections, writing commands, inline scripts and output flags. It is a predicate for gates that
+// must know whether a command is a write without running it.
+func CommandMayWrite(cmd string) bool {
+	hs := FindHeredocs(cmd)
+	for _, h := range hs {
+		_, _, line := CommandLineOf(cmd, h)
+		if DetectFileWrite(line) != nil {
+			return true
+		}
+	}
+	for _, m := range ReRedir.FindAllStringSubmatch(cmd, -1) {
+		target := strings.Trim(m[3], `"'`)
+		if target != "" && target != "/dev/null" && !strings.EqualFold(target, "NUL") {
+			return true
+		}
+	}
+	for _, sg := range splitSegments(maskHeredocBodies(cmd, hs)) {
+		fields := strings.Fields(sg.text)
+		if len(fields) == 0 {
+			continue
+		}
+		head, args := baseCmd(fields[0]), fields[1:]
+		switch {
+		case writingCommands[head], scriptingCommands[head]:
+			return true
+		case head == "sed" && hasInPlace(args):
+			return true
+		case head == "sort" && (hasFlag(args, "-o") || hasLongFlag(args, "--output")):
+			return true
+		case (head == "curl" || head == "wget") && outputTarget(args) != "":
+			return true
+		case head == "git" && len(args) > 0 && gitWriting[args[0]]:
+			return true
+		}
+	}
+	return false
+}
+
 // encodedPayload extracts a PowerShell -EncodedCommand script. opaque is true when the flag is
 // present; payload is empty when the base64 cannot be decoded, which must not run silently.
 func encodedPayload(head string, args []string) (payload string, opaque bool) {

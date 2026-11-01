@@ -92,8 +92,12 @@ What escapes: what the model thinks (touches nothing) and the final message it w
 > delivered and anchored. Slice 5's vice catalog now ships as a data table (`internal/data/vices.json`)
 > and lessons carry signature + remedy. Also delivered: tools, permissions, sessions, checkpoints,
 > compaction, git, subagents with an independent reviewer, the MCP client, web search, the desktop
-> bridges and the `infuse claude|codex|gemini` launcher. Still absent: the FUSE/WinFsp mount and
-> OS-level sandboxing of the agent's processes.
+> bridges and the `infuse claude|codex|gemini` launcher. The behaviour policy is one versioned document
+> edited in the Regras surface (permissions/prohibitions, work method, architecture, conventions, done),
+> and multi-step work needs a user-confirmed Contract before the first write. OS containment is partial:
+> every agent process runs in a Job Object on Windows, and Linux commands run under a Landlock ruleset;
+> a deny-write OS sandbox for Git Bash on Windows is blocked by the MSYS2 runtime and remains the open
+> item, together with the FUSE/WinFsp mount and the base pre-filled map.
 
 
 1. **Minimal filter** — launcher + interposed shell (heredoc → write) + map v0 + write watcher. ← this one

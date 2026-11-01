@@ -18,6 +18,7 @@ import (
 	"infuse/internal/knowledge"
 	"infuse/internal/platform/process"
 	"infuse/internal/projectmap"
+	"infuse/internal/sandbox"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,6 +47,9 @@ func main() {
 		// inherits the agent's pipes; from an interactive terminal it borrows that terminal's console.
 		process.AttachParentConsole()
 		os.Exit(filter.RunShell(os.Args[1:], shellPolicy))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "__sandbox" {
+		os.Exit(sandbox.RunWrapper(os.Args[2:]))
 	}
 	if len(os.Args) < 2 {
 		api.Start(true)

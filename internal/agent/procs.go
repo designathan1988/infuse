@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/sandbox"
 	"os"
 	"os/exec"
 	"regexp"
@@ -102,7 +103,8 @@ var allProcs sync.Map // every running process of every session, for shutdown
 
 // startBackground runs command in the session's shell and returns at once.
 func (s *Session) startBackground(command, original, description, cwd string) (*bgProc, error) {
-	cmd := exec.Command(FindRealBash(), "-c", command)
+	argv := sandbox.Wrap([]string{FindRealBash(), "-c", command}, s.workRoot(), s.settings.ProtectedPaths)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	noConsoleWindow(cmd)
 	procGroup(cmd)
 	cmd.Dir = cwd

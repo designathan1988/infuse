@@ -58,6 +58,27 @@ func (s *Session) snapshot() map[string]any {
 }
 
 // mode, providerID, effort: the session's own choice, else the settings default.
+// askBudget is how many times a turn may be sent back before it ends UNVERIFIED.
+func (s *Session) askBudget() int {
+	if s.settings.AskBudget > 0 {
+		return s.settings.AskBudget
+	}
+	return 6
+}
+
+// Policy toggles: nil means the strong default (on).
+func (s *Session) requirePlan() bool {
+	return s.settings.RequirePlan == nil || *s.settings.RequirePlan
+}
+
+func (s *Session) requireDocs() bool {
+	return s.settings.RequireDocs == nil || *s.settings.RequireDocs
+}
+
+func (s *Session) requireReading() bool {
+	return s.settings.RequireReading == nil || *s.settings.RequireReading
+}
+
 func (s *Session) mode() string {
 	if s.Mode != "" {
 		return s.Mode

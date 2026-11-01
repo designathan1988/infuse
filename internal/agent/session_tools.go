@@ -100,8 +100,10 @@ func (s *Session) preflight(ctx context.Context, tool Tool, b Block, toolInput a
 		s.noteResearch(b.Name, b.Input)
 	}
 	if c := tool.Category(); (c == "write" || c == "exec") && !(b.Name == "Bash" && helpCommand(bashCommand(b.Input))) {
-		if why := s.requiredReading(); !why.Empty() { // the documents the instructions point to, read in full
-			return s.refuse(b.ID, "", why)
+		if s.requireReading() {
+			if why := s.requiredReading(); !why.Empty() { // the documents the instructions point to, read in full
+				return s.refuse(b.ID, "", why)
+			}
 		}
 	}
 	if m := s.diagnosisGate(b.Name, tool.Category(), b.Input); !m.Empty() { // the cause, from the project's knowledge, before acting
@@ -168,6 +170,11 @@ func (s *Session) commandGuards(ctx context.Context, tool Tool, b Block) (string
 		}
 		if why := swallowedTestCommand(in.Command); !why.Empty() { // a test run judged by its real exit code
 			return s.refuse(b.ID, in.Command, why)
+		}
+		if commandMayWrite(in.Command) { // multi-step work starts only after the user confirms the restatement
+			if why := s.contractGate(); !why.Empty() {
+				return s.refuse(b.ID, in.Command, why)
+			}
 		}
 		if why := unknownPackages(ctx, in.Command); !why.Empty() { // packages exist before they are installed
 			return s.refuse(b.ID, in.Command, why)

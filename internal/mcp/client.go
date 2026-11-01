@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"infuse/internal/core"
 	"infuse/internal/platform/process"
+	"infuse/internal/sandbox"
 	"io"
 	"net/http"
 	"os"
@@ -121,7 +122,8 @@ func (c *Client) Spawn(root string) error {
 	for i, a := range c.cfg.Args {
 		args[i] = os.ExpandEnv(a)
 	}
-	cmd := exec.Command(exe, args...)
+	argv := sandbox.Wrap(append([]string{exe}, args...), root, nil)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	for k, v := range c.cfg.Env {
@@ -140,10 +142,12 @@ func (c *Client) Spawn(root string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	process.AttachJob(cmd)
 	c.cmd, c.stdin = cmd, stdin
 	go c.ReadLoop(stdout)
 	go func() {
 		err := cmd.Wait()
+		process.ReleaseJob(cmd)
 		c.mu.Lock()
 		if c.state != "stopped" {
 			c.state = "error"

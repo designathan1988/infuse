@@ -35,6 +35,8 @@ func appCoreRoutes(w http.ResponseWriter, r *http.Request, body map[string]any, 
 		sendJSON(w, 200, filter.Uninstall())
 	case "/api/rules", "/api/rules/test":
 		rulesRoute(w, r, body, root, str, qmap)
+	case "/api/policy":
+		policyRoute(w, r, body, root, qmap)
 	default:
 		return false
 	}

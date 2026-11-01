@@ -54,6 +54,14 @@ AGENTE COMPLETO, DENTRO DO FILTRO
     escrito fora das pastas declaradas;
   - hooks e servidores MCP so rodam depois que voce aprova, e a aprovacao e
     assinada: editar o arquivo de aprovacoes nao libera nada;
+  - a aba Regras tem UMA politica de comportamento: metodo de trabalho, limite
+    de recusas, arquitetura, convencoes, permissoes, proibicoes e criterio de
+    pronto. O filtro e o nucleo antifraude nao sao configuraveis ali;
+  - trabalho com mais de uma etapa exige que voce confirme a releitura do
+    pedido (Contract) antes da primeira alteracao;
+  - todo processo do agente roda em um Job Object e termina junto com o infuse;
+    no Linux os comandos tambem rodam sob um ruleset Landlock (leitura livre,
+    escrita so no projeto e na area temporaria do sandbox);
   - tudo que foi escrito fica no Jornal; vicios, na aba Vicios, com o remedio.
 
 PERMISSOES (seletor no topo)
@@ -92,10 +100,15 @@ CLAUDE CODE (opcional)
   nele em Configuracoes > Integracao com o Claude Code.
 
 O QUE AINDA NAO ESTA NESTA VERSAO (ver SPEC.md e docs/PROMPT-infuse-studio.md)
-  os scaffolds das bases (criar um projeto novo a partir de uma base) e o mount
-  FUSE/WinFsp. A escolha de base, a recusa de codigo fora dela, o restante do
-  SPEC.md, os subagentes com revisor independente, o cliente MCP, a busca na
-  web, o executor do oraculo com evidencia em snapshot, a janela nativa e o
+  - o sandbox de escrita em nivel de SO para o Bash no Windows: o Git Bash
+    (MSYS2) nao inicia sob integridade baixa nem sob AppContainer sem ACL de
+    administrador; no Windows valem os portoes do filtro, a auditoria do turno
+    e o Job Object. No Linux o Landlock esta ativo.
+  - os scaffolds completos das bases (mapa pre-preenchido e criacao visual) e o
+    mount FUSE/WinFsp.
+  A escolha de base, a recusa de codigo fora dela, o restante do SPEC.md, os
+  subagentes com revisor independente, o cliente MCP, a busca na web, o
+  executor do oraculo com evidencia em snapshot, a janela nativa e o
   multi-provedor estao implementados.
 
 Tudo fica no seu computador. A interface responde apenas em 127.0.0.1.

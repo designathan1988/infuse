@@ -7,12 +7,15 @@ import { api } from '../core/api.js';
 import { pref } from '../core/store.js';
 import { menu } from '../components/menu.js';
 import { toast } from '../components/toast.js';
+import { mountPolicy } from './rules-policy.js';
 
 const actOf = x => x.replace != null ? 'replace' : x.say ? 'say' : x.infuse ? 'infuse' : x.infuseFile ? 'infuseFile' : x.vice ? 'vice' : 'say';
 
 function shellHTML(scope, r, st) {
   return `<div class="pane-list">
       <div class="row mb-4"><span class="chip sc" role="button" tabindex="0">${t(scope === 'project' ? 'rules.thisProject' : 'rules.allProjects')} ${I.caret}</span><span class="faint mono trunc grow">${esc(r.file || '')}</span></div>
+      <div class="policy-mount"></div>
+      <div class="rules-help-title">${t('policy.filterRules')}</div>
       <label class="row rules-toggle"><span class="switch ${st.disable.includes('heredoc') ? 'on' : ''} hd" role="switch" aria-checked="${st.disable.includes('heredoc')}" tabindex="0"></span>${t('rules.disableHeredoc')}</label>
       <div class="rule-row faint rules-header"><span></span><span>${t('rules.when')}</span><span>${t('rules.matchRegex')}</span><span>${t('rules.action')}</span><span>${t('rules.value')}</span><span></span></div>
       <div class="rows"></div>
@@ -91,6 +94,7 @@ async function drawRules(s) {
   s.drawRows = () => drawRows(s);
   wireRules(s);
   drawRows(s);
+  await mountPolicy(s.pb.querySelector('.policy-mount'), s.c, s.scope);
 }
 
 export function mount(pb, extra, c) {

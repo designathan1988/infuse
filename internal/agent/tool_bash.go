@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"infuse/internal/core"
+	"infuse/internal/platform/process"
+	"infuse/internal/sandbox"
 	"os"
 	"os/exec"
 	"strings"
@@ -131,13 +133,19 @@ func runForeground(ctx context.Context, tc *ToolContext, in *bashInput, command 
 	wrapped := command + "\nprintf '\\n__INFUSE_CWD__%s' \"$PWD\""
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(in.Timeout)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, FindRealBash(), "-c", wrapped)
+	argv := sandbox.Wrap([]string{FindRealBash(), "-c", wrapped}, tc.S.workRoot(), tc.S.settings.ProtectedPaths)
+	cmd := exec.CommandContext(cctx, argv[0], argv[1:]...)
 	noConsoleWindow(cmd)
 	cmd.Dir = tc.Cwd
 	cmd.Env = append(os.Environ(), "INFUSE_AGENT=1", "GIT_TERMINAL_PROMPT=0", "CI=1")
 	buf := newCapWriter(1 << 20) // head and tail kept: unbounded output cannot exhaust memory
 	cmd.Stdout, cmd.Stderr = buf, buf
-	err := cmd.Run()
+	err := cmd.Start()
+	if err == nil {
+		process.AttachJob(cmd) // the process tree ends with infuse, even on a crash
+		err = cmd.Wait()
+		process.ReleaseJob(cmd)
+	}
 	out := buf.String()
 	if i := strings.LastIndex(out, "__INFUSE_CWD__"); i >= 0 {
 		if nc := strings.TrimSpace(out[i+len("__INFUSE_CWD__"):]); nc != "" {

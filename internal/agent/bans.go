@@ -18,11 +18,12 @@ import (
 )
 
 type Ban struct {
-	Kind  string `json:"kind"`          // tool | command | path | action
-	Value string `json:"value"`         // tool name, command fragment, path, or commit|push|install
-	Quote string `json:"quote"`         // the user's own words
-	Turn  int    `json:"turn"`          // when it was said
-	Off   bool   `json:"off,omitempty"` // lifted (by the user on screen, or by a later message)
+	Kind   string `json:"kind"`          // tool | command | path | action
+	Value  string `json:"value"`         // tool name, command fragment, path, or commit|push|install
+	Quote  string `json:"quote"`         // the user's own words
+	Turn   int    `json:"turn"`          // when it was said
+	Off    bool   `json:"off,omitempty"` // lifted (by the user on screen, or by a later message)
+	Policy bool   `json:"policy,omitempty"`
 }
 
 var banStore sync.Map // session id → *[]Ban (persisted in .infuse/sessions/<id>.bans.json)
@@ -134,6 +135,9 @@ func (s *Session) banViolationPath(rel string) Msg {
 		}
 		v := strings.ToLower(strings.Trim(strings.TrimPrefix(b.Value, "./"), "/"))
 		if v != "" && (p == v || strings.HasPrefix(p, v+"/")) {
+			if b.Policy {
+				return M("ban.policy", "value", b.Value)
+			}
 			return M("ban.refused", "quote", b.Quote, "turn", b.Turn)
 		}
 	}
@@ -179,6 +183,9 @@ func (s *Session) banCheck(name string, input json.RawMessage) Msg {
 			}
 		}
 		if hit {
+			if b.Policy {
+				return M("ban.policy", "value", b.Value)
+			}
 			return M("ban.refused", "quote", b.Quote, "turn", b.Turn)
 		}
 	}

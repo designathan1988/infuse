@@ -335,4 +335,6 @@ type usageEntry = config.UsageEntry
 func LearnConventions(root string) string            { return knowledge.LearnConventions(root) }
 func SuggestChecks(root string) []CheckSuggestion    { return oracle.SuggestChecks(root) }
 func LoadOracleSpec(root string) (OracleSpec, error) { return oracle.LoadOracleSpec(root) }
+
+func commandMayWrite(cmd string) bool { return filter.CommandMayWrite(cmd) }
 func ListVerdicts(root string, n int) []Verdict      { return oracle.ListVerdicts(root, n) }

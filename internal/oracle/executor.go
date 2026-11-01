@@ -9,7 +9,9 @@ import (
 	"infuse/internal/journal"
 	"infuse/internal/lang"
 	"infuse/internal/platform/process"
+	"infuse/internal/sandbox"
 	"infuse/internal/security"
+	"infuse/internal/workspace"
 	"io"
 	"net/http"
 	"os"
@@ -90,14 +92,30 @@ func RunOracleTurn(ctx context.Context, evidenceRoot, workDir, session string, t
 	v.ServerPID = pid
 	defer stop()
 	var passed int
-	v.Checks, passed = runChecks(ctx, snapDir, dir, spec.Checks)
-	if passed == len(spec.Checks) {
+	var stable bool
+	v.Checks, passed, v.Dependencies, stable = runChecksOnSnapshot(ctx, snapDir, dir, spec.Checks, workDir)
+	if !stable { // the snapshot junctions the live dependencies: they changed while the checks ran
+		v.Verdict, v.Summary = "erro", uiText("oracle.dependencies")
+		return finish()
+	}
+	summarizeVerdict(&v, passed, len(spec.Checks))
+	return finish()
+}
+
+// runChecksOnSnapshot runs the checks and reports whether the dependency tree stayed the same.
+func runChecksOnSnapshot(ctx context.Context, snapDir, dir string, checks []OracleCheck, workDir string) (results []CheckResult, passed int, deps string, stable bool) {
+	deps = workspace.DependencyFingerprint(workDir)
+	results, passed = runChecks(ctx, snapDir, dir, checks)
+	return results, passed, deps, workspace.DependencyFingerprint(workDir) == deps
+}
+
+func summarizeVerdict(v *Verdict, passed, total int) {
+	if passed == total {
 		v.Verdict = "aprovado"
 	} else {
 		v.Verdict = "reprovado"
 	}
-	v.Summary = uiText("oracle.summary", "passed", passed, "total", len(spec.Checks))
-	return finish()
+	v.Summary = uiText("oracle.summary", "passed", passed, "total", total)
 }
 
 // oraclePreflight refuses criteria that cannot produce a trustworthy verdict: criteria that do not
@@ -172,13 +190,19 @@ func runCheckCommand(ctx context.Context, dir, command string, timeoutSec int) c
 	}
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, core.FindRealBash(), "-c", command)
+	argv := sandbox.Wrap([]string{core.FindRealBash(), "-c", command}, dir, nil)
+	cmd := exec.CommandContext(cctx, argv[0], argv[1:]...)
 	process.NoConsoleWindow(cmd)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "CI=1", "INFUSE_ORACLE=1")
 	buf := core.NewCapWriter(512 << 10)
 	cmd.Stdout, cmd.Stderr = buf, buf
-	err := cmd.Run()
+	err := cmd.Start()
+	if err == nil {
+		process.AttachJob(cmd)
+		err = cmd.Wait()
+		process.ReleaseJob(cmd)
+	}
 	code := core.ExitCode(err)
 	if cctx.Err() == context.DeadlineExceeded {
 		code = -1

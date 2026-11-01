@@ -28,12 +28,17 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) Msg {
 	s.Mu.Lock()
 	planned := s.gate.planned
 	s.Mu.Unlock()
-	if !planned {
+	if s.requirePlan() && !planned {
 		return M("protocol.no_plan")
 	}
+	if why := s.contractGate(); !why.Empty() { // multi-step work starts only after the user confirmed it
+		return why
+	}
 	ext := strings.ToLower(filepath.Ext(p))
-	if m := s.docsBeforeUse(p, before, after); !m.Empty() {
-		return m
+	if s.requireDocs() {
+		if m := s.docsBeforeUse(p, before, after); !m.Empty() {
+			return m
+		}
 	}
 	// 3. the project's conventions
 	if s.settings.EnforceConventions == nil || *s.settings.EnforceConventions {

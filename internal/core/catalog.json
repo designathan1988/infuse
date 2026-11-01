@@ -119,6 +119,10 @@
     "en": "[infuse] The screenshot was taken at {got}, but the criteria measure {expected}: open the project's own server and capture the changed screen there.",
     "pt-BR": "[infuse] A captura foi feita em {got}, mas os critérios medem {expected}: abra o servidor do próprio projeto e fotografe a tela alterada ali."
   },
+  "agent.screenshot_html": {
+    "en": "[infuse] The screenshot was taken at the right address but does not show what the criteria measure ({expected}). Open the state the criteria describe, capture it, and look at the image before reporting.",
+    "pt-BR": "[infuse] A captura foi feita no endereço certo, mas não mostra o que os critérios medem ({expected}). Abra o estado que os critérios descrevem, fotografe e olhe a imagem antes de relatar."
+  },
   "agent.starting": {
     "en": "starting the subagent…",
     "pt-BR": "iniciando o subagente…"
@@ -1018,6 +1022,250 @@
   "contract.changes": {
     "en": "The user asked for changes to the criteria: {answer}\nRewrite them and call Contract again.",
     "pt-BR": "O usuário pediu ajustes nos critérios: {answer}\nReformule e chame Contract de novo."
+  },
+  "policy.invalid": {
+    "en": "[infuse] The behaviour policy could not be read ({error}). The turn cannot run on an unknown policy: fix the policy in Regras.",
+    "pt-BR": "[infuse] Não foi possível ler a política de comportamento ({error}). O turno não roda com uma política desconhecida: corrija a política em Regras."
+  },
+  "ban.policy": {
+    "en": "[infuse] Blocked by the project's behaviour policy (Regras): {value}.",
+    "pt-BR": "[infuse] Bloqueado pela política de comportamento do projeto (Regras): {value}."
+  },
+  "policy.filterRules": {
+    "en": "Filter rules",
+    "pt-BR": "Regras do filtro"
+  },
+  "policy.title": {
+    "en": "Behaviour policy",
+    "pt-BR": "Política de comportamento"
+  },
+  "policy.noteTitle": {
+    "en": "What is not configurable:",
+    "pt-BR": "O que não é configurável:"
+  },
+  "policy.note": {
+    "en": "the filter, the anti-fraud core and the app's own interface. This page shapes how the AI works on your projects.",
+    "pt-BR": "o filtro, o núcleo antifraude e a interface do próprio aplicativo. Esta página define como a IA trabalha nos seus projetos."
+  },
+  "policy.unavailable": {
+    "en": "The policy could not be loaded.",
+    "pt-BR": "Não foi possível carregar a política."
+  },
+  "policy.saving": {
+    "en": "Saving…",
+    "pt-BR": "Salvando…"
+  },
+  "policy.saved": {
+    "en": "Saved",
+    "pt-BR": "Salvo"
+  },
+  "policy.saveFailed": {
+    "en": "Could not save",
+    "pt-BR": "Não foi possível salvar"
+  },
+  "policy.method": {
+    "en": "Work method",
+    "pt-BR": "Método de trabalho"
+  },
+  "policy.plan": {
+    "en": "Plan before changing code",
+    "pt-BR": "Plano antes de alterar código"
+  },
+  "policy.planDesc": {
+    "en": "Every source change needs a registered plan with proof.",
+    "pt-BR": "Toda alteração de código exige um plano registrado com comprovação."
+  },
+  "policy.diagnosis": {
+    "en": "Diagnosis before acting",
+    "pt-BR": "Diagnóstico antes de agir"
+  },
+  "policy.diagnosisDesc": {
+    "en": "The agent states the cause, with evidence, before changing files or running commands.",
+    "pt-BR": "O agente declara a causa, com evidências, antes de alterar arquivos ou rodar comandos."
+  },
+  "policy.docs": {
+    "en": "Documentation before use",
+    "pt-BR": "Documentação antes de usar"
+  },
+  "policy.docsDesc": {
+    "en": "A new library, API or host must have its documentation read first.",
+    "pt-BR": "Uma biblioteca, API ou host novos precisam da documentação lida antes."
+  },
+  "policy.reading": {
+    "en": "Read the project's documents in full",
+    "pt-BR": "Ler os documentos do projeto até o fim"
+  },
+  "policy.readingDesc": {
+    "en": "The instruction files and the documents they point to are delivered completely before action.",
+    "pt-BR": "As instruções e os documentos que elas indicam são entregues por completo antes da ação."
+  },
+  "policy.askBudget": {
+    "en": "Refusals before ending the turn",
+    "pt-BR": "Recusas antes de encerrar o turno"
+  },
+  "policy.askBudgetDesc": {
+    "en": "How many times the turn may be sent back; after that it ends as unverified, never as done.",
+    "pt-BR": "Quantas vezes o turno pode voltar; depois disso termina como não verificado, nunca como concluído."
+  },
+  "policy.architecture": {
+    "en": "Architecture",
+    "pt-BR": "Arquitetura"
+  },
+  "policy.enforceArchitecture": {
+    "en": "Enforce the architecture rules",
+    "pt-BR": "Aplicar as regras de arquitetura"
+  },
+  "policy.enforceArchitectureDesc": {
+    "en": "Placement, layers, no god files or duplicated state; checked on every write.",
+    "pt-BR": "Colocação, camadas, sem arquivos-deus nem estado duplicado; verificado a cada escrita."
+  },
+  "policy.maxFileLines": {
+    "en": "Maximum file size (lines)",
+    "pt-BR": "Tamanho máximo de arquivo (linhas)"
+  },
+  "policy.maxFileLinesDesc": {
+    "en": "Use -1 for no limit.",
+    "pt-BR": "Use -1 para não limitar."
+  },
+  "policy.conventions": {
+    "en": "Code conventions",
+    "pt-BR": "Convenções de código"
+  },
+  "policy.enforceConventions": {
+    "en": "Enforce the project's conventions",
+    "pt-BR": "Aplicar as convenções do projeto"
+  },
+  "policy.enforceConventionsDesc": {
+    "en": "Refuse writes that break the style measured in the project.",
+    "pt-BR": "Recusa escritas que quebram o estilo medido no projeto."
+  },
+  "policy.done": {
+    "en": "Definition of done",
+    "pt-BR": "Definição de pronto"
+  },
+  "policy.review": {
+    "en": "Mandatory independent review",
+    "pt-BR": "Revisão independente obrigatória"
+  },
+  "policy.reviewDesc": {
+    "en": "A reviewer with clean context reads the request, the criteria and the diff before the turn ends.",
+    "pt-BR": "Um revisor com contexto limpo lê o pedido, os critérios e o diff antes de o turno terminar."
+  },
+  "policy.contract": {
+    "en": "Confirmed contract before multi-step work",
+    "pt-BR": "Contrato confirmado antes de trabalho com várias etapas"
+  },
+  "policy.contractDesc": {
+    "en": "The user confirms the agent's restatement of the objective before the first change.",
+    "pt-BR": "O usuário confirma a releitura do objetivo pelo agente antes da primeira alteração."
+  },
+  "policy.permissions": {
+    "en": "Permissions",
+    "pt-BR": "Permissões"
+  },
+  "policy.mode": {
+    "en": "Permission mode",
+    "pt-BR": "Modo de permissão"
+  },
+  "policy.modeDesc": {
+    "en": "How tool calls are approved in new sessions.",
+    "pt-BR": "Como as chamadas de ferramenta são aprovadas em novas sessões."
+  },
+  "policy.modeDefault": {
+    "en": "Ask",
+    "pt-BR": "Perguntar"
+  },
+  "policy.modeAccept": {
+    "en": "Accept edits",
+    "pt-BR": "Aceitar edições"
+  },
+  "policy.modePlan": {
+    "en": "Plan only",
+    "pt-BR": "Somente plano"
+  },
+  "policy.modeBypass": {
+    "en": "No questions",
+    "pt-BR": "Sem perguntas"
+  },
+  "policy.toolsDesc": {
+    "en": "Per tool: ask, allow or deny.",
+    "pt-BR": "Por ferramenta: perguntar, permitir ou negar."
+  },
+  "policy.toolAsk": {
+    "en": "Ask",
+    "pt-BR": "Perguntar"
+  },
+  "policy.toolAllow": {
+    "en": "Allow",
+    "pt-BR": "Permitir"
+  },
+  "policy.toolDeny": {
+    "en": "Deny",
+    "pt-BR": "Negar"
+  },
+  "policy.protectedPaths": {
+    "en": "Protected paths",
+    "pt-BR": "Caminhos protegidos"
+  },
+  "policy.protectedPathsDesc": {
+    "en": "One glob per line; the agent cannot write to them.",
+    "pt-BR": "Um padrão por linha; o agente não pode escrever neles."
+  },
+  "policy.prohibitions": {
+    "en": "Prohibitions",
+    "pt-BR": "Proibições"
+  },
+  "policy.commands": {
+    "en": "Forbidden commands",
+    "pt-BR": "Comandos proibidos"
+  },
+  "policy.commandsDesc": {
+    "en": "One command fragment per line.",
+    "pt-BR": "Um trecho de comando por linha."
+  },
+  "policy.paths": {
+    "en": "Forbidden paths",
+    "pt-BR": "Caminhos proibidos"
+  },
+  "policy.pathsDesc": {
+    "en": "One path or glob per line.",
+    "pt-BR": "Um caminho ou padrão por linha."
+  },
+  "policy.prohibitedTools": {
+    "en": "Forbidden tools",
+    "pt-BR": "Ferramentas proibidas"
+  },
+  "policy.prohibitedToolsDesc": {
+    "en": "One tool name per line (Agent, Browser, WebSearch…).",
+    "pt-BR": "Um nome de ferramenta por linha (Agent, Browser, WebSearch…)."
+  },
+  "policy.actions": {
+    "en": "Forbidden actions",
+    "pt-BR": "Ações proibidas"
+  },
+  "policy.actionsDesc": {
+    "en": "commit, push, install — one per line.",
+    "pt-BR": "commit, push, install — uma por linha."
+  },
+  "policy.errorMode": {
+    "en": "Unknown mode.",
+    "pt-BR": "Modo desconhecido."
+  },
+  "policy.errorBudget": {
+    "en": "Use a number between 1 and 20.",
+    "pt-BR": "Use um número entre 1 e 20."
+  },
+  "policy.errorMaxLines": {
+    "en": "Use -1 or a number between 20 and 5000.",
+    "pt-BR": "Use -1 ou um número entre 20 e 5000."
+  },
+  "policy.errorActions": {
+    "en": "Only commit, push or install.",
+    "pt-BR": "Apenas commit, push ou install."
+  },
+  "contract.required": {
+    "en": "[infuse] This is work with more than one step and the user has not confirmed the restatement of the request yet. Call Contract with the objective and verifiable criteria and ask the user to confirm before the first change or command that writes.",
+    "pt-BR": "[infuse] Este é um trabalho com mais de uma etapa e o usuário ainda não confirmou a releitura do pedido. Chame Contract com o objetivo e critérios verificáveis e peça a confirmação do usuário antes da primeira alteração ou comando que escreve."
   },
   "contract.confirm": {
     "en": "Confirm",
@@ -5314,6 +5562,10 @@
   "oracle.anchor": {
     "en": "the criteria do not match the copy the user saved outside the project: {error}",
     "pt-BR": "os critérios não correspondem à cópia que o usuário salvou fora do projeto: {error}"
+  },
+  "oracle.dependencies": {
+    "en": "the dependency manifests or installed runners changed while the checks ran; the verdict is not usable",
+    "pt-BR": "os manifestos de dependências ou os executáveis instalados mudaram durante as verificações; o veredito não é utilizável"
   },
   "oracle.httpNeedsServer": {
     "en": "an HTTP check requires \"server\" in the criteria: without it the check would measure whatever answers the address, not the snapshot",

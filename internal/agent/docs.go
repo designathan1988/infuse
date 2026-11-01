@@ -173,10 +173,19 @@ func SuggestDocs(root string) []docSuggestion {
 	out := []docSuggestion{}
 	seen := map[string]bool{}
 	add := func(dep, version string) {
-		if d, ok := docsForDependency[dep]; ok && !pinned[d[1]] && !seen[d[1]] {
-			seen[d[1]] = true
-			out = append(out, docSuggestion{Name: d[0], URL: d[1], Why: M("docs.whyDependency", "package", dep, "version", version).Render(uiLanguage())})
+		d, ok := docsForDependency[dep]
+		if !ok {
+			return
 		}
+		url := d[1]
+		if v := versionedDocURL(dep, version); v != "" {
+			url = v
+		}
+		if pinned[url] || seen[url] {
+			return
+		}
+		seen[url] = true
+		out = append(out, docSuggestion{Name: d[0], URL: url, Why: M("docs.whyDependency", "package", dep, "version", version).Render(uiLanguage())})
 	}
 	var pkg struct{ Dependencies, DevDependencies map[string]string }
 	if readJSON(filepath.Join(root, "package.json"), &pkg) == nil {
@@ -187,14 +196,10 @@ func SuggestDocs(root string) []docSuggestion {
 			add(k, v)
 		}
 	}
-	for _, f := range []string{"requirements.txt", "pyproject.toml"} {
-		if b, err := os.ReadFile(filepath.Join(root, f)); err == nil {
-			low := strings.ToLower(string(b))
-			for _, dep := range []string{"django", "flask", "fastapi", "pytest"} {
-				if strings.Contains(low, dep) {
-					add(dep, "")
-				}
-			}
+	py := pythonDependencyVersions(root)
+	for _, dep := range []string{"django", "flask", "fastapi", "pytest"} {
+		if v, ok := py[dep]; ok {
+			add(dep, v)
 		}
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "go.mod")); err == nil {
@@ -206,4 +211,162 @@ func SuggestDocs(root string) []docSuggestion {
 		}
 	}
 	return out
+}
+
+var (
+	rePyRequirement = regexp.MustCompile(`^\s*([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*([<>=!~^][^;#]*)?`)
+	rePyQuoted      = regexp.MustCompile(`["']([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*([<>=!~^][^"']*)?["']`)
+	rePyPoetry      = regexp.MustCompile(`(?m)^\s*([A-Za-z0-9_.-]+)\s*=\s*(?:"([^"]+)"|\{[^}]*version\s*=\s*"([^"]+)")`)
+	rePyNumeric     = regexp.MustCompile(`v?(\d+(?:\.\d+)*)`)
+)
+
+// pythonDependencyVersions reads the pinned version of the Python dependencies this app can suggest
+// docs for, from requirements.txt and pyproject.toml (PEP 621 and Poetry). An exact pin wins over a
+// compatible/lower bound; a dependency with no spec is present with an empty version.
+func pythonDependencyVersions(root string) map[string]string {
+	known := map[string]bool{"django": true, "flask": true, "fastapi": true, "pytest": true}
+	specs := map[string][]string{}
+	present := map[string]bool{}
+	add := func(name, spec string) {
+		name = normalizePyName(name)
+		if !known[name] {
+			return
+		}
+		present[name] = true
+		if s := strings.TrimSpace(strings.SplitN(spec, ";", 2)[0]); s != "" {
+			specs[name] = append(specs[name], s)
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(root, "requirements.txt")); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "-") {
+				continue
+			}
+			if m := rePyRequirement.FindStringSubmatch(line); m != nil {
+				add(m[1], m[2])
+			}
+		}
+		low := strings.ToLower(string(b))
+		for dep := range known {
+			if !present[dep] && containsDep(low, dep) {
+				present[dep] = true
+			}
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(root, "pyproject.toml")); err == nil {
+		text := string(b)
+		for _, m := range rePyQuoted.FindAllStringSubmatch(text, -1) {
+			add(m[1], m[2])
+		}
+		for _, m := range rePyPoetry.FindAllStringSubmatch(text, -1) {
+			v := m[2]
+			if v == "" {
+				v = m[3]
+			}
+			add(m[1], v)
+		}
+		low := strings.ToLower(text)
+		for dep := range known {
+			if !present[dep] && containsDep(low, dep) {
+				present[dep] = true
+			}
+		}
+	}
+	out := map[string]string{}
+	for dep := range present {
+		out[dep] = choosePythonVersion(specs[dep])
+	}
+	return out
+}
+
+func normalizePyName(name string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(name)), "_", "-")
+}
+
+func containsDep(low, dep string) bool {
+	return strings.Contains(low, dep)
+}
+
+// choosePythonVersion prefers == over ~= over a lower bound (>=, ^ or a bare Poetry version).
+func choosePythonVersion(specs []string) string {
+	exact, tilde, lower := "", "", ""
+	for _, spec := range specs {
+		for _, part := range strings.Split(spec, ",") {
+			part = strings.TrimSpace(strings.Trim(part, `"'`))
+			if strings.HasPrefix(part, "<") || strings.HasPrefix(part, "!=") {
+				continue // an upper bound is not the installed version
+			}
+			op := ""
+			for _, p := range []string{"===", "==", "~=", ">=", "^", ">"} {
+				if strings.HasPrefix(part, p) {
+					op, part = p, strings.TrimSpace(strings.TrimPrefix(part, p))
+					break
+				}
+			}
+			v := numericVersion(part)
+			if v == "" {
+				continue
+			}
+			switch op {
+			case "==", "===", "":
+				exact = v
+			case "~=":
+				if tilde == "" {
+					tilde = v
+				}
+			default:
+				if lower == "" {
+					lower = v
+				}
+			}
+		}
+	}
+	if exact != "" {
+		return exact
+	}
+	if tilde != "" {
+		return tilde
+	}
+	return lower
+}
+
+// numericVersion is the installed version inside a manifest spec ("^4.19.2" → "4.19.2", ">=3.0,<4"
+// → "3.0"); the caller chooses the shape its vendor URL expects.
+func numericVersion(s string) string {
+	if m := rePyNumeric.FindStringSubmatch(strings.TrimSpace(s)); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+// versionedDocURL returns the vendor's versioned documentation URL, only for providers whose pattern
+// was verified to be stable (Django uses major.minor; pytest uses major.minor.x). Flask and FastAPI
+// publish one current documentation site, so they keep the stable URL with the version in the reason.
+func versionedDocURL(dep, version string) string {
+	mm := majorMinor(version)
+	if mm == "" {
+		return ""
+	}
+	switch dep {
+	case "django":
+		return "https://docs.djangoproject.com/en/" + mm + "/"
+	case "pytest":
+		return "https://docs.pytest.org/en/" + mm + ".x/"
+	case "express": // the API reference has one page per major: /en/4x/api.html
+		return "https://expressjs.com/en/" + strings.SplitN(mm, ".", 2)[0] + "x/api.html"
+	}
+	return ""
+}
+
+func majorMinor(version string) string {
+	parts := strings.Split(numericVersion(version), ".")
+	if len(parts) == 0 || parts[0] == "" {
+		return ""
+	}
+	minor := "0"
+	if len(parts) > 1 {
+		minor = parts[1]
+	}
+	return parts[0] + "." + minor
 }

@@ -22,9 +22,9 @@ func (tc *ToolContext) AttachImage(b Block) {
 
 func (tc *ToolContext) Clip(s string) string { return tc.clip(s) }
 
-// NoteScreenshot records where the capture looked, so a UI change is not "verified" by a screenshot
-// of some other page.
-func (tc *ToolContext) NoteScreenshot(url string) { tc.S.noteScreenshotAt(url) }
+// NoteScreenshot records where the capture looked and what it showed, so a UI change is not
+// "verified" by a screenshot of some other page (or of another state of the same page).
+func (tc *ToolContext) NoteScreenshot(url, html string) { tc.S.noteScreenshotAt(url, html) }
 
 type browserToolAdapter struct{}
 
