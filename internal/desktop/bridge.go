@@ -182,12 +182,14 @@ const bridgeScript = `(function(){
   var seq = 0, pending = {}, listeners = {};
   window.infuse = {
     native: true,
+    browser: !!window.__infuseBrowserHost,
     call: function(method){ var params = Array.prototype.slice.call(arguments, 1);
       return new Promise(function(res, rej){ var id = ++seq; pending[id] = {res: res, rej: rej};
         window.__infusePost(JSON.stringify({id: id, method: method, params: params})); }); },
     drop: function(files){ var id = ++seq; return new Promise(function(res, rej){ pending[id] = {res: res, rej: rej};
         window.__infusePostFiles(JSON.stringify({id: id, method: 'drop', params: []}), files); }); },
     on: function(ev, fn){ (listeners[ev] = listeners[ev] || []).push(fn); },
+    off: function(ev, fn){ var a = listeners[ev] || [], i = a.indexOf(fn); if (i >= 0) a.splice(i, 1); },
     _done: function(id, ok, v){ var p = pending[id]; if (!p) return; delete pending[id]; ok ? p.res(v) : p.rej(new Error(v)); },
     _emit: function(ev, data){ (listeners[ev] || []).forEach(function(fn){ try { fn(data) } catch (e) {} }); }
   };

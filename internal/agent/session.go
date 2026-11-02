@@ -55,9 +55,10 @@ type SessionData struct {
 	Mode        string                   `json:"mode,omitempty"`     // permission mode; "" = settings
 	Effort      string                   `json:"effort,omitempty"`   // low | medium | high | max
 	Archived    bool                     `json:"archived,omitempty"`
-	Diagnoses   []Diagnosis              `json:"diagnoses,omitempty"` // the diagnoses registered, with their verified evidence
-	Working     bool                     `json:"working,omitempty"`   // a turn was in progress when last saved (resumed at startup)
-	Worktree    string                   `json:"worktree,omitempty"`  // absolute path when the session has its own worktree
+	Diagnoses   []Diagnosis              `json:"diagnoses,omitempty"`  // the diagnoses registered, with their verified evidence
+	Working     bool                     `json:"working,omitempty"`    // a turn was in progress when last saved (resumed at startup)
+	Unattended  bool                     `json:"unattended,omitempty"` // no human is present: permission cards and questions answer themselves
+	Worktree    string                   `json:"worktree,omitempty"`   // absolute path when the session has its own worktree
 	Branch      string                   `json:"branch,omitempty"`
 	Plan        string                   `json:"plan,omitempty"`       // the latest plan proposed in plan mode
 	LastInput   int                      `json:"lastInput,omitempty"`  // context size of the latest request
@@ -77,6 +78,7 @@ type Session struct {
 	subs          map[chan Event]struct{}
 	seq           int
 	cancel        context.CancelFunc
+	missionCancel context.CancelFunc // cancels the mission step's verification when the mission ends
 	pendingPerm   *permRequest
 	pendingAsk    *askRequest
 	readFiles     map[string]bool

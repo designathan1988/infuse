@@ -62,7 +62,9 @@ internal/
   run (`agent.writeGuards`); every other change to the tree — a shell command, an MCP tool, a
   generator, a subagent — is judged at the end of the turn by the same policy (`agent/shell_audit.go`).
   `.infuse/oracle` and `.infuse/evidence` are hashed at turn start; changing them outside the executor
-  blocks the turn.
+  blocks the turn. The installed dependency tree is fingerprinted at turn start; a patch to a library or
+  runner without an install command blocks the turn end. A write gate approves a path's exact content,
+  so a later shell rewrite of the same path is audited again.
 - `agent.Registry` (the `sessions` map) owns live sessions; `NewSession`/`LoadSession`/`ListSessions`
   are the only entry points.
 - Events are emitted after a mutation with a monotonically increasing sequence (`Event.Seq`). The UI
@@ -75,6 +77,11 @@ internal/
   files written before versioning) to `store.Version`; documents in list form use an
   `{schemaVersion, items}` envelope while still reading the legacy bare array. Files shared with other
   tools (`.mcp.json`, `.claude/settings.json`) keep their external formats and are not stamped.
+- The Browser pane shows the page the agent's Browser tool drives: a second CDP connection on the
+  same target (`browser.ViewAgentTab`) streams that page without resizing it, and its input is mapped
+  back to the page's own viewport. A page the agent leaves is not replaced; the agent's tab is its own.
+  The native window uses the same stream for that tab, because WebView2 cannot attach to the agent's
+  Chromium target.
 - The browser UI is a cache: server snapshots + SSE events. It never writes shared state directly
   (pending sends live in the view, not in the transcript).
 

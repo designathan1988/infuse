@@ -119,6 +119,7 @@ func (s *Session) StartMission(goal string, budget float64, maxTurns int) error 
 		return userError(s.uiLang(), M("mission.busy"))
 	}
 	s.Mission = &Mission{Goal: goal, BudgetUSD: budget, MaxTurns: maxTurns, StartCost: s.Cost, StartTurn: s.Turn, State: "running", Started: time.Now().UnixMilli(), Steps: []MissionStep{}, lastCostAt: s.Cost, NoPrice: !s.settings.HasPrice(s.Model)}
+	s.Unattended = true // a mission works on its own: no card can wait for a user who is not watching
 	s.Mu.Unlock()
 	s.emit("mission", s.missionSnapshot())
 	return s.sendMission(M("mission.brief", "goal", goal), missionNote{Goal: goal})
@@ -158,6 +159,11 @@ func (s *Session) endMissionWith(state string, reason Msg, text string) {
 	s.Mu.Lock()
 	if s.Mission != nil && s.Mission.State == "running" {
 		s.Mission.State, s.Mission.Reason, s.Mission.ReasonMsg, s.Mission.Ended = state, text, reason, time.Now().UnixMilli()
+		s.Unattended = false // the mission is over: the user's session asks again
+	}
+	if s.missionCancel != nil {
+		s.missionCancel() // verification of a stopped mission does not keep running for 15 minutes
+		s.missionCancel = nil
 	}
 	s.Mu.Unlock()
 	s.save()
@@ -172,6 +178,12 @@ func (s *Session) StopMission() {
 
 // missionStep runs after each finished turn of a running mission: verdict, budget, auditor, next turn.
 func (s *Session) missionStep() {
+	defer func() {
+		if r := recover(); r != nil {
+			Journal(s.Root, JournalEntry{Kind: "gate", Detail: fmt.Sprintf("mission step panicked: %v", r)})
+			s.endMissionMsg("parada", M("mission.end_cannot_continue", "error", fmt.Sprint(r)))
+		}
+	}()
 	s.Mu.Lock()
 	m := s.Mission
 	if m == nil || m.State != "running" {
@@ -185,9 +197,22 @@ func (s *Session) missionStep() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
+	s.Mu.Lock()
+	if s.Mission != m || m.State != "running" {
+		s.Mu.Unlock()
+		return
+	}
+	s.missionCancel = cancel
+	s.Mu.Unlock()
 	step := MissionStep{Turn: turn, At: time.Now().UnixMilli(), Cost: stepCost}
 	s.verifyMissionStep(ctx, &step)
 	s.Mu.Lock()
+	if s.Mission != m || m.State != "running" { // stopped, or replaced by a new mission while verifying
+		s.missionCancel = nil
+		s.Mu.Unlock()
+		return
+	}
+	s.missionCancel = nil
 	m.Steps = append(m.Steps, step)
 	spent, turns := cost-m.StartCost, turn-m.StartTurn
 	s.Mu.Unlock()
@@ -196,7 +221,12 @@ func (s *Session) missionStep() {
 		return
 	}
 	if err := s.sendMission(missionNextMsg(m, step, turns, spent), missionNote{Goal: m.Goal, Turn: turns + 1, MaxTurns: m.MaxTurns, Spent: spent, Budget: m.BudgetUSD, Verdict: step.Verdict}); err != nil {
-		s.endMissionMsg("parada", M("mission.end_cannot_continue", "error", errArg(err)))
+		s.Mu.Lock()
+		same := s.Mission == m && m.State == "running"
+		s.Mu.Unlock()
+		if same {
+			s.endMissionMsg("parada", M("mission.end_cannot_continue", "error", errArg(err)))
+		}
 	}
 }
 

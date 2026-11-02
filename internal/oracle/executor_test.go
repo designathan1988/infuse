@@ -172,3 +172,39 @@ func TestAgentCannotTouchCriteriaOrEvidence(t *testing.T) {
 		}
 	}
 }
+
+// A file the agent hides from git (ignored path) is still measured by the checks.
+func TestGitSnapshotIncludesIgnoredFiles(t *testing.T) {
+	testHome(t)
+	root := gitRepo(t)
+	_ = os.WriteFile(filepath.Join(root, ".gitignore"), []byte("hidden.test.js\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "hidden.test.js"), []byte("test('hidden', () => {});\n"), 0o644)
+	writeSpec(t, root, `{"checks":[{"id":"hidden","kind":"file","path":"hidden.test.js","expect":{"contains":"hidden"}}]}`)
+	v, err := RunOracle(context.Background(), root, root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Verdict != "aprovado" || !v.Checks[0].Passed {
+		t.Fatalf("an ignored file was left out of the snapshot: %+v", v)
+	}
+}
+
+// An ignored test is measured, but an ignored secret never enters the snapshot or the git object store.
+func TestSnapshotIncludesIgnoredTestsButNotSecrets(t *testing.T) {
+	testHome(t)
+	root := gitRepo(t)
+	_ = os.WriteFile(filepath.Join(root, ".gitignore"), []byte("hidden.test.js\n.env\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "hidden.test.js"), []byte("test('hidden', () => {});\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, ".env"), []byte("SECRET=value\n"), 0o644)
+	snap, _, cleanup, err := takeSnapshot(root, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if _, err := os.Stat(filepath.Join(snap, "hidden.test.js")); err != nil {
+		t.Fatal("the ignored test was left out of the snapshot")
+	}
+	if _, err := os.Stat(filepath.Join(snap, ".env")); !os.IsNotExist(err) {
+		t.Fatal("an ignored secret entered the snapshot")
+	}
+}

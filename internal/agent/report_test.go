@@ -95,3 +95,18 @@ func checkReportMeta(t *testing.T, s *Session) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+// A changing turn cannot close on an empty report, and an empty Report does not satisfy the gate.
+func TestEmptyReportDoesNotAccountForChanges(t *testing.T) {
+	s, root := reportTestSession(t)
+	s.Turn, s.TurnStarts = 1, []int{0}
+	s.Checkpoints[1] = []CheckpointFile{{Path: "a.js", New: true}}
+	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "do it"}}}}
+	if out, isErr := (reportTool{}).Run(context.Background(), &ToolContext{S: s, Root: root, Cwd: root}, json.RawMessage(`{"summary":"done","claims":[]}`)); !isErr || !strings.Contains(out, "claims") {
+		t.Fatalf("an empty report was accepted: %q", out)
+	}
+	s.Messages = append(s.Messages, Message{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "R", Name: "Report", Input: json.RawMessage(`{"summary":"done","claims":[]}`)}}})
+	if why := s.missingReport(); why.ID != "gate.no_report" {
+		t.Fatalf("an empty report satisfied the report gate: %q", why.Render("en"))
+	}
+}

@@ -8,10 +8,10 @@ func (s *Session) contractGate() Msg {
 		return Msg{}
 	}
 	s.Mu.Lock()
-	steps := len(s.Tasks)
+	steps, needed := s.gate.planSteps, s.gate.contractNeeded
 	contract := s.Contract
 	s.Mu.Unlock()
-	if steps < 2 {
+	if !needed && steps < 2 { // only this turn's plan, not tasks left from an earlier request
 		return Msg{}
 	}
 	if request := s.turnRequest(); request != "" && contract != nil && contract.Request == request {

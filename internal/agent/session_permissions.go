@@ -20,10 +20,12 @@ func (s *Session) permissionFor(tool Tool, input json.RawMessage) string {
 		if cat == "write" || cat == "exec" {
 			return "deny"
 		}
-	case "acceptEdits":
-		if cat == "write" || cat == "memory" {
-			return "allow"
-		}
+	}
+	if s.unattended() { // a mission or a scheduled run has nobody to answer a card
+		return "allow"
+	}
+	if s.mode() == "acceptEdits" && (cat == "write" || cat == "memory") {
+		return "allow"
 	}
 	if cat == "read" || cat == "ui" {
 		return "allow"
@@ -98,6 +100,14 @@ func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.Ra
 	}
 }
 
+// unattended reports a run with no human present: a mission or a scheduled task. Its gates still run;
+// only the cards that would wait forever answer themselves.
+func (s *Session) unattended() bool {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	return s.Unattended
+}
+
 func (s *Session) ResolvePermission(id, decision string) bool {
 	s.Mu.Lock()
 	req := s.pendingPerm
@@ -110,7 +120,7 @@ func (s *Session) ResolvePermission(id, decision string) bool {
 }
 
 func (s *Session) askUser(ctx context.Context, question string, options []string) (string, bool) {
-	if s.mode() == "bypass" { // accept-all means no user card, including high-stakes acceptance
+	if s.mode() == "bypass" || s.unattended() { // accept-all and unattended runs have no user card
 		if len(options) > 0 {
 			return options[0], true
 		}

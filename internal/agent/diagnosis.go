@@ -133,6 +133,17 @@ func evidenceProblems(s *Session, d Diagnosis, knowledge []string) ([]Msg, bool)
 			continue
 		}
 		rel = filepath.ToSlash(relTo(root, abs))
+		if s.agentFile(rel) {
+			problems = append(problems, M("diag.ev_authored", "n", n, "file", rel))
+			continue
+		}
+		if real, err := filepath.EvalSymlinks(abs); err == nil {
+			rootReal, err := filepath.EvalSymlinks(root)
+			if err == nil && !within(rootReal, real) {
+				problems = append(problems, M("diag.ev_outside", "n", n, "file", e.File))
+				continue
+			}
+		}
 		b, err := os.ReadFile(abs)
 		if err != nil {
 			problems = append(problems, M("diag.ev_missing", "n", n, "file", e.File))

@@ -78,6 +78,16 @@ type hashEntry struct {
 // walkTree hashes every project file of work (skipping dependency and build folders). With store, the
 // contents go to root's blob store.
 func walkTree(root, work string, store bool) map[string]string {
+	return walkTreeMode(root, work, store, false)
+}
+
+// walkTreeFresh hashes every file from its content, ignoring the mtime+size cache: a rewrite that
+// restores the timestamp and keeps the size is still a change.
+func walkTreeFresh(root, work string, store bool) map[string]string {
+	return walkTreeMode(root, work, store, true)
+}
+
+func walkTreeMode(root, work string, store, fresh bool) map[string]string {
 	out := map[string]string{}
 	_ = fsx.Walk(work, fsx.Snapshot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -99,15 +109,17 @@ func walkTree(root, work string, store bool) map[string]string {
 		e, ok := hashCache[p]
 		hashCacheMu.Unlock()
 		settled := time.Since(info.ModTime()) > 2*time.Second // a just-written file may change again within the same mtime
-		if ok && settled && e.mod == info.ModTime().UnixNano() && e.size == info.Size() && (!store || core.Exists(blobPath(root, e.hash))) {
+		if !fresh && ok && settled && e.mod == info.ModTime().UnixNano() && e.size == info.Size() && (!store || core.Exists(blobPath(root, e.hash))) {
 			out[rel] = e.hash
 			return nil
 		}
 		if info.Size() > snapMaxSize { // hashed in a stream and never stored: a very large file is still a change
 			if h, err := hashFile(p); err == nil {
-				hashCacheMu.Lock()
-				hashCache[p] = hashEntry{info.ModTime().UnixNano(), info.Size(), h}
-				hashCacheMu.Unlock()
+				if !fresh {
+					hashCacheMu.Lock()
+					hashCache[p] = hashEntry{info.ModTime().UnixNano(), info.Size(), h}
+					hashCacheMu.Unlock()
+				}
 				out[rel] = h
 			}
 			return nil
@@ -124,9 +136,11 @@ func walkTree(root, work string, store bool) map[string]string {
 				_ = os.WriteFile(bp, b, 0o644)
 			}
 		}
-		hashCacheMu.Lock()
-		hashCache[p] = hashEntry{info.ModTime().UnixNano(), info.Size(), h}
-		hashCacheMu.Unlock()
+		if !fresh {
+			hashCacheMu.Lock()
+			hashCache[p] = hashEntry{info.ModTime().UnixNano(), info.Size(), h}
+			hashCacheMu.Unlock()
+		}
 		out[rel] = h
 		return nil
 	})
@@ -139,7 +153,7 @@ func SnapshotTurn(root, work, session string, turn int) error {
 	protected := protectedHashes(root)
 	m := treeManifest{
 		Work: filepath.Clean(work), At: time.Now().UnixMilli(), Turn: turn,
-		Files: walkTree(root, work, true), Protected: protected,
+		Files: walkTreeFresh(root, work, true), Protected: protected,
 		Dependencies: DependencyFingerprint(work),
 	}
 	storeProtectedBlobs(root, protected)
@@ -263,7 +277,7 @@ func TurnChanges(root, work, session string, turn int) []TreeChange {
 	if !strings.EqualFold(filepath.Clean(m.Work), filepath.Clean(work)) {
 		return nil
 	}
-	now := walkTree(root, work, false)
+	now := walkTreeFresh(root, work, false)
 	var out []TreeChange
 	for rel, h := range now {
 		old, had := m.Files[rel]
@@ -281,6 +295,26 @@ func TurnChanges(root, work, session string, turn int) []TreeChange {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
+}
+
+// TurnDependencies is the dependency fingerprint recorded at the start of the turn.
+func TurnDependencies(root, session string, turn int) string {
+	var m treeManifest
+	if core.ReadJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), &m) != nil {
+		return ""
+	}
+	return m.Dependencies
+}
+
+// RefreshTurnDependencies rebases the turn's fingerprint after an install command the gate approved.
+func RefreshTurnDependencies(root, session string, turn int) {
+	p := filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json")
+	var m treeManifest
+	if core.ReadJSON(p, &m) != nil {
+		return
+	}
+	m.Dependencies = DependencyFingerprint(m.Work)
+	_ = core.WriteJSON(p, m)
 }
 
 // manifests lists the recorded snapshots of a work folder, oldest first (only one session's with session).

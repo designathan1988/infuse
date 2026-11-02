@@ -120,3 +120,31 @@ func TestSentinelAllowsEditsToAgentCreatedTests(t *testing.T) {
 		t.Fatal("the agent's own test was still flagged")
 	}
 }
+
+// Removing a Go assertion or replacing one with a constant is fraud too, not only the JS forms.
+func TestWeakeningDetectionCoversGoAndConstants(t *testing.T) {
+	before := "func TestSum(t *testing.T) {\n\tif got != want {\n\t\tt.Fatalf(\"sum: %v\", got)\n\t}\n}\n"
+	after := "func TestSum(t *testing.T) {\n}\n"
+	if !testWeakeningEdit(before, after) {
+		t.Fatal("emptying a Go test body was not weakening")
+	}
+	if ask, _ := detectShortcuts("src/sum.test.js", "expect(value).toBe(expected)\n", "expect(0).toBe(0)\n"); len(ask) == 0 {
+		t.Fatal("a constant assertion was not flagged")
+	}
+	if ask, _ := detectShortcuts("src/test_api.py", "    assert value == 2\n", "    assert 1\n"); len(ask) == 0 {
+		t.Fatal("a constant Python assertion was not flagged")
+	}
+}
+
+// Test-runner configuration that hides tests or failures is fraud in a test-related file.
+func TestTestConfigWeakeningIsFlagged(t *testing.T) {
+	for _, tc := range []struct{ path, after string }{
+		{"package.json", `{"scripts":{"test":"jest --passWithNoTests"}}`},
+		{".github/workflows/ci.yml", "steps:\n  - run: npm test\n    continue-on-error: true\n"},
+		{"jest.config.js", "module.exports = { testPathIgnorePatterns: ['sum.test'] };\n"},
+	} {
+		if ask, _ := detectShortcuts(tc.path, "", tc.after); len(ask) == 0 {
+			t.Errorf("%s: weakening config not flagged", tc.path)
+		}
+	}
+}

@@ -7,6 +7,7 @@ package agent
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
 	"net/url"
 	"strings"
 	"sync"
@@ -73,44 +74,101 @@ func (s *Session) missingScreenshot() Msg {
 		return M("agent.no_screenshot", "files", strings.Join(firstN(dedupe(l.uiChanged), 6), ", "))
 	}
 	if spec, err := LoadOracleSpec(s.Root); err == nil {
-		wantOrigin, wantHTML := "", ""
+		type requirement struct{ origin, path, html string }
+		var reqs []requirement
 		for _, c := range spec.Checks {
-			if c.Kind != "http" || c.URL == "" {
-				continue
-			}
-			if wantOrigin == "" {
-				wantOrigin = originOf(c.URL)
-			}
-			if wantHTML == "" && c.Expect.Contains != "" {
-				wantHTML = c.Expect.Contains
+			if c.Kind == "http" && c.URL != "" {
+				reqs = append(reqs, requirement{originOf(c.URL), pathOf(c.URL), c.Expect.Contains})
 			}
 		}
-		// The capture must come from the origin the criteria measure.
-		if wantOrigin != "" && originOf(l.shotURL) != wantOrigin {
-			got := originOf(l.shotURL)
-			if got == "" {
-				got = "unknown"
+		if len(reqs) > 0 {
+			strong := reqs[:0:0] // a status-only check cannot dilute a check that names the content
+			for _, r := range reqs {
+				if r.html != "" {
+					strong = append(strong, r)
+				}
 			}
-			return M("agent.screenshot_origin", "expected", wantOrigin, "got", got)
-		}
-		// And it must show the content the criteria measure: the captured HTML is bound to the shot.
-		if wantHTML != "" {
+			if len(strong) > 0 {
+				reqs = strong
+			}
+			gotOrigin, gotPath := originOf(l.shotURL), pathOf(l.shotURL)
 			st := s.shotState()
 			st.mu.Lock()
 			html := st.html
 			st.mu.Unlock()
-			if html == "" || !strings.Contains(html, wantHTML) {
-				return M("agent.screenshot_html", "expected", wantHTML)
+			originOK, pathOK := false, false
+			for _, r := range reqs {
+				if r.origin != gotOrigin {
+					continue
+				}
+				originOK = true
+				if r.path != gotPath {
+					continue
+				}
+				pathOK = true
+				if r.html == "" || (html != "" && strings.Contains(html, r.html)) {
+					return Msg{}
+				}
 			}
+			// The capture must be of the page the criteria measure, and show what they expect from it.
+			if !originOK {
+				if gotOrigin == "" {
+					gotOrigin = "unknown"
+				}
+				return M("agent.screenshot_origin", "expected", reqs[0].origin, "got", gotOrigin)
+			}
+			if !pathOK {
+				return M("agent.screenshot_path", "expected", reqs[0].path, "got", gotPath)
+			}
+			return M("agent.screenshot_html", "expected", reqs[0].html)
 		}
 	}
 	return Msg{}
 }
 
+// originOf normalizes what browsers treat as the same origin: loopback aliases (localhost, 127.x,
+// [::1], 0.0.0.0), default ports and a trailing dot in the host.
 func originOf(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
 		return ""
 	}
-	return strings.ToLower(u.Scheme + "://" + u.Host)
+	scheme := strings.ToLower(u.Scheme)
+	host := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	port := u.Port()
+	if port == "" {
+		switch scheme {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		}
+	}
+	if loopbackHost(host) {
+		host = "127.0.0.1"
+	}
+	if port == "" {
+		return scheme + "://" + host
+	}
+	return scheme + "://" + net.JoinHostPort(host, port)
+}
+
+func loopbackHost(host string) bool {
+	return host == "localhost" || host == "0.0.0.0" || host == "::1" || host == "[::1]" || strings.HasPrefix(host, "127.")
+}
+
+// pathOf is the part of the address a capture must be on: the path, root when empty.
+func pathOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	p := u.EscapedPath()
+	if p == "" {
+		return "/"
+	}
+	if len(p) > 1 {
+		p = strings.TrimSuffix(p, "/")
+	}
+	return p
 }

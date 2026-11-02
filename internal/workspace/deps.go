@@ -21,33 +21,48 @@ var dependencyManifests = []string{
 	"Pipfile.lock", "Cargo.lock",
 }
 
-var dependencyEntrypoints = []string{"node_modules/.bin", ".venv/bin", "venv/bin"}
+var dependencyDirs = []string{"node_modules", ".venv", "venv", "vendor"}
 
-// DependencyFingerprint hashes the dependency manifests and the files of the installed entrypoint
-// directories (the runners a test command executes).
+// DependencyFingerprint hashes the dependency manifests and every installed file a check could
+// execute or import. A patch to a runner or to a library it imports changes the fingerprint even when
+// the lockfile and the .bin entries stay identical.
 func DependencyFingerprint(work string) string {
 	h := sha1.New()
 	for _, rel := range dependencyManifests {
 		writeDependencyFile(h, work, rel)
 	}
-	for _, rel := range dependencyEntrypoints {
-		base := filepath.Join(work, filepath.FromSlash(rel))
-		entries, err := os.ReadDir(base)
-		if err != nil {
-			continue
-		}
-		var names []string
-		for _, e := range entries {
-			if !e.IsDir() {
-				names = append(names, e.Name())
-			}
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			writeDependencyFile(h, work, rel+"/"+name)
-		}
+	for _, dir := range dependencyDirs {
+		hashDependencyTree(h, work, dir)
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func hashDependencyTree(h io.Writer, work, dir string) {
+	base := filepath.Join(work, filepath.FromSlash(dir))
+	if st, err := os.Stat(base); err != nil || !st.IsDir() {
+		return
+	}
+	var paths []string
+	_ = filepath.WalkDir(base, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if p != base && (d.Name() == ".cache" || d.Name() == "__pycache__" || d.Name() == ".git") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Type().IsRegular() || d.Type()&os.ModeSymlink != 0 {
+			paths = append(paths, p)
+		}
+		return nil
+	})
+	sort.Strings(paths)
+	for _, p := range paths {
+		rel, _ := filepath.Rel(work, p)
+		writeDependencyFile(h, work, filepath.ToSlash(rel))
+	}
 }
 
 func writeDependencyFile(h io.Writer, work, rel string) {

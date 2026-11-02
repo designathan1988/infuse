@@ -6,6 +6,9 @@ package agent
 // so the turn cannot end until those changes are checked too.
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,9 +21,9 @@ import (
 // before the command runs, and it must still be judged here.
 func (s *Session) ungatedChanges() []workspace.TreeChange {
 	s.Mu.Lock()
-	gated := make(map[string]bool, len(s.gate.gatedPaths))
-	for p := range s.gate.gatedPaths {
-		gated[p] = true
+	gated := make(map[string]string, len(s.gate.gatedPaths))
+	for p, d := range s.gate.gatedPaths {
+		gated[p] = d
 	}
 	s.Mu.Unlock()
 	all := workspace.TurnChanges(s.Root, s.workRoot(), s.ID, s.Turn)
@@ -28,8 +31,8 @@ func (s *Session) ungatedChanges() []workspace.TreeChange {
 	for _, ch := range all {
 		// infuse writes its own records; a deletion of one, however, must reach the protected-record
 		// check below even though the file no longer exists.
-		if gated[ch.Path] {
-			continue
+		if !ch.Deleted && gated[ch.Path] == fileDigest(filepath.Join(s.workRoot(), filepath.FromSlash(ch.Path))) {
+			continue // the exact content a write gate approved; a later rewrite does not match
 		}
 		if strings.HasPrefix(ch.Path, ".infuse/") && !ch.Deleted {
 			continue
@@ -37,6 +40,30 @@ func (s *Session) ungatedChanges() []workspace.TreeChange {
 		out = append(out, ch)
 	}
 	return out
+}
+
+// markGated records the digest a successful write tool left at rel. The shell audit may skip that
+// exact content; the same path written again by anything else stays under audit.
+func (s *Session) markGated(rel string) {
+	sum := fileDigest(filepath.Join(s.workRoot(), filepath.FromSlash(rel)))
+	if sum == "" {
+		return
+	}
+	s.Mu.Lock()
+	if s.gate.gatedPaths == nil {
+		s.gate.gatedPaths = map[string]string{}
+	}
+	s.gate.gatedPaths[rel] = sum
+	s.Mu.Unlock()
+}
+
+func fileDigest(abs string) string {
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		return ""
+	}
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
 }
 
 // auditShellWrites returns what the agent must fix before the turn may end (empty when nothing).
@@ -137,24 +164,24 @@ func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 		}
 	}
 	abs := filepath.Join(s.workRoot(), filepath.FromSlash(rel))
-	if ch.Deleted { // a deletion is measured against what it removed
-		if protectedRecord(rel) {
-			s.restoreShellChange(abs, before)
-			return M("oracle.protected_write", "files", rel)
-		}
-		if m := s.shellTestGuard(rel, abs, before, "", false, true); !m.Empty() {
-			return m
-		}
-		if why := s.largeRemoval(rel, before, ""); !why.Empty() {
-			return why
-		}
-		return Msg{}
+	if why := s.shellRecordViolation(rel, abs, before, ch.New); !why.Empty() {
+		return why
+	}
+	if ch.Deleted {
+		return s.shellDeletionViolation(rel, abs, before)
 	}
 	after, err := os.ReadFile(abs)
 	if err != nil {
 		return Msg{}
 	}
 	afterText := string(after)
+	if strings.EqualFold(filepath.Base(rel), "package.json") {
+		if refs := newManifestPackages(before, afterText); len(refs) > 0 {
+			if why := verifyPackageRefs(context.Background(), refs); !why.Empty() {
+				return why
+			}
+		}
+	}
 	if m := s.shellTestGuard(rel, abs, before, afterText, ch.New, false); !m.Empty() {
 		return m
 	}
@@ -170,7 +197,43 @@ func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 		}
 		return why
 	}
-	return s.shellStyleViolation(rel, abs, before, after)
+	why := s.shellStyleViolation(rel, abs, before, after)
+	if why.Empty() {
+		s.noteUIChange(rel) // a screen edited through the shell is still a changed screen
+	}
+	return why
+}
+
+// shellRecordViolation protects the user's control records from every writer: a rewrite is removed or
+// restored before the refusal reaches the agent.
+func (s *Session) shellRecordViolation(rel, abs, before string, isNew bool) Msg {
+	why := Msg{}
+	if protectedRecord(rel) { // .mcp.json, .claude/settings.json: a modification is as serious as a deletion
+		why = M("oracle.protected_write", "files", rel)
+	} else if m := s.instructionWriteCheck(rel, before); !m.Empty() {
+		why = m
+	}
+	if why.Empty() {
+		return why
+	}
+	if isNew {
+		_ = os.Remove(abs)
+	} else {
+		s.restoreShellChange(abs, before)
+	}
+	return why
+}
+
+// shellDeletionViolation judges a file the shell removed.
+func (s *Session) shellDeletionViolation(rel, abs, before string) Msg {
+	if kind := baselineKind(rel); kind != "" {
+		s.restoreShellChange(abs, before)
+		return M("work.baseline", "file", rel, "kind", kind)
+	}
+	if m := s.shellTestGuard(rel, abs, before, "", false, true); !m.Empty() {
+		return m
+	}
+	return s.largeRemoval(rel, before, "")
 }
 
 // shellStyleViolation judges the shape of a shell-written file: suppressions, base placement,

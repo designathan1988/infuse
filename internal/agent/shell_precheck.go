@@ -54,6 +54,16 @@ func (s *Session) precheckShellWrites(ctx context.Context, intents []shellWriteI
 }
 
 func (s *Session) heredocShape(rel, abs, before, after string) Msg {
+	if why := s.instructionWriteCheck(rel, before); !why.Empty() {
+		return why
+	}
+	if strings.EqualFold(filepath.Base(rel), "package.json") {
+		if refs := newManifestPackages(before, after); len(refs) > 0 {
+			if why := verifyPackageRefs(context.Background(), refs); !why.Empty() {
+				return why
+			}
+		}
+	}
 	ext := strings.ToLower(filepath.Ext(abs))
 	if codeExts[ext] {
 		if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {

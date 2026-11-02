@@ -1,6 +1,26 @@
 package api
 
-import "testing"
+import (
+	"os"
+	"sync"
+	"testing"
+)
+
+// The token is read once and removed from the environment: the agent's shell inherits os.Environ and
+// must not be able to authenticate against the local API.
+func TestAPITokenDoesNotReachChildProcesses(t *testing.T) {
+	t.Setenv("INFUSE_TOKEN", "secret")
+	tokenOnce, tokenVal = sync.Once{}, ""
+	if got := apiToken(); got != "secret" {
+		t.Fatalf("token %q", got)
+	}
+	if got := apiToken(); got != "secret" {
+		t.Fatalf("the token changed between calls: %q", got)
+	}
+	if v := os.Getenv("INFUSE_TOKEN"); v != "" {
+		t.Fatalf("INFUSE_TOKEN stayed in the environment: %q", v)
+	}
+}
 
 // Routes that read a caller-chosen file, fetch a URL or open a path require the token even on GET.
 func TestSensitiveRoutesRequireTheToken(t *testing.T) {

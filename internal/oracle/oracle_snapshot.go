@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -40,6 +41,14 @@ func takeGitSnapshot(workDir, evDir, snap string) (string, string, func(), error
 	if _, err := git("add", "-A", "--", ".", ":(exclude).infuse"); err != nil {
 		return "", "", nil, errors.New("git add (temporary index) failed")
 	}
+	// A test hidden behind .gitignore or .git/info/exclude is still the project the user sees. Only
+	// source, test and configuration files are forced in: secrets and dependency/build trees must not
+	// enter the user's git object store, and no check needs them to prove the project works.
+	if files := forceAddCandidates(workDir, git); len(files) > 0 {
+		if _, err := git(append([]string{"add", "-f", "--"}, files...)...); err != nil {
+			return "", "", nil, errors.New("git add of ignored project files failed")
+		}
+	}
 	tree, err := git("write-tree")
 	if err != nil {
 		return "", "", nil, errors.New("git write-tree failed: " + tree)
@@ -54,12 +63,112 @@ func takeGitSnapshot(workDir, evDir, snap string) (string, string, func(), error
 	if err != nil {
 		return "", "", nil, errors.New("git commit-tree failed: " + commit)
 	}
-	if out, err := workspace.GitRun(workDir, "worktree", "add", "--detach", snap, commit); err != nil {
-		return "", "", nil, errors.New("git worktree add failed: " + strings.TrimSpace(out))
+	// core.autocrlf=false: the snapshot must hold the same bytes the working tree holds, not a
+	// line-ending conversion; otherwise a check measures different content than the user's tree.
+	add := exec.Command("git", "-c", "core.autocrlf=false", "worktree", "add", "--detach", snap, commit)
+	process.NoConsoleWindow(add)
+	add.Dir = workDir
+	if out, err := add.CombinedOutput(); err != nil {
+		return "", "", nil, errors.New("git worktree add failed: " + strings.TrimSpace(string(out)))
+	}
+	if diff := snapshotDiff(workDir, snap); len(diff) > 0 { // a smudge filter or a checkout rule changed the content
+		_, _ = workspace.GitRun(workDir, "worktree", "remove", "--force", snap)
+		if len(diff) > 5 {
+			diff = diff[:5]
+		}
+		return "", "", nil, errors.New("the git snapshot does not match the working tree (filters or checkout rules): " + strings.Join(diff, ", ") + "; refusing the verdict")
 	}
 	linkDependencies(workDir, snap)
 	_ = os.WriteFile(filepath.Join(evDir, "snapshot.txt"), []byte("git commit "+commit+"\ntree "+tree+"\n"), 0o644)
 	return snap, "git:" + commit[:12], func() { _, _ = workspace.GitRun(workDir, "worktree", "remove", "--force", snap) }, nil
+}
+
+// snapshotSkip reports an ignored file that must stay out of the snapshot: dependencies and build
+// output, secrets and oversized files. A test or source file does not match.
+func snapshotSkip(work, rel string) bool {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) == 0 {
+		return true
+	}
+	skipDir := map[string]bool{"node_modules": true, ".venv": true, "venv": true, "vendor": true, "dist": true,
+		"build": true, "out": true, "coverage": true, "target": true, ".next": true, ".cache": true, "__pycache__": true}
+	for _, d := range parts[:len(parts)-1] {
+		if skipDir[d] {
+			return true
+		}
+	}
+	name := strings.ToLower(parts[len(parts)-1])
+	exts := map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true,
+		".py": true, ".go": true, ".rs": true, ".java": true, ".kt": true, ".cs": true, ".rb": true, ".php": true,
+		".vue": true, ".svelte": true, ".html": true, ".css": true, ".json": true, ".yml": true, ".yaml": true,
+		".toml": true, ".md": true}
+	if !exts[strings.ToLower(filepath.Ext(name))] || strings.HasPrefix(name, ".env") ||
+		name == ".npmrc" || name == ".pypirc" || strings.Contains(name, "credential") ||
+		strings.HasSuffix(name, ".pem") || strings.HasSuffix(name, ".key") || strings.HasPrefix(name, "id_rsa") {
+		return true
+	}
+	st, err := os.Stat(filepath.Join(work, filepath.FromSlash(rel)))
+	return err != nil || st.Size() > 2<<20
+}
+
+// forceAddCandidates lists ignored files that belong to the project's code, tests or configuration.
+func forceAddCandidates(workDir string, git func(...string) (string, error)) []string {
+	out, err := git("ls-files", "--others", "--ignored", "--exclude-standard", "-z")
+	if err != nil {
+		return nil
+	}
+	var files []string
+	for _, rel := range strings.Split(out, string(byte(0))) {
+		rel = strings.TrimSpace(rel)
+		if rel == "" || len(files) >= 5000 || snapshotSkip(workDir, rel) {
+			continue
+		}
+		files = append(files, rel)
+	}
+	return files
+}
+
+// snapshotDiff lists the files whose content differs between the working tree and the snapshot.
+func snapshotDiff(workDir, snap string) []string {
+	digests := func(base string) map[string]string {
+		out := map[string]string{}
+		_ = fsx.Walk(base, fsx.Snapshot, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !d.Type().IsRegular() {
+				return nil
+			}
+			rel, _ := filepath.Rel(base, p)
+			rel = filepath.ToSlash(rel)
+			if rel == ".git" || strings.HasPrefix(rel, ".git/") || strings.HasPrefix(rel, ".infuse/") {
+				return nil // a worktree's .git is a file, not a directory the walk skips
+			}
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return nil
+			}
+			sum := sha256.Sum256(b)
+			out[rel] = hex.EncodeToString(sum[:])
+			return nil
+		})
+		return out
+	}
+	a, b := digests(workDir), digests(snap)
+	var diff []string
+	for rel, sum := range a {
+		if other, ok := b[rel]; !ok {
+			if !snapshotSkip(workDir, rel) { // secrets and oversized ignored files are intentionally absent
+				diff = append(diff, "missing "+rel)
+			}
+		} else if other != sum {
+			diff = append(diff, "changed "+rel)
+		}
+	}
+	for rel := range b {
+		if _, ok := a[rel]; !ok {
+			diff = append(diff, "extra "+rel)
+		}
+	}
+	sort.Strings(diff)
+	return diff
 }
 
 // takeCopySnapshot copies the tree under snap and returns the sha256 of its manifest.

@@ -298,3 +298,36 @@ func TestOwnChangesKeepTheReadingOfADocument(t *testing.T) {
 	readAll(t, s, "docs/AUDIT.md")
 	full(true)
 }
+
+// A file this session wrote cannot serve as evidence of what the project already knew.
+func TestSelfAuthoredEvidenceIsRefused(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	s := newSession(root)
+	_ = os.MkdirAll(filepath.Join(root, "docs"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "docs", "notes.md"), []byte("The cache is keyed by content hash.\n"), 0o644)
+	s.markAgentFile("docs/notes.md")
+	d := Diagnosis{Evidence: []Evidence{
+		{File: "docs/notes.md", Quote: "The cache is keyed by content hash.", Supports: "the cause"},
+		{File: "docs/notes.md", Quote: "keyed by content hash", Supports: "again"},
+	}}
+	problems, _ := evidenceProblems(s, d, nil)
+	found := false
+	for _, p := range problems {
+		found = found || p.ID == "diag.ev_authored"
+	}
+	if !found {
+		t.Fatalf("self-authored evidence passed: %+v", problems)
+	}
+}
+
+// Documentation the agent wrote under .infuse/docs is not outside research.
+func TestSelfAuthoredPinnedDocsDoNotCountAsResearch(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	s.markAgentFile(".infuse/docs/express.md")
+	s.noteResearch("Read", json.RawMessage(`{"path":".infuse/docs/express.md"}`))
+	if s.researchedFor("express") {
+		t.Fatal("the agent's own pinned document counted as research")
+	}
+}

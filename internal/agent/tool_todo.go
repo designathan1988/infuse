@@ -28,7 +28,7 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if len(in.Tasks) == 0 {
 		return tc.Say(M("plan.empty")), true
 	}
-	var noProof []string
+	var noProof, noReason []string
 	open := false
 	for _, t := range in.Tasks {
 		if t.Status != "done" && t.Status != "blocked" {
@@ -37,9 +37,15 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 				noProof = append(noProof, t.Text)
 			}
 		}
+		if t.Status == "blocked" && strings.TrimSpace(t.Proof) == "" { // abandoning work is visible, never silent
+			noReason = append(noReason, t.Text)
+		}
 	}
 	if len(noProof) > 0 { // the protocol: every open task says how it will be proven
 		return tc.Say(M("plan.no_proof", "tasks", strings.Join(noProof, "; "))), true
+	}
+	if len(noReason) > 0 {
+		return tc.Say(M("plan.blocked_reason", "tasks", strings.Join(noReason, "; "))), true
 	}
 	tc.S.Mu.Lock()
 	planned, existing := tc.S.gate.planned, len(tc.S.Tasks)
@@ -53,6 +59,10 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	tc.S.setTasks(in.Tasks)
 	tc.S.Mu.Lock()
 	tc.S.gate.planned = true
+	tc.S.gate.planSteps = len(in.Tasks)
+	if len(in.Tasks) >= 2 {
+		tc.S.gate.contractNeeded = true // shortening the plan later does not erase the confirmed restatement
+	}
 	tc.S.Mu.Unlock()
 	return tc.Say(M("plan.recorded", "count", len(in.Tasks))), false
 }

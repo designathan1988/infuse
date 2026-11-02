@@ -32,6 +32,8 @@ type researchGate struct {
 	reportAsks int      // times the agent was sent back for a Report in this turn
 
 	planned         bool     // a plan (TodoWrite) was registered in this turn
+	planSteps       int      // tasks in the plan this turn registered
+	contractNeeded  bool     // a multi-step plan was registered: the contract stays required this turn
 	researched      []string // what research calls looked at in this turn (queries, addresses, doc files)
 	obligationAsks  int      // times the turn was refused an end
 	reviewed        bool     // the mandatory review ran in this turn
@@ -52,33 +54,24 @@ type researchGate struct {
 	oracleKey     string // the tree the last automatic verdict was produced from
 	oracleVerdict string // that verdict's result code
 
-	// gatedPaths are the paths a write tool judged in this turn. A heredoc or any shell write also
-	// creates a checkpoint; only a path that passed the write gates may be skipped by the shell audit.
-	gatedPaths map[string]bool
+	// gatedPaths maps a path a write tool changed in this turn to the digest it left behind. A heredoc
+	// or any other shell write creates a checkpoint too; only the exact content a gate approved may be
+	// skipped by the shell audit. A later rewrite of the same path is audited.
+	gatedPaths map[string]string
 }
 
 func (g *researchGate) reset() { *g = researchGate{} }
 
-// commandRuns reports whether a command line actually starts one segment with the declared command;
-// a quoted string in echo or a comment cannot satisfy a declared check.
+// commandRuns reports whether one segment of the command line is exactly the declared command. A
+// prefix is not enough: "go test ./... -run '^$'" would otherwise satisfy "go test ./..." while
+// running no test.
 func commandRuns(cmd, want string) bool {
-	w := strings.Fields(want)
-	if len(w) == 0 {
+	w := normSpace(want)
+	if w == "" {
 		return false
 	}
 	for _, seg := range shellparse.Segments(cmd) {
-		f := strings.Fields(seg)
-		if len(f) < len(w) {
-			continue
-		}
-		match := true
-		for i := range w {
-			if f[i] != w[i] {
-				match = false
-				break
-			}
-		}
-		if match {
+		if normSpace(seg) == w {
 			return true
 		}
 	}
@@ -196,6 +189,9 @@ var shortcuts = []shortcut{
 	{regexp.MustCompile(`catch\s*(\([^)]*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(\{\s*\}|null|undefined)\s*\)`), M("shortcut.empty_catch"), false},
 	{regexp.MustCompile(`except(\s+[\w.,() ]+)?:\s*(\n\s*)?pass\b`), M("shortcut.except_pass"), false},
 	{regexp.MustCompile(`"test"\s*:\s*"[^"]*(\|\|\s*true|exit\s+0)[^"]*"`), M("shortcut.test_true"), true},
+	{regexp.MustCompile(`\bcontinue-on-error\s*:\s*true\b|--passWithNoTests\b|--testPathIgnorePatterns|--testNamePattern\s*=\s*['"]?\^?\$|(?:testPathIgnorePatterns|testNamePattern)\s*:`), M("shortcut.test_config"), true},
+	{regexp.MustCompile(`expect\(\s*(?:0|false|null|undefined)\s*\)\.(?:toBe|toEqual)\(\s*(?:0|false|null|undefined)\s*\)`), M("shortcut.assert_true"), true},
+	{regexp.MustCompile(`(?m)^\s*assert\s+(?:0|1|True|False)\s*$`), M("shortcut.assert_true"), true},
 }
 
 // suppressors silence the project's checker. A suppression that carries its reason on the same line
@@ -250,7 +246,8 @@ func suppressorWithoutReason(line string) bool {
 
 // detectShortcuts lists the shortcuts that after has and before did not (newly introduced).
 func detectShortcuts(path, before, after string) (ask []Msg, warn []Msg) {
-	isTest := reTestFile.MatchString(filepath.ToSlash(path)) || strings.HasSuffix(filepath.ToSlash(path), "package.json")
+	rel := filepath.ToSlash(path)
+	isTest := reTestFile.MatchString(rel) || reTestInfra.MatchString(rel) || reTestConfig.MatchString(rel)
 	for _, sc := range shortcuts {
 		if len(sc.re.FindAllStringIndex(after, -1)) <= len(sc.re.FindAllStringIndex(before, -1)) {
 			continue
@@ -330,8 +327,11 @@ func (s *Session) missingReport() Msg {
 	found := false
 	for _, m := range s.Messages[start:] {
 		for _, b := range m.Content {
-			if b.Type == "tool_use" && b.Name == "Report" {
-				found = true
+			var in struct {
+				Claims []json.RawMessage `json:"claims"`
+			}
+			if b.Type == "tool_use" && b.Name == "Report" && json.Unmarshal(b.Input, &in) == nil && len(in.Claims) > 0 {
+				found = true // an empty report does not account for the changes
 			}
 		}
 	}

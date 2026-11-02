@@ -150,3 +150,31 @@ func TestParallelSubagentsAreEachRecorded(t *testing.T) {
 		t.Fatal("agents missing from the snapshot")
 	}
 }
+
+// A dev server's address printed by a background command reaches the Browser pane, once.
+func TestProcessOutputSurfacesTheDevServer(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	ch, unsub := s.Subscribe()
+	defer unsub()
+	w := &procURLWatcher{log: &procLog{}, s: s, seen: map[string]bool{}}
+	if _, err := w.Write([]byte("VITE ready\n  Local: http://localhost:5173/\n")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev := <-ch:
+		d, _ := json.Marshal(ev.Data)
+		if ev.Type != "browser" || !strings.Contains(string(d), "http://localhost:5173/") {
+			t.Fatalf("event %s %s", ev.Type, d)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the address never reached the session")
+	}
+	if _, _ = w.Write([]byte("  Local: http://localhost:5173/\n")); true {
+		select {
+		case ev := <-ch:
+			t.Fatalf("the same address was emitted twice: %+v", ev)
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}

@@ -64,7 +64,7 @@ export function closePane(id) {
 }
 export const closeFocusedPane = () => { if (state.focus) closePane(state.focus); };
 export function paneRefresh(id) { state.inst[id]?.refresh?.(); }
-export function paneCall(id, fn, ...a) { state.inst[id]?.[fn]?.(...a); }
+export function paneCall(id, fn, ...a) { return state.inst[id]?.[fn]?.(...a); }
 export async function openFileInPane(path) {
   togglePane('files', true);
   setTimeout(() => paneCall('files', 'open', path), 50);

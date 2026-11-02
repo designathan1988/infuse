@@ -62,6 +62,24 @@ func TestAcceptanceGateAsksOnceForHighStakesCriteria(t *testing.T) {
 }
 
 // A rejected delivery ends the turn and leaves a journal record.
+// A mission cannot end approved after the user rejected the delivery it was verifying.
+func TestRejectedDeliveryEndsTheMission(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	if err := oracle.SaveSpec(root, oracle.OracleSpec{RequireAcceptance: true}); err != nil {
+		t.Fatal(err)
+	}
+	s := newSession(root)
+	s.Mission = &Mission{Goal: "ship it", State: "running", BudgetUSD: 1, MaxTurns: 3}
+	answerNext(s, M("turn.reject").Render(s.uiLang()))
+	if why := s.acceptanceGate(context.Background(), []CheckpointFile{{Path: "src/a.js"}}); !why.Empty() {
+		t.Fatalf("rejection must end the turn quietly: %q", why.Render("en"))
+	}
+	if m := s.missionSnapshot(); m.State != "parada" {
+		t.Fatalf("the mission continued after a rejected delivery: %+v", m)
+	}
+}
+
 func TestRejectedDeliveryIsRecorded(t *testing.T) {
 	testHome(t)
 	root := t.TempDir()

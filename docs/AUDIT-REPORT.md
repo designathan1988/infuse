@@ -444,3 +444,32 @@ it is handed to an executor:
     with the bundled Git Bash: the low-integrity and AppContainer probes are documented in the remaining
     risks; Job Objects and the Linux Landlock wrapper are in place, and the Windows write perimeter stays
     with the guard and the turn audit until a patched MSYS2 runtime or another shell is available.
+
+## 10. Root-cause hardening pass (2026-11-01)
+
+Scope: the three read-only audits above (unattended execution, anti-fraud, Browser pane) and the
+conclusions they reached. Every item below has a regression test; the package suite, `go vet`, the race
+suite, cross-builds and the frontend checks are green.
+
+| Area | What changed | Test |
+|---|---|---|
+| Turn completion | a turn whose obligation budget is spent now calls `finish` and lets a mission advance; a panic in the loop or in a mission step sets the terminal state, clears `working` and ends the running mission | `TestMissionRunsUntilCriteriaPassOrBudget`, `TestMissionTurnsUnattendedOffWhenItEnds` |
+| Unattended runs | missions and scheduled tasks set `Unattended`: permission cards and questions answer themselves without changing the session's mode; plan mode still denies writes; a mission ends unattended | `TestUnattendedSessionAnswersItsOwnCards`, `TestUnattendedKeepsPlanModeDenyingWrites` |
+| Compaction | the transcript replacement rebuilds `TurnStarts` and puts the current turn's request back when it fell in the summarized part, so the Contract, Report and mission gates keep their request | `TestCompactionKeepsTheCurrentTurnRequest`, `TestFallbackCompactionKeepsTheCurrentTurnRequest` |
+| Contract and plan | the contract requirement is latched from the multi-step plan of this turn (shortening the plan cannot erase it; an old plan cannot demand a contract); a blocked task must state why | `TestContractCannotBeAvoidedByShorteningThePlan`, `TestBlockedTaskNeedsAReason` |
+| Mission ownership | a stopped or replaced mission cancels its verification; a late step cannot record or resurrect it; a rejected delivery ends the mission | `TestEndingAMissionCancelsItsVerification`, `TestRejectedDeliveryEndsTheMission` |
+| API token | the token is cached and removed from the process environment after the first read, so the agent's Bash, hooks, MCP servers and executor cannot authenticate against the local API | `TestAPITokenDoesNotReachChildProcesses` |
+| Write audit | a gate approves the content a successful write left, not the path: a later shell rewrite is audited; protected records and instruction files are restored on any shell write; a baseline deletion is refused and restored; a shell-edited screen owes a screenshot | `TestGatedPathRewrittenByTheShellIsAudited`, `TestShellCannotModifyProtectedRecords`, `TestShellCannotRewriteTheProjectInstructions`, `TestShellCannotDeleteABaseline`, `TestShellUIChangeNeedsAScreenshot` |
+| Research and evidence | a research call counts only after it succeeds and names the dependency as a whole word; a host needs its own documentation; a project file or a document the session wrote itself proves nothing; diagnosis evidence resolves symlinks and rejects self-authored files | `TestResearchMustNameTheDependency`, `TestSelfAuthoredEvidenceIsRefused`, `TestSelfAuthoredPinnedDocsDoNotCountAsResearch` |
+| Screenshots | the capture is bound to the same origin (loopback aliases normalized), the same path and the content of the strongest HTTP check | `TestScreenshotWithoutContentRequirementUsesOriginAndPath`, `TestScreenshotPrefersTheContentCheck` |
+| Test fraud | Go/Python assertion removal and constant assertions are weakening; test-runner configuration (continue-on-error, passWithNoTests, ignored paths) is fraud in test-related files; declared verification must run the exact command | `TestWeakeningDetectionCoversGoAndConstants`, `TestTestConfigWeakeningIsFlagged`, `TestDeclaredVerificationNeedsTheExactCommand` |
+| Report | a changing turn needs a report with claims; an empty report neither passes the tool nor the end-of-turn gate | `TestEmptyReportDoesNotAccountForChanges` |
+| Packages | an uncached package is verified before the install (and before a new manifest dependency is accepted); an unreachable registry refuses instead of running an unverified name; a new `package.json` dependency is checked | `TestPackageLookupVerifiesBeforeTheInstall`, `TestUnverifiedPackageIsRefused`, `TestManifestDependenciesAreVerified` |
+| Oracle snapshot | ignored tests are force-added while secrets and dependency/build trees stay out of the git object store; the snapshot must byte-match the working tree (no filter or checkout rule); autocrlf is disabled | `TestGitSnapshotIncludesIgnoredFiles`, `TestSnapshotIncludesIgnoredTestsButNotSecrets` |
+| Installed dependencies | the fingerprint covers every installed library, not only `.bin`; a mid-turn patch blocks the turn end until an install command rebases it | `TestDependencyFingerprintCoversInstalledLibraries`, `TestInstalledDependencyChangeNeedsAnInstall` |
+| Turn snapshots | snapshots and turn changes hash content fresh, so a rewrite that restores the mtime and keeps the size is still a change | `TestTurnChangesSeesAStampedRewrite` |
+| Browser pane | the pane attaches to the agent's own CDP target (second connection, no resize), reads the current address on attach, follows clicks and client-side routes, opens the project's dev-server address from a background command, and only acts on the session on screen; an agent tab never replaces the user's tab; a corrupt browser profile is replaced by a fresh one; serve mode shuts down its browsers and processes on Ctrl+C | Chrome 2x: `uifix__agent-browser__light__pt-br.png`, `docs/audit/logs/uifix-agent-browser.*`; `TestProcessOutputSurfacesTheDevServer` |
+
+Residual, unchanged: the first anchoring of a criteria file is trust-on-first-use (a copy of a project
+with no anchor starts a new trust); a same-user broker can start a medium-integrity process; a hard link
+can alias a file outside the root; network access is not restricted by the OS sandbox.

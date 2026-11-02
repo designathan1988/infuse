@@ -36,6 +36,41 @@ type bgProc struct {
 	told bool  // the agent was told it ended
 }
 
+// procURLWatcher records the output and surfaces the first local address a dev server prints, so the
+// project's server appears in the Browser pane even when the agent only started it in the background.
+type procURLWatcher struct {
+	log  *procLog
+	s    *Session
+	mu   sync.Mutex
+	tail string
+	seen map[string]bool
+}
+
+var reLocalURL = regexp.MustCompile(`(?i)https?://(?:localhost|127\.[0-9.]+|0\.0\.0\.0|\[::1\])(?::[0-9]+)?(?:/[^\s"'<>)]*)?`)
+
+func (w *procURLWatcher) Write(b []byte) (int, error) {
+	n, err := w.log.Write(b)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.tail += string(b)
+	lines := strings.Split(w.tail, "\n")
+	w.tail = lines[len(lines)-1]
+	if len(w.tail) > 4096 {
+		w.tail = w.tail[len(w.tail)-4096:]
+	}
+	for _, line := range lines[:len(lines)-1] {
+		for _, u := range reLocalURL.FindAllString(line, -1) {
+			u = strings.TrimRight(u, ".,;")
+			if w.seen[u] {
+				continue
+			}
+			w.seen[u] = true
+			w.s.showURL(u)
+		}
+	}
+	return n, err
+}
+
 // procLog keeps the last 2 MB of a process's output, addressed by absolute byte offsets.
 type procLog struct {
 	mu    sync.Mutex
@@ -110,7 +145,8 @@ func (s *Session) startBackground(command, original, description, cwd string) (*
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "INFUSE_AGENT=1", "GIT_TERMINAL_PROMPT=0", "CI=1")
 	p := &bgProc{Command: command, Original: original, Description: description, Started: time.Now().UnixMilli(), State: "running", out: &procLog{}, cmd: cmd}
-	cmd.Stdout, cmd.Stderr = p.out, p.out
+	watch := &procURLWatcher{log: p.out, s: s, seen: map[string]bool{}}
+	cmd.Stdout, cmd.Stderr = watch, watch
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}

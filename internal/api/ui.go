@@ -16,9 +16,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 )
 
 // uiFile serves one embedded file; INFUSE_UI_DIR serves ui/ from disk instead (development).
@@ -51,17 +53,8 @@ func uiFile(w http.ResponseWriter, name string) {
 // Start runs the application server and, when window is true, its native window.
 func Start(window bool) { StartUI(window) }
 
-func StartUI(window bool) {
-	addr := "127.0.0.1:0"
-	if p := os.Getenv("INFUSE_PORT"); p != "" {
-		addr = "127.0.0.1:" + p
-	}
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "infuse: cannot listen:", err)
-		os.Exit(1)
-	}
-	url := "http://" + ln.Addr().String()
+// uiMux routes the embedded UI and the API; every API call must come from the app itself.
+func uiMux(token string) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(r.URL.Path, "/")
@@ -78,10 +71,6 @@ func StartUI(window bool) {
 		w.Header().Set("content-type", "image/png")
 		_, _ = w.Write(desktop.IconPNG(64))
 	})
-	// The token is the app's own key to its API. Other sites cannot send it (CSRF), rebound hostnames are
-	// refused (DNS rebinding), and local processes — the agent's own Bash included — do not know it, so
-	// they cannot approve permissions, edit the oracle or run the executor through the API.
-	token := apiToken()
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		if err := sameOrigin(r.Host, r.Header.Get("Origin"), r.Method, r.Header.Get("X-Infuse"), token); err != nil {
 			sendJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
@@ -96,6 +85,25 @@ func StartUI(window bool) {
 		}
 		apiHandler(w, r)
 	})
+	return mux
+}
+
+func StartUI(window bool) {
+	addr := "127.0.0.1:0"
+	if p := os.Getenv("INFUSE_PORT"); p != "" {
+		addr = "127.0.0.1:" + p
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "infuse: cannot listen:", err)
+		os.Exit(1)
+	}
+	url := "http://" + ln.Addr().String()
+	// The token is the app's own key to its API. Other sites cannot send it (CSRF), rebound hostnames are
+	// refused (DNS rebinding), and local processes — the agent's own Bash included — do not know it, so
+	// they cannot approve permissions, edit the oracle or run the executor through the API.
+	token := apiToken()
+	mux := uiMux(token)
 	go func() { _ = http.Serve(ln, mux) }()
 	StartScheduler()
 	go agent.ResumeInterruptedSessions() // turns that infuse stopped by closing or restarting go on
@@ -110,7 +118,14 @@ func StartUI(window bool) {
 	}
 	process.AttachParentConsole()
 	fmt.Println("[infuse] " + url + "/#token=" + token)
-	select {}
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+	// the same cleanup the native window does: no orphan browser, process or connector on exit
+	browser.CloseAgentBrowsers()
+	closeViewBrowsers()
+	agent.StopAllProcs()
+	mcp.CloseAll()
 }
 
 func sendJSON(w http.ResponseWriter, code int, v any) {

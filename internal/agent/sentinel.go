@@ -14,7 +14,7 @@ import (
 var (
 	reTestDisabling = regexp.MustCompile(`(?i)(\.skip\s*\(|\.only\s*\(|\bxit\s*\(|\bxdescribe\s*\(|\bxtest\s*\()`)
 	reTestDecl      = regexp.MustCompile(`(?m)^\s*(?:test|it|describe|func\s+Test|def\s+test_|#\[test\])`)
-	reAssertion     = regexp.MustCompile(`\b(?:assert|expect|require)\s*\(`)
+	reAssertion     = regexp.MustCompile(`(?m)\b(?:assert|expect|require)\s*\(|\bassert\.\w+\(|\bt\.(?:Error|Errorf|Fatal|Fatalf|Fail|FailNow)\(|^\s*assert\s+\S`)
 )
 
 var (

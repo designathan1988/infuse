@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -16,7 +19,7 @@ func TestMultiStepWorkNeedsAConfirmedContract(t *testing.T) {
 	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "build the feature"}}}}
 	s.TurnStarts = []int{0}
 	s.Turn = 1
-	s.Tasks = []TaskItem{{Text: "a", Status: "pending"}, {Text: "b", Status: "pending"}}
+	s.gate.planSteps = 2
 	if why := s.contractGate(); why.ID != "contract.required" {
 		t.Fatalf("multi-step work without a contract: %q", why.Render("en"))
 	}
@@ -28,12 +31,18 @@ func TestMultiStepWorkNeedsAConfirmedContract(t *testing.T) {
 	if why := s.contractGate(); why.ID != "contract.required" {
 		t.Fatal("a contract for another request satisfied this one")
 	}
-	s.Tasks = []TaskItem{{Text: "only", Status: "pending"}}
+	s.gate.planSteps = 1
 	s.Contract = nil
 	if why := s.contractGate(); !why.Empty() {
 		t.Fatal("single-step work must not require a contract")
 	}
+	// tasks left from an earlier request are not this request's steps
+	s.gate.reset()
 	s.Tasks = []TaskItem{{Text: "a", Status: "pending"}, {Text: "b", Status: "pending"}}
+	if why := s.contractGate(); !why.Empty() {
+		t.Fatal("an old two-task plan demanded a contract for a new request")
+	}
+	s.gate.planSteps = 2
 	s.settings.RequireContract = boolPointer(false)
 	if why := s.contractGate(); !why.Empty() {
 		t.Fatal("a disabled contract policy must not block")
@@ -51,5 +60,39 @@ func TestContractGateOnlyAppliesToWritingCommands(t *testing.T) {
 		if !commandMayWrite(cmd) {
 			t.Errorf("%q is a write", cmd)
 		}
+	}
+}
+
+// Shortening the plan after it demanded a contract does not erase the requirement.
+func TestContractCannotBeAvoidedByShorteningThePlan(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	s.settings.RequireContract = boolPointer(true)
+	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "build the feature"}}}}
+	s.TurnStarts, s.Turn = []int{0}, 1
+	tc := &ToolContext{S: s, Root: s.Root, Cwd: s.Root}
+	if out, isErr := (todoTool{}).Run(context.Background(), tc, json.RawMessage(`{"tasks":[{"id":"1","text":"a","status":"in_progress","proof":"test a"},{"id":"2","text":"b","status":"pending","proof":"test b"}]}`)); isErr {
+		t.Fatal(out)
+	}
+	if why := s.contractGate(); why.ID != "contract.required" {
+		t.Fatalf("a two-step plan did not demand a contract: %q", why.Render("en"))
+	}
+	if out, isErr := (todoTool{}).Run(context.Background(), tc, json.RawMessage(`{"tasks":[{"id":"1","text":"everything","status":"in_progress","proof":"one test"}]}`)); isErr {
+		t.Fatal(out)
+	}
+	if why := s.contractGate(); why.ID != "contract.required" {
+		t.Fatal("shortening the plan erased the confirmed restatement")
+	}
+}
+
+// Abandoning work is visible: a blocked task must say why.
+func TestBlockedTaskNeedsAReason(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	s.gate.planSteps = 1
+	tc := &ToolContext{S: s, Root: s.Root, Cwd: s.Root}
+	out, isErr := (todoTool{}).Run(context.Background(), tc, json.RawMessage(`{"tasks":[{"id":"1","text":"only","status":"blocked"}]}`))
+	if !isErr || !strings.Contains(out, "reason") {
+		t.Fatalf("a blocked task without a reason was accepted: %q", out)
 	}
 }

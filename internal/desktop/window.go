@@ -101,7 +101,8 @@ func (w *winWindow) attachWebView() bool {
 
 // startPage injects the bridge, loads url and shows the window's chrome.
 func (w *winWindow) startPage(url string) {
-	w.chromium.Init(`window.__infusePost = function(s){ window.chrome.webview.postMessage(s) };
+	w.chromium.Init(`window.__infuseBrowserHost = true;
+window.__infusePost = function(s){ window.chrome.webview.postMessage(s) };
 window.__infusePostFiles = function(s, files){ window.chrome.webview.postMessageWithAdditionalObjects(s, files) };
 window.addEventListener('error', function(e){ window.__infusePost(JSON.stringify({id:1, method:'log', params:['error', String(e.message), String(e.filename)+':'+e.lineno]})) });
 window.addEventListener('unhandledrejection', function(e){ window.__infusePost(JSON.stringify({id:1, method:'log', params:['rejection', String(e.reason && e.reason.message || e.reason)]})) });` + bridgeScript)

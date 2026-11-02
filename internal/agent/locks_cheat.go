@@ -20,6 +20,7 @@ var (
 	reSwallowExit  = regexp.MustCompile(`\|\|\s*(?:true|:|exit\s+0)\b|;\s*(?:true|exit\s+0)\s*$|\bset\s+\+e\b`)
 	reSilenceOut   = regexp.MustCompile(`(?:^|[^0-9&2])>\s*/dev/null`) // stdout hidden: the result cannot be read
 	reTestInfra    = regexp.MustCompile(`(?i)(?:^|/)(?:conftest\.py|sitecustomize\.py|usercustomize\.py|[^/]*\.pth|jest\.(?:config|setup)[^/]*|vitest\.(?:config|setup|workspace)[^/]*|setuptests\.[jt]sx?|karma\.conf[^/]*|\.mocharc[^/]*|pytest\.ini|tox\.ini|playwright\.config[^/]*)$`)
+	reTestConfig   = regexp.MustCompile(`(?i)(?:^|/)(?:\.github/workflows/|\.gitlab-ci|azure-pipelines|bitbucket-pipelines|jenkinsfile)|(?:^|/)(?:jest|vitest|playwright|cypress)\.config[^/]*$|(?:^|/)package\.json$|\.nycrc[^/]*$|(?:^|/)(?:codecov|coveralls)\.ya?ml$|(?:^|/)\.c8rc[^/]*$`)
 	reAlwaysEqual  = regexp.MustCompile(`(?s)def\s+__(?:eq|ne)__\s*\([^)]*\)\s*(?:->\s*\w+\s*)?:\s*\n\s*return\s+(?:True|False)\b|\bequals\s*\([^)]*\)\s*(?::\s*\w+\s*)?\{\s*return\s+(?:true|false)\s*;?\s*\}`)
 	reClockPatch   = regexp.MustCompile(`\b(?:time\.time|time\.perf_counter|time\.monotonic|Date\.now|performance\.now|process\.hrtime)\s*=[^=]`)
 	reMarker       = regexp.MustCompile(`\b(?:TODO|FIXME|HACK|XXX)\b`)

@@ -27,7 +27,11 @@ func (tc *ToolContext) Clip(s string) string { return tc.clip(s) }
 func (tc *ToolContext) NoteScreenshot(url, html string) { tc.S.noteScreenshotAt(url, html) }
 
 // ShowURL makes the page the agent is using visible in the user's Browser pane.
-func (tc *ToolContext) ShowURL(u string) { tc.S.emit("browser", map[string]string{"url": u}) }
+func (tc *ToolContext) ShowURL(u string) { tc.S.showURL(u) }
+
+// showURL tells the UI which page to show in the Browser pane. The pane only follows the session on
+// screen, so an agent working in the background never takes over the user's view.
+func (s *Session) showURL(u string) { s.emit("browser", map[string]string{"url": u}) }
 
 type browserToolAdapter struct{}
 

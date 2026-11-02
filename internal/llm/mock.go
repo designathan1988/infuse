@@ -32,22 +32,17 @@ func (m *mockProvider) Stream(ctx context.Context, req ModelRequest, emit func(S
 	}
 	if d.lastIsToolResult() {
 		r := d.last()
-		if strings.Contains(r.Content, "diagnosis registered") {
-			return d.call("TodoWrite", map[string]any{"tasks": []map[string]any{
-				{"id": "1", "text": "make the mission goal true", "status": "in_progress", "proof": "the Done? criteria pass"},
-			}})
-		}
-		if strings.Contains(r.Content, "plan recorded") || strings.Contains(r.Content, "plano registrado") {
-			if blocked, ok := d.blockTodo(); ok {
-				return d.call("TodoWrite", blocked)
+		if d.isMission() {
+			if res, ok := d.missionStepToolResult(r); ok {
+				return res, nil
 			}
-			return d.say("Nothing further can be done without the missing information; the plan is blocked.")
-		}
-		if name, input, ok := d.demoStep(); ok {
-			return d.call(name, input)
-		}
-		if strings.Contains(r.Content, "ls-step") {
-			return d.call("Write", map[string]any{"path": "src/demo.ts", "content": "export const demo = () => `ok ${1}`;\n"})
+		} else {
+			if name, input, ok := d.demoStep(); ok {
+				return d.call(name, input)
+			}
+			if strings.Contains(r.Content, "ls-step") {
+				return d.call("Write", map[string]any{"path": "src/demo.ts", "content": "export const demo = () => `ok ${1}`;\n"})
+			}
 		}
 		return d.say("Done. The tool returned: " + core.Truncate(strings.TrimSpace(r.Content), 160))
 	}
@@ -57,8 +52,11 @@ func (m *mockProvider) Stream(ctx context.Context, req ModelRequest, emit func(S
 			text += b.Text
 		}
 	}
-	if strings.Contains(text, "[Mission") {
-		return d.call("Diagnosis", d.missionDiagnosis())
+	if d.isMission() {
+		if strings.Contains(text, "[Mission") {
+			return d.call("Diagnosis", d.missionDiagnosis())
+		}
+		return d.say("The scripted provider cannot make this criterion true.")
 	}
 	if strings.HasPrefix(strings.TrimSpace(text), "[infuse]") { // infuse's own note is not a user request
 		return d.say("The scripted provider cannot make this criterion true.")
@@ -72,6 +70,8 @@ func (m *mockProvider) Stream(ctx context.Context, req ModelRequest, emit func(S
 		return d.call("Write", map[string]any{"path": ".infuse/oracle/done.md", "content": "hack"})
 	case mockWants(text, "pergunta"):
 		return d.call("AskUserQuestion", map[string]any{"question": "Which approach?", "options": []string{"A", "B"}})
+	case mockWants(text, "browser"):
+		return d.call("Browser", map[string]any{"action": "navigate", "url": "http://localhost:7471/"})
 	}
 	return d.say("Hello. I am the demonstration provider: ask for “demo”, “heredoc”, “oracle” or “question” to see the filter act.")
 }
@@ -107,6 +107,26 @@ func (d *mockDialogue) lastIsToolResult() bool {
 
 // missionDiagnosis is evidence-free on purpose: a mission starts on a project with no citable text,
 // and the bootstrap case allows the diagnosis without quotes.
+// missionStepToolResult answers the tools a mission's first steps run: the diagnosis is followed by
+// a plan, and the plan's open tasks are then marked blocked when the goal cannot be met.
+func (d *mockDialogue) missionStepToolResult(r Block) (ModelResult, bool) {
+	if strings.Contains(r.Content, "diagnosis registered") {
+		res, err := d.call("TodoWrite", map[string]any{"tasks": []map[string]any{
+			{"id": "1", "text": "make the mission goal true", "status": "in_progress", "proof": "the Done? criteria pass"},
+		}})
+		return res, err == nil
+	}
+	if strings.Contains(r.Content, "plan recorded") {
+		if blocked, ok := d.blockTodo(); ok {
+			res, err := d.call("TodoWrite", blocked)
+			return res, err == nil
+		}
+		res, err := d.say("Nothing further can be done without the missing information; the plan is blocked.")
+		return res, err == nil
+	}
+	return ModelResult{}, false
+}
+
 func (d *mockDialogue) missionDiagnosis() map[string]any {
 	return map[string]any{
 		"problem":    "the mission asks for a file that does not exist yet",
@@ -235,6 +255,22 @@ func (d *mockDialogue) isDemo() bool {
 		}
 		for _, b := range msg.Content {
 			if b.Type == "text" && mockWants(b.Text, "demo") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isMission keeps the mission script out of the demo: both run on the same provider, and the demo
+// has its own multi-step protocol.
+func (d *mockDialogue) isMission() bool {
+	for _, msg := range d.req.Messages {
+		if msg.Role != "user" {
+			continue
+		}
+		for _, b := range msg.Content {
+			if b.Type == "text" && strings.Contains(b.Text, "[Mission") {
 				return true
 			}
 		}

@@ -12,18 +12,31 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 )
 
 // ---------------------------------------------------------------- local API: same-origin only
 
+var (
+	tokenOnce sync.Once
+	tokenVal  string
+)
+
 // apiToken is this run's key to the API: random, or INFUSE_TOKEN when set (development with `infuse serve`).
+// The variable is removed from the process environment after this first read: every child process
+// (the agent's Bash, hooks, MCP servers, the executor) inherits the environment, and the session's own
+// shell must not be able to approve permissions, edit the oracle or run the executor through the API.
 func apiToken() string {
-	if t := os.Getenv("INFUSE_TOKEN"); t != "" {
-		return t
-	}
-	b := make([]byte, 24)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+	tokenOnce.Do(func() {
+		tokenVal = os.Getenv("INFUSE_TOKEN")
+		_ = os.Unsetenv("INFUSE_TOKEN")
+		if tokenVal == "" {
+			b := make([]byte, 24)
+			_, _ = rand.Read(b)
+			tokenVal = hex.EncodeToString(b)
+		}
+	})
+	return tokenVal
 }
 
 // sameOrigin accepts a request only from the app itself: the Host must be this server's loopback

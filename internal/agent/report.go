@@ -182,6 +182,9 @@ func (reportTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 		return err.Error(), true
 	}
 	s := tc.S
+	if changed, _, _ := s.turnState(); len(changed) > 0 && len(r.Claims) == 0 {
+		return tc.Say(M("report.no_claims")), true // a changing turn states what it did, claim by claim
+	}
 	r.Turn, r.CallID = s.Turn, tc.CallID
 	var lines []string
 	for _, m := range s.checkReport(&r) {

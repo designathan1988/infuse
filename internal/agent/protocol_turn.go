@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"infuse/internal/workspace"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -28,6 +29,9 @@ func (s *Session) turnObligation(ctx context.Context) Msg {
 	}
 	// whatever changed the tree outside the write tools is judged before anything else
 	if why := s.auditShellWrites(); !why.Empty() {
+		return why
+	}
+	if why := s.dependencyObligation(); !why.Empty() {
 		return why
 	}
 	// a turn that only started a server changed no file and still owes an account of it
@@ -120,6 +124,12 @@ func (s *Session) acceptanceGate(ctx context.Context, changed []CheckpointFile) 
 	}
 	Journal(s.Root, JournalEntry{Kind: "gate", Detail: "delivery rejected by the user"})
 	s.emitMsg("gate", M("turn.rejected"))
+	s.Mu.Lock()
+	mission := s.Mission != nil && s.Mission.State == "running"
+	s.Mu.Unlock()
+	if mission { // a mission cannot continue as if the user had accepted the delivery
+		s.endMissionMsg("parada", M("mission.end_rejected"))
+	}
 	return Msg{}
 }
 
@@ -181,6 +191,16 @@ func (s *Session) turnState() (changed []CheckpointFile, open []string, asks int
 		}
 	}
 	return changed, open, asks
+}
+
+// dependencyObligation refuses a turn whose installed dependencies changed without an install command:
+// a patched runner or library would make the checks measure code the user never approved.
+func (s *Session) dependencyObligation() Msg {
+	start := workspace.TurnDependencies(s.Root, s.ID, s.Turn)
+	if start == "" || workspace.DependencyFingerprint(s.workRoot()) == start {
+		return Msg{}
+	}
+	return M("turn.dependencies")
 }
 
 // missingDeclaredProcs: a turn never ends leaving a background process it did not account for. Every

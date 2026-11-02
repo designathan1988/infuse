@@ -125,7 +125,7 @@ func TestTurnWithChangesNeedsAReport(t *testing.T) {
 	if why := s.missingReport(); why.String() != M("gate.no_report", "count", 1).String() {
 		t.Fatal(why)
 	}
-	s.Messages = append(s.Messages, Message{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "r", Name: "Report", Input: json.RawMessage(`{"summary":"x","claims":[]}`)}}})
+	s.Messages = append(s.Messages, Message{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "r", Name: "Report", Input: json.RawMessage(`{"summary":"x","claims":[{"text":"created a.js","kind":"file","ref":"a.js"}]}`)}}})
 	if !s.missingReport().Empty() {
 		t.Fatal("report present")
 	}
@@ -142,5 +142,20 @@ func TestDeepSeekHasAPriceSoBudgetsWork(t *testing.T) {
 	}
 	if s.HasPrice("unknown-model") {
 		t.Fatal("unknown model priced")
+	}
+}
+
+// A declared check must be run as declared, not as a narrowed variant that proves nothing.
+func TestDeclaredVerificationNeedsTheExactCommand(t *testing.T) {
+	if !commandRuns("npm test", "npm test") {
+		t.Fatal("the declared command did not match itself")
+	}
+	if !commandRuns("cd app && npm test", "npm test") {
+		t.Fatal("a declared command after cd did not match")
+	}
+	for _, cheat := range []string{"go test ./... -run '^$'", "npm test -- --testNamePattern=^$", "go test ./... -count=0"} {
+		if commandRuns(cheat, "go test ./...") || commandRuns(cheat, "npm test") {
+			t.Errorf("a narrowed command satisfied the declaration: %s", cheat)
+		}
 	}
 }

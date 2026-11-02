@@ -238,12 +238,17 @@ const EVENT_HANDLERS = {
     if (!raw) return;
     let u;
     try { u = new URL(raw); } catch { return; }
-    const local = u.hostname === 'localhost' || u.hostname === '0.0.0.0' || u.hostname === '[::1]' || u.hostname.startsWith('127.');
+    const h = u.hostname;
+    const local = h === 'localhost' || h === '0.0.0.0' || h === '[::1]' || h.startsWith('127.') || h.endsWith('.localhost') || h.endsWith('.local');
     if (!local) return;
-    import('../panes/index.js').then(p => {
+    // Only the session on screen: an agent working in another session must not take over this pane.
+    const v = ui.views.get()[ui.focus.get()];
+    if (!v || v.sid !== L.id) return;
+    const open = n => import('../panes/index.js').then(p => {
       p.togglePane('browser', true);
-      setTimeout(() => p.paneCall('browser', 'go', u.href), 300);
+      if (!p.paneCall('browser', 'openAgent', u.href) && n < 25) setTimeout(() => open(n + 1), 100);
     });
+    open(0);
   },
 };
 

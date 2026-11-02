@@ -25,8 +25,10 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 	}
 	// the latest exchange stays verbatim; both are fresh slices: appending the request below must not
 	// write over the exchange that is kept (a shared backing array lost the agent's tool calls once)
-	keep := append([]Message{}, msgs[len(msgs)-2:]...)
-	older := append([]Message{}, msgs[:len(msgs)-2]...)
+	keepFrom := len(msgs) - 2
+	keep := append([]Message{}, msgs[keepFrom:]...)
+	older := append([]Message{}, msgs[:keepFrom]...)
+	req, reqOK := s.currentRequestIn(msgs)
 	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: compactRequest + " Be specific and concise."}}})
 	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: repairTranscript(older), MaxTokens: 4000}, func(StreamEvent) {})
 	if err != nil {
@@ -39,13 +41,49 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 		}
 	}
 	s.Mu.Lock()
-	s.Messages = append(compactionHead("[Context compacted — summary of the work so far]\n\n"+summary, verbatimRequests(older[:len(older)-1])), keep...)
-	s.TurnStarts = []int{0}
+	head := compactionHead("[Context compacted — summary of the work so far]\n\n"+summary, verbatimRequests(older[:len(older)-1]))
+	s.compactedTranscriptLocked(head, keep, keepFrom, req, reqOK)
 	s.Compactions++
 	s.Cost += s.settings.CostOf(s.fastModel(), res.Usage)
 	s.Mu.Unlock()
 	s.emit("compacted", map[string]any{"summary": summary})
 	return nil
+}
+
+// currentRequestIn is the message that opened the current turn, in msgs.
+func (s *Session) currentRequestIn(msgs []Message) (Message, bool) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) {
+		if i := s.TurnStarts[s.Turn-1]; i >= 0 && i < len(msgs) {
+			return msgs[i], true
+		}
+	}
+	return Message{}, false
+}
+
+// compactedTranscriptLocked replaces the conversation and rebuilds the turn index table. The current
+// turn keeps pointing at its own request: when the request fell in the summarized part, it is put back
+// verbatim in front of the kept exchange. Earlier turns point at the head: their messages are a summary.
+func (s *Session) compactedTranscriptLocked(head, keep []Message, keepFrom int, req Message, reqOK bool) {
+	msgs := append([]Message{}, head...)
+	pos := -1
+	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) {
+		switch old := s.TurnStarts[s.Turn-1]; {
+		case old >= keepFrom:
+			pos = len(head) + old - keepFrom
+		case reqOK:
+			msgs = append(msgs, req)
+			pos = len(head)
+		}
+	}
+	msgs = append(msgs, keep...)
+	s.Messages = msgs
+	starts := make([]int, max(s.Turn, 1))
+	if pos >= 0 {
+		starts[len(starts)-1] = pos
+	}
+	s.TurnStarts = starts
 }
 
 // compactRequest is what the model is asked when the conversation is summarized.

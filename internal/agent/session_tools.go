@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"infuse/internal/shellparse"
+	"infuse/internal/workspace"
 	"path/filepath"
 	"strings"
 	"time"
@@ -97,9 +98,6 @@ func (s *Session) preflight(ctx context.Context, tool Tool, b Block, toolInput a
 	if m := s.banCheck(b.Name, b.Input); !m.Empty() { // what the user forbade in this session
 		return s.refuse(b.ID, bashCommand(b.Input), m)
 	}
-	if inv, _ := isResearch(b.Name, b.Input); inv && b.Name != "Read" || b.Name == "Read" && isSourceRead(b.Input) {
-		s.noteResearch(b.Name, b.Input)
-	}
 	if c := tool.Category(); (c == "write" || c == "exec") && !(b.Name == "Bash" && helpCommand(bashCommand(b.Input))) {
 		if s.requireReading() {
 			if why := s.requiredReading(); !why.Empty() { // the documents the instructions point to, read in full
@@ -144,18 +142,7 @@ func (s *Session) writeGuards(ctx context.Context, tool Tool, b Block) (string, 
 			return s.refuse(b.ID, "", M("shortcut.justify", "lines", strings.Join(lines, "\n")))
 		}
 	}
-	s.markGated(rel) // everything above passed: the shell audit may skip this path
 	return "", false
-}
-
-// markGated records a path the write gates accepted in this turn.
-func (s *Session) markGated(rel string) {
-	s.Mu.Lock()
-	if s.gate.gatedPaths == nil {
-		s.gate.gatedPaths = map[string]bool{}
-	}
-	s.gate.gatedPaths[rel] = true
-	s.Mu.Unlock()
 }
 
 func (s *Session) commandGuards(ctx context.Context, tool Tool, b Block) (string, bool) {
@@ -214,7 +201,11 @@ func (s *Session) shortcutGuard(ctx context.Context, tool Tool, b Block) ([]Msg,
 func (s *Session) recordToolOutcome(tool Tool, b Block, out string, isErr bool) {
 	s.gateRecord(b.ID, b.Name, tool.Category(), out, isErr)
 	if b.Name == "Bash" {
-		s.recordRun(bashCommand(b.Input), !isErr)
+		cmd := bashCommand(b.Input)
+		s.recordRun(cmd, !isErr)
+		if !isErr && installerCommand(cmd) {
+			workspace.RefreshTurnDependencies(s.Root, s.ID, s.Turn)
+		}
 	} else if tool.Category() == "write" && !isErr {
 		s.noteWrite()
 		s.noteFileState(toolPath(b.Input))
@@ -225,12 +216,16 @@ func (s *Session) recordToolOutcome(tool Tool, b Block, out string, isErr bool) 
 			}
 			s.noteUIChange(relTo(s.workRoot(), abs))
 			s.noteAuthored(abs, writtenTexts(b.Input)...)
+			s.markGated(relTo(s.workRoot(), abs)) // the content this successful write left, not the path alone
 		}
 	}
 }
 
 func (s *Session) finishToolOutput(ctx context.Context, b Block, toolInput any, out string, isErr bool, shortcutWarn []Msg) string {
 	if !isErr {
+		if inv, _ := isResearch(b.Name, b.Input); inv {
+			s.noteResearch(b.Name, b.Input) // a failed research call documents nothing
+		}
 		switch b.Name {
 		case "Browser":
 			var in struct{ Action string }

@@ -9,9 +9,11 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/config"
 	"infuse/internal/core"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 type Tab struct {
@@ -30,6 +32,7 @@ type Tab struct {
 var (
 	viewBrowsers = map[string]*Browser{} // project → browser
 	viewTabs     = map[string]*Tab{}     // project|tab → page
+	agentTabs    = map[string]*Tab{}     // project|tab → a viewer attached to the agent's own page
 	viewMu       sync.Mutex
 )
 
@@ -51,17 +54,20 @@ func viewBrowserFor(root string) (*Browser, error) {
 	return b, nil
 }
 
-// ViewTab returns the tab's page, creating the browser and the page when needed.
+// ViewTab returns the tab's page, creating the browser and the page when needed. A tab attached to
+// the agent page is returned as it is: the pane shows the page the agent drives.
 func ViewTab(root, id string, w, h int) (*Tab, error) {
 	viewMu.Lock()
 	defer viewMu.Unlock()
 	key := root + "|" + id
-	if t := viewTabs[key]; t != nil {
-		t.page.mu.Lock()
-		ok := !t.page.closed
-		t.page.mu.Unlock()
-		if ok {
-			return t, nil
+	for _, tabs := range []map[string]*Tab{agentTabs, viewTabs} {
+		if t := tabs[key]; t != nil {
+			t.page.mu.Lock()
+			ok := !t.page.closed
+			t.page.mu.Unlock()
+			if ok {
+				return t, nil
+			}
 		}
 	}
 	b, err := viewBrowserFor(root)
@@ -139,6 +145,25 @@ func (t *Tab) event(method string, params json.RawMessage) {
 			t.mu.Unlock()
 			t.broadcast(map[string]any{"type": "nav", "url": url, "title": title, "loading": method != "Page.loadEventFired"})
 		}()
+	}
+}
+
+// StartStream begins the screencast without changing the page's viewport: an attached agent page is
+// measured at the size the agent set, never reflowed by the pane.
+func (t *Tab) StartStream(w, h int) {
+	if w < 200 {
+		w = 200
+	}
+	if h < 150 {
+		h = 150
+	}
+	t.mu.Lock()
+	t.width, t.height = w, h
+	started := t.streaming
+	t.streaming = true
+	t.mu.Unlock()
+	if !started {
+		_, _ = t.page.call(context.Background(), "Page.startScreencast", map[string]any{"format": "jpeg", "quality": 82, "maxWidth": 5120, "maxHeight": 2880, "everyNthFrame": 1})
 	}
 }
 
@@ -250,13 +275,69 @@ func (t *Tab) Input(ctx context.Context, kind string, body map[string]any) (json
 
 func (t *Tab) Close() {
 	viewMu.Lock()
-	for k, v := range viewTabs {
-		if v == t {
-			delete(viewTabs, k)
+	for _, tabs := range []map[string]*Tab{viewTabs, agentTabs} {
+		for k, v := range tabs {
+			if v == t {
+				delete(tabs, k)
+			}
 		}
 	}
 	viewMu.Unlock()
 	t.page.close()
+}
+
+// ViewAgentTab attaches the pane to the page the agent's Browser tool drives: a second CDP
+// connection on the same target, streamed like any other tab. The agent keeps controlling the page;
+// the pane sees its screens and its address without resizing it.
+func ViewAgentTab(root, id string, st config.Settings, w, h int) (*Tab, error) {
+	viewMu.Lock()
+	defer viewMu.Unlock()
+	key := root + "|" + id
+	if t := agentTabs[key]; t != nil {
+		t.page.mu.Lock()
+		ok := !t.page.closed
+		t.page.mu.Unlock()
+		if ok {
+			t.StartStream(w, h)
+			return t, nil
+		}
+	}
+	p, err := AgentPageFor(root, st)
+	if err != nil {
+		return nil, err
+	}
+	p.b.mu.Lock()
+	port, target := p.b.port, p.b.targetID
+	p.b.mu.Unlock()
+	if port == "" || target == "" {
+		return nil, fmt.Errorf("the agent page has no debuggable target")
+	}
+	ws, err := wsDial("ws://127.0.0.1:" + port + "/devtools/page/" + target)
+	if err != nil {
+		return nil, err
+	}
+	b := &Browser{port: port, targetID: target, ws: ws, detached: true, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
+	t := &Tab{page: b, subs: map[chan []byte]struct{}{}}
+	b.onEvent = t.event
+	go b.readLoop()
+	// events and the screencast belong to this connection: Page.enable is required on it, even
+	// though the agent's own connection enabled the domain earlier.
+	_, _ = b.call(context.Background(), "Page.enable", nil)
+	_, _ = b.call(context.Background(), "Runtime.enable", nil)
+	// the page is already where the agent left it: read the address now, so the pane opens on it
+	var url, title string
+	if raw, err := b.eval(context.Background(), "location.href"); err == nil {
+		_ = json.Unmarshal(raw, &url)
+	}
+	if raw, err := b.eval(context.Background(), "document.title"); err == nil {
+		_ = json.Unmarshal(raw, &title)
+	}
+	t.mu.Lock()
+	t.url, t.title = url, title
+	t.mu.Unlock()
+	t.StartStream(w, h)
+	agentTabs[key] = t
+	return t, nil
 }
 
 // CloseViewTabs closes every streamed browser (application shutdown).
@@ -266,6 +347,10 @@ func CloseViewTabs() {
 	for k, b := range viewBrowsers {
 		b.close()
 		delete(viewBrowsers, k)
+	}
+	for k, t := range agentTabs {
+		t.page.close() // detached: closes the viewer's connection, never the agent's page
+		delete(agentTabs, k)
 	}
 	viewTabs = map[string]*Tab{}
 }

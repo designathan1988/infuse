@@ -34,3 +34,42 @@ func TestDependencyFingerprintFollowsLockfilesAndEntrypoints(t *testing.T) {
 		t.Fatal("a changed runner did not change the fingerprint")
 	}
 }
+
+// Patching a library the tests import is a dependency change even when the lockfile and .bin stay the same.
+func TestDependencyFingerprintCoversInstalledLibraries(t *testing.T) {
+	root := t.TempDir()
+	lib := filepath.Join(root, "node_modules", "jest-runner")
+	if err := os.MkdirAll(lib, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(lib, "index.js")
+	if err := os.WriteFile(file, []byte("module.exports = () => 0;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	base := DependencyFingerprint(root)
+	if err := os.WriteFile(file, []byte("module.exports = () => 0; // patched\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if DependencyFingerprint(root) == base {
+		t.Fatal("a patched installed library did not change the fingerprint")
+	}
+}
+
+// The turn manifest keeps the start fingerprint and can rebase it after an approved install.
+func TestTurnDependenciesCanBeRebased(t *testing.T) {
+	root := t.TempDir()
+	if err := SnapshotTurn(root, root, "s1", 1); err != nil {
+		t.Fatal(err)
+	}
+	start := TurnDependencies(root, "s1", 1)
+	lib := filepath.Join(root, "node_modules", "x")
+	_ = os.MkdirAll(lib, 0o755)
+	_ = os.WriteFile(filepath.Join(lib, "index.js"), []byte("x\n"), 0o644)
+	if start == DependencyFingerprint(root) {
+		t.Fatal("the fingerprint did not follow a new installed file")
+	}
+	RefreshTurnDependencies(root, "s1", 1)
+	if TurnDependencies(root, "s1", 1) != DependencyFingerprint(root) {
+		t.Fatal("the rebase did not record the installed tree")
+	}
+}

@@ -139,9 +139,20 @@ func (s *Session) compactFallback() {
 		}
 	}
 	keep := append([]Message{}, s.Messages[keepFrom:]...)
-	s.Messages = append(compactionHead(truncate(b.String(), 60000), verbatimRequests(older)), keep...)
-	s.TurnStarts = []int{0}
+	req, reqOK := s.currentRequestInLocked()
+	head := compactionHead(truncate(b.String(), 60000), verbatimRequests(older))
+	s.compactedTranscriptLocked(head, keep, keepFrom, req, reqOK)
 	s.Compactions++
+}
+
+// currentRequestInLocked is currentRequestIn for the caller already holding the lock.
+func (s *Session) currentRequestInLocked() (Message, bool) {
+	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) {
+		if i := s.TurnStarts[s.Turn-1]; i >= 0 && i < len(s.Messages) {
+			return s.Messages[i], true
+		}
+	}
+	return Message{}, false
 }
 
 // compactResilient summarizes the conversation, falling back to compactFallback when the summary fails,

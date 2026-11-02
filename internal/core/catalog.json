@@ -119,6 +119,10 @@
     "en": "[infuse] The screenshot was taken at {got}, but the criteria measure {expected}: open the project's own server and capture the changed screen there.",
     "pt-BR": "[infuse] A captura foi feita em {got}, mas os critérios medem {expected}: abra o servidor do próprio projeto e fotografe a tela alterada ali."
   },
+  "agent.screenshot_path": {
+    "en": "[infuse] The screenshot was taken at {got}, but the criteria measure {expected}: capture that page (same origin) instead.",
+    "pt-BR": "[infuse] A captura foi feita em {got}, mas os critérios medem {expected}: fotografe essa página (mesma origem)."
+  },
   "agent.screenshot_html": {
     "en": "[infuse] The screenshot was taken at the right address but does not show what the criteria measure ({expected}). Open the state the criteria describe, capture it, and look at the image before reporting.",
     "pt-BR": "[infuse] A captura foi feita no endereço certo, mas não mostra o que os critérios medem ({expected}). Abra o estado que os critérios descrevem, fotografe e olhe a imagem antes de relatar."
@@ -1699,6 +1703,10 @@
     "en": "the previous diagnosis carries over to this turn (the user sees it marked as a continuation)",
     "pt-BR": "o diagnóstico anterior vale para este turno (o usuário o vê marcado como continuação)"
   },
+  "diag.ev_authored": {
+    "en": "evidence {n}: {file} was written by this session; a file you wrote yourself cannot prove what the project already knows",
+    "pt-BR": "evidência {n}: {file} foi escrita por esta sessão; um arquivo que você mesmo escreveu não prova o que o projeto já sabe"
+  },
   "diag.ev_missing": {
     "en": "evidence {n}: {file} does not exist",
     "pt-BR": "evidência {n}: {file} não existe"
@@ -2807,6 +2815,10 @@
     "en": "the Done? criteria passed",
     "pt-BR": "os critérios do Pronto? passaram"
   },
+  "mission.end_rejected": {
+    "en": "the user rejected the delivery",
+    "pt-BR": "o usuário recusou a entrega"
+  },
   "mission.end_stopped": {
     "en": "stopped by the user",
     "pt-BR": "parada pelo usuário"
@@ -3399,6 +3411,10 @@
     "en": "[infuse] Blocked: these packages were published less than 30 days ago: {packages}. Names invented by models get registered by attackers; confirm in the official documentation that this is the package meant, and ask the user before installing it.",
     "pt-BR": "[infuse] Bloqueado: estes pacotes foram publicados há menos de 30 dias: {packages}. Nomes inventados por modelos acabam registrados por atacantes; confirme na documentação oficial que é o pacote certo e pergunte ao usuário antes de instalar."
   },
+  "pkg.unverified": {
+    "en": "the package {packages} could not be verified against the registry yet; the command was not run. Try it again in a moment — a name that does not exist is refused.",
+    "pt-BR": "não foi possível verificar o pacote {packages} no registro ainda; o comando não rodou. Tente de novo em instantes — um nome que não existe é recusado."
+  },
   "pkg.missing": {
     "en": "[infuse] Blocked: these packages do not exist in their registry: {packages}. The name was probably invented; find the real package in the official documentation.",
     "pt-BR": "[infuse] Bloqueado: estes pacotes não existem no registro: {packages}. O nome provavelmente foi inventado; encontre o pacote real na documentação oficial."
@@ -3430,6 +3446,10 @@
   "plan.no_open": {
     "en": "a plan must contain at least one open task; a first plan cannot arrive already finished",
     "pt-BR": "um plano precisa ter ao menos uma tarefa aberta; um primeiro plano não pode chegar já concluído"
+  },
+  "plan.blocked_reason": {
+    "en": "plan refused: a blocked task must say why it is blocked (put the reason in its proof): {tasks}",
+    "pt-BR": "plano recusado: uma tarefa bloqueada precisa dizer por que está bloqueada (coloque o motivo na proof): {tasks}"
   },
   "plan.no_proof": {
     "en": "plan refused: every open task needs a proof (the command, the page or the file that will prove it works). Without proof: {tasks}",
@@ -3834,6 +3854,10 @@
   "report.claim": {
     "en": "- [{status}] {text} — {evidence}",
     "pt-BR": "- [{status}] {text} — {evidence}"
+  },
+  "report.no_claims": {
+    "en": "the report has no claims: state what you did as claims, each with the evidence it relies on",
+    "pt-BR": "o relatório não tem alegações: diga o que foi feito em alegações, cada uma com a evidência em que se apoia"
   },
   "report.confirmed": {
     "en": "confirmed by running",
@@ -4659,6 +4683,10 @@
     "en": "test skipped (t.Skip)",
     "pt-BR": "teste pulado (t.Skip)"
   },
+  "shortcut.test_config": {
+    "en": "test configuration that hides tests or failures (continue-on-error, passWithNoTests, ignored test paths)",
+    "pt-BR": "configuração de teste que esconde testes ou falhas (continue-on-error, passWithNoTests, caminhos de teste ignorados)"
+  },
   "shortcut.test_true": {
     "en": "test script that never fails (|| true)",
     "pt-BR": "script de teste que nunca falha (|| true)"
@@ -5294,6 +5322,10 @@
   "turn.open_procs": {
     "en": "[infuse] Blocked: these background processes are still running and the Report does not account for them: {items}. Name each one in the Report (a claim of kind other with its id and what it serves) or stop it with KillShell — a turn does not leave processes it cannot explain.",
     "pt-BR": "[infuse] Bloqueado: estes processos em segundo plano continuam rodando e o Report não os menciona: {items}. Cite cada um no Report (uma afirmação de tipo other com o id e o que ele serve) ou encerre com KillShell — um turno não deixa processos que não explica."
+  },
+  "turn.dependencies": {
+    "en": "the installed dependencies changed during the turn without an install command; revert the change, or run the project's installer so the change is the one it approved",
+    "pt-BR": "as dependências instaladas mudaram durante o turno sem um comando de instalação; reverta a mudança, ou rode o instalador do projeto para que a mudança seja a que ele aprovou"
   },
   "turn.open_tasks": {
     "en": "[infuse] The turn cannot end: the plan has open tasks — {tasks}. Complete each one and mark it with TodoWrite (done), or mark it as blocked and explain why in the Report.",

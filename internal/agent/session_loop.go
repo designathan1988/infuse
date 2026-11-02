@@ -29,10 +29,9 @@ type runState struct {
 func (s *Session) run(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
-			s.Mu.Lock()
-			s.lastError = fmt.Sprint(r)
-			s.Mu.Unlock()
-			s.setState("error")
+			// fail clears Working and ends a running mission: a panic must not leave a session
+			// "working" on disk, to be resumed forever, or a mission without a terminal state.
+			s.fail(fmt.Errorf("panic in the agent loop: %v", r))
 		}
 		s.save()
 	}()

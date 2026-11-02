@@ -65,6 +65,61 @@ func TestProtocolDecidesNotTheModel(t *testing.T) {
 	checkTurnObligations(t, s, root)
 }
 
+// The project's instruction files are never edited by the agent, even though they are prose.
+func TestInstructionFilesAreRefusedBeforeTheProseExemption(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	in, _ := json.Marshal(map[string]string{"path": "CLAUDE.md", "content": "# new rules\n"})
+	if why := s.protocolCheckWrite("Write", in); why.ID != "instr.no_edit" {
+		t.Fatalf("a written instruction file passed: %q", why.Render("en"))
+	}
+}
+
+// Research counts only when the call succeeded and names the dependency as a whole name; a project
+// file named after it is not its documentation.
+func TestResearchMustNameTheDependency(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	call := func(name, field, value string) Block {
+		in, _ := json.Marshal(map[string]string{field: value})
+		return Block{Type: "tool_use", ID: "r", Name: name, Input: in}
+	}
+	research := func(b Block, ok bool) { s.finishToolOutput(context.Background(), b, nil, "result", !ok, nil) }
+
+	research(call("WebSearch", "query", "regular expression syntax"), false)
+	if s.researchedFor("express") {
+		t.Fatal("a failed search for another subject counted as express documentation")
+	}
+	research(call("WebSearch", "query", "forms over data"), false)
+	if s.researchedFor("ms") {
+		t.Fatal("ms matched inside forms")
+	}
+	research(call("WebSearch", "query", "express middleware documentation"), true)
+	if !s.researchedFor("express") {
+		t.Fatal("a search that names express was not counted")
+	}
+	research(call("Read", "path", "src/lodash.js"), true)
+	if s.researchedFor("lodash") {
+		t.Fatal("a project file named after the package counted as its documentation")
+	}
+	research(call("Read", "path", "node_modules/lodash/index.js"), true)
+	if !s.researchedFor("lodash") {
+		t.Fatal("the package's own source was not counted")
+	}
+	research(call("WebSearch", "query", "github actions"), true)
+	if s.researchedHost("api.github.com") {
+		t.Fatal("an unrelated github search counted as the API documentation")
+	}
+	research(call("WebFetch", "url", "https://docs.github.com/en/rest"), false)
+	if s.researchedHost("api.github.com") {
+		t.Fatal("a failed fetch counted as documentation")
+	}
+	research(call("WebFetch", "url", "https://docs.github.com/en/rest"), true)
+	if !s.researchedHost("api.github.com") {
+		t.Fatal("the service documentation was not counted")
+	}
+}
+
 func checkTurnObligations(t *testing.T, s *Session, root string) {
 	t.Helper()
 	s.Turn, s.TurnStarts = 1, []int{0}
