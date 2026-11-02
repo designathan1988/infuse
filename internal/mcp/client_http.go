@@ -26,6 +26,11 @@ func (c *Client) newPostRequest(ctx context.Context, body []byte) (*http.Request
 	for k, v := range c.cfg.Headers {
 		req.Header.Set(k, os.ExpandEnv(v))
 	}
+	if req.Header.Get("Authorization") == "" {
+		if tok := c.bearer(ctx); tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+	}
 	c.mu.Lock()
 	if c.sessionID != "" {
 		req.Header.Set("Mcp-Session-Id", c.sessionID)

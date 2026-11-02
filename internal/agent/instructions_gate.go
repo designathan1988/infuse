@@ -98,12 +98,13 @@ func writtenTexts(input json.RawMessage) []string {
 	var in struct {
 		Content   string `json:"content"`
 		NewString string `json:"new_string"`
+		Source    string `json:"source"` // NotebookEdit
 		Edits     []struct {
 			NewString string `json:"new_string"`
 		} `json:"edits"`
 	}
 	_ = json.Unmarshal(input, &in)
-	out := []string{in.Content, in.NewString}
+	out := []string{in.Content, in.NewString, in.Source}
 	for _, e := range in.Edits {
 		out = append(out, e.NewString)
 	}

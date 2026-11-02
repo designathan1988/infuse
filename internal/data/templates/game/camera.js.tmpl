@@ -1,0 +1,13 @@
+// The camera: perspective projection from world space to the screen, as plain math.
+export function rotateY([x, y, z], angle) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return [x * c + z * s, y, z * c - x * s];
+}
+
+export function project([x, y, z], camera, width, height) {
+  const depth = z + camera.distance;
+  if (depth <= camera.near) return null;
+  const scale = (camera.focal * height) / depth;
+  return [width / 2 + x * scale, height / 2 - y * scale];
+}

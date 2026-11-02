@@ -2,7 +2,8 @@
 
 package config
 
-// Windows Credential Manager (generic credentials, persisted per user on this machine).
+// Windows Credential Manager, read only to migrate what older builds stored there: it answers a Low
+// integrity process of the same user, so secrets now live in secrets_file_windows.go.
 
 import (
 	"errors"
@@ -14,7 +15,6 @@ import (
 
 var (
 	advapi32       = windows.NewLazySystemDLL("advapi32.dll")
-	procCredWriteW = advapi32.NewProc("CredWriteW")
 	procCredReadW  = advapi32.NewProc("CredReadW")
 	procCredDelete = advapi32.NewProc("CredDeleteW")
 	procCredFree   = advapi32.NewProc("CredFree")
@@ -36,28 +36,11 @@ type credentialW struct {
 }
 
 const (
-	credTypeGeneric         = 1
-	credPersistLocalMachine = 2
-	errorNotFound           = syscall.Errno(1168)
+	credTypeGeneric = 1
+	errorNotFound   = syscall.Errno(1168)
 )
 
-type osSecrets struct{}
-
-func (osSecrets) Set(name, value string) error {
-	target, _ := windows.UTF16PtrFromString(name)
-	user, _ := windows.UTF16PtrFromString("infuse")
-	blob := []byte(value)
-	c := credentialW{Type: credTypeGeneric, TargetName: target, UserName: user, Persist: credPersistLocalMachine, CredentialBlobSize: uint32(len(blob))}
-	if len(blob) > 0 {
-		c.CredentialBlob = &blob[0]
-	}
-	if r, _, err := procCredWriteW.Call(uintptr(unsafe.Pointer(&c)), 0); r == 0 {
-		return err
-	}
-	return nil
-}
-
-func (osSecrets) Get(name string) (string, error) {
+func credGet(name string) (string, error) {
 	target, _ := windows.UTF16PtrFromString(name)
 	var pc *credentialW
 	if r, _, err := procCredReadW.Call(uintptr(unsafe.Pointer(target)), credTypeGeneric, 0, uintptr(unsafe.Pointer(&pc))); r == 0 {
@@ -73,7 +56,7 @@ func (osSecrets) Get(name string) (string, error) {
 	return string(unsafe.Slice(pc.CredentialBlob, pc.CredentialBlobSize)), nil
 }
 
-func (osSecrets) Delete(name string) error {
+func credDelete(name string) error {
 	target, _ := windows.UTF16PtrFromString(name)
 	if r, _, err := procCredDelete.Call(uintptr(unsafe.Pointer(target)), credTypeGeneric, 0); r == 0 && !errors.Is(err, errorNotFound) {
 		return err

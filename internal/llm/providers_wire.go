@@ -25,7 +25,7 @@ const (
 
 func init() {
 	RegisterProvider("openai", func(cfg ProviderConfig) Provider {
-		return &openAIProvider{key: cfg.APIKey, base: orDefault(cfg.BaseURL, openAIDefaultBase), client: httpClient()}
+		return &openAIProvider{key: cfg.APIKey, base: orDefault(cfg.BaseURL, openAIDefaultBase), wire: cfg.Wire, client: httpClient()}
 	})
 	RegisterProvider("google", func(cfg ProviderConfig) Provider {
 		return &googleProvider{key: cfg.APIKey, base: orDefault(cfg.BaseURL, googleDefaultBase), client: httpClient()}
@@ -58,6 +58,13 @@ func httpError(provider string, resp *http.Response) error {
 }
 
 func postJSON(ctx context.Context, client *http.Client, url string, headers map[string]string, body any) (*http.Response, error) {
+	return postSigned(ctx, client, url, headers, body, nil)
+}
+
+// signFunc signs a request just before it goes out (each attempt has its own time).
+type signFunc func(r *http.Request, body []byte)
+
+func postSigned(ctx context.Context, client *http.Client, url string, headers map[string]string, body any, sign signFunc) (*http.Response, error) {
 	b, _ := json.Marshal(body)
 	return doWithRetry(ctx, client, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
@@ -67,6 +74,9 @@ func postJSON(ctx context.Context, client *http.Client, url string, headers map[
 		req.Header.Set("content-type", "application/json")
 		for k, v := range headers {
 			req.Header.Set(k, v)
+		}
+		if sign != nil {
+			sign(req, b)
 		}
 		return req, nil
 	})
@@ -120,5 +130,6 @@ func sseScanner(r io.Reader) *bufio.Scanner {
 
 type openAIProvider struct {
 	key, base string
+	wire      WireCaps
 	client    *http.Client
 }

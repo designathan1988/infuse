@@ -1,0 +1,56 @@
+package workers
+
+// The pool: n workers drain the queue, each job going to the handler registered for its kind.
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	"{{module}}/internal/queue"
+)
+
+// Handler does one kind of work.
+type Handler func(ctx context.Context, payload string) error
+
+// Handlers is the extension point: a new kind of work is a new registration.
+var Handlers = NewRegistry[Handler]()
+
+// Drain runs n workers until the queue has nothing left to take.
+func Drain(ctx context.Context, q *queue.Queue, n int) error {
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := work(ctx, q); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	return <-errs
+}
+
+func work(ctx context.Context, q *queue.Queue) error {
+	for ctx.Err() == nil {
+		j, ok, err := q.Next()
+		if err != nil || !ok {
+			return err
+		}
+		if err := q.Finish(j.ID, run(ctx, j)); err != nil {
+			return err
+		}
+	}
+	return ctx.Err()
+}
+
+func run(ctx context.Context, j queue.Job) error {
+	h, ok := Handlers.Get(j.Kind)
+	if !ok {
+		return fmt.Errorf("no handler for kind %q", j.Kind)
+	}
+	return h(ctx, j.Payload)
+}

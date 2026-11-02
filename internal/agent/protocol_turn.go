@@ -47,29 +47,66 @@ func (s *Session) turnObligation(ctx context.Context) Msg {
 	if why := s.checkerObligation(changed); !why.Empty() {
 		return why
 	}
+	if why := s.structureObligation(changed); !why.Empty() { // dead exports and a scattered feature, once
+		return why
+	}
 	if why := s.missingVerification(); !why.Empty() {
 		return why
 	}
 	if why := s.missingReport(); !why.Empty() {
 		return why
 	}
+	if why := s.unconfirmedReport(); !why.Empty() {
+		return why
+	}
 	if why := s.oracleObligation(ctx); !why.Empty() { // the verdict, run by infuse on the current tree
 		return why
 	}
-	// the mandatory independent review, once per turn (its findings must be answered)
-	if s.settings.RequireReview == nil || *s.settings.RequireReview {
-		s.Mu.Lock()
-		reviewed := s.gate.reviewed
-		s.gate.reviewed = true
-		s.Mu.Unlock()
-		if !reviewed {
-			out, err := s.RunSubagent(ctx, "review", M("turn.review_title").Render(s.uiLang()), s.reviewMaterial("")+"\nReview the changes above. End with a line exactly like this: VERDICT: APPROVE or VERDICT: FIX.")
-			if err == nil && !regexp.MustCompile(`(?i)(VERDICT:\s*APPROVE|VEREDITO:\s*APROVAR)`).MatchString(out) {
-				return M("turn.review", "findings", out)
-			}
-		}
+	if why := s.reviewObligation(ctx); !why.Empty() {
+		return why
 	}
+	s.noteUnmeasuredContract()
 	return Msg{}
+}
+
+// reviewObligation runs the independent review once per version of the work: findings send the agent
+// back and the answer is reviewed again. A review that could not run is never an approval.
+func (s *Session) reviewObligation(ctx context.Context) Msg {
+	if s.settings.RequireReview != nil && !*s.settings.RequireReview {
+		return Msg{}
+	}
+	s.Mu.Lock()
+	reviewed := s.gate.reviewed
+	s.gate.reviewed = true
+	s.Mu.Unlock()
+	if reviewed {
+		return Msg{}
+	}
+	out, err := s.RunSubagent(ctx, "review", M("turn.review_title").Render(s.uiLang()), s.reviewMaterial("")+"\nReview the changes above. End with a line exactly like this: VERDICT: APPROVE or VERDICT: FIX.")
+	if err != nil {
+		s.setOutcome("unverified", M("turn.review_failed", "error", firstLine(err.Error())))
+		return Msg{}
+	}
+	if regexp.MustCompile(`(?i)(VERDICT:\s*APPROVE|VEREDITO:\s*APROVAR)`).MatchString(out) {
+		return Msg{}
+	}
+	s.Mu.Lock()
+	s.gate.reviewed = false
+	s.Mu.Unlock()
+	return M("turn.review", "findings", out)
+}
+
+// noteUnmeasuredContract tells the user when confirmed criteria have no executable check: the contract
+// then lives only in the agent's memory and the executor measures nothing.
+func (s *Session) noteUnmeasuredContract() {
+	s.Mu.Lock()
+	c := s.Contract
+	turn := s.Turn
+	s.Mu.Unlock()
+	if c == nil || c.Turn != turn || exists(filepath.Join(s.Root, infuseDirName, "oracle", "checks.json")) {
+		return
+	}
+	s.emitMsg("gate", M("contract.unmeasured"))
 }
 
 // checkerObligation runs the project's checker on every file the turn changed.
@@ -93,8 +130,16 @@ func (s *Session) checkerObligation(changed []CheckpointFile) Msg {
 // markUnverified records a turn that ended with obligations still open: the user sees it, the journal
 // keeps it, and the turn is never counted as done.
 func (s *Session) markUnverified() {
-	Journal(s.Root, JournalEntry{Kind: "gate", Detail: "turn ended unverified: obligations remained after six refusals"})
-	s.emitMsg("gate", M("turn.unverified"))
+	s.setOutcome("unverified", M("turn.unverified"))
+}
+
+// setOutcome records how a turn really ended: journaled, kept on the session, shown to the user.
+func (s *Session) setOutcome(outcome string, why Msg) {
+	Journal(s.Root, JournalEntry{Kind: "gate", Detail: "turn ended " + outcome + ": " + why.Render("en")})
+	s.Mu.Lock()
+	s.Outcome = outcome
+	s.Mu.Unlock()
+	s.emitMsg("gate", why)
 }
 
 // turnState is what the obligations need: the files the turn changed (by any tool), the plan's open

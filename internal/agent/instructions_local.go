@@ -1,7 +1,8 @@
 package agent
 
 // Folder-level instruction files load when work enters the folder: Read and Write tell the agent the
-// rules of the folder the file lives in, once per session. The root files are already in the prompt.
+// rules of the folder the file lives in, and Bash those of the folder the shell moved to, once per
+// session. The root files are already in the prompt.
 
 import (
 	"os"

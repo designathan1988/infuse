@@ -1,0 +1,76 @@
+[
+  {
+    "op": "http-handler",
+    "label": "HTTP handler",
+    "patterns": {
+      "go": "func\\s+(?:\\([^)]*\\)\\s*)?\\w+\\(\\s*\\w+\\s+http\\.ResponseWriter|\\.HandleFunc\\(",
+      "ts": "\\b(?:app|router)\\.(?:get|post|put|delete|patch)\\(\\s*['\"`]|export\\s+(?:async\\s+)?function\\s+(?:GET|POST|PUT|DELETE)\\b",
+      "py": "@\\w*(?:app|router)\\.(?:get|post|put|delete|route)\\(",
+      "rs": "#\\[(?:get|post|put|delete)\\(|\\.route\\(\\s*\"",
+      "cs": "\\[Http(?:Get|Post|Put|Delete)|\\.Map(?:Get|Post|Put|Delete)\\(",
+      "java": "@(?:Get|Post|Put|Delete|Request)Mapping",
+      "kotlin": "@(?:Get|Post|Put|Delete|Request)Mapping|\\bget\\(\"/"
+    }
+  },
+  {
+    "op": "test",
+    "label": "test",
+    "tests": true,
+    "patterns": {
+      "go": "(?m)^func\\s+Test\\w+\\(",
+      "ts": "(?m)^\\s*(?:test|it)\\(\\s*['\"`]",
+      "py": "(?m)^\\s*def\\s+test_\\w+\\(",
+      "rs": "#\\[test\\]",
+      "cs": "\\[(?:Fact|Test|TestMethod)\\]",
+      "java": "@Test\\b",
+      "kotlin": "@Test\\b"
+    }
+  },
+  {
+    "op": "db-access",
+    "label": "database access",
+    "patterns": {
+      "go": "\\.(?:QueryContext|QueryRowContext|ExecContext|Query|QueryRow)\\(",
+      "ts": "\\bprisma\\.\\w+\\.\\w+\\(|\\.query\\(\\s*['\"`]|\\bdb\\.(?:select|insert|update|delete)\\(",
+      "py": "\\b(?:session|cursor|conn|db)\\.(?:execute|query|add|commit)\\(",
+      "rs": "sqlx::query|diesel::",
+      "cs": "\\bDbContext\\b|\\.SaveChanges(?:Async)?\\(",
+      "java": "@Repository|JdbcTemplate|EntityManager",
+      "kotlin": "@Repository|JdbcTemplate|EntityManager"
+    }
+  },
+  {
+    "op": "ui-component",
+    "label": "UI component",
+    "patterns": {
+      "ts": "(?m)^export\\s+(?:default\\s+)?function\\s+[A-Z]\\w*\\(|customElements\\.define\\(",
+      "vue": "<template[\\s>]",
+      "svelte": "<script[\\s>]",
+      "kotlin": "@Composable",
+      "cs": ":\\s*(?:ComponentBase|UserControl)\\b"
+    }
+  },
+  {
+    "op": "cli-command",
+    "label": "command-line command",
+    "patterns": {
+      "go": "cobra\\.Command\\{|flag\\.NewFlagSet\\(",
+      "ts": "\\.command\\(\\s*['\"`]",
+      "py": "@click\\.command|add_parser\\(|@app\\.command",
+      "rs": "#\\[derive\\([^)]*Parser"
+    }
+  },
+  {
+    "op": "config-read",
+    "label": "reading configuration",
+    "patterns": {
+      "go": "os\\.(?:Getenv|LookupEnv)\\(",
+      "ts": "process\\.env\\.\\w+|import\\.meta\\.env\\.",
+      "py": "os\\.(?:getenv|environ)\\b",
+      "rs": "(?:std::)?env::var\\(",
+      "cs": "Environment\\.GetEnvironmentVariable\\(|IConfiguration\\b",
+      "java": "System\\.getenv\\(",
+      "kotlin": "System\\.getenv\\("
+    }
+  }
+]

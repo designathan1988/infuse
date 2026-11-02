@@ -46,10 +46,21 @@ func (s *Session) verifyCommandClaim(c *ReportClaim, ctx claimContext) {
 			}
 		}
 	}
-	found, failed := false, ""
+	// The last run decides, and it must come after the last change: a pass followed by a failure, or
+	// by an edit, no longer says anything about the code as it is now.
+	found, stale, failed := false, false, ""
 	for _, m := range ctx.msgs {
 		for _, b := range m.Content {
-			if b.Type != "tool_use" || b.Name != "Bash" {
+			if b.Type != "tool_use" {
+				continue
+			}
+			if isFileWrite(b.Name) {
+				if r, ok := results[b.ID]; ok && !r.IsError && found {
+					stale = true
+				}
+				continue
+			}
+			if b.Name != "Bash" {
 				continue
 			}
 			var in struct {
@@ -60,29 +71,19 @@ func (s *Session) verifyCommandClaim(c *ReportClaim, ctx claimContext) {
 			if squash(in.Command) != ref { // B2: the command the claim names, exactly (spacing aside)
 				continue
 			}
-			// A background command's first seconds are not its result: only the final exit code counts.
-			if in.Background {
-				if id, state, code, ok := s.backgroundOutcome(in.Command); ok {
-					switch {
-					case state == "running":
-						c.Status, c.Evidence = "nao-confirmado", M("report.ev_bg_running", "id", id)
-					case code != 0:
-						c.Status, c.Evidence = "nao-confirmado", M("report.ev_bg_failed", "id", id, "exit", code)
-					default:
-						c.Status, c.Evidence = "confirmado", M("report.ev_bg_done", "id", id)
-					}
-					return
-				}
+			if in.Background && s.backgroundClaim(c, in.Command) {
+				return
 			}
-			r, ok := results[b.ID]
-			if ok && !r.IsError {
-				found = true
+			if r, ok := results[b.ID]; ok && !r.IsError {
+				found, stale, failed = true, false, ""
 			} else if ok {
-				failed = firstLine(r.Content)
+				found, failed = false, firstLine(r.Content)
 			}
 		}
 	}
 	switch {
+	case found && stale:
+		c.Status, c.Evidence = "nao-confirmado", M("report.ev_stale")
 	case found:
 		c.Status, c.Evidence = "confirmado", M("report.ev_ran")
 	case failed != "":
@@ -92,6 +93,26 @@ func (s *Session) verifyCommandClaim(c *ReportClaim, ctx claimContext) {
 	default:
 		c.Status, c.Evidence = "nao-confirmado", M("report.ev_not_run")
 	}
+}
+
+func isFileWrite(tool string) bool { return tool == "Write" || tool == "Edit" || tool == "MultiEdit" }
+
+// backgroundClaim judges a claim about a background command: its first seconds are not its result,
+// only the final exit code counts. It reports whether the process was found.
+func (s *Session) backgroundClaim(c *ReportClaim, cmd string) bool {
+	id, state, code, ok := s.backgroundOutcome(cmd)
+	if !ok {
+		return false
+	}
+	switch {
+	case state == "running":
+		c.Status, c.Evidence = "nao-confirmado", M("report.ev_bg_running", "id", id)
+	case code != 0:
+		c.Status, c.Evidence = "nao-confirmado", M("report.ev_bg_failed", "id", id, "exit", code)
+	default:
+		c.Status, c.Evidence = "confirmado", M("report.ev_bg_done", "id", id)
+	}
+	return true
 }
 
 // backgroundOutcome finds the background process a command started and returns its final state.

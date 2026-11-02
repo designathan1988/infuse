@@ -14,6 +14,7 @@ func TestCommandOptionsNeedReadDocs(t *testing.T) {
 	root := t.TempDir()
 	s := newSession(root)
 	s.gate.diagnosed = true // this test is about another gate
+	noContract(s)
 	s.Mode = "bypass"
 	run := func(b Block) (string, bool) { return s.runTool(context.Background(), &RuleSet{}, b) }
 
@@ -65,6 +66,7 @@ func TestPartlyReadPageBlocksAction(t *testing.T) {
 	root := t.TempDir()
 	s := newSession(root)
 	s.gate.diagnosed = true // this test is about another gate
+	noContract(s)
 	s.Mode = "bypass"
 	s.docs.markPart("https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md", 0, 3)
 	page := "https://dawn.googlesource.com/dawn/+/HEAD/docs/dawn/debugging.md"
@@ -95,6 +97,7 @@ func TestPlanOfEarlierTurnHoldsAndClosesHonestly(t *testing.T) {
 	testHome(t)
 	s := newSession(t.TempDir())
 	s.gate.diagnosed = true // this test is about another gate
+	noContract(s)
 	off := false
 	s.settings.RequireReview = &off
 	s.setTasks([]TaskItem{{ID: "1", Text: "read the doc", Status: "in_progress", Proof: "page read"}, {ID: "2", Text: "create cli", Status: "pending", Proof: "node cli.js"}, {ID: "3", Text: "done", Status: "done"}})

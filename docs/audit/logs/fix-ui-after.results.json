@@ -1,0 +1,452 @@
+[
+  {
+    "name": "pt-BR: requireReview shows off",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: enforceArchitecture shows off",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: contract shows on",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: limit is the real one",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: protected paths are the real ones",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "toggling writes the real setting",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the protected list survived",
+    "ok": true,
+    "detail": "[\"secrets/**\",\".infuse/oracle/**\"]"
+  },
+  {
+    "name": "pt-BR: map shows exports and dependents",
+    "ok": true,
+    "detail": "Mapa 7 arquivos · 02/11/2026, 01:00:45 Arquivos grandes demais src/big.js — 901 linhas Mais usados src/core/math.js — 3 "
+  },
+  {
+    "name": "pt-BR: files pane marks the hotspot",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: files pane shows dependents",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "a refresh keeps the folders open",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: three hunks offered",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "accept staged only that hunk",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "reject reverted only that hunk",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "a fully accepted file is not shown as a new file",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the branch was created",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the rail follows the branch",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: terminal is labelled outside the filter",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: terminal stream works with the query token",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: no console errors",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: no HTTP status >= 400",
+    "ok": true,
+    "detail": "[]"
+  },
+  {
+    "name": "pt-BR: session events stream through the token",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: requireReview shows off",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: enforceArchitecture shows off",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: contract shows on",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: limit is the real one",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: protected paths are the real ones",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: map shows exports and dependents",
+    "ok": true,
+    "detail": "Mapa 7 arquivos · 02/11/2026, 01:01:07 Arquivos grandes demais src/big.js — 901 linhas Mais usados src/core/math.js — 3 "
+  },
+  {
+    "name": "pt-BR: files pane marks the hotspot",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: files pane shows dependents",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: three hunks offered",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: terminal is labelled outside the filter",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: terminal stream works with the query token",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: no console errors",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "pt-BR: no HTTP status >= 400",
+    "ok": true,
+    "detail": "[]"
+  },
+  {
+    "name": "pt-BR: session events stream through the token",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: requireReview shows off",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: enforceArchitecture shows off",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: contract shows on",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: limit is the real one",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: protected paths are the real ones",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: map shows exports and dependents",
+    "ok": true,
+    "detail": "Map 7 files · 11/2/26, 1:01:24 AM Files too large src/big.js — 901 lines Most used src/core/math.js — 3 src/core/text.js"
+  },
+  {
+    "name": "en: files pane marks the hotspot",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: files pane shows dependents",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: three hunks offered",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: terminal is labelled outside the filter",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: terminal stream works with the query token",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: no console errors",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: no HTTP status >= 400",
+    "ok": true,
+    "detail": "[]"
+  },
+  {
+    "name": "en: session events stream through the token",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: requireReview shows off",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: enforceArchitecture shows off",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: contract shows on",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: limit is the real one",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: protected paths are the real ones",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: map shows exports and dependents",
+    "ok": true,
+    "detail": "Map 7 files · 11/2/26, 1:01:42 AM Files too large src/big.js — 901 lines Most used src/core/math.js — 3 src/core/text.js"
+  },
+  {
+    "name": "en: files pane marks the hotspot",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: files pane shows dependents",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: three hunks offered",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: terminal is labelled outside the filter",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: terminal stream works with the query token",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: no console errors",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "en: no HTTP status >= 400",
+    "ok": true,
+    "detail": "[]"
+  },
+  {
+    "name": "en: session events stream through the token",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "no project: panes ask for one, no HTTP error",
+    "ok": true,
+    "detail": "[]"
+  },
+  {
+    "name": "GET /api/i18n (no token) = 200",
+    "ok": true,
+    "detail": "200"
+  },
+  {
+    "name": "GET /api/settings (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/status (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/sessions/all (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/diff?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CT (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/file?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CT (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/files/read?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLoc (token) = 404",
+    "ok": true,
+    "detail": "404"
+  },
+  {
+    "name": "GET /api/fs?path=C:\\ (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/journal?root=C%3A%5CWindows (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/journal?root=C%3A%5CWindows (token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/sessions/new?root=C%3A%5CUsers%5CJonathan%5CAppData%5CL (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/sessions/new?root=C%3A%5CUsers%5CJonathan%5CAppData%5CL (token) = 405",
+    "ok": true,
+    "detail": "405"
+  },
+  {
+    "name": "GET /api/sessions/1793592120641/revert?root=C%3A%5CUsers%5CJonat (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/sessions/1793592120641/revert?root=C%3A%5CUsers%5CJonat (token) = 404",
+    "ok": true,
+    "detail": "404"
+  },
+  {
+    "name": "GET /api/sessions/1793592120641/duplicate?root=C%3A%5CUsers%5CJo (token) = 404",
+    "ok": true,
+    "detail": "404"
+  },
+  {
+    "name": "GET /api/session/1793592120641/pin?root=C%3A%5CUsers%5CJonathan% (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/session/1793592120641/pin?root=C%3A%5CUsers%5CJonathan% (token) = 405",
+    "ok": true,
+    "detail": "405"
+  },
+  {
+    "name": "GET /api/install (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/install (token) = 405",
+    "ok": true,
+    "detail": "405"
+  },
+  {
+    "name": "GET /api/terminal (token) = 404",
+    "ok": true,
+    "detail": "404"
+  },
+  {
+    "name": "GET /api/shot?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CT (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "GET /api/shot?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CT (no token) = 200",
+    "ok": true,
+    "detail": "200"
+  },
+  {
+    "name": "GET /api/sessions/1793592120641/events?root=C%3A%5CUsers%5CJonat (no token) = 403",
+    "ok": true,
+    "detail": "403"
+  },
+  {
+    "name": "settings JSON holds no key material",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the map pane followed the agent write with no click",
+    "ok": true,
+    "detail": "7 arquivos · 02/11/2026, 01:02:04 -> 8 arquivos · 02/11/2026, 01:02:09"
+  }
+]

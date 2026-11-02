@@ -10,8 +10,9 @@ disk. The agent does not consult it, call it, or configure it. It passes through
 ## 0.5: the agent lives inside the filter
 
 `infuse.exe` is now a complete AI coding environment in its own native window (no browser, no console):
-Anthropic, OpenAI (and compatible endpoints), Google Gemini and Ollama providers with streaming and tool
-use, each tested against a fake server emitting its wire format; the tools Bash, Read, Write, Edit,
+Anthropic (direct, Amazon Bedrock and Google Cloud), OpenAI (and compatible endpoints), Google Gemini and
+Ollama providers with streaming and tool use, each tested against a fake server emitting its wire format;
+the tools Bash, Read, Write, Edit,
 MultiEdit, Glob, Grep, LS, WebFetch, WebSearch, TodoWrite, AskUserQuestion, Memory, Skill, Diagnosis,
 Report, Contract, Impasse, Agent, Browser, BashOutput and KillShell, plus MCP connector tools; permission
 modes (ask / accept edits / plan / bypass) with per-tool rules and "always for this session";

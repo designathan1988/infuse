@@ -4,25 +4,28 @@ package journal
 // every vice observed. Credentials never reach these files.
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
 	"infuse/internal/core"
 	"infuse/internal/data"
 	"infuse/internal/security"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
 
 type JournalEntry struct {
 	Ts      int64  `json:"ts"`
-	Kind    string `json:"kind"` // write | unlink | command | transform
+	Kind    string `json:"kind"` // write | unlink | command | transform | cost | gate | vice | ...
 	Path    string `json:"path,omitempty"`
 	Bytes   int    `json:"bytes,omitempty"`
 	Command string `json:"command,omitempty"`
 	Detail  string `json:"detail,omitempty"`
 	Vice    string `json:"vice,omitempty"`
+	Millis  int64  `json:"ms,omitempty"` // how long a command took
 }
 
 type LessonEntry struct {
@@ -63,17 +66,46 @@ func Vice(name string) (signature, remedy string) {
 	return v.Signature, v.Remedy
 }
 
-// InfuseDir creates and returns the project's .infuse directory, seeding its .gitignore.
+// infuseIgnore is what stays out of version control: conversations, the blobs behind checkpoints and
+// turn snapshots, captures, and what only makes sense on this machine. Every other artifact — the map,
+// the lessons, the journal, the oracle, the evidence — is versioned (SPEC §5).
+const infuseIgnore = "sessions/\ncheckpoints/\ntree/\nturnlog/\nshots/\nrecordings/\npreview/\nbin/\nwatcher.json\n"
+
+// oldIgnores are the seeds earlier versions wrote. They are replaced; a file the user edited is not.
+var oldIgnores = []string{"sessions/\ncheckpoints/\nmap/\npreview/\nbin/\njournal.jsonl\nlessons.jsonl\nwatcher.json\n"}
+
+// infuseAttributes lets two branches append to the ledgers without a conflict.
+const infuseAttributes = "journal.jsonl merge=union\nlessons.jsonl merge=union\nmap/** linguist-generated=true\n"
+
+// InfuseDir creates and returns the project's .infuse directory, seeding what git needs to know.
 func InfuseDir(root string) string {
 	d := filepath.Join(root, core.InfuseDirName)
 	if err := os.MkdirAll(d, 0o755); err == nil {
-		gi := filepath.Join(d, ".gitignore")
-		if _, err := os.Stat(gi); err != nil {
-			// Working state stays out of version control; rules, oracle, notes and memory are meant to be committed.
-			_ = os.WriteFile(gi, []byte("sessions/\ncheckpoints/\nmap/\npreview/\nbin/\njournal.jsonl\nlessons.jsonl\nwatcher.json\n"), 0o644)
-		}
+		seedGitFiles(d)
 	}
 	return d
+}
+
+func seedGitFiles(d string) {
+	gi := filepath.Join(d, ".gitignore")
+	b, err := os.ReadFile(gi)
+	if err != nil || isOldIgnore(string(b)) {
+		_ = os.WriteFile(gi, []byte(infuseIgnore), 0o644)
+	}
+	ga := filepath.Join(d, ".gitattributes")
+	if _, err := os.Stat(ga); err != nil {
+		_ = os.WriteFile(ga, []byte(infuseAttributes), 0o644)
+	}
+}
+
+func isOldIgnore(text string) bool {
+	norm := strings.ReplaceAll(text, "\r\n", "\n")
+	for _, o := range oldIgnores {
+		if norm == o {
+			return true
+		}
+	}
+	return false
 }
 
 func Journal(root string, e JournalEntry) {
@@ -82,30 +114,72 @@ func Journal(root string, e JournalEntry) {
 	core.AppendLine(filepath.Join(InfuseDir(root), "journal.jsonl"), e)
 }
 
+// Lesson records an observed vice in the ledger, with its signature and remedy, and in the journal.
 func Lesson(root, vice, detail string) {
-	e := LessonEntry{Ts: time.Now().UnixMilli(), Vice: vice, Detail: detail}
-	e.Signature, e.Remedy = Vice(vice)
-	core.AppendLine(filepath.Join(InfuseDir(root), "lessons.jsonl"), e)
+	Observe(root, JournalEntry{Kind: "vice", Detail: detail}, vice)
+}
+
+// Observe journals an event that carries a vice and adds the vice to the lesson ledger.
+func Observe(root string, e JournalEntry, vice string) {
+	e.Vice = vice
+	Journal(root, e)
+	l := LessonEntry{Ts: time.Now().UnixMilli(), Vice: vice, Detail: security.RedactSecrets(e.Detail)}
+	l.Signature, l.Remedy = Vice(vice)
+	core.AppendLine(filepath.Join(InfuseDir(root), "lessons.jsonl"), l)
 }
 
 func ReadJournalSince(root string, since int64) []JournalEntry {
 	return readJournal(filepath.Join(root, core.InfuseDirName, "journal.jsonl"), since)
 }
 
+// journalWindow is the first read from the end of the journal: the file only grows, and the filter
+// path asks for the last moments of it on every command.
+const journalWindow = 256 << 10
+
+// readJournal reads the entries from since on, walking back from the end of the file only as far as
+// they go. Timestamps only grow, so the first entry older than since ends the walk.
 func readJournal(file string, since int64) []JournalEntry {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil
 	}
 	defer f.Close()
-	var out []JournalEntry
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 1<<24)
-	for sc.Scan() {
-		var e JournalEntry
-		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Ts >= since {
-			out = append(out, e)
+	st, err := f.Stat()
+	if err != nil {
+		return nil
+	}
+	for window := int64(journalWindow); ; window *= 4 {
+		start := max(st.Size()-window, 0)
+		entries, reachedOlder := readJournalFrom(f, start, st.Size(), since)
+		if reachedOlder || start == 0 {
+			return entries
 		}
 	}
-	return out
+}
+
+// readJournalFrom parses the entries of one window, reporting whether it reached one older than since.
+func readJournalFrom(f *os.File, start, end, since int64) ([]JournalEntry, bool) {
+	buf := make([]byte, end-start)
+	if _, err := f.ReadAt(buf, start); err != nil && err != io.EOF {
+		return nil, false
+	}
+	if start > 0 { // the window begins inside a line
+		if i := bytes.IndexByte(buf, '\n'); i >= 0 {
+			buf = buf[i+1:]
+		}
+	}
+	var out []JournalEntry
+	older := false
+	for _, line := range bytes.Split(buf, []byte{'\n'}) {
+		var e JournalEntry
+		if len(line) == 0 || json.Unmarshal(line, &e) != nil {
+			continue
+		}
+		if e.Ts >= since {
+			out = append(out, e)
+		} else {
+			older = true
+		}
+	}
+	return out, older
 }

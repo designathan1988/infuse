@@ -1,0 +1,33 @@
+package tests
+
+// Through the public API only.
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"{{module}}/internal/core"
+	"{{module}}/pkg/lib"
+)
+
+func TestRoundTrip(t *testing.T) {
+	core.SetHook(func(core.Event) {})
+	var c lib.Collection
+	c.Add("first")
+	file := filepath.Join(t.TempDir(), "items.json")
+	if err := c.Save(file); err != nil {
+		t.Fatal(err)
+	}
+	again, err := lib.Open(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := again.Format("text")
+	if err != nil || !strings.Contains(out, "first") {
+		t.Fatalf("%v %q", err, out)
+	}
+	if _, err := again.Format("nope"); err == nil {
+		t.Fatal("an unknown format was accepted")
+	}
+}

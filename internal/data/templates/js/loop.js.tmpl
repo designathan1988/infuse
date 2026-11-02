@@ -1,0 +1,17 @@
+// The fixed-step loop: simulation advances in equal steps whatever the frame rate, so it is
+// deterministic and runs without a screen.
+export function createLoop(step, stepMillis) {
+  let carried = 0;
+  return {
+    advance(elapsedMillis) {
+      carried += elapsedMillis;
+      let steps = 0;
+      while (carried >= stepMillis) {
+        step(stepMillis);
+        carried -= stepMillis;
+        steps += 1;
+      }
+      return steps;
+    },
+  };
+}

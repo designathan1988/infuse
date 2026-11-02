@@ -4,6 +4,7 @@ import { t } from '../core/i18n.js';
 import { I } from '../core/icons.js';
 import { api, tokenHeader, urlWith } from '../core/api.js';
 import { pref } from '../core/store.js';
+import { fileOverlay } from '../core/mapdata.js';
 import { menu } from '../components/menu.js';
 import { toast } from '../components/toast.js';
 
@@ -14,7 +15,7 @@ function makeState(pb, extra, c) {
   </div></div>`;
   extra.innerHTML = `<button class="icon-btn" title="${esc(t('common.more'))}" aria-label="${esc(t('common.more'))}">${I.vmore}</button>`;
   return {
-    pb, extra, c, autoSave: true, curPath: null, mtime: 0, dirty: false, changed: {},
+    pb, extra, c, autoSave: true, curPath: null, mtime: 0, dirty: false, changed: {}, overlay: {}, open: new Set(),
     tree: pb.querySelector('.tree'), ta: pb.querySelector('textarea'), gut: pb.querySelector('.editor-gutter'),
     fname: pb.querySelector('.fname'), fstat: pb.querySelector('.fstat')
   };
@@ -90,34 +91,48 @@ async function openFile(s, p) {
   s.ta.value = r.content; s.mtime = r.mtime; s.dirty = false; s.ta.disabled = !!r.readonly; gutter(s);
 }
 
+// What the project map knows about a file: a hotspot tag and how many files depend on it.
+function overlayHTML(o) {
+  if (!o) return '';
+  const hot = o.hotspot ? `<span class="tag warn" title="${esc(t('files.hotspotHint', { lines: o.lines }))}">${t('files.hotspot')}</span>` : '';
+  const used = o.dependents ? `<span class="tree-used" title="${esc(t('files.dependentsHint', { count: o.dependents }))}">${o.dependents}</span>` : '';
+  return hot + used;
+}
+
 function treeNode(s, n, depth) {
   if (!n.dir) {
-    const el = h(`<div class="tree-node${n.path === s.curPath ? ' on' : ''}" data-p="${esc(n.path)}" title="${esc(n.path)}" role="treeitem" tabindex="0"><span class="trunc">${esc(n.name)}</span>${s.changed[n.path] ? `<span class="m">${esc(s.changed[n.path])}</span>` : ''}</div>`);
+    const el = h(`<div class="tree-node${n.path === s.curPath ? ' on' : ''}" data-p="${esc(n.path)}" title="${esc(n.path)}" role="treeitem" tabindex="0"><span class="trunc">${esc(n.name)}</span>${overlayHTML(s.overlay[n.path])}${s.changed[n.path] ? `<span class="m">${esc(s.changed[n.path])}</span>` : ''}</div>`);
     el.onclick = () => openFile(s, n.path);
     el.oncontextmenu = e => { e.preventDefault(); import('../components/view.js').then(() => { }); pathMenu(s, n.path, e); };
     return el;
   }
-  const wrap = h(`<div class="${depth > 0 ? 'tree-closed' : ''}" role="group"><div class="tree-node" role="treeitem" tabindex="0" aria-expanded="false"><span aria-hidden="true">${depth > 0 ? '▸' : ''}</span><span class="trunc">${esc(n.name)}</span></div><div class="tree-children"></div></div>`);
+  const closed = depth > 0 && !s.open.has(n.path);
+  const wrap = h(`<div class="${closed ? 'tree-closed' : ''}" role="group"><div class="tree-node" role="treeitem" tabindex="0" aria-expanded="${!closed}"><span aria-hidden="true">${depth > 0 ? (closed ? '▸' : '▾') : ''}</span><span class="trunc">${esc(n.name)}</span></div><div class="tree-children"></div></div>`);
   const head = wrap.querySelector('.tree-node');
   head.onclick = () => {
-    wrap.classList.toggle('tree-closed');
-    head.setAttribute('aria-expanded', String(!wrap.classList.contains('tree-closed')));
-    head.querySelector('span').textContent = wrap.classList.contains('tree-closed') ? '▸' : '▾';
+    const nowClosed = wrap.classList.toggle('tree-closed');
+    if (nowClosed) s.open.delete(n.path); else s.open.add(n.path);
+    head.setAttribute('aria-expanded', String(!nowClosed));
+    head.querySelector('span').textContent = nowClosed ? '▸' : '▾';
   };
   for (const ch of n.children || []) wrap.querySelector('.tree-children').appendChild(treeNode(s, ch, depth + 1));
   return wrap;
 }
 
 async function loadTree(s) {
-  const [tr, ch] = await Promise.all([
+  const [tr, ch, m] = await Promise.all([
     api('/api/files/tree', { root: s.c.dir }).catch(() => null),
-    api('/api/changes', { root: s.c.root, dir: s.c.dir }).catch(() => ({}))
+    api('/api/changes', { root: s.c.root, dir: s.c.dir }).catch(() => ({})),
+    api('/api/map', { root: s.c.dir }).catch(() => ({}))
   ]);
   if (!tr) return;
   s.changed = {};
   for (const f of ch.files || []) s.changed[f.path] = f.status;
+  s.overlay = fileOverlay(m);
+  const top = s.tree.scrollTop; // the agent's writes reload the tree: the reader stays where they were
   s.tree.innerHTML = '';
   s.tree.appendChild(treeNode(s, tr, 0));
+  s.tree.scrollTop = top;
 }
 
 function pathMenu(s, path, ev) {

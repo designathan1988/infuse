@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"infuse/internal/mcp"
+	"maps"
 	"strings"
 	"time"
 )
@@ -79,7 +80,12 @@ func (s *Session) setupRun(ctx context.Context) (*runState, bool) {
 		s.fail(err)
 		return nil, false
 	}
+	if stop, over := s.overDailyLimit(); over { // before the compile steps, which spend too
+		s.failMsg(stop)
+		return nil, false
+	}
 	rules := LoadRules(s.Root)
+	s.sessionStartHooks(ctx)
 	mcp.For(s.Root).Ensure(ctx)          // approved connectors start before the first request
 	s.ensureCompiledRules(ctx, provider) // the instructions' meaning, as quote-checked rules
 	s.ensureKnowledge(ctx, provider)     // the project's documents, read to the last line
@@ -96,6 +102,10 @@ func (s *Session) runPrelude(ctx context.Context, st *runState, iter int) bool {
 	}
 	if ctx.Err() != nil {
 		s.finish("cancelado")
+		return true
+	}
+	if stop, over := s.overDailyLimit(); over {
+		s.failMsg(stop)
 		return true
 	}
 	if s.needsCompaction() {
@@ -119,7 +129,7 @@ func (s *Session) request(ctx context.Context, st *runState) (ModelResult, reque
 	if budget > 0 && maxTok <= budget+1024 {
 		maxTok = budget + 8000
 	}
-	req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, st.rules) + "\n" + diagnosisRule + "\n\n" + s.workStatePrompt() + "\n\n" + st.know, Messages: repairTranscript(s.copyMessages()), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget}
+	req := ModelRequest{Model: s.Model, System: buildSystemPrompt(s, st.rules) + "\n" + diagnosisRule + "\n\n" + s.workStatePrompt() + "\n\n" + st.know, Messages: repairTranscript(s.copyMessages()), Tools: s.toolSpecs(), MaxTokens: maxTok, Thinking: budget, Effort: s.effort()}
 	started := time.Now()
 	var thinkFrom, thinkTo time.Time // how long the model spent in its reasoning, from the stream
 	res, err := s.streamResilient(ctx, st.provider, req, func(ev StreamEvent) {
@@ -163,25 +173,18 @@ func (s *Session) request(ctx context.Context, st *runState) (ModelResult, reque
 		}
 	}
 	s.recordReply(res, started)
-	if lim := s.settings.DailyLimitUSD; lim > 0 { // the day's total across every session, from the ledger
-		if spent := todaySpend(); spent > lim {
-			s.failMsg(M("session.daily_limit", "spent", fmt.Sprintf("%.2f", spent), "limit", fmt.Sprintf("%.2f", lim)))
-			return res, requestStop
-		}
-	}
+	s.logModelCall(req, res, started)
 	return res, requestOK
 }
 
 func (s *Session) recordReply(res ModelResult, started time.Time) {
 	reply := Message{Role: "assistant", Content: res.Content, TS: time.Now().UnixMilli(), Ms: time.Since(started).Milliseconds(), Model: s.Model, Tokens: res.Usage.Output}
+	s.spend(s.Model, res.Usage)
 	s.Mu.Lock()
+	if n := len(s.Messages); n > 0 { // what the provider measured covers the transcript up to here
+		s.LastInputAt, s.LastInputMark = n, s.Messages[n-1].TS
+	}
 	s.Messages = append(s.Messages, reply)
-	s.Usage.Input += res.Usage.Input
-	s.Usage.Output += res.Usage.Output
-	s.Usage.CacheRead += res.Usage.CacheRead
-	s.Usage.CacheWrite += res.Usage.CacheWrite
-	cost := s.settings.CostOf(s.Model, res.Usage)
-	s.Cost += cost
 	s.LastInput = res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite
 	if s.mode() == "plan" && res.StopReason != "tool_use" {
 		for _, b := range res.Content {
@@ -190,23 +193,32 @@ func (s *Session) recordReply(res ModelResult, started time.Time) {
 			}
 		}
 	}
+	turnCost, unpriced := s.turnCostLocked(), append([]string{}, s.Unpriced...)
 	s.Mu.Unlock()
-	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cache: res.Usage.CacheRead + res.Usage.CacheWrite, Cost: cost})
-	s.emit("message", map[string]any{"message": reply, "usage": res.Usage, "totalUsage": s.Usage, "cost": s.Cost, "lastInput": res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite})
+	s.emit("message", map[string]any{"message": reply, "usage": res.Usage, "totalUsage": s.Usage, "cost": s.Cost, "turnCost": turnCost, "unpriced": unpriced, "lastInput": res.Usage.Input + res.Usage.CacheRead + res.Usage.CacheWrite})
 	s.save()
 }
 
 func (s *Session) endTurn(ctx context.Context, st *runState) bool {
-	why := s.workObligation()
+	if s.impassed() { // an honest stop owes the reason, already given: not a finished turn's obligations
+		s.finish("impasse")
+		return true
+	}
+	s.noteShellChanges()
+	s.Mu.Lock()
+	spent := s.gate.obligationAsks >= 6
+	s.Mu.Unlock()
+	why := Msg{}
+	if !spent { // past the budget every obligation stops asking, and the turn ends as unverified
+		why = s.workObligation()
+	}
 	if why.Empty() {
 		why = s.turnObligation(ctx)
 	}
 	if !why.Empty() { // the protocol decides when the turn may end
+		s.recordRefusal("", "", why)
 		s.Mu.Lock()
 		s.gate.obligationAsks++
-		if why.ID == "gate.no_report" {
-			s.gate.reportAsks++
-		}
 		s.Mu.Unlock()
 		kind := "infuse_note"
 		if why.ID == "turn.review" {
@@ -231,10 +243,13 @@ func (s *Session) endTurn(ctx context.Context, st *runState) bool {
 
 func (s *Session) executeTools(ctx context.Context, st *runState, res ModelResult) []Block {
 	var results []Block
-	pre := s.runReadsInParallel(ctx, st.rules, res.Content) // several reads in one reply run at once
-	for _, b := range res.Content {
+	pre := map[string]Block{}
+	for i, b := range res.Content {
 		if b.Type != "tool_use" {
 			continue
+		}
+		if _, ok := pre[b.ID]; !ok { // independent calls next to each other run at once (parallel.go)
+			maps.Copy(pre, s.runParallelFrom(ctx, st.rules, res.Content, i))
 		}
 		if r, ok := pre[b.ID]; ok {
 			results = append(results, r)
@@ -275,6 +290,7 @@ func (s *Session) executeTools(ctx context.Context, st *runState, res ModelResul
 
 // settleTools closes the tool turn. It returns true when the run must end; false continues the loop.
 func (s *Session) settleTools(ctx context.Context, st *runState, res ModelResult, results []Block) bool {
+	s.logToolCalls(res, results)
 	if ctx.Err() == nil && st.tripped == nil {
 		s.closeToolTurn(res, results)
 		return false

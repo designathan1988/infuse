@@ -35,9 +35,9 @@ func (lsTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (
 		return err.Error(), true
 	}
 	var sb strings.Builder
-	here := relTo(tc.Root, abs)
+	hidden := tc.walkFilter()
 	for _, e := range entries {
-		if hiddenInternal(filepath.ToSlash(filepath.Join(here, e.Name()))) {
+		if hidden(filepath.Join(abs, e.Name()), e) {
 			continue // infuse's own records are not listed as part of the project
 		}
 		if e.IsDir() {

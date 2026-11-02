@@ -1,0 +1,19 @@
+package {{package}}
+
+// Configuration in one place: a table of settings, each overridable by APP_<KEY> in the environment.
+
+import "os"
+
+var defaults = map[string]string{
+	"ADDR":     "127.0.0.1:8080",
+	"DATA_DIR": "data",
+	"WORKERS":  "2",
+}
+
+// Get returns a setting: the environment's value, else the table's.
+func Get(key string) string {
+	if v, ok := os.LookupEnv("APP_" + key); ok {
+		return v
+	}
+	return defaults[key]
+}

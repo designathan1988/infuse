@@ -6,7 +6,6 @@ package config
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -26,28 +25,11 @@ type sealedFile struct {
 	Sig  string          `json:"sig"`
 }
 
-func signingKey() []byte {
-	if k, err := SecretGet(signingSecretName); err == nil && len(k) >= 32 {
-		if b, derr := hex.DecodeString(k); derr == nil && len(b) >= 32 {
-			return b
-		}
-		return []byte(k)
-	}
-	p := filepath.Join(core.InfuseHome(), "signing.key")
-	if b, err := os.ReadFile(p); err == nil && len(b) >= 32 {
-		return b
-	}
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	if err := SecretSet(signingSecretName, hex.EncodeToString(b)); err != nil {
-		_ = os.MkdirAll(filepath.Dir(p), 0o755)
-		_ = os.WriteFile(p, b, 0o600)
-	}
-	return b
-}
+// signingFile is the fallback key store when the OS vault is unavailable.
+func signingFile() string { return filepath.Join(core.InfuseHome(), "signing.key") }
 
 func signBytes(b []byte) string {
-	mac := hmac.New(sha256.New, signingKey())
+	mac := hmac.New(sha256.New, SigningKey(signingSecretName, signingFile()))
 	mac.Write(b)
 	return hex.EncodeToString(mac.Sum(nil))
 }

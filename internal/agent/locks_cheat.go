@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 var (
@@ -46,27 +47,53 @@ func swallowedTestCommand(cmd string) Msg {
 }
 
 // testLiterals collects the expected values written in the project's tests (strings and long numbers).
+// It walks the project, so the write gate only calls it when the code has literals to compare; an
+// unchanged test file is not read again.
 func testLiterals(work string) map[string]string {
 	out := map[string]string{}
 	walkProjectFiles(work, func(rel, abs string, size int64) {
 		if !isTestPath(rel) || size > 300<<10 || !codeExts[strings.ToLower(path.Ext(rel))] {
 			return
 		}
-		b, err := readFileLimited(abs, 300<<10)
-		if err != nil {
-			return
-		}
-		for _, m := range reStringLit.FindAllStringSubmatch(b, -1) {
-			v := m[1] + m[2]
-			if strings.TrimSpace(v) != "" && !strings.ContainsAny(v, "/\\") { // paths and imports are not expected values
-				out[v] = rel
-			}
-		}
-		for _, n := range reNumberLit.FindAllString(b, -1) {
-			out[n] = rel
+		for _, v := range fileLiterals(abs) {
+			out[v] = rel
 		}
 	})
 	return out
+}
+
+type cachedLiterals struct {
+	mod, size int64
+	values    []string
+}
+
+var literalCache sync.Map // abs → cachedLiterals
+
+// fileLiterals reads a test file's expected values, or remembers them while the file is unchanged.
+func fileLiterals(abs string) []string {
+	st, err := os.Stat(abs)
+	if err != nil {
+		return nil
+	}
+	if v, ok := literalCache.Load(abs); ok {
+		if c := v.(cachedLiterals); c.mod == st.ModTime().UnixNano() && c.size == st.Size() {
+			return c.values
+		}
+	}
+	b, err := readFileLimited(abs, 300<<10)
+	if err != nil {
+		return nil
+	}
+	var values []string
+	for _, m := range reStringLit.FindAllStringSubmatch(b, -1) {
+		v := m[1] + m[2]
+		if strings.TrimSpace(v) != "" && !strings.ContainsAny(v, "/\\") { // paths and imports are not expected values
+			values = append(values, v)
+		}
+	}
+	values = append(values, reNumberLit.FindAllString(b, -1)...)
+	literalCache.Store(abs, cachedLiterals{st.ModTime().UnixNano(), st.Size(), values})
+	return values
 }
 
 // cheatWriteCheck looks at what a write adds to a file.
@@ -159,22 +186,33 @@ func isEntryPoint(rel string) bool {
 		strings.Contains(base, "main.") && (strings.HasSuffix(base, ".go") || strings.HasSuffix(base, ".rs") || strings.HasSuffix(base, ".java"))
 }
 
-func cheatSpecialCase(work, rel string, added []string) Msg {
-	lits := testLiterals(work)
-	found := map[string]string{}
+// conditionLiterals lists the literals the added lines use in conditions.
+func conditionLiterals(added []string) map[string]bool {
+	out := map[string]bool{}
 	for _, code := range added {
 		if !reConditionPos.MatchString(code) {
 			continue
 		}
 		for _, m := range reStringLit.FindAllStringSubmatch(code, -1) {
-			if t, ok := lits[m[1]+m[2]]; ok {
-				found[m[1]+m[2]] = t
-			}
+			out[m[1]+m[2]] = true
 		}
 		for _, n := range reNumberLit.FindAllString(code, -1) {
-			if t, ok := lits[n]; ok {
-				found[n] = t
-			}
+			out[n] = true
+		}
+	}
+	return out
+}
+
+func cheatSpecialCase(work, rel string, added []string) Msg {
+	literals := conditionLiterals(added)
+	if len(literals) < 2 { // two values make a special case: most writes end here, without a walk
+		return Msg{}
+	}
+	lits := testLiterals(work)
+	found := map[string]string{}
+	for v := range literals {
+		if t, ok := lits[v]; ok {
+			found[v] = t
 		}
 	}
 	if len(found) < 2 {

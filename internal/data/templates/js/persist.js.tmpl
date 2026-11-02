@@ -1,0 +1,23 @@
+// Versioned persistence: every document carries its schema version and an older one is migrated on
+// load. `storage` is anything with getItem/setItem, so the same code runs in a page and in a test.
+export const SCHEMA_VERSION = 1;
+
+export const migrations = {}; // version -> function upgrading a document to the next version
+
+export function save(storage, key, data) {
+  storage.setItem(key, JSON.stringify({ schemaVersion: SCHEMA_VERSION, data }));
+}
+
+export function load(storage, key, fallback) {
+  const raw = storage.getItem(key);
+  if (raw === null || raw === undefined) return fallback;
+  const doc = JSON.parse(raw);
+  let { schemaVersion, data } = doc;
+  while (schemaVersion < SCHEMA_VERSION) {
+    const up = migrations[schemaVersion];
+    if (!up) throw new Error(`no migration from version ${schemaVersion}`);
+    data = up(data);
+    schemaVersion += 1;
+  }
+  return data;
+}

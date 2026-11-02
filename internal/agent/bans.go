@@ -46,7 +46,7 @@ func (s *Session) setBans(list []Ban) {
 	s.emit("bans", list)
 }
 
-var toolNames = map[string]bool{"Agent": true, "Browser": true, "WebSearch": true, "WebFetch": true, "Bash": true, "Write": true, "Edit": true, "MultiEdit": true, "Skill": true, "Memory": true}
+var toolNames = map[string]bool{"Agent": true, "Browser": true, "WebSearch": true, "WebFetch": true, "Bash": true, "Write": true, "Edit": true, "MultiEdit": true, "NotebookEdit": true, "Skill": true, "Memory": true}
 
 const bansPrompt = `You read the messages a user wrote to a coding agent (any language). List every prohibition or limit the user stated for this session that is still in force, by calling Prohibitions:
 - tool: a tool the agent must not use; value is one of: Agent (subagents), Browser, WebSearch, WebFetch, Bash, Write, Edit, Skill.
@@ -74,8 +74,8 @@ func (s *Session) compileBans(ctx context.Context, p Provider) {
 		Bans []Ban `json:"bans"`
 	}
 	usage, err := askJSON(ctx, p, s.fastModel(), bansPrompt, text, bansSpec, 4000, &out)
+	s.spend(s.fastModel(), usage)
 	s.Mu.Lock()
-	s.Cost += s.settings.CostOf(s.fastModel(), usage)
 	turn := s.Turn
 	s.Mu.Unlock()
 	if err != nil { // the prohibitions already in force stay; the user is told the new words were not read
@@ -155,11 +155,11 @@ func (s *Session) banCheck(name string, input json.RawMessage) Msg {
 		hit := false
 		switch b.Kind {
 		case "tool":
-			hit = name == b.Value || (b.Value == "Edit" && name == "MultiEdit") || (b.Value == "Write" && (name == "Edit" || name == "MultiEdit"))
+			hit = name == b.Value || (b.Value == "Edit" && (name == "MultiEdit" || name == "NotebookEdit")) || (b.Value == "Write" && (name == "Edit" || name == "MultiEdit" || name == "NotebookEdit"))
 		case "command":
 			hit = cmd != "" && strings.Contains(cmd, v)
 		case "path":
-			if target != "" && (name == "Write" || name == "Edit" || name == "MultiEdit") {
+			if target != "" && (name == "Write" || name == "Edit" || name == "MultiEdit" || name == "NotebookEdit") {
 				rel := filepath.ToSlash(relTo(s.Root, filepath.Join(s.Cwd, target)))
 				if filepath.IsAbs(target) {
 					rel = filepath.ToSlash(relTo(s.Root, target))

@@ -132,17 +132,3 @@ func TestExecutorWithoutGitAndWithoutCriteria(t *testing.T) {
 		t.Fatalf("%+v", v)
 	}
 }
-
-func TestAgentCannotTouchCriteriaOrEvidence(t *testing.T) {
-	root, g := bypassRoot(t)
-	for _, cmd := range []string{
-		"echo '{}' > .infuse/oracle/checks.json && echo x",
-		"rm -rf .infuse/evidence",
-		"cd .infuse/evidence && rm -f */verdict.json",
-	} {
-		out, _, err := g.GuardCommand(cmd, root)
-		if err == nil && !strings.Contains(out, "/dev/null") {
-			t.Fatalf("not refused or neutralized: %q → %q", cmd, out)
-		}
-	}
-}

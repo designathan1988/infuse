@@ -1,0 +1,60 @@
+package tests
+
+// The observable surface, end to end: the routes over the real domain and the real storage.
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"{{module}}/internal/api"
+	"{{module}}/internal/domain"
+	"{{module}}/internal/platform"
+	"{{module}}/internal/store"
+)
+
+func TestItemSurvivesARestart(t *testing.T) {
+	seen := 0
+	platform.SetHook(func(platform.Event) { seen++ })
+	dir := t.TempDir()
+	items, err := domain.NewItems(store.NewFileRepo(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(api.Handler(items))
+	defer srv.Close()
+	res, err := http.Post(srv.URL+"/items", "application/json", strings.NewReader(`{"title":"first"}`))
+	if err != nil || res.StatusCode != http.StatusCreated {
+		t.Fatalf("create: %v %v", err, res)
+	}
+	again, err := domain.NewItems(store.NewFileRepo(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list := again.List(); len(list) != 1 || list[0].Title != "first" || list[0].State != domain.Draft {
+		t.Fatalf("not persisted: %+v", list)
+	}
+	if seen == 0 {
+		t.Fatal("the write was not observed")
+	}
+}
+
+func TestHealth(t *testing.T) {
+	items, err := domain.NewItems(store.NewFileRepo(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(api.Handler(items))
+	defer srv.Close()
+	res, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var body map[string]string
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil || body["status"] != "ok" {
+		t.Fatalf("%v %v", err, body)
+	}
+}

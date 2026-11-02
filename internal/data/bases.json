@@ -2,33 +2,364 @@
   {
     "name": "api",
     "description": "HTTP service: transport, domain, storage and contracts in separate layers.",
+    "language": "go",
     "folders": ["cmd", "internal/api", "internal/domain", "internal/store", "internal/config", "internal/platform", "tests"],
+    "layout": [
+      {"path": "cmd", "role": "the entry point and wiring only"},
+      {"path": "internal/api", "role": "transport: routes, handlers, request/response shapes"},
+      {"path": "internal/domain", "role": "the domain: entities, their rules and the services over them"},
+      {"path": "internal/store", "role": "persistence: the only place that talks to the database"},
+      {"path": "internal/config", "role": "configuration: settings, environment, feature flags"},
+      {"path": "internal/platform", "role": "platform adapters: filesystem, processes, external systems"},
+      {"path": "tests", "role": "end-to-end tests over the built service"}
+    ],
+    "layers": [
+      {"path": "cmd", "mayImport": ["internal/api", "internal/domain", "internal/store", "internal/config", "internal/platform"]},
+      {"path": "internal/api", "mayImport": ["internal/domain", "internal/config", "internal/platform"]},
+      {"path": "internal/store", "mayImport": ["internal/domain", "internal/platform"]},
+      {"path": "internal/domain", "mayImport": ["internal/platform"]},
+      {"path": "internal/config", "mayImport": []},
+      {"path": "internal/platform", "mayImport": []}
+    ],
+    "model": [
+      {"datum": "Item", "owner": "internal/domain/items.go", "declaredIn": "internal/domain/model.go", "states": ["draft", "active", "archived"]}
+    ],
+    "registries": [{"name": "routes", "path": "internal/api/routes.go", "purpose": "add an endpoint by adding a row"}],
+    "config": "internal/config/config.go",
+    "persistence": "internal/store/persist.go",
+    "observability": "internal/platform/observe.go",
+    "surface": "HTTP: GET /healthz and the routes table, exercised by tests/smoke_test.go",
     "dataDir": "internal/store",
     "tokens": "",
-    "maxFileLines": 400
+    "maxFileLines": 400,
+    "templates": [
+      {"from": "go/go.mod.tmpl", "to": "go.mod"},
+      {"from": "go/model.go.tmpl", "to": "internal/domain/model.go", "package": "domain"},
+      {"from": "api/items.go.tmpl", "to": "internal/domain/items.go"},
+      {"from": "go/persist.go.tmpl", "to": "internal/store/persist.go", "package": "store"},
+      {"from": "api/repo.go.tmpl", "to": "internal/store/repo.go"},
+      {"from": "go/config.go.tmpl", "to": "internal/config/config.go", "package": "config"},
+      {"from": "go/observe.go.tmpl", "to": "internal/platform/observe.go", "package": "platform"},
+      {"from": "api/routes.go.tmpl", "to": "internal/api/routes.go"},
+      {"from": "api/main.go.tmpl", "to": "cmd/app/main.go"},
+      {"from": "api/smoke_test.go.tmpl", "to": "tests/smoke_test.go"}
+    ],
+    "oracle": {"checks": [
+      {"id": "tests", "kind": "command", "run": "go test ./...", "description": "the whole test suite passes", "expect": {"exit": 0}},
+      {"id": "model-owner", "kind": "file", "path": "internal/domain/items.go", "description": "the owner of the model exists", "expect": {"exists": true}},
+      {"id": "file-size", "kind": "maxLines", "glob": "**/*.go", "max": 400, "description": "no Go file past the base's limit"}
+    ]}
   },
   {
     "name": "web",
     "description": "Browser application: components, pages, core primitives, styles from tokens.",
+    "language": "js",
     "folders": ["src", "src/core", "src/components", "src/pages", "src/panes", "ui", "ui/css", "ui/tokens", "tests", "public"],
+    "layout": [
+      {"path": "src/core", "role": "shared primitives: state, dom, api client, i18n"},
+      {"path": "src/components", "role": "reusable components, one responsibility each"},
+      {"path": "src/pages", "role": "one module per page"},
+      {"path": "src/panes", "role": "one module per side pane"},
+      {"path": "src/data", "role": "behavioral data in tables, not in scattered conditionals"},
+      {"path": "ui/css", "role": "styles generated from the tokens"},
+      {"path": "ui/tokens", "role": "design tokens: the only source of colors and sizes"},
+      {"path": "tests", "role": "tests"},
+      {"path": "public", "role": "static assets served as they are"}
+    ],
+    "layers": [
+      {"path": "src/pages", "mayImport": ["src/components", "src/core", "src/data"]},
+      {"path": "src/panes", "mayImport": ["src/components", "src/core", "src/data"]},
+      {"path": "src/components", "mayImport": ["src/core", "src/data"]},
+      {"path": "src/core", "mayImport": ["src/data"]},
+      {"path": "src/data", "mayImport": []}
+    ],
+    "model": [
+      {"datum": "app state", "owner": "src/core/store.js", "declaredIn": "src/core/store.js", "states": ["loading", "ready", "failed"]}
+    ],
+    "registries": [{"name": "pages", "path": "src/core/registry.js", "purpose": "add a page by registering it"}],
+    "config": "src/data/tables.js",
+    "persistence": "src/core/persist.js",
+    "observability": "src/core/observe.js",
+    "surface": "the page itself, and tests/smoke.test.js over the store and the rendered markup",
     "dataDir": "src/data",
     "tokens": "ui/tokens",
-    "maxFileLines": 400
+    "maxFileLines": 400,
+    "templates": [
+      {"from": "js/package.json.tmpl", "to": "package.json"},
+      {"from": "web/index.html.tmpl", "to": "index.html"},
+      {"from": "web/main.js.tmpl", "to": "src/main.js"},
+      {"from": "web/store.js.tmpl", "to": "src/core/store.js"},
+      {"from": "js/persist.js.tmpl", "to": "src/core/persist.js"},
+      {"from": "js/observe.js.tmpl", "to": "src/core/observe.js"},
+      {"from": "js/registry.js.tmpl", "to": "src/core/registry.js"},
+      {"from": "web/item-list.js.tmpl", "to": "src/components/item-list.js"},
+      {"from": "web/home.js.tmpl", "to": "src/pages/home.js"},
+      {"from": "web/tables.js.tmpl", "to": "src/data/tables.js"},
+      {"from": "web/tokens.css.tmpl", "to": "ui/tokens/tokens.css"},
+      {"from": "web/app.css.tmpl", "to": "ui/css/app.css"},
+      {"from": "web/smoke.test.js.tmpl", "to": "tests/smoke.test.js"}
+    ],
+    "oracle": {"checks": [
+      {"id": "tests", "kind": "command", "run": "node --test tests/smoke.test.js", "description": "the smoke test passes", "expect": {"exit": 0}},
+      {"id": "state-owner", "kind": "file", "path": "src/core/store.js", "description": "the owner of the state exists", "expect": {"exists": true}},
+      {"id": "file-size", "kind": "maxLines", "glob": "src/**/*.js", "max": 400, "description": "no source file past the base's limit"}
+    ]}
   },
   {
     "name": "cli",
     "description": "Command-line tool: command dispatch, one file per command, shared core.",
+    "language": "go",
     "folders": ["cmd", "internal", "internal/commands", "internal/core", "tests"],
+    "layout": [
+      {"path": "cmd", "role": "the entry point: argument dispatch and wiring only"},
+      {"path": "internal/commands", "role": "one file per command"},
+      {"path": "internal/core", "role": "shared types, helpers and the domain"},
+      {"path": "internal/data", "role": "behavioral data in tables"},
+      {"path": "tests", "role": "tests that run the built binary"}
+    ],
+    "layers": [
+      {"path": "cmd", "mayImport": ["internal/commands"]},
+      {"path": "internal/commands", "mayImport": ["internal/core", "internal/data"]},
+      {"path": "internal/core", "mayImport": []},
+      {"path": "internal/data", "mayImport": []}
+    ],
+    "model": [
+      {"datum": "Item", "owner": "internal/commands/add.go", "declaredIn": "internal/core/model.go", "states": ["draft", "active", "archived"]}
+    ],
+    "registries": [{"name": "commands", "path": "internal/commands/registry.go", "purpose": "add a command by adding one file that registers it"}],
+    "config": "internal/data/config.go",
+    "persistence": "internal/core/persist.go",
+    "observability": "internal/core/observe.go",
+    "surface": "the commands' output and exit codes, exercised by tests/smoke_test.go",
     "dataDir": "internal/data",
     "tokens": "",
-    "maxFileLines": 400
+    "maxFileLines": 400,
+    "templates": [
+      {"from": "go/go.mod.tmpl", "to": "go.mod"},
+      {"from": "cli/main.go.tmpl", "to": "cmd/app/main.go"},
+      {"from": "cli/registry.go.tmpl", "to": "internal/commands/registry.go"},
+      {"from": "cli/add.go.tmpl", "to": "internal/commands/add.go"},
+      {"from": "cli/list.go.tmpl", "to": "internal/commands/list.go"},
+      {"from": "go/model.go.tmpl", "to": "internal/core/model.go", "package": "core"},
+      {"from": "go/registry.go.tmpl", "to": "internal/core/registry.go", "package": "core"},
+      {"from": "go/persist.go.tmpl", "to": "internal/core/persist.go", "package": "core"},
+      {"from": "go/observe.go.tmpl", "to": "internal/core/observe.go", "package": "core"},
+      {"from": "go/config.go.tmpl", "to": "internal/data/config.go", "package": "data"},
+      {"from": "cli/smoke_test.go.tmpl", "to": "tests/smoke_test.go"}
+    ],
+    "oracle": {"checks": [
+      {"id": "tests", "kind": "command", "run": "go test ./...", "description": "the whole test suite passes", "expect": {"exit": 0}},
+      {"id": "registry", "kind": "file", "path": "internal/commands/registry.go", "description": "commands go through the registry", "expect": {"exists": true}},
+      {"id": "file-size", "kind": "maxLines", "glob": "**/*.go", "max": 400, "description": "no Go file past the base's limit"}
+    ]}
   },
   {
     "name": "interactive",
     "description": "Interactive application: engine, state, input, rendering, assets and tests separated.",
+    "language": "js",
     "folders": ["src", "src/engine", "src/state", "src/input", "src/render", "src/ui", "assets", "tests"],
+    "layout": [
+      {"path": "src/engine", "role": "the loop and the systems that advance it"},
+      {"path": "src/state", "role": "the state and its single owner"},
+      {"path": "src/input", "role": "controls, bindings and gestures"},
+      {"path": "src/render", "role": "drawing the current state"},
+      {"path": "src/ui", "role": "menus, HUD and the design tokens"},
+      {"path": "src/data", "role": "data tables: levels, balance, strings"},
+      {"path": "assets", "role": "art, audio and fonts"},
+      {"path": "tests", "role": "tests over the engine and the state"}
+    ],
+    "layers": [
+      {"path": "src/engine", "mayImport": ["src/state", "src/data"]},
+      {"path": "src/input", "mayImport": ["src/state", "src/data"]},
+      {"path": "src/render", "mayImport": ["src/state", "src/ui", "src/data"]},
+      {"path": "src/ui", "mayImport": ["src/state", "src/data"]},
+      {"path": "src/state", "mayImport": ["src/data"]},
+      {"path": "src/data", "mayImport": []}
+    ],
+    "model": [
+      {"datum": "app state", "owner": "src/state/store.js", "declaredIn": "src/state/store.js", "states": ["menu", "running", "paused", "done"]}
+    ],
+    "registries": [{"name": "systems", "path": "src/engine/registry.js", "purpose": "add behavior by registering a system"}],
+    "config": "src/data/tables.js",
+    "persistence": "src/state/persist.js",
+    "observability": "src/engine/observe.js",
+    "surface": "the running screen, and tests/smoke.test.js stepping the engine without a screen",
     "dataDir": "src/data",
     "tokens": "src/ui/tokens",
-    "maxFileLines": 400
+    "maxFileLines": 400,
+    "templates": [
+      {"from": "js/package.json.tmpl", "to": "package.json"},
+      {"from": "interactive/index.html.tmpl", "to": "index.html"},
+      {"from": "interactive/main.js.tmpl", "to": "src/main.js"},
+      {"from": "js/loop.js.tmpl", "to": "src/engine/loop.js"},
+      {"from": "js/registry.js.tmpl", "to": "src/engine/registry.js"},
+      {"from": "js/observe.js.tmpl", "to": "src/engine/observe.js"},
+      {"from": "interactive/store.js.tmpl", "to": "src/state/store.js"},
+      {"from": "js/persist.js.tmpl", "to": "src/state/persist.js"},
+      {"from": "interactive/bindings.js.tmpl", "to": "src/input/bindings.js"},
+      {"from": "interactive/draw.js.tmpl", "to": "src/render/draw.js"},
+      {"from": "interactive/hud.js.tmpl", "to": "src/ui/hud.js"},
+      {"from": "interactive/tokens.js.tmpl", "to": "src/ui/tokens/tokens.js"},
+      {"from": "interactive/tables.js.tmpl", "to": "src/data/tables.js"},
+      {"from": "interactive/smoke.test.js.tmpl", "to": "tests/smoke.test.js"}
+    ],
+    "oracle": {"checks": [
+      {"id": "tests", "kind": "command", "run": "node --test tests/smoke.test.js", "description": "the smoke test passes", "expect": {"exit": 0}},
+      {"id": "state-owner", "kind": "file", "path": "src/state/store.js", "description": "the owner of the state exists", "expect": {"exists": true}},
+      {"id": "file-size", "kind": "maxLines", "glob": "src/**/*.js", "max": 400, "description": "no source file past the base's limit"}
+    ]}
+  },
+  {
+    "name": "library",
+    "description": "Reusable library: a small public surface over internal code, with examples that compile.",
+    "language": "go",
+    "folders": ["pkg", "internal/core", "examples", "tests"],
+    "public": ["pkg"],
+    "layout": [
+      {"path": "pkg", "role": "the public API: what users import, and the only stable surface"},
+      {"path": "internal/core", "role": "the implementation behind the API"},
+      {"path": "examples", "role": "programs that use the public API, kept compiling"},
+      {"path": "tests", "role": "tests through the public API only"}
+    ],
+    "layers": [
+      {"path": "pkg", "mayImport": ["internal/core"]},
+      {"path": "examples", "mayImport": ["pkg"]},
+      {"path": "internal/core", "mayImport": []}
+    ],
+    "model": [
+      {"datum": "Item", "owner": "pkg/lib/lib.go", "declaredIn": "internal/core/model.go", "states": ["draft", "active", "archived"]}
+    ],
+    "registries": [{"name": "formats", "path": "internal/core/registry.go", "purpose": "add an output format by registering it"}],
+    "config": "internal/core/config.go",
+    "persistence": "internal/core/persist.go",
+    "observability": "internal/core/observe.go",
+    "surface": "the exported API, exercised by tests/smoke_test.go and examples/basic",
+    "dataDir": "internal/core",
+    "tokens": "",
+    "maxFileLines": 400,
+    "templates": [
+      {"from": "go/go.mod.tmpl", "to": "go.mod"},
+      {"from": "library/lib.go.tmpl", "to": "pkg/lib/lib.go"},
+      {"from": "go/model.go.tmpl", "to": "internal/core/model.go", "package": "core"},
+      {"from": "go/registry.go.tmpl", "to": "internal/core/registry.go", "package": "core"},
+      {"from": "go/persist.go.tmpl", "to": "internal/core/persist.go", "package": "core"},
+      {"from": "go/observe.go.tmpl", "to": "internal/core/observe.go", "package": "core"},
+      {"from": "go/config.go.tmpl", "to": "internal/core/config.go", "package": "core"},
+      {"from": "library/example.go.tmpl", "to": "examples/basic/main.go"},
+      {"from": "library/smoke_test.go.tmpl", "to": "tests/smoke_test.go"}
+    ],
+    "oracle": {"checks": [
+      {"id": "tests", "kind": "command", "run": "go test ./...", "description": "the whole test suite passes", "expect": {"exit": 0}},
+      {"id": "examples-build", "kind": "command", "run": "go build ./examples/...", "description": "the examples compile against the public API", "expect": {"exit": 0}},
+      {"id": "file-size", "kind": "maxLines", "glob": "**/*.go", "max": 400, "description": "no Go file past the base's limit"}
+    ]}
+  },
+  {
+    "name": "game",
+    "description": "Game or 3D application: fixed-step engine, world state with one owner, systems, rendering apart from simulation.",
+    "language": "js",
+    "folders": ["src", "src/engine", "src/world", "src/systems", "src/input", "src/render", "src/ui", "src/data", "assets", "tests"],
+    "layout": [
+      {"path": "src/engine", "role": "the fixed-step loop, the systems registry and the observability hook"},
+      {"path": "src/world", "role": "the world state, its phases and saves: the single owner of what exists"},
+      {"path": "src/systems", "role": "one simulation system per file, advancing the world by one step"},
+      {"path": "src/input", "role": "bindings from devices to actions"},
+      {"path": "src/render", "role": "the camera and the drawing of the world, never changing it"},
+      {"path": "src/ui", "role": "HUD, menus and the design tokens"},
+      {"path": "src/data", "role": "data tables: levels, balance"},
+      {"path": "assets", "role": "models, textures, audio and fonts"},
+      {"path": "tests", "role": "headless tests stepping the simulation"}
+    ],
+    "layers": [
+      {"path": "src/engine", "mayImport": ["src/data"]},
+      {"path": "src/systems", "mayImport": ["src/world", "src/engine", "src/data"]},
+      {"path": "src/input", "mayImport": ["src/world", "src/data"]},
+      {"path": "src/render", "mayImport": ["src/world", "src/ui", "src/data"]},
+      {"path": "src/ui", "mayImport": ["src/world", "src/data"]},
+      {"path": "src/world", "mayImport": ["src/engine", "src/data"]},
+      {"path": "src/data", "mayImport": []}
+    ],
+    "model": [
+      {"datum": "world", "owner": "src/world/world.js", "declaredIn": "src/world/world.js", "states": ["menu", "playing", "paused", "over"]}
+    ],
+    "registries": [{"name": "systems", "path": "src/engine/registry.js", "purpose": "add behavior by registering a system"}],
+    "config": "src/data/tables.js",
+    "persistence": "src/world/persist.js",
+    "observability": "src/engine/observe.js",
+    "surface": "the running scene, and tests/smoke.test.js stepping the simulation and projecting points without a screen",
+    "dataDir": "src/data",
+    "tokens": "src/ui/tokens",
+    "maxFileLines": 400,
+    "templates": [
+      {"from": "js/package.json.tmpl", "to": "package.json"},
+      {"from": "game/index.html.tmpl", "to": "index.html"},
+      {"from": "game/main.js.tmpl", "to": "src/main.js"},
+      {"from": "js/loop.js.tmpl", "to": "src/engine/loop.js"},
+      {"from": "js/registry.js.tmpl", "to": "src/engine/registry.js"},
+      {"from": "js/observe.js.tmpl", "to": "src/engine/observe.js"},
+      {"from": "game/world.js.tmpl", "to": "src/world/world.js"},
+      {"from": "js/persist.js.tmpl", "to": "src/world/persist.js"},
+      {"from": "game/spin.js.tmpl", "to": "src/systems/spin.js"},
+      {"from": "game/bindings.js.tmpl", "to": "src/input/bindings.js"},
+      {"from": "game/camera.js.tmpl", "to": "src/render/camera.js"},
+      {"from": "game/wire.js.tmpl", "to": "src/render/wire.js"},
+      {"from": "interactive/tokens.js.tmpl", "to": "src/ui/tokens/tokens.js"},
+      {"from": "game/tables.js.tmpl", "to": "src/data/tables.js"},
+      {"from": "game/smoke.test.js.tmpl", "to": "tests/smoke.test.js"}
+    ],
+    "oracle": {"checks": [
+      {"id": "tests", "kind": "command", "run": "node --test tests/smoke.test.js", "description": "the simulation smoke test passes", "expect": {"exit": 0}},
+      {"id": "world-owner", "kind": "file", "path": "src/world/world.js", "description": "the owner of the world exists", "expect": {"exists": true}},
+      {"id": "file-size", "kind": "maxLines", "glob": "src/**/*.js", "max": 400, "description": "no source file past the base's limit"}
+    ]}
+  },
+  {
+    "name": "service",
+    "description": "Service with workers: a durable job queue, a pool of workers and handlers registered by kind.",
+    "language": "go",
+    "folders": ["cmd", "internal/queue", "internal/workers", "internal/config", "internal/platform", "tests"],
+    "layout": [
+      {"path": "cmd", "role": "the entry point and wiring only"},
+      {"path": "internal/queue", "role": "the jobs, their states and their storage: the only writer of a job"},
+      {"path": "internal/workers", "role": "the pool and the handlers, registered by job kind"},
+      {"path": "internal/config", "role": "configuration: settings, environment, concurrency"},
+      {"path": "internal/platform", "role": "platform adapters and the observability hook"},
+      {"path": "tests", "role": "tests over the queue and the pool together"}
+    ],
+    "layers": [
+      {"path": "cmd", "mayImport": ["internal/queue", "internal/workers", "internal/config", "internal/platform"]},
+      {"path": "internal/workers", "mayImport": ["internal/queue", "internal/config", "internal/platform"]},
+      {"path": "internal/queue", "mayImport": ["internal/platform"]},
+      {"path": "internal/config", "mayImport": []},
+      {"path": "internal/platform", "mayImport": []}
+    ],
+    "model": [
+      {"datum": "Job", "owner": "internal/queue/queue.go", "declaredIn": "internal/queue/job.go", "states": ["queued", "running", "done", "failed"]}
+    ],
+    "registries": [{"name": "handlers", "path": "internal/workers/registry.go", "purpose": "add a kind of work by registering its handler"}],
+    "config": "internal/config/config.go",
+    "persistence": "internal/queue/persist.go",
+    "observability": "internal/platform/observe.go",
+    "surface": "the queue's final states after the pool drains it, exercised by tests/smoke_test.go",
+    "dataDir": "internal/queue",
+    "tokens": "",
+    "maxFileLines": 400,
+    "templates": [
+      {"from": "go/go.mod.tmpl", "to": "go.mod"},
+      {"from": "service/main.go.tmpl", "to": "cmd/app/main.go"},
+      {"from": "service/job.go.tmpl", "to": "internal/queue/job.go"},
+      {"from": "service/queue.go.tmpl", "to": "internal/queue/queue.go"},
+      {"from": "go/persist.go.tmpl", "to": "internal/queue/persist.go", "package": "queue"},
+      {"from": "go/registry.go.tmpl", "to": "internal/workers/registry.go", "package": "workers"},
+      {"from": "service/pool.go.tmpl", "to": "internal/workers/pool.go"},
+      {"from": "go/config.go.tmpl", "to": "internal/config/config.go", "package": "config"},
+      {"from": "go/observe.go.tmpl", "to": "internal/platform/observe.go", "package": "platform"},
+      {"from": "service/smoke_test.go.tmpl", "to": "tests/smoke_test.go"}
+    ],
+    "oracle": {"checks": [
+      {"id": "tests", "kind": "command", "run": "go test ./...", "description": "the whole test suite passes", "expect": {"exit": 0}},
+      {"id": "job-owner", "kind": "file", "path": "internal/queue/queue.go", "description": "the owner of the jobs exists", "expect": {"exists": true}},
+      {"id": "file-size", "kind": "maxLines", "glob": "**/*.go", "max": 400, "description": "no Go file past the base's limit"}
+    ]}
   }
 ]

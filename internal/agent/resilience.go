@@ -139,14 +139,14 @@ func (s *Session) compactFallback() {
 		}
 	}
 	keep := append([]Message{}, s.Messages[keepFrom:]...)
-	s.Messages = append(compactionHead(truncate(b.String(), 60000), verbatimRequests(older)), keep...)
-	s.TurnStarts = []int{0}
+	s.adoptCompaction(compactionHead(truncate(b.String(), 60000), verbatimRequests(older)), keep)
 	s.Compactions++
 }
 
 // compactResilient summarizes the conversation, falling back to compactFallback when the summary fails,
 // and cuts the largest tool outputs when there is little to summarize but they alone fill the context.
 func (s *Session) compactResilient(ctx context.Context, p Provider) {
+	s.preCompactHooks(ctx, "auto")
 	s.Mu.Lock()
 	before := s.Compactions
 	s.Mu.Unlock()
@@ -252,6 +252,12 @@ func (s *Session) ResumeInterrupted() {
 func resumeInterruptedSessions() {
 	for _, p := range loadProjects() {
 		for _, d := range listSessions(p.Root) {
+			if !d.Working && d.Mission != nil && d.Mission.State == "running" { // stopped between two turns
+				if s, err := loadSession(p.Root, d.ID); err == nil {
+					s.endMission("parada", "infuse restarted between two turns of the mission")
+				}
+				continue
+			}
 			if !d.Working || d.Archived {
 				continue
 			}

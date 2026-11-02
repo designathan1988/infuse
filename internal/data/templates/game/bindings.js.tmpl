@@ -1,0 +1,6 @@
+// Controls as data: a device event maps to an action, and nothing else knows about keys.
+import { tables } from '../data/tables.js';
+
+export function actionFor(code) {
+  return tables.bindings[code];
+}

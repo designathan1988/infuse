@@ -14,6 +14,7 @@ func shellProject(t *testing.T) (*Session, string) {
 	_ = os.MkdirAll(filepath.Join(root, "src"), 0o755)
 	_ = os.WriteFile(filepath.Join(root, "src", "base.js"), []byte("export const base = 1;\n"), 0o644)
 	s := newSession(root)
+	noContract(s) // these tests are about the audit's other gates
 	s.Turn = 1
 	s.gate.planned = true
 	snapshotTurn(s.Root, s.workRoot(), s.ID, s.Turn)
@@ -63,8 +64,8 @@ func TestShellWriteNeedsAPlan(t *testing.T) {
 // also records one before the command runs, and that file never passed a gate.
 func TestGatedWritesAreNotAuditedTwice(t *testing.T) {
 	s, root := shellProject(t)
-	s.markGated("src/big.js")
 	writeFile(t, root, "src/big.js", strings.Repeat("const x = someValue;\n", 500))
+	s.markGated("src/big.js", filepath.Join(root, "src", "big.js"))
 	if why := s.auditShellWrites(); !why.Empty() {
 		t.Fatalf("a write tool's own path must not be judged again here: %s", why.Render("en"))
 	}

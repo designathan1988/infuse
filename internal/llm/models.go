@@ -16,9 +16,17 @@ type modelLimit struct{ context, output int }
 
 var modelLimits = map[string]modelLimit{
 	"claude-fable-5-1":  {1_000_000, 128_000},
+	"claude-fable-5":    {1_000_000, 128_000},
 	"claude-opus-5-5":   {1_000_000, 128_000},
+	"claude-opus-5":     {1_000_000, 128_000},
+	"claude-opus-4-8":   {1_000_000, 128_000},
+	"claude-opus-4-7":   {1_000_000, 128_000},
+	"claude-opus-4-6":   {1_000_000, 128_000},
 	"claude-sonnet-5-5": {1_000_000, 128_000},
+	"claude-sonnet-5":   {1_000_000, 128_000},
+	"claude-sonnet-4-6": {1_000_000, 128_000},
 	"claude-haiku-5-5":  {1_000_000, 128_000},
+	"claude-haiku-4-5":  {200_000, 64_000},
 	"deepseek-flash":    {1_000_000, 384_000},
 	"deepseek-v4-flash": {1_000_000, 384_000},
 	"deepseek-v4-pro":   {1_000_000, 384_000},
@@ -31,11 +39,11 @@ const FallbackContext = 128_000
 
 // ContextWindow is the model's context in tokens: its official figure, or its family's.
 func ContextWindow(model string) int {
-	m := strings.ToLower(strings.TrimSpace(model))
+	m := bareModel(model)
 	if l, ok := modelLimits[m]; ok {
 		return l.context
 	}
-	for _, fam := range []string{"claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-5", "deepseek-"} {
+	for _, fam := range []string{"claude-haiku-4-5", "claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-5", "deepseek-"} {
 		if strings.HasPrefix(m, fam) {
 			for id, l := range modelLimits {
 				if strings.HasPrefix(id, fam) {
@@ -53,11 +61,20 @@ func OutputLimit(model string, configured int) int {
 	if configured > 0 && configured != 16000 { // 16000 was a fixed default, never a choice
 		return configured
 	}
-	l, ok := modelLimits[strings.ToLower(model)]
+	l, ok := modelLimits[bareModel(model)]
 	if !ok {
 		return 16000
 	}
 	return min(l.output, 64000)
+}
+
+// bareModel is the id without what a cloud wraps around it (anthropic.claude-…, us.anthropic.claude-…).
+func bareModel(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if i := strings.Index(m, "claude-"); i > 0 {
+		return m[i:]
+	}
+	return m
 }
 
 // ProviderNames lists the registered provider kinds.

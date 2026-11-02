@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"infuse/internal/config"
 	"infuse/internal/core"
+	"infuse/internal/filter"
 	"infuse/internal/platform/process"
+	"infuse/internal/sandbox"
 	"net"
 	"os"
 	"os/exec"
@@ -116,7 +118,10 @@ func StartDevServer(root, name string) error {
 		if d := devServers[root+"|"+name]; d != nil && !d.exited {
 			return nil
 		}
-		cmd := exec.Command(c.RuntimeExecutable, c.RuntimeArgs...)
+		cmd, err := devCommand(root, c)
+		if err != nil {
+			return err
+		}
 		cmd.Dir = root
 		if c.Cwd != "" {
 			cmd.Dir = filepath.Join(root, c.Cwd)
@@ -138,6 +143,18 @@ func StartDevServer(root, name string) error {
 		return nil
 	}
 	return errors.New(core.M("workspace.launchConfigMissing").Render(config.LoadSettings().Language))
+}
+
+// devCommand runs the approved command contained: approving the command line says nothing about the
+// project code behind it, which the agent writes. The path is resolved first because the contained
+// process is created directly, without the search that finds npm.cmd.
+func devCommand(root string, c LaunchConfig) (*exec.Cmd, error) {
+	exe, err := exec.LookPath(c.RuntimeExecutable)
+	if err != nil {
+		return nil, err
+	}
+	argv := sandbox.Wrap(append([]string{exe}, c.RuntimeArgs...), root, filter.InfuseRecords(), config.EffectiveSettings(root).ContainProcesses)
+	return exec.Command(argv[0], argv[1:]...), nil
 }
 
 func StopDevServer(root, name string) {

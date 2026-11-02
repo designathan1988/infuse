@@ -12,6 +12,7 @@ import { toast } from '../components/toast.js';
 const CRIT_KINDS = {
   command: { name: 'crit.command.name', ex: 'npm test · go test ./... · python -m pytest', help: 'crit.command.help', make: () => ({ kind: 'command', run: '', expect: { exit: 0 } }), title: 'crit.command.title' },
   http: { name: 'crit.http.name', ex: 'http://localhost:3000/login → 200 "Sign in"', help: 'crit.http.help', make: () => ({ kind: 'http', url: 'http://localhost:3000/', expect: { status: 200 } }), title: 'crit.http.title' },
+  browser: { name: 'crit.browser.name', ex: 'http://localhost:3000/ → #root > * "Sign in"', help: 'crit.browser.help', make: () => ({ kind: 'browser', url: 'http://localhost:3000/', expect: { selector: '' } }), title: 'crit.browser.title' },
   file: { name: 'crit.file.name', ex: 'README.md contains "Installation" · .env does not exist', help: 'crit.file.help', make: () => ({ kind: 'file', path: '', expect: {} }), title: 'crit.file.title' },
   maxLines: { name: 'crit.maxLines.name', ex: 'src/**/*.ts with at most 400 lines', help: 'crit.maxLines.help', make: () => ({ kind: 'maxLines', glob: '**/*.ts', max: 400 }), title: 'crit.maxLines.title' },
 };
@@ -77,9 +78,10 @@ function shellHTML(o, files) {
       <div class="oracle-sect"><span class="grow">${t('oracle.needsToBeTrue')}</span><button class="btn sm addc">${I.plus} ${t('oracle.addCriterion')}</button></div>
       <div class="checks"></div>
       <div class="sugg"></div>
-      <details class="details-fold"${o.spec.setup ? ' open' : ''}><summary>${t('oracle.setupTitle')}</summary>
+      <details class="details-fold"${o.spec.setup || o.spec.server ? ' open' : ''}><summary>${t('oracle.setupTitle')}</summary>
         <div class="crit-sentence">${t('oracle.setupRun')} <input class="slot mono setup" value="${esc(o.spec.setup || '')}" placeholder="npm ci" spellcheck="false"> ${t('oracle.setupHint')}</div>
         <div class="faint crit-help">${t('oracle.setupHelp')}</div>
+        <div class="crit-sentence">${t('oracle.serverRun')} <input class="slot mono server" value="${esc(o.spec.server || '')}" placeholder="npm run dev" spellcheck="false"> ${t('oracle.serverHint')}</div>
       </details>
       <details class="details-fold"${files.some?.(f => f.name !== 'checks.json' && f.content.trim()) ? ' open' : ''}><summary>${t('oracle.proseTitle')}</summary>
         <div class="faint crit-help">${t('oracle.proseHelp')}</div>
@@ -92,10 +94,11 @@ function wireShell(o) {
   o.pb.addEventListener('verdict', e => { o.last = e.detail; drawChecks(o); });
   o.pb.querySelector('.hx').onclick = () => toggleHelp(o, false);
   o.pb.querySelector('.setup').oninput = e => { o.spec.setup = e.target.value.trim(); o.save(); };
+  o.pb.querySelector('.server').oninput = e => { o.spec.server = e.target.value.trim(); o.save(); };
   o.pb.querySelector('.addc').onclick = e => menu(e.currentTarget, [
     { h: t('oracle.whichKind') },
     ...Object.entries(CRIT_KINDS).map(([k, x]) => ({
-      label: t(x.name), d: t('common.eg') + ' ' + x.ex,
+      label: t(x.name), sub: t('common.eg') + ' ' + x.ex,
       f: () => addCheck(o, { ...x.make(), description: t(x.title) }, true)
     }))
   ], null, { alignRight: true });
@@ -131,6 +134,11 @@ function takeSuggestion(o, s) {
     const inp = o.pb.querySelector('.setup');
     if (inp) inp.value = s.setup;
   }
+  if (s.server && !o.spec.server) {
+    o.spec.server = s.server;
+    const inp = o.pb.querySelector('.server');
+    if (inp) inp.value = s.server;
+  }
   addCheck(o, { ...s.check, description: t(s.title) });
 }
 
@@ -150,6 +158,7 @@ function sentence(k) {
   const extraS = x.contains != null || k._more ? ` ${t(k.kind === 'command' ? 'crit.andOutputContains' : 'crit.andResponseContains')} ${slot('contains', x.contains, t('crit.someText'), false)}` : '';
   if (k.kind === 'command') return `${t('crit.run')} ${slot('run', k.run, 'npm test')} ${t('crit.expectNoError')}${extraS}`;
   if (k.kind === 'http') return `${t('crit.open')} ${slot('url', k.url, 'http://localhost:3000/')} ${t('crit.expectResponse')} ${slot('status', x.status || 200, '200')}${extraS}`;
+  if (k.kind === 'browser') return `${t('crit.open')} ${slot('url', k.url, 'http://localhost:3000/')} ${t('crit.browser.expect')} ${slot('selector', x.selector, '#root > *')}${extraS}`;
   if (k.kind === 'maxLines') return `${t('crit.noFile')} ${slot('glob', k.glob, '**/*.ts')} ${t('crit.exceeds')} ${slot('max', k.max || 400, '400')} ${t('common.lines')}`;
   const mode = x.exists === false ? 'absent' : x.contains != null ? 'contains' : 'exists';
   return `${t('crit.theFile')} ${slot('path', k.path, 'README.md')} <span class="chip fmode">${t({ exists: 'crit.exists', absent: 'crit.absent', contains: 'crit.contains' }[mode])} ${I.caret}</span>${mode === 'contains' ? ' ' + slot('contains', x.contains, t('crit.someText'), false) : ''}`;
@@ -161,6 +170,7 @@ function bindCriterion(o, k, i, card) {
     const f = inp.dataset.f, val = inp.value;
     k.expect = k.expect || {};
     if (f === 'contains') { if (val) k.expect.contains = val; else delete k.expect.contains; k._more = true; }
+    else if (f === 'selector') { if (val) k.expect.selector = val; else delete k.expect.selector; }
     else if (f === 'status') k.expect.status = parseInt(val) || 200;
     else if (f === 'max') k.max = parseInt(val) || 400;
     else k[f] = val.trim();

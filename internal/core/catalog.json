@@ -139,6 +139,10 @@
     "en": "tool unavailable for this subagent: {tool}",
     "pt-BR": "ferramenta indisponível para este subagente: {tool}"
   },
+  "agent.unknown_kind": {
+    "en": "no subagent of kind \"{kind}\"",
+    "pt-BR": "não existe subagente do tipo \"{kind}\""
+  },
   "agent.working": {
     "en": "working…",
     "pt-BR": "trabalhando…"
@@ -286,6 +290,22 @@
   "ban.refused": {
     "en": "[infuse] Blocked by the user's prohibition (turn {turn}): “{quote}”. It holds until the user lifts it.",
     "pt-BR": "[infuse] Bloqueado pela proibição do usuário (turno {turn}): “{quote}”. Vale até o usuário retirá-la."
+  },
+  "ban.kindTool": {
+    "en": "tool",
+    "pt-BR": "ferramenta"
+  },
+  "ban.kindCommand": {
+    "en": "command",
+    "pt-BR": "comando"
+  },
+  "ban.kindPath": {
+    "en": "path",
+    "pt-BR": "caminho"
+  },
+  "ban.kindAction": {
+    "en": "action",
+    "pt-BR": "ação"
   },
   "ban.restore": {
     "en": "Restore",
@@ -614,6 +634,42 @@
   "changes.aria": {
     "en": "Changes (Ctrl+Shift+D)",
     "pt-BR": "Alterações (Ctrl+Shift+D)"
+  },
+  "changes.accept": {
+    "en": "Accept",
+    "pt-BR": "Aceitar"
+  },
+  "changes.acceptHint": {
+    "en": "Keep this change: it is staged and leaves the review",
+    "pt-BR": "Manter esta alteração: ela vai para o stage e sai da revisão"
+  },
+  "changes.acceptedCount": {
+    "en": "{count, plural, one {# hunk accepted} other {# hunks accepted}}",
+    "pt-BR": "{count, plural, one {# trecho aceito} other {# trechos aceitos}}"
+  },
+  "changes.branchCreated": {
+    "en": "Now on branch {name}",
+    "pt-BR": "Agora no branch {name}"
+  },
+  "changes.branchName": {
+    "en": "Branch name",
+    "pt-BR": "Nome do branch"
+  },
+  "changes.newBranch": {
+    "en": "New branch",
+    "pt-BR": "Novo branch"
+  },
+  "changes.reject": {
+    "en": "Reject",
+    "pt-BR": "Rejeitar"
+  },
+  "changes.rejectConfirm": {
+    "en": "Revert this hunk in {path}?",
+    "pt-BR": "Reverter este trecho em {path}?"
+  },
+  "changes.rejectHint": {
+    "en": "Revert just this change in the file",
+    "pt-BR": "Reverter só esta alteração no arquivo"
   },
   "changes.comment": {
     "en": "Comment",
@@ -1031,6 +1087,10 @@
     "en": "give at least one criterion",
     "pt-BR": "informe ao menos um critério"
   },
+  "contract.required": {
+    "en": "No contract is confirmed for this request yet. Call Contract with the goal and the verifiable criteria of the request, and wait for the user's confirmation before writing code.",
+    "pt-BR": "Nenhum contrato foi confirmado para este pedido ainda. Chame Contract com o objetivo e os critérios verificáveis do pedido, e espere a confirmação do usuário antes de escrever código."
+  },
   "contract.question": {
     "en": "Goal: {goal}\n\nI will consider it done when:\n{criteria}\n\nConfirm? (or write what to adjust)",
     "pt-BR": "Objetivo: {goal}\n\nVou considerar pronto quando:\n{criteria}\n\nConfirma? (ou escreva o que ajustar)"
@@ -1095,6 +1155,22 @@
     "en": "and the response to contain",
     "pt-BR": "e que a resposta contenha"
   },
+  "crit.browser.expect": {
+    "en": "in a browser and expect the element",
+    "pt-BR": "em um navegador e esperar o elemento"
+  },
+  "crit.browser.help": {
+    "en": "Opens the address in a real browser with no window, started from the frozen copy, and checks that the element is on the page. A screenshot stays as evidence. Without a browser on this computer the check reports an error, never a pass.",
+    "pt-BR": "Abre o endereço em um navegador de verdade, sem janela, a partir da cópia congelada, e confere que o elemento está na página. Uma captura de tela fica como evidência. Sem navegador neste computador a verificação dá erro, nunca aprovação."
+  },
+  "crit.browser.name": {
+    "en": "A page shows the right thing",
+    "pt-BR": "Uma página mostra o que deve"
+  },
+  "crit.browser.title": {
+    "en": "The page shows the application",
+    "pt-BR": "A página mostra o aplicativo"
+  },
   "crit.command.help": {
     "en": "Runs the command on a frozen copy of the project. Passes when the command exits without error (exit code 0). Can also require a text in the output, like \"passed\".",
     "pt-BR": "Roda o comando numa cópia congelada do projeto. Passa quando o comando termina sem erro (código de saída 0). Pode exigir também um texto na saída, como \"passed\"."
@@ -1152,8 +1228,8 @@
     "pt-BR": "O arquivo existe"
   },
   "crit.http.help": {
-    "en": "Asks for the address and checks the response: the code (200 = ok, 404 = not found) and, if you want, a text that must appear. The app must be running — start it from Browser › Servers.",
-    "pt-BR": "Pede o endereço e confere a resposta: o código (200 = ok, 404 = não encontrado) e, se quiser, um texto que precisa aparecer. O app precisa estar rodando — inicie pelo Navegador › Servidores."
+    "en": "Asks for the address and checks the response: the code (200 = ok, 404 = not found) and, if you want, a text that must appear. The app starts from the frozen copy, with the command under Preparation.",
+    "pt-BR": "Pede o endereço e confere a resposta: o código (200 = ok, 404 = não encontrado) e, se quiser, um texto que precisa aparecer. O app inicia a partir da cópia congelada, com o comando em Preparação."
   },
   "crit.http.name": {
     "en": "A page or API responds",
@@ -1318,6 +1394,10 @@
   "cust.skillsDesc": {
     "en": "Procedures the agent follows when the task matches: it sees each skill’s name and description and loads the instructions only when needed. Same format as Claude Code (folder with SKILL.md): skills in .claude/skills and ~/.claude/skills already work here.",
     "pt-BR": "Procedimentos que o agente segue quando a tarefa corresponde: ele vê o nome e a descrição de cada skill e carrega as instruções só quando precisa. Mesmo formato do Claude Code (pasta com SKILL.md): as skills de .claude/skills e ~/.claude/skills já valem aqui."
+  },
+  "destructive.ask": {
+    "en": "{what} discards work that may not come back: run it?",
+    "pt-BR": "{what} descarta trabalho que pode não voltar: executar?"
   },
   "devserver.approveConfirm": {
     "en": "Run this launch.json command? It runs with your permissions, outside the filter.",
@@ -1643,6 +1723,18 @@
     "en": "Open in Files pane",
     "pt-BR": "Abrir no painel Arquivos"
   },
+  "files.dependentsHint": {
+    "en": "{count, plural, one {Used by # file} other {Used by # files}}",
+    "pt-BR": "{count, plural, one {Usado por # arquivo} other {Usado por # arquivos}}"
+  },
+  "files.hotspot": {
+    "en": "large",
+    "pt-BR": "grande"
+  },
+  "files.hotspotHint": {
+    "en": "{lines} lines: responsibilities are likely accumulating here",
+    "pt-BR": "{lines} linhas: as responsabilidades provavelmente estão se acumulando aqui"
+  },
   "files.overwrite": {
     "en": "Override",
     "pt-BR": "Sobrescrever"
@@ -1711,9 +1803,21 @@
     "en": "invalid regex: {error}",
     "pt-BR": "regex inválida: {error}"
   },
+  "grep.bad_type": {
+    "en": "unknown file type \"{type}\"",
+    "pt-BR": "tipo de arquivo desconhecido \"{type}\""
+  },
   "grep.none": {
     "en": "no matches",
     "pt-BR": "nenhuma ocorrência"
+  },
+  "grep.total": {
+    "en": "{count} matching line(s) in all",
+    "pt-BR": "{count} linha(s) correspondente(s) no total"
+  },
+  "guard.clean": {
+    "en": "git clean over the whole tree or a folder holding protected paths refused; name the folders to clean",
+    "pt-BR": "git clean na árvore inteira ou em pasta que contém caminhos protegidos recusado; indique as pastas a limpar"
   },
   "guard.command": {
     "en": "command on a protected path refused",
@@ -1727,9 +1831,21 @@
     "en": "git {sub} on a protected path refused",
     "pt-BR": "git {sub} sobre caminho protegido recusado"
   },
+  "guard.git_control": {
+    "en": "{file} controls what git runs on the user's machine and is out of the agent's reach ({detail}). Ask the user to change it",
+    "pt-BR": "{file} controla o que o git executa na máquina do usuário e está fora do alcance do agente ({detail}). Peça ao usuário que faça a alteração"
+  },
   "guard.heredoc": {
     "en": "heredoc into a protected path refused",
     "pt-BR": "heredoc para caminho protegido recusado"
+  },
+  "guard.heredoc_outside": {
+    "en": "heredoc outside the project refused: {path}. The agent writes only inside the project or its worktree",
+    "pt-BR": "heredoc fora do projeto recusado: {path}. O agente só escreve dentro do projeto ou da sua worktree"
+  },
+  "guard.hidden_read": {
+    "en": "attempt to read a hidden record through the shell",
+    "pt-BR": "tentativa de ler um registro oculto pelo shell"
   },
   "guard.nested_redir": {
     "en": "redirection in a nested shell into a protected path refused",
@@ -1750,6 +1866,10 @@
   "guard.sed": {
     "en": "sed -i on a protected path refused",
     "pt-BR": "sed -i sobre caminho protegido recusado"
+  },
+  "guard.tree": {
+    "en": "command on a folder that holds protected paths refused",
+    "pt-BR": "comando sobre pasta que contém caminhos protegidos recusado"
   },
   "guard.with_command": {
     "en": "{why}: {command}",
@@ -1807,6 +1927,14 @@
     "en": "No hooks yet. Use an example below.",
     "pt-BR": "Nenhum hook ainda. Use um exemplo abaixo."
   },
+  "hooks.notification": {
+    "en": "Notification",
+    "pt-BR": "Notificação"
+  },
+  "hooks.notificationDesc": {
+    "en": "Runs when the agent needs you: a permission or a question.",
+    "pt-BR": "Roda quando o agente precisa de você: uma permissão ou uma pergunta."
+  },
   "hooks.other": {
     "en": "Other hook",
     "pt-BR": "Outro hook"
@@ -1818,6 +1946,14 @@
   "hooks.postToolUseDesc": {
     "en": "Runs after the action (e.g., format the edited file). With code 2, stderr goes to the agent.",
     "pt-BR": "Roda depois da ação (ex.: formatar o arquivo editado). Com código 2, o stderr vai para o agente."
+  },
+  "hooks.preCompact": {
+    "en": "Before compacting",
+    "pt-BR": "Antes de compactar"
+  },
+  "hooks.preCompactDesc": {
+    "en": "Runs before the conversation is compacted.",
+    "pt-BR": "Roda antes de a conversa ser compactada."
   },
   "hooks.preToolUse": {
     "en": "Before a tool",
@@ -1871,6 +2007,14 @@
     "en": "Ready-made examples",
     "pt-BR": "Exemplos prontos"
   },
+  "hooks.sessionStart": {
+    "en": "When a session opens",
+    "pt-BR": "Ao abrir uma sessão"
+  },
+  "hooks.sessionStartDesc": {
+    "en": "Runs when a session opens; what it prints joins the agent's context.",
+    "pt-BR": "Roda ao abrir uma sessão; o que imprime entra no contexto do agente."
+  },
   "hooks.stop": {
     "en": "When the agent finishes",
     "pt-BR": "Quando o agente termina"
@@ -1883,6 +2027,10 @@
     "en": "When:",
     "pt-BR": "Momento:"
   },
+  "impasse.declared": {
+    "en": "Impasse: {reason}. Tried: {tried}. Needed: {needs}.",
+    "pt-BR": "Impasse: {reason}. Tentado: {tried}. Necessário: {needs}."
+  },
   "impasse.no_mission": {
     "en": "there is no mission running; explain the impasse to the user in your answer",
     "pt-BR": "não há missão em andamento; explique o impasse ao usuário na resposta"
@@ -1890,6 +2038,14 @@
   "impasse.recorded": {
     "en": "Mission ended at an impasse. The user sees the reason, what was tried and what is needed. End the turn with a short summary.",
     "pt-BR": "Missão encerrada em impasse. O usuário vê o motivo, o que foi tentado e o que é preciso. Termine o turno com um resumo curto."
+  },
+  "impasse.task_note": {
+    "en": "stopped at an impasse",
+    "pt-BR": "parado em impasse"
+  },
+  "impasse.turn_recorded": {
+    "en": "Impasse recorded and shown to the user: the turn ends here, not as done. End with a short summary.",
+    "pt-BR": "Impasse registrado e mostrado ao usuário: o turno termina aqui, não como concluído. Termine com um resumo curto."
   },
   "instr.compile_failed": {
     "en": "[infuse] The project's instructions could not be compiled into rules ({error}). The rules compiled from the previous version stay in force, with their required reading and verification commands; infuse tries again at the next message.",
@@ -2031,6 +2187,30 @@
     "en": "[infuse] {file} is used by {count}: {files}",
     "pt-BR": "[infuse] {file} é usado por {count}: {files}"
   },
+  "map.exports": {
+    "en": "Exports",
+    "pt-BR": "Exporta"
+  },
+  "map.file": {
+    "en": "File",
+    "pt-BR": "Arquivo"
+  },
+  "map.mostUsed": {
+    "en": "Most used",
+    "pt-BR": "Mais usados"
+  },
+  "map.usedBy": {
+    "en": "Used by",
+    "pt-BR": "Usado por"
+  },
+  "map.viewDirs": {
+    "en": "Folders",
+    "pt-BR": "Pastas"
+  },
+  "map.viewFiles": {
+    "en": "Files",
+    "pt-BR": "Arquivos"
+  },
   "map.dir": {
     "en": "folder",
     "pt-BR": "pasta"
@@ -2151,6 +2331,30 @@
     "en": "{command} not found on this computer",
     "pt-BR": "{command} não encontrado neste computador"
   },
+  "mcp.not_running": {
+    "en": "the connector {name} is not running",
+    "pt-BR": "o conector {name} não está em execução"
+  },
+  "mcp.nothing_listed": {
+    "en": "the running connectors list nothing",
+    "pt-BR": "os conectores em execução não listam nada"
+  },
+  "mcp.oauth_http_only": {
+    "en": "only HTTP servers sign in",
+    "pt-BR": "só servidores HTTP fazem login"
+  },
+  "mcp.oauth_login_needed": {
+    "en": "{name} needs you to sign in from the connectors screen",
+    "pt-BR": "{name} precisa que você faça login na tela de conectores"
+  },
+  "mcp.oauth_no_client": {
+    "en": "this server takes no automatic registration: set clientId in its configuration",
+    "pt-BR": "este servidor não aceita registro automático: defina clientId na configuração dele"
+  },
+  "mcp.oauth_timeout": {
+    "en": "the sign-in was not finished in the browser in time",
+    "pt-BR": "o login não foi concluído no navegador a tempo"
+  },
   "mcp.off": {
     "en": "off",
     "pt-BR": "desligado"
@@ -2175,6 +2379,10 @@
     "en": "read-only",
     "pt-BR": "só leitura"
   },
+  "mcp.resource_binary": {
+    "en": "[{uri}: binary, {type}, {bytes} bytes]",
+    "pt-BR": "[{uri}: binário, {type}, {bytes} bytes]"
+  },
   "mcp.run": {
     "en": "run",
     "pt-BR": "rodar"
@@ -2186,6 +2394,14 @@
   "mcp.seq.what": {
     "en": "Helps the agent break hard problems into steps it reviews and corrects.",
     "pt-BR": "Ajuda o agente a decompor problemas difíceis em passos que ele revisa e corrige."
+  },
+  "mcp.signIn": {
+    "en": "Sign in",
+    "pt-BR": "Entrar"
+  },
+  "mcp.signedIn": {
+    "en": "Signed in",
+    "pt-BR": "Conectado"
   },
   "mcp.splitHint": {
     "en": "The command is split on spaces; for arguments with spaces, edit the .mcp.json.",
@@ -2410,6 +2626,14 @@
   "memory.removed": {
     "en": "removed: {id}",
     "pt-BR": "removido: {id}"
+  },
+  "memory.saveFailed": {
+    "en": "Could not save to memory",
+    "pt-BR": "Não foi possível salvar na memória"
+  },
+  "memory.savedNote": {
+    "en": "Saved to memory",
+    "pt-BR": "Salvo na memória"
   },
   "menu.itemByNumber": {
     "en": "Choose an item by number",
@@ -2683,6 +2907,10 @@
     "en": "Customize",
     "pt-BR": "Personalizar"
   },
+  "nav.rules": {
+    "en": "Rules",
+    "pt-BR": "Regras"
+  },
   "nav.scheduled": {
     "en": "Scheduled",
     "pt-BR": "Agendadas"
@@ -2690,6 +2918,26 @@
   "nav.settings": {
     "en": "Settings",
     "pt-BR": "Configurações"
+  },
+  "nb.bad_action": {
+    "en": "unknown action \"{action}\": use replace, insert or delete",
+    "pt-BR": "ação desconhecida \"{action}\": use replace, insert ou delete"
+  },
+  "nb.done": {
+    "en": "{action} done in {file}",
+    "pt-BR": "{action} feito em {file}"
+  },
+  "nb.invalid": {
+    "en": "the notebook cannot be edited: {error}",
+    "pt-BR": "o notebook não pode ser editado: {error}"
+  },
+  "nb.no_cell": {
+    "en": "no cell {cell}: the notebook has {total}",
+    "pt-BR": "não existe a célula {cell}: o notebook tem {total}"
+  },
+  "nb.not_notebook": {
+    "en": "{file} is not a notebook (.ipynb); use Edit",
+    "pt-BR": "{file} não é um notebook (.ipynb); use Edit"
   },
   "notify.done.title": {
     "en": "infuse finished",
@@ -2754,6 +3002,14 @@
   "oracle.proseTitle": {
     "en": "Description in words (optional)",
     "pt-BR": "Descrição em palavras (opcional)"
+  },
+  "oracle.serverHint": {
+    "en": "from the frozen copy, for the checks that open an address",
+    "pt-BR": "a partir da cópia congelada, para as verificações que abrem um endereço"
+  },
+  "oracle.serverRun": {
+    "en": "Start the app with",
+    "pt-BR": "Iniciar o app com"
   },
   "oracle.setupHelp": {
     "en": "Usually not needed: the copy already uses the installed dependencies (node_modules, .venv). Use it when checking needs a step before, like installing dependencies from scratch or generating code.",
@@ -2895,9 +3151,17 @@
     "en": "Terminal",
     "pt-BR": "Terminal"
   },
+  "pane.turnlog": {
+    "en": "Turn log",
+    "pt-BR": "Log de turnos"
+  },
   "pane.vices": {
     "en": "Vices",
     "pt-BR": "Vícios"
+  },
+  "path.git_control": {
+    "en": "{path} controls what git runs on the user's machine and is out of the agent's reach. Ask the user to change it",
+    "pt-BR": "{path} controla o que o git executa na máquina do usuário e está fora do alcance do agente. Peça ao usuário que faça a alteração"
   },
   "path.internal": {
     "en": "{path} is an internal infuse file (sessions, journal, history), not part of the project. From .infuse/ the agent reads only the pinned documentation (.infuse/docs), the conventions, the map (.infuse/map/MAP.md) and its own captures",
@@ -3055,6 +3319,10 @@
     "en": "[infuse] Blocked: these packages do not exist in their registry: {packages}. The name was probably invented; find the real package in the official documentation.",
     "pt-BR": "[infuse] Bloqueado: estes pacotes não existem no registro: {packages}. O nome provavelmente foi inventado; encontre o pacote real na documentação oficial."
   },
+  "plan.already": {
+    "en": "already in plan mode",
+    "pt-BR": "já está no modo plano"
+  },
   "plan.approveRun": {
     "en": "Approve and run",
     "pt-BR": "Aprovar e executar"
@@ -3075,6 +3343,22 @@
     "en": "No plan yet. Use Plan mode (Shift+Tab or /plan) to have the agent propose before editing.",
     "pt-BR": "Nenhum plano ainda. Use o modo Plano (Shift+Tab ou /plan) para o agente propor antes de editar."
   },
+  "plan.entered": {
+    "en": "plan mode on: read and investigate, then present the plan with ExitPlanMode",
+    "pt-BR": "modo plano ativo: leia e investigue, depois apresente o plano com ExitPlanMode"
+  },
+  "plan.exit_approved": {
+    "en": "plan approved; the session is back in mode {mode}",
+    "pt-BR": "plano aprovado; a sessão voltou ao modo {mode}"
+  },
+  "plan.exit_refused": {
+    "en": "the user kept plan mode: refine the plan",
+    "pt-BR": "o usuário manteve o modo plano: refine o plano"
+  },
+  "plan.exit_why": {
+    "en": "The agent asks to leave plan mode and carry out this plan:\n{plan}",
+    "pt-BR": "O agente pede para sair do modo plano e executar este plano:\n{plan}"
+  },
   "plan.noTasks": {
     "en": "No agent tasks yet.",
     "pt-BR": "Nenhuma tarefa do agente ainda."
@@ -3082,6 +3366,10 @@
   "plan.no_proof": {
     "en": "plan refused: every open task needs a proof (the command, the page or the file that will prove it works). Without proof: {tasks}",
     "pt-BR": "plano recusado: cada tarefa aberta precisa de proof (o comando, a página ou o arquivo que comprovará que funciona). Sem proof: {tasks}"
+  },
+  "plan.not_in_plan": {
+    "en": "the session is not in plan mode",
+    "pt-BR": "a sessão não está no modo plano"
   },
   "plan.noteStoppedTask": {
     "en": "the turn ended without this task being finished and proven",
@@ -3106,6 +3394,34 @@
   "plan.title": {
     "en": "Plan",
     "pt-BR": "Plano"
+  },
+  "plugin.bad_name": {
+    "en": "\"{name}\" is not a valid plugin name",
+    "pt-BR": "\"{name}\" não é um nome de plugin válido"
+  },
+  "plugin.bad_url": {
+    "en": "\"{url}\" is not a git address (https://, ssh://, git@ or file://)",
+    "pt-BR": "\"{url}\" não é um endereço git (https://, ssh://, git@ ou file://)"
+  },
+  "plugin.clone_failed": {
+    "en": "the clone failed: {error}",
+    "pt-BR": "a clonagem falhou: {error}"
+  },
+  "plugin.exists": {
+    "en": "the plugin {name} is already installed",
+    "pt-BR": "o plugin {name} já está instalado"
+  },
+  "plugin.no_manifest": {
+    "en": "{url} has no plugin.json",
+    "pt-BR": "{url} não tem plugin.json"
+  },
+  "plugin.no_marketplace": {
+    "en": "no marketplace is configured: set marketplaceUrl in the settings",
+    "pt-BR": "nenhum marketplace configurado: defina marketplaceUrl nas configurações"
+  },
+  "plugin.not_installed": {
+    "en": "the plugin {name} is not installed",
+    "pt-BR": "o plugin {name} não está instalado"
   },
   "pr.autoMerge": {
     "en": "Merge when ready",
@@ -3359,6 +3675,62 @@
     "en": "testing…",
     "pt-BR": "testando…"
   },
+  "search.no_key": {
+    "en": "the search provider {name} has no key in the vault",
+    "pt-BR": "o provedor de busca {name} não tem chave no cofre"
+  },
+  "search.unknown_provider": {
+    "en": "no search provider named \"{name}\"",
+    "pt-BR": "não há provedor de busca chamado \"{name}\""
+  },
+  "style.concise": {
+    "en": "Concise",
+    "pt-BR": "Conciso"
+  },
+  "style.default": {
+    "en": "Default",
+    "pt-BR": "Padrão"
+  },
+  "style.explanatory": {
+    "en": "Explanatory",
+    "pt-BR": "Explicativo"
+  },
+  "style.learning": {
+    "en": "Learning",
+    "pt-BR": "Aprendizado"
+  },
+  "turnlog.empty": {
+    "en": "No turns logged in this session yet",
+    "pt-BR": "Nenhum turno registrado nesta sessão ainda"
+  },
+  "turnlog.kind": {
+    "en": "Kind",
+    "pt-BR": "Tipo"
+  },
+  "turnlog.ms": {
+    "en": "Time (ms)",
+    "pt-BR": "Tempo (ms)"
+  },
+  "turnlog.noSession": {
+    "en": "Open a session to see its log",
+    "pt-BR": "Abra uma sessão para ver o log"
+  },
+  "turnlog.turn": {
+    "en": "Turn",
+    "pt-BR": "Turno"
+  },
+  "turnlog.what": {
+    "en": "What",
+    "pt-BR": "O quê"
+  },
+  "turnlog.when": {
+    "en": "When",
+    "pt-BR": "Quando"
+  },
+  "usage.unpriced": {
+    "en": "no price known for {model}: its cost is not in the totals (Settings > Models and costs)",
+    "pt-BR": "preço desconhecido para {model}: o custo dele não entra nos totais (Configurações > Modelos e custos)"
+  },
   "provider.retry": {
     "en": "[infuse] The provider failed ({error}); trying again in {seconds}s (attempt {attempt}).",
     "pt-BR": "[infuse] O provedor falhou ({error}); tentando de novo em {seconds}s (tentativa {attempt})."
@@ -3446,6 +3818,78 @@
   "read.image_too_large": {
     "en": "image too large to send to the model ({bytes} bytes; maximum 5 MB)",
     "pt-BR": "imagem grande demais para enviar ao modelo ({bytes} bytes; máximo 5 MB)"
+  },
+  "read.nb_bad_range": {
+    "en": "invalid cells \"{cells}\": the notebook has {total} cell(s)",
+    "pt-BR": "células inválidas \"{cells}\": o notebook tem {total} célula(s)"
+  },
+  "read.nb_empty": {
+    "en": "{file} is a notebook with no cells",
+    "pt-BR": "{file} é um notebook sem células"
+  },
+  "read.nb_image_attached": {
+    "en": "[{type} output attached, {bytes} bytes]",
+    "pt-BR": "[saída {type} anexada, {bytes} bytes]"
+  },
+  "read.nb_image_skipped": {
+    "en": "[{type} output of {bytes} bytes not attached]",
+    "pt-BR": "[saída {type} de {bytes} bytes não anexada]"
+  },
+  "read.nb_invalid": {
+    "en": "{file} is not a readable notebook: {error}",
+    "pt-BR": "{file} não é um notebook legível: {error}"
+  },
+  "read.nb_more": {
+    "en": "[{total} cells in all. Continue with cells=\"{next}-...\"]",
+    "pt-BR": "[{total} células no total. Continue com cells=\"{next}-...\"]"
+  },
+  "read.pdf_bad_range": {
+    "en": "invalid pages \"{pages}\": the document has {total} page(s) and one read takes at most {limit}",
+    "pt-BR": "páginas inválidas \"{pages}\": o documento tem {total} página(s) e uma leitura aceita no máximo {limit}"
+  },
+  "read.pdf_encrypted": {
+    "en": "{file} is an encrypted PDF: its text cannot be read without decrypting it first",
+    "pt-BR": "{file} é um PDF criptografado: o texto não pode ser lido sem descriptografá-lo antes"
+  },
+  "read.pdf_invalid": {
+    "en": "{file} is not a PDF this reader understands",
+    "pt-BR": "{file} não é um PDF que este leitor entenda"
+  },
+  "read.pdf_more": {
+    "en": "[{total} pages in all; {shown} shown. Continue with pages=\"{next}-...\"]",
+    "pt-BR": "[{total} páginas no total; {shown} mostradas. Continue com pages=\"{next}-...\"]"
+  },
+  "read.pdf_no_pages": {
+    "en": "{file} has no page tree this reader can follow",
+    "pt-BR": "{file} não tem uma árvore de páginas que este leitor consiga seguir"
+  },
+  "read.pdf_no_text": {
+    "en": "no text could be extracted from pages {first}-{last}; the reasons, page by page:",
+    "pt-BR": "nenhum texto pôde ser extraído das páginas {first}-{last}; os motivos, página a página:"
+  },
+  "read.pdf_page_empty": {
+    "en": "[page {page} has no text]",
+    "pt-BR": "[a página {page} não tem texto]"
+  },
+  "read.pdf_page_font": {
+    "en": "[page {page} uses a font with no Unicode map: its text cannot be recovered]",
+    "pt-BR": "[a página {page} usa uma fonte sem mapa Unicode: o texto não pode ser recuperado]"
+  },
+  "read.pdf_page_image": {
+    "en": "[page {page} has no text layer: it is an image, a scan perhaps. Reading images of pages is not supported]",
+    "pt-BR": "[a página {page} não tem camada de texto: é uma imagem, talvez digitalizada. Ler imagens de páginas não é suportado]"
+  },
+  "read.pdf_page_range": {
+    "en": "[page {page} does not exist]",
+    "pt-BR": "[a página {page} não existe]"
+  },
+  "read.pdf_page_stream": {
+    "en": "[page {page} could not be decoded: {detail}]",
+    "pt-BR": "[a página {page} não pôde ser decodificada: {detail}]"
+  },
+  "read.pdf_too_large": {
+    "en": "PDF too large to read ({bytes} bytes; maximum 200 MB)",
+    "pt-BR": "PDF grande demais para ler ({bytes} bytes; máximo 200 MB)"
   },
   "redo.breaker": {
     "en": "the same call failed repeatedly, twice",
@@ -3795,6 +4239,10 @@
     "en": "turn off the heredoc transformation",
     "pt-BR": "desligar a transformação de heredoc"
   },
+  "rules.file_refused": {
+    "en": "[infuse] rule {rule}: file refused, a rule reads only project files that are not infuse's records: {path}",
+    "pt-BR": "[infuse] regra {rule}: arquivo recusado, uma regra só lê arquivos do projeto que não sejam registros do infuse: {path}"
+  },
   "rules.file_missing": {
     "en": "[infuse] rule {rule}: file not found: {path}",
     "pt-BR": "[infuse] regra {rule}: arquivo não encontrado: {path}"
@@ -3899,6 +4347,10 @@
     "en": "the conversation does not fit the model's context even after compacting: {error}",
     "pt-BR": "a conversa não cabe no contexto do modelo mesmo depois de compactar: {error}"
   },
+  "session.daily_warning": {
+    "en": "daily spending limit is close: US$ {spent} of US$ {limit} (Settings > Models and costs)",
+    "pt-BR": "limite de gasto diário próximo: US$ {spent} de US$ {limit} (Configurações > Modelos e custos)"
+  },
   "session.daily_limit": {
     "en": "daily spending limit reached: US$ {spent} of US$ {limit} (Settings > Models and costs)",
     "pt-BR": "limite de gasto diário atingido: US$ {spent} de US$ {limit} (Configurações > Modelos e custos)"
@@ -3944,8 +4396,112 @@
     "pt-BR": "Protocolo do agente"
   },
   "settings.agentProtocolDesc": {
-    "en": "Rules infuse imposes on every action of the agent — it does not choose to follow them. Always on: a plan before changing files (each task with its proof), docs consulted before using a library or external API, research after two failures, tests that cannot be weakened, untouchable criteria, a checked Report and a finished plan before ending.",
-    "pt-BR": "Regras que o infuse impõe a cada ação do agente — ele não escolhe segui-las. Sempre ativas: plano antes de alterar arquivos (cada tarefa com comprovação), documentação consultada antes de usar uma biblioteca ou API externa, pesquisa depois de duas falhas, testes que não podem ser enfraquecidos, critérios intocáveis, Relatório conferido e plano concluído antes de terminar."
+    "en": "Rules infuse imposes on every action of the agent — it does not choose to follow them. Always on: a plan before changing files (each task with its proof), docs consulted before using a library or external API, research after two failures, tests that cannot be weakened, untouchable criteria, a checked Report and a finished plan before ending. The switches of this policy live on the Rules page.",
+    "pt-BR": "Regras que o infuse impõe a cada ação do agente — ele não escolhe segui-las. Sempre ativas: plano antes de alterar arquivos (cada tarefa com comprovação), documentação consultada antes de usar uma biblioteca ou API externa, pesquisa depois de duas falhas, testes que não podem ser enfraquecidos, critérios intocáveis, Relatório conferido e plano concluído antes de terminar. As opções dessa política ficam na página Regras."
+  },
+  "policy.base": {
+    "en": "Architecture base",
+    "pt-BR": "Base de arquitetura"
+  },
+  "policy.baseDesc": {
+    "en": "The base declares where the project's code lives and what each folder is for. Code written outside the chosen folders is refused, and the project map starts filled with the declared structure.",
+    "pt-BR": "A base declara onde vive o código do projeto e para que serve cada pasta. Código escrito fora das pastas escolhidas é recusado, e o mapa do projeto começa preenchido com a estrutura declarada."
+  },
+  "policy.baseCustom": {
+    "en": "Custom base",
+    "pt-BR": "Base personalizada"
+  },
+  "policy.baseCustomDesc": {
+    "en": "One folder per line. Root-level files (manifests, readmes, configuration) are always allowed.",
+    "pt-BR": "Uma pasta por linha. Arquivos na raiz (manifestos, leia-mes, configuração) são sempre permitidos."
+  },
+  "policy.baseChosen": {
+    "en": "in use",
+    "pt-BR": "em uso"
+  },
+  "policy.basePick": {
+    "en": "Use this base",
+    "pt-BR": "Usar esta base"
+  },
+  "policy.baseRechoose": {
+    "en": "Switch to this base",
+    "pt-BR": "Trocar para esta base"
+  },
+  "policy.baseCreate": {
+    "en": "Create structure",
+    "pt-BR": "Criar estrutura"
+  },
+  "policy.baseCreating": {
+    "en": "Creating folders and the base document…",
+    "pt-BR": "Criando pastas e o documento da base…"
+  },
+  "policy.baseCreated": {
+    "en": "Folders, base document and the pre-filled map created.",
+    "pt-BR": "Pastas, documento da base e o mapa pré-preenchido criados."
+  },
+  "policy.baseSaved": {
+    "en": "Base saved.",
+    "pt-BR": "Base salva."
+  },
+  "policy.baseName": {
+    "en": "base name",
+    "pt-BR": "nome da base"
+  },
+  "policy.baseFolders": {
+    "en": "folders",
+    "pt-BR": "pastas"
+  },
+  "policy.baseFoldersPh": {
+    "en": "src\nsrc/core\nsrc/components",
+    "pt-BR": "src\nsrc/core\nsrc/components"
+  },
+  "policy.baseDataDir": {
+    "en": "data folder (tables and persistence)",
+    "pt-BR": "pasta de dados (tabelas e persistência)"
+  },
+  "policy.baseTokens": {
+    "en": "design tokens folder",
+    "pt-BR": "pasta de tokens de design"
+  },
+  "policy.filter": {
+    "en": "Filter rules",
+    "pt-BR": "Regras do filtro"
+  },
+  "policy.filterDesc": {
+    "en": "What the interposed shell does with commands, writes and listings: replace, infuse, teach a lesson. The same editor as the Regras pane.",
+    "pt-BR": "O que o shell interposto faz com comandos, escritas e listagens: substituir, infundir, ensinar um vício. O mesmo editor do painel Regras."
+  },
+  "policy.writes": {
+    "en": "Write policy",
+    "pt-BR": "Política de escrita"
+  },
+  "policy.writesDesc": {
+    "en": "The gates every write passes before it touches disk, and the paths the agent can never reach.",
+    "pt-BR": "As travas que toda escrita atravessa antes de tocar o disco, e os caminhos que o agente nunca alcança."
+  },
+  "policy.alwaysOn": {
+    "en": "Always on",
+    "pt-BR": "Sempre ativo"
+  },
+  "policy.loadFailed": {
+    "en": "The settings could not be read, so nothing here can be edited. Reopen this page.",
+    "pt-BR": "Não foi possível ler as configurações, então nada aqui pode ser editado. Abra esta página de novo."
+  },
+  "policy.bans": {
+    "en": "Prohibitions",
+    "pt-BR": "Proibições"
+  },
+  "policy.bansDesc": {
+    "en": "Everything you forbade in this project, across sessions, with your own words. A session's menu lifts one.",
+    "pt-BR": "Tudo o que você proibiu neste projeto, entre sessões, com as suas palavras. O menu de uma sessão retira uma."
+  },
+  "policy.bansEmpty": {
+    "en": "No prohibition recorded in this project.",
+    "pt-BR": "Nenhuma proibição registrada neste projeto."
+  },
+  "policy.banLifted": {
+    "en": "lifted",
+    "pt-BR": "retirada"
   },
   "settings.appliesOnChange": {
     "en": "Everything applies on change.",
@@ -4179,6 +4735,58 @@
     "en": "Connect one or more AI providers. Keys stay in the system vault (Windows Credential Manager, Keychain, libsecret), never in plain text.",
     "pt-BR": "Conecte um ou mais provedores de IA. As chaves ficam no cofre do sistema (Gerenciador de Credenciais do Windows, Keychain, libsecret), nunca em texto puro."
   },
+  "settings.requireContract": {
+    "en": "Contract before the first write",
+    "pt-BR": "Contrato antes da primeira escrita"
+  },
+  "settings.requireContractDesc": {
+    "en": "The agent must state the goal and the verifiable criteria of a request and have you confirm them before its first code write; a new request needs a new confirmation.",
+    "pt-BR": "O agente precisa formular o objetivo e os critérios verificáveis do pedido e ter a sua confirmação antes da primeira escrita de código; um novo pedido pede nova confirmação."
+  },
+  "settings.requirePlan": {
+    "en": "Plan before changing files",
+    "pt-BR": "Plano antes de alterar arquivos"
+  },
+  "settings.requirePlanDesc": {
+    "en": "The first code write of a turn is refused until the agent registers its plan with TodoWrite.",
+    "pt-BR": "A primeira escrita de código do turno é recusada até o agente registrar o plano com TodoWrite."
+  },
+  "settings.requireDiagnosis": {
+    "en": "Diagnosis before acting",
+    "pt-BR": "Diagnóstico antes de agir"
+  },
+  "settings.requireDiagnosisDesc": {
+    "en": "Changes and failed retries need a diagnosis with verbatim evidence: what the problem is, the cause that explains it, and the approach that treats the cause.",
+    "pt-BR": "Mudanças e repetições após falha pedem um diagnóstico com evidência literal: qual é o problema, a causa que o explica e a abordagem que trata a causa."
+  },
+  "settings.enforceArchitecture": {
+    "en": "Enforce the architecture rules",
+    "pt-BR": "Aplicar as regras de arquitetura"
+  },
+  "settings.enforceArchitectureDesc": {
+    "en": "Placement, file and function size, tables over branch chains, tokens as the only style source, one store, JSON with schema — checked on every write.",
+    "pt-BR": "Posicionamento, tamanho de arquivo e função, tabelas no lugar de cadeias de ramificação, tokens como única fonte de estilo, um único store, JSON com esquema — conferidos a cada escrita."
+  },
+  "settings.userProhibitions": {
+    "en": "Compile the user's prohibitions",
+    "pt-BR": "Compilar as proibições do usuário"
+  },
+  "settings.userProhibitionsDesc": {
+    "en": "What you forbid in conversation becomes an enforced rule, with your words cited when it blocks.",
+    "pt-BR": "O que você proibir em conversa vira regra aplicada, com as suas palavras citadas quando bloquear."
+  },
+  "settings.behavior": {
+    "en": "Behavior",
+    "pt-BR": "Comportamento"
+  },
+  "settings.behaviorDesc": {
+    "en": "How the application itself behaves: suggestions, notifications, tray and the prompt box.",
+    "pt-BR": "Como o próprio aplicativo se comporta: sugestões, notificações, bandeja e a caixa de prompt."
+  },
+  "settings.openPolicy": {
+    "en": "Open the Rules page",
+    "pt-BR": "Abrir a página Regras"
+  },
   "settings.requireReview": {
     "en": "Mandatory independent review",
     "pt-BR": "Revisão independente obrigatória"
@@ -4255,9 +4863,13 @@
     "en": "[infuse] {why}",
     "pt-BR": "[infuse] {why}"
   },
+  "shell.self": {
+    "en": "[infuse] the real bash resolves to infuse itself ({path}): set INFUSE_REAL_BASH to a real shell",
+    "pt-BR": "[infuse] o bash real aponta para o próprio infuse ({path}): defina INFUSE_REAL_BASH para um shell real"
+  },
   "shell.vice": {
-    "en": "[infuse] vice {vice}: {detail}",
-    "pt-BR": "[infuse] vício {vice}: {detail}"
+    "en": "[infuse] vice {vice}: {detail}. Remedy: {remedy}",
+    "pt-BR": "[infuse] vício {vice}: {detail}. Remédio: {remedy}"
   },
   "shell.written": {
     "en": "[infuse] written during this command: {files}",
@@ -4587,9 +5199,17 @@
     "en": "There are *.test.js files: runs Node's test runner and requires it to finish without error.",
     "pt-BR": "Há arquivos *.test.js: roda o executor de testes do Node e exige que termine sem erro."
   },
+  "suggest.page_renders": {
+    "en": "The application renders in a browser",
+    "pt-BR": "O aplicativo aparece no navegador"
+  },
+  "suggest.why_browser": {
+    "en": "Opens {url} in a headless browser and requires the application's content on the page, with a screenshot as evidence.",
+    "pt-BR": "Abre {url} em um navegador sem janela e exige o conteúdo do aplicativo na página, com uma captura de tela como evidência."
+  },
   "suggest.why_page": {
-    "en": "Requests {url} and requires a 200 answer. The app must be running (Browser > Servers).",
-    "pt-BR": "Pede {url} e exige resposta 200. O app precisa estar rodando (Navegador > Servidores)."
+    "en": "Requests {url} and requires a 200 answer, from the app started from the frozen copy.",
+    "pt-BR": "Pede {url} e exige resposta 200, do app iniciado a partir da cópia congelada."
   },
   "suggest.why_readme": {
     "en": "Requires the file README.md. Change the expected text to check a section (e.g. \"Installation\").",
@@ -4767,6 +5387,10 @@
     "en": "Saturday",
     "pt-BR": "Sábado"
   },
+  "terminal.outsideFilter": {
+    "en": "Your own terminal, outside the infuse filter: what you run here skips the rules and the journal.",
+    "pt-BR": "Seu próprio terminal, fora do filtro do infuse: o que você roda aqui não passa pelas regras nem pelo diário."
+  },
   "terminal.didNotLoad": {
     "en": "did not load",
     "pt-BR": "não carregou"
@@ -4942,6 +5566,26 @@
   "turn.open_tasks": {
     "en": "[infuse] The turn cannot end: the plan has open tasks — {tasks}. Complete each one and mark it with TodoWrite (done), or mark it as blocked and explain why in the Report.",
     "pt-BR": "[infuse] O turno não pode terminar: o plano tem tarefas abertas — {tasks}. Conclua cada uma e marque com TodoWrite (done), ou marque como blocked e explique o motivo no Report."
+  },
+  "gate.report_unconfirmed": {
+    "en": "[infuse] The turn cannot end: the Report has {count} claim(s) execution did not confirm. Fix the work and run it again, or send a new Report that says what was not achieved. \"Not achieved, here is the evidence\" is a valid report; a claim that did not happen is not.",
+    "pt-BR": "[infuse] O turno não pode terminar: o relatório tem {count} afirmação(ões) que a execução não confirmou. Corrija o trabalho e execute de novo, ou envie um novo Report dizendo o que não foi alcançado. \"Não atingi, eis a evidência\" é um relatório válido; afirmar o que não aconteceu não é."
+  },
+  "gate.shell_test_edit": {
+    "en": "{file} is an existing test and a shell command changed it. Changing a test is the user's decision: restore it and use Edit, which asks them.",
+    "pt-BR": "{file} é um teste existente e um comando de shell o alterou. Mudar um teste é decisão do usuário: restaure o arquivo e use Edit, que pergunta a ele."
+  },
+  "report.ev_stale": {
+    "en": "passed, but files were changed after that run: run it again",
+    "pt-BR": "passou, mas arquivos foram alterados depois dessa execução: execute de novo"
+  },
+  "turn.review_failed": {
+    "en": "[infuse] The independent review could not run ({error}), so this turn ended UNVERIFIED: nothing approved these changes.",
+    "pt-BR": "[infuse] A revisão independente não pôde rodar ({error}), então este turno terminou NÃO VERIFICADO: nada aprovou estas alterações."
+  },
+  "contract.unmeasured": {
+    "en": "[infuse] The contract's criteria have no executable check: the oracle measured nothing in this turn. Add them under Pronto to get a verdict.",
+    "pt-BR": "[infuse] Os critérios do contrato não têm verificação executável: o oráculo não mediu nada neste turno. Cadastre-os em Pronto para ter um veredito."
   },
   "turn.unverified": {
     "en": "[infuse] This turn ended UNVERIFIED: the agent kept refusing the end-of-turn obligations (checker, report, oracle, review). Nothing it reported was confirmed; the journal records it.",
@@ -5211,6 +5855,10 @@
     "en": "[infuse] Blocked: this change removes {removed} of the {total} lines of {file}. Removing most of a file must be part of the plan or the diagnosis (name the file there and why), so a feature is never cut to make a problem disappear.",
     "pt-BR": "[infuse] Bloqueado: esta alteração remove {removed} das {total} linhas de {file}. Remover a maior parte de um arquivo precisa estar no plano ou no diagnóstico (cite o arquivo e o porquê), para que um recurso nunca seja cortado só para um problema sumir."
   },
+  "write.diagnostics_later": {
+    "en": "[infuse] The project's checker is still running on this file; its result comes at the end of the turn.",
+    "pt-BR": "[infuse] O verificador do projeto ainda está rodando neste arquivo; o resultado vem no fim do turno."
+  },
   "write.diagnostics": {
     "en": "[diagnostics] problems found by the project's checker in this file:\n{problems}",
     "pt-BR": "[diagnóstico] problemas encontrados pelo verificador do projeto neste arquivo:\n{problems}"
@@ -5218,6 +5866,14 @@
   "api.hostNotAllowed": {
     "en": "host not allowed",
     "pt-BR": "host não permitido"
+  },
+  "api.methodNotAllowed": {
+    "en": "This route does not take that method",
+    "pt-BR": "Esta rota não aceita esse método"
+  },
+  "api.unknownRoute": {
+    "en": "Unknown route",
+    "pt-BR": "Rota desconhecida"
   },
   "api.missingToken": {
     "en": "request without the application token",
@@ -5291,6 +5947,34 @@
     "en": "Home",
     "pt-BR": "Início"
   },
+  "git.branchFailed": {
+    "en": "The branch was not created: {error}",
+    "pt-BR": "O branch não foi criado: {error}"
+  },
+  "git.hunkFailed": {
+    "en": "git did not apply this hunk: {error}",
+    "pt-BR": "O git não aplicou este trecho: {error}"
+  },
+  "git.hunkInvalid": {
+    "en": "That hunk action is not valid",
+    "pt-BR": "Essa ação sobre o trecho não é válida"
+  },
+  "git.hunkNeedsGit": {
+    "en": "Accepting a hunk needs a git repository",
+    "pt-BR": "Aceitar um trecho exige um repositório git"
+  },
+  "git.hunkStale": {
+    "en": "The file changed since this diff was shown; review it again",
+    "pt-BR": "O arquivo mudou desde que este diff foi mostrado; revise de novo"
+  },
+  "git.invalidBranch": {
+    "en": "That is not a valid branch name",
+    "pt-BR": "Esse nome de branch não é válido"
+  },
+  "git.notRepo": {
+    "en": "The folder is not a git repository",
+    "pt-BR": "A pasta não é um repositório git"
+  },
   "git.emptyMessage": {
     "en": "empty message",
     "pt-BR": "mensagem vazia"
@@ -5315,9 +5999,45 @@
     "en": "the criteria do not match the copy the user saved outside the project: {error}",
     "pt-BR": "os critérios não correspondem à cópia que o usuário salvou fora do projeto: {error}"
   },
+  "oracle.noAnchor": {
+    "en": "these criteria were never saved by the user: open the criteria and save them before they can govern a verdict",
+    "pt-BR": "estes critérios nunca foram salvos pelo usuário: abra os critérios e salve-os antes que possam decidir um veredito"
+  },
+  "oracle.criteriaRemoved": {
+    "en": "the criteria saved by the user are gone from .infuse/oracle: restore them or save the criteria again",
+    "pt-BR": "os critérios salvos pelo usuário sumiram de .infuse/oracle: restaure-os ou salve os critérios de novo"
+  },
+  "oracle.dependenciesChanged": {
+    "en": "{folders} changed while the files that declare it did not: reinstall from the lockfile, or save the criteria to accept the folder as it is",
+    "pt-BR": "{folders} mudou sem que os arquivos que o declaram mudassem: reinstale pelo lockfile, ou salve os critérios para aceitar a pasta como está"
+  },
+  "oracle.dependenciesUpdated": {
+    "en": "dependencies changed in this run's tree, together with the files that declare them: {folders}",
+    "pt-BR": "as dependências mudaram na árvore desta execução, junto com os arquivos que as declaram: {folders}"
+  },
+  "oracle.notContained": {
+    "en": "the checks ran without OS containment (off in the settings or unavailable here): they could reach everything the user can",
+    "pt-BR": "as verificações rodaram sem contenção do sistema (desligada nas configurações ou indisponível aqui): alcançam tudo o que o usuário alcança"
+  },
+  "oracle.outsideLinks": {
+    "en": "{count} link(s) pointing outside the project were left out of the snapshot",
+    "pt-BR": "{count} link(s) apontando para fora do projeto ficaram fora do snapshot"
+  },
+  "oracle.serverNotOwned": {
+    "en": "{url} is answered by a process that is not the server started from the snapshot: refusing to measure it",
+    "pt-BR": "{url} é respondido por um processo que não é o servidor iniciado do snapshot: a medição foi recusada"
+  },
+  "oracle.noBrowser": {
+    "en": "the browser check could not run: no Edge, Chrome or Chromium was found on this computer",
+    "pt-BR": "a verificação no navegador não pôde rodar: nenhum Edge, Chrome ou Chromium foi encontrado neste computador"
+  },
+  "oracle.browserFailed": {
+    "en": "the browser check could not run: {error}",
+    "pt-BR": "a verificação no navegador não pôde rodar: {error}"
+  },
   "oracle.httpNeedsServer": {
-    "en": "an HTTP check requires \"server\" in the criteria: without it the check would measure whatever answers the address, not the snapshot",
-    "pt-BR": "uma verificação HTTP exige \"server\" nos critérios: sem isso ela mediria o que estiver respondendo no endereço, não o snapshot"
+    "en": "an HTTP or browser check requires \"server\" in the criteria: without it the check would measure whatever answers the address, not the snapshot",
+    "pt-BR": "uma verificação HTTP ou no navegador exige \"server\" nos critérios: sem isso ela mediria o que estiver respondendo no endereço, não o snapshot"
   },
   "oracle.setupFailed": {
     "en": "preparation failed (exit {exit}) — see setup.log",
@@ -5346,6 +6066,10 @@
   "project.chooseRoot": {
     "en": "choose the project folder",
     "pt-BR": "escolha a pasta do projeto"
+  },
+  "project.notRegistered": {
+    "en": "That folder is not one of your projects",
+    "pt-BR": "Essa pasta não é um dos seus projetos"
   },
   "project.notFound": {
     "en": "the project folder was not found",
@@ -5490,5 +6214,285 @@
   "time.dayAgoOne": {
     "en": "1 day ago",
     "pt-BR": "há 1 dia"
+  },
+  "protocol.layer": {
+    "en": "[infuse] refused: {file} imports {target}, and the base says {rule}. Depend downward: move the shared contract to the lower layer.",
+    "pt-BR": "[infuse] recusado: {file} importa {target}, e a base diz {rule}. Dependa para baixo: leve o contrato comum para a camada inferior."
+  },
+  "shell.cost": {
+    "en": "[infuse] cost: this command took {seconds}s (typically {typical}s over {runs} run(s)). Do not repeat it without a reason.",
+    "pt-BR": "[infuse] custo: este comando levou {seconds}s (tipicamente {typical}s em {runs} execução(ões)). Não o repita sem motivo."
+  },
+  "shell.oracle": {
+    "en": "[infuse] oracle: {verdict} on {checks} check(s), run {run}: {summary}",
+    "pt-BR": "[infuse] oráculo: {verdict} em {checks} critério(s), execução {run}: {summary}"
+  },
+  "shell.oracle_none": {
+    "en": "[infuse] oracle: {checks} check(s) defined, no verdict yet.",
+    "pt-BR": "[infuse] oráculo: {checks} critério(s) definido(s), nenhum veredito ainda."
+  },
+  "shell.oracle_stale": {
+    "en": "[infuse] oracle: last verdict {verdict} (run {run}) is older than the latest write; it does not speak for the current tree.",
+    "pt-BR": "[infuse] oráculo: o último veredito {verdict} (execução {run}) é anterior à última escrita; não vale para a árvore atual."
+  },
+  "shell.vice_bare": {
+    "en": "[infuse] vice {vice}: {detail}",
+    "pt-BR": "[infuse] vício {vice}: {detail}"
+  },
+  "shortcut.focus": {
+    "en": "focused test (only/fit): the rest of the suite stops running",
+    "pt-BR": "teste focado (only/fit): o restante da suíte deixa de rodar"
+  },
+  "vice.dead_code": {
+    "en": "Nothing references what this turn added: {items}. Wire it or delete it; unreferenced code is not a feature.",
+    "pt-BR": "Nada referencia o que este turno adicionou: {items}. Conecte ou apague; código sem referência não é funcionalidade."
+  },
+  "vice.feature_spread": {
+    "en": "New files sit apart from their feature, with no import tying them to it: {items}. Place each part where the base says it belongs.",
+    "pt-BR": "Arquivos novos ficaram longe da sua funcionalidade, sem import que os ligue a ela: {items}. Coloque cada parte onde a base determina."
+  },
+  "vice.scope_cut": {
+    "en": "After a failed test run, {file} removes or disables behavior ({what}). Cutting scope is the user's decision: fix the behavior instead.",
+    "pt-BR": "Depois de um teste falhar, {file} remove ou desliga comportamento ({what}). Cortar escopo é decisão do usuário: corrija o comportamento."
+  },
+  "vice.structure": {
+    "en": "Before this turn ends:\n{items}",
+    "pt-BR": "Antes de este turno terminar:\n{items}"
+  },
+  "cost.unpriced": {
+    "en": "no price",
+    "pt-BR": "sem preço"
+  },
+  "cost.unpricedHint": {
+    "en": "No known price for {models}: the real cost is at least this much.",
+    "pt-BR": "Sem preço conhecido para {models}: o custo real é de pelo menos este valor."
+  },
+  "context.turnCost": {
+    "en": "This turn",
+    "pt-BR": "Este turno"
+  },
+  "outcome.unverified": {
+    "en": "Not verified",
+    "pt-BR": "Não verificado"
+  },
+  "outcome.unverifiedHint": {
+    "en": "The turn ended with its end-of-turn obligations still open: nothing the agent reported was confirmed. The Journal records it.",
+    "pt-BR": "O turno terminou com as obrigações de fim de turno em aberto: nada do que o agente relatou foi confirmado. O Jornal registra."
+  },
+  "cust.plugins": {
+    "en": "Plugins",
+    "pt-BR": "Plugins"
+  },
+  "cust.pluginsDesc": {
+    "en": "Packages from a git repository that add commands, skills, hooks and connectors. Nothing a plugin brings runs until you approve it.",
+    "pt-BR": "Pacotes de um repositório git que trazem comandos, skills, hooks e conectores. Nada do que um plugin traz roda antes da sua aprovação."
+  },
+  "cust.styles": {
+    "en": "Output style",
+    "pt-BR": "Estilo de saída"
+  },
+  "cust.stylesDesc": {
+    "en": "How the agent writes its answers in this project. Valid from the next message and saved in the local settings.",
+    "pt-BR": "Como o agente escreve as respostas neste projeto. Vale a partir da próxima mensagem e fica salvo nos ajustes locais."
+  },
+  "cust.local": {
+    "en": "Local settings",
+    "pt-BR": "Ajustes locais"
+  },
+  "cust.localDesc": {
+    "en": "Your personal overrides for this project, kept out of version control. They can tighten the policy, never loosen it.",
+    "pt-BR": "Seus ajustes pessoais para este projeto, fora do controle de versão. Eles podem apertar a política, nunca afrouxar."
+  },
+  "plugin.installFrom": {
+    "en": "Install from",
+    "pt-BR": "Instalar de"
+  },
+  "plugin.install": {
+    "en": "Install",
+    "pt-BR": "Instalar"
+  },
+  "plugin.installing": {
+    "en": "Installing…",
+    "pt-BR": "Instalando…"
+  },
+  "plugin.installed": {
+    "en": "Plugin installed: review it and approve.",
+    "pt-BR": "Plugin instalado: revise e aprove."
+  },
+  "plugin.noneYet": {
+    "en": "No plugin installed in this project.",
+    "pt-BR": "Nenhum plugin instalado neste projeto."
+  },
+  "plugin.approved": {
+    "en": "approved",
+    "pt-BR": "aprovado"
+  },
+  "plugin.approveWarning": {
+    "en": "Approving lets this plugin run:",
+    "pt-BR": "Ao aprovar, este plugin poderá rodar:"
+  },
+  "plugin.approveNothing": {
+    "en": "It brings only commands and skills: nothing runs by itself.",
+    "pt-BR": "Ele traz só comandos e skills: nada roda sozinho."
+  },
+  "plugin.marketplace": {
+    "en": "Marketplace",
+    "pt-BR": "Marketplace"
+  },
+  "plugin.marketplaceDesc": {
+    "en": "A JSON index of plugins, at an https address.",
+    "pt-BR": "Um índice JSON de plugins, em um endereço https."
+  },
+  "plugin.marketplaceAddress": {
+    "en": "Index address",
+    "pt-BR": "Endereço do índice"
+  },
+  "plugin.marketplaceEmpty": {
+    "en": "The index lists no plugin.",
+    "pt-BR": "O índice não lista nenhum plugin."
+  },
+  "plugin.marketplaceNeeded": {
+    "en": "Enter the index address to see what it offers.",
+    "pt-BR": "Informe o endereço do índice para ver o que ele oferece."
+  },
+  "local.layers": {
+    "en": "Where each setting comes from",
+    "pt-BR": "De onde vem cada ajuste"
+  },
+  "local.layersDesc": {
+    "en": "From the weakest to the strongest: each layer applies over the one before it.",
+    "pt-BR": "Da mais fraca para a mais forte: cada camada vale sobre a anterior."
+  },
+  "local.layer.user": {
+    "en": "User",
+    "pt-BR": "Usuário"
+  },
+  "local.layer.project": {
+    "en": "Project",
+    "pt-BR": "Projeto"
+  },
+  "local.layer.local": {
+    "en": "Local",
+    "pt-BR": "Local"
+  },
+  "local.layer.managed": {
+    "en": "Managed by this machine",
+    "pt-BR": "Gerenciado pela máquina"
+  },
+  "local.missing": {
+    "en": "not created",
+    "pt-BR": "não criado"
+  },
+  "local.varsCount": {
+    "en": "{count, plural, one {# variable} other {# variables}}",
+    "pt-BR": "{count, plural, one {# variável} other {# variáveis}}"
+  },
+  "local.edit": {
+    "en": "Edit local settings",
+    "pt-BR": "Editar ajustes locais"
+  },
+  "local.model": {
+    "en": "Model",
+    "pt-BR": "Modelo"
+  },
+  "local.modelDesc": {
+    "en": "Replaces the model in this project. Empty: inherit.",
+    "pt-BR": "Troca o modelo neste projeto. Vazio: herda."
+  },
+  "local.mode": {
+    "en": "Permission mode",
+    "pt-BR": "Modo de permissão"
+  },
+  "local.modeDesc": {
+    "en": "Applies only when stricter than the mode of the layers before it.",
+    "pt-BR": "Só vale quando for mais restrito que o das camadas anteriores."
+  },
+  "local.inherit": {
+    "en": "Inherit",
+    "pt-BR": "Herdar"
+  },
+  "local.permissions": {
+    "en": "Tool permissions",
+    "pt-BR": "Permissões das ferramentas"
+  },
+  "local.protected": {
+    "en": "Protected paths",
+    "pt-BR": "Caminhos protegidos"
+  },
+  "local.protectedDesc": {
+    "en": "Added to the protected paths of the other layers. Separate with commas.",
+    "pt-BR": "Somam-se aos caminhos protegidos das outras camadas. Separe com vírgulas."
+  },
+  "local.env": {
+    "en": "Environment variables",
+    "pt-BR": "Variáveis de ambiente"
+  },
+  "local.envDesc": {
+    "en": "For Bash and hooks in this project; they never reach the model. Saved values are not shown: type a new one to replace it.",
+    "pt-BR": "Para o Bash e os hooks deste projeto; nunca chegam ao modelo. Valores salvos não são exibidos: digite outro para substituir."
+  },
+  "local.envName": {
+    "en": "NAME",
+    "pt-BR": "NOME"
+  },
+  "local.envValue": {
+    "en": "value",
+    "pt-BR": "valor"
+  },
+  "local.envKept": {
+    "en": "saved value",
+    "pt-BR": "valor salvo"
+  },
+  "local.envAdd": {
+    "en": "Add variable",
+    "pt-BR": "Adicionar variável"
+  },
+  "local.envNone": {
+    "en": "No variable in this project.",
+    "pt-BR": "Nenhuma variável neste projeto."
+  },
+  "local.saved": {
+    "en": "Local settings saved.",
+    "pt-BR": "Ajustes locais salvos."
+  },
+  "style.saved": {
+    "en": "Output style changed.",
+    "pt-BR": "Estilo de saída alterado."
+  },
+  "style.defaultHint": {
+    "en": "The agent's normal voice, with no extra instruction.",
+    "pt-BR": "A voz normal do agente, sem instrução extra."
+  },
+  "style.overridden": {
+    "en": "The machine's managed settings keep another style.",
+    "pt-BR": "Os ajustes gerenciados da máquina mantêm outro estilo."
+  },
+  "hooks.forSource": {
+    "en": "when the session starts by",
+    "pt-BR": "quando a sessão inicia por"
+  },
+  "hooks.forTrigger": {
+    "en": "when the compaction is",
+    "pt-BR": "quando a compactação for"
+  },
+  "hooks.forKind": {
+    "en": "for notifications of kind",
+    "pt-BR": "para notificações do tipo"
+  },
+  "settings.env_reserved": {
+    "en": "The variable {name} is reserved: a project cannot set it.",
+    "pt-BR": "A variável {name} é reservada: um projeto não pode defini-la."
+  },
+  "style.conciseHint": {
+    "en": "Short messages: the result, the evidence and what is left.",
+    "pt-BR": "Mensagens curtas: o resultado, a evidência e o que falta."
+  },
+  "style.explanatoryHint": {
+    "en": "Explains each choice next to the change: why this way, and the tradeoffs.",
+    "pt-BR": "Explica cada escolha junto da mudança: por que assim e o que se troca."
+  },
+  "style.learningHint": {
+    "en": "Teaches while it works: the concepts and patterns behind what it does.",
+    "pt-BR": "Ensina enquanto trabalha: os conceitos e os padrões por trás do que faz."
   }
 }

@@ -1,0 +1,29 @@
+// The owner of the state: the only writer. Its states are declared, and each action says which state
+// it leads to from which.
+import { load, save } from './persist.js';
+import { tables } from '../data/tables.js';
+
+export const STATES = Object.freeze({ menu: 'menu', running: 'running', paused: 'paused', done: 'done' });
+
+const moves = {
+  start: { menu: STATES.running, paused: STATES.running },
+  pause: { running: STATES.paused },
+  finish: { running: STATES.done },
+};
+
+export function createStore(storage) {
+  let state = { status: STATES.menu, score: 0, best: load(storage, tables.saveKey, 0) };
+  return {
+    state: () => state,
+    apply(action) {
+      const next = moves[action]?.[state.status];
+      if (next) state = { ...state, status: next };
+    },
+    tick(ms) {
+      if (state.status !== STATES.running) return;
+      const score = state.score + ms * tables.pointsPerMilli;
+      state = { ...state, score, best: Math.max(score, state.best) };
+      save(storage, tables.saveKey, state.best);
+    },
+  };
+}

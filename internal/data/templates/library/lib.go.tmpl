@@ -1,0 +1,53 @@
+// Package lib is the public API: the only stable surface of this module.
+package lib
+
+import (
+	"fmt"
+	"strings"
+
+	"{{module}}/internal/core"
+)
+
+// Item is the library's record.
+type Item = core.Item
+
+var formats = core.NewRegistry[func([]Item) string]()
+
+func init() {
+	formats.Register("text", func(items []Item) string {
+		var b strings.Builder
+		for _, i := range items {
+			fmt.Fprintf(&b, "%d %s\n", i.ID, i.Title)
+		}
+		return b.String()
+	})
+}
+
+// Collection owns its items.
+type Collection struct{ items []Item }
+
+// Add creates an item.
+func (c *Collection) Add(title string) Item {
+	item := Item{ID: len(c.items) + 1, Title: title, State: core.Draft}
+	c.items = append(c.items, item)
+	core.Observe("item.added", map[string]any{"id": item.ID})
+	return item
+}
+
+// Format renders the collection in a registered format.
+func (c *Collection) Format(name string) (string, error) {
+	f, ok := formats.Get(name)
+	if !ok {
+		return "", fmt.Errorf("unknown format %q (known: %s)", name, strings.Join(formats.Names(), ", "))
+	}
+	return f(c.items), nil
+}
+
+// Save stores the collection in a versioned document.
+func (c *Collection) Save(path string) error { return core.SaveDocument(path, c.items) }
+
+// Open reads a collection saved with Save.
+func Open(path string) (*Collection, error) {
+	c := &Collection{items: []Item{}}
+	return c, core.LoadDocument(path, &c.items)
+}

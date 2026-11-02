@@ -10,38 +10,54 @@ import (
 	"strings"
 
 	"infuse/internal/core"
+	"infuse/internal/lang"
 )
 
-var tsExts = []string{".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs", ".cjs", "/index.ts", "/index.tsx", "/index.js"}
+var tsExts = []string{".ts", ".tsx", ".mts", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte", "/index.ts", "/index.tsx", "/index.js"}
+
+// resolver holds the indexes a batch of imports is resolved against: without them every import walks
+// every file, and a large project pays that product on each build.
+type resolver struct {
+	root    string
+	m       *ProjectMap
+	module  string
+	goPkgs  map[string][]string // folder → its non-test Go files
+	nsFiles map[string][]string // namespace or package → files declaring it
+	byName  map[string][]string // base name → C/C++ files, for includes given without their folder
+}
+
+func newResolver(root string, m *ProjectMap) *resolver {
+	r := &resolver{root: root, m: m, module: goModule(root), goPkgs: map[string][]string{}, nsFiles: map[string][]string{}, byName: map[string][]string{}}
+	for p, f := range m.Files {
+		r.index(p, f)
+	}
+	for _, list := range []map[string][]string{r.goPkgs, r.nsFiles, r.byName} {
+		for _, v := range list {
+			sort.Strings(v)
+		}
+	}
+	return r
+}
+
+func (r *resolver) index(p string, f *FileInfo) {
+	switch {
+	case f.Lang == "go" && !lang.IsTestPath(p):
+		r.goPkgs[path.Dir(p)] = append(r.goPkgs[path.Dir(p)], p)
+	case f.Namespace != "":
+		r.nsFiles[f.Namespace] = append(r.nsFiles[f.Namespace], p)
+	case f.Lang == "c" || f.Lang == "cpp":
+		r.byName[path.Base(p)] = append(r.byName[path.Base(p)], p)
+	}
+}
 
 func resolveImports(root string, m *ProjectMap) {
-	module := goModule(root)
+	r := newResolver(root, m)
 	for _, f := range m.Files {
-		var extra []string
-		for i, spec := range f.Imports {
-			switch f.Lang {
-			case "ts", "js":
-				resolveTSImport(root, f, i, spec, m)
-			case "py":
-				resolvePyImport(root, f, i, spec, m)
-			case "go":
-				if rel, more := resolveGoImport(module, spec, m); rel != "" {
-					f.Imports[i] = rel
-					extra = append(extra, more...)
-				}
-			case "rs":
-				if rel, ok := resolveRustImport(f.Path, spec, m); ok {
-					f.Imports[i] = rel
-				}
-			case "cs", "java", "kotlin":
-				resolveNamespacedImport(f, i, spec, m)
-			}
-		}
-		f.Imports = dedupe(f.Imports, extra...)
+		r.resolveFile(f)
 	}
 	for _, f := range m.Files {
 		for _, imp := range f.Imports {
-			if t, ok := m.Files[imp]; ok {
+			if t, ok := m.Files[imp]; ok && t != f {
 				t.Dependents = append(t.Dependents, f.Path)
 			}
 		}
@@ -49,6 +65,35 @@ func resolveImports(root string, m *ProjectMap) {
 	for _, f := range m.Files {
 		sort.Strings(f.Dependents)
 	}
+}
+
+// resolveFile rewrites one file's imports into the mapped files they name.
+func (r *resolver) resolveFile(f *FileInfo) {
+	var extra []string
+	for i, spec := range f.Imports {
+		switch f.Lang {
+		case "ts", "js", "vue", "svelte":
+			resolveTSImport(r.root, f, i, spec, r.m)
+		case "py":
+			resolvePyImport(r.root, f, i, spec, r.m)
+		case "go":
+			if rel, more := r.resolveGoImport(spec); rel != "" {
+				f.Imports[i] = rel
+				extra = append(extra, more...)
+			}
+		case "rs":
+			if rel, ok := resolveRustImport(f.Path, spec, r.m); ok {
+				f.Imports[i] = rel
+			}
+		case "cs":
+			r.resolveNamespacedImport(f, i, spec)
+		case "java", "kotlin":
+			extra = append(extra, r.resolveJvmImport(f, i, spec)...)
+		case "c", "cpp":
+			r.resolveInclude(f, i, spec)
+		}
+	}
+	f.Imports = dedupe(f.Imports, extra...)
 }
 
 func dedupe(list []string, more ...string) []string {
@@ -107,24 +152,18 @@ func resolvePyImport(root string, f *FileInfo, i int, spec string, m *ProjectMap
 
 // resolveGoImport maps a module import to the package's files (the first is the import, the rest are
 // extra dependents).
-func resolveGoImport(module, spec string, m *ProjectMap) (string, []string) {
-	if module == "" || (spec != module && !strings.HasPrefix(spec, module+"/")) {
+func (r *resolver) resolveGoImport(spec string) (string, []string) {
+	if r.module == "" || (spec != r.module && !strings.HasPrefix(spec, r.module+"/")) {
 		return "", nil // standard library or another module
 	}
-	rel := strings.TrimPrefix(strings.TrimPrefix(spec, module), "/")
-	var pkg []string
-	for p := range m.Files {
-		if !strings.HasSuffix(p, ".go") {
-			continue
-		}
-		if rel == "" && !strings.Contains(p, "/") || rel != "" && (p == rel+".go" || strings.HasPrefix(p, rel+"/")) {
-			pkg = append(pkg, p)
-		}
+	dir := strings.TrimPrefix(strings.TrimPrefix(spec, r.module), "/")
+	if dir == "" {
+		dir = "."
 	}
+	pkg := r.goPkgs[dir]
 	if len(pkg) == 0 {
 		return "", nil
 	}
-	sort.Strings(pkg)
 	return pkg[0], pkg[1:]
 }
 
@@ -143,22 +182,65 @@ func goModule(root string) string {
 	return ""
 }
 
-// resolveNamespacedImport maps a using/import to a file that declares that namespace or package.
-func resolveNamespacedImport(f *FileInfo, i int, spec string, m *ProjectMap) {
+// resolveNamespacedImport maps a C# using to a file that declares that namespace.
+func (r *resolver) resolveNamespacedImport(f *FileInfo, i int, spec string) {
 	var cands []string
-	for p, t := range m.Files {
-		if t.Namespace == "" || p == f.Path {
-			continue
-		}
-		if t.Namespace == spec || strings.HasPrefix(t.Namespace, spec+".") || strings.HasPrefix(spec, t.Namespace+".") {
-			cands = append(cands, p)
+	for ns, files := range r.nsFiles {
+		if ns == spec || strings.HasPrefix(ns, spec+".") || strings.HasPrefix(spec, ns+".") {
+			for _, p := range files {
+				if p != f.Path {
+					cands = append(cands, p)
+				}
+			}
 		}
 	}
-	if len(cands) == 0 {
-		return
+	if len(cands) > 0 {
+		sort.Strings(cands)
+		f.Imports[i] = cands[0]
 	}
-	sort.Strings(cands)
-	f.Imports[i] = cands[0]
+}
+
+// resolveJvmImport maps a Java or Kotlin import to the file of the class it names: a.b.C is C.java or
+// C.kt in package a.b, a.b.C.member is the same file, and a.b.* is every file of the package (the
+// first becomes the import, the others are returned as extras).
+func (r *resolver) resolveJvmImport(f *FileInfo, i int, spec string) []string {
+	if pkg, wild := strings.CutSuffix(spec, ".*"); wild {
+		files := r.nsFiles[pkg]
+		if len(files) == 0 {
+			return nil
+		}
+		f.Imports[i] = files[0]
+		return files[1:]
+	}
+	parts := strings.Split(spec, ".")
+	for n := len(parts) - 1; n > 0; n-- {
+		ns, class := strings.Join(parts[:n], "."), parts[n]
+		for _, p := range r.nsFiles[ns] {
+			base := path.Base(p)
+			if strings.TrimSuffix(base, path.Ext(base)) == class {
+				f.Imports[i] = p
+				return nil
+			}
+		}
+	}
+	if files := r.nsFiles[strings.Join(parts[:len(parts)-1], ".")]; len(files) > 0 {
+		f.Imports[i] = files[0] // a Kotlin top-level function: the package is all that is known
+	}
+	return nil
+}
+
+// resolveInclude maps #include "x.h": beside the file, from the project's usual include folders, then
+// by a name only one file carries.
+func (r *resolver) resolveInclude(f *FileInfo, i int, spec string) {
+	for _, dir := range []string{path.Dir(f.Path), ".", "include", "src"} {
+		if c := path.Join(dir, spec); r.m.Files[c] != nil {
+			f.Imports[i] = c
+			return
+		}
+	}
+	if list := r.byName[path.Base(spec)]; len(list) == 1 {
+		f.Imports[i] = list[0]
+	}
 }
 
 // resolveRustImport maps use/mod paths to a file in the map: crate::, self::, super:: and mod names.

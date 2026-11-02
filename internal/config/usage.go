@@ -20,6 +20,7 @@ type UsageEntry struct {
 	Output   int     `json:"output"`
 	Cache    int     `json:"cache"`
 	Cost     float64 `json:"cost"`
+	Unpriced bool    `json:"unpriced,omitempty"` // no price known for the model: the cost is not zero, it is unknown
 }
 
 func UsageFile() string { return filepath.Join(core.InfuseHome(), "usage.jsonl") }
@@ -35,6 +36,7 @@ type Totals struct {
 	ByDay     []DayTotal         `json:"byDay"`
 	ByProject map[string]float64 `json:"byProject"`
 	ByModel   map[string]float64 `json:"byModel"`
+	Unpriced  []string           `json:"unpriced"` // models used without a known price: the totals leave them out
 	Tokens    struct {
 		Input  int `json:"input"`
 		Output int `json:"output"`
@@ -61,7 +63,8 @@ func TodaySpend() float64 {
 }
 
 func UsageTotals() Totals {
-	t := Totals{ByProject: map[string]float64{}, ByModel: map[string]float64{}, ByDay: []DayTotal{}}
+	t := Totals{ByProject: map[string]float64{}, ByModel: map[string]float64{}, ByDay: []DayTotal{}, Unpriced: []string{}}
+	unpriced := map[string]bool{}
 	now := time.Now()
 	today := now.Format("2006-01-02")
 	month := now.Format("2006-01")
@@ -82,12 +85,19 @@ func UsageTotals() Totals {
 		}
 		if m, _ := e["model"].(string); m != "" {
 			t.ByModel[m] += cost
+			if u, _ := e["unpriced"].(bool); u {
+				unpriced[m] = true
+			}
 		}
 		in, _ := e["input"].(float64)
 		out, _ := e["output"].(float64)
 		t.Tokens.Input += int(in)
 		t.Tokens.Output += int(out)
 	}
+	for m := range unpriced {
+		t.Unpriced = append(t.Unpriced, m)
+	}
+	sort.Strings(t.Unpriced)
 	for d, c := range days {
 		t.ByDay = append(t.ByDay, DayTotal{d, c})
 	}

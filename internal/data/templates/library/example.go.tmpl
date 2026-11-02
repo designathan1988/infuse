@@ -1,0 +1,19 @@
+package main
+
+// The public API in use; it compiles or the oracle says so.
+
+import (
+	"fmt"
+
+	"{{module}}/pkg/lib"
+)
+
+func main() {
+	var c lib.Collection
+	c.Add("first")
+	out, err := c.Format("text")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(out)
+}

@@ -1,0 +1,38 @@
+package {{package}}
+
+// The extension point: behavior is added by registering it, never by another conditional.
+
+import (
+	"fmt"
+	"sort"
+)
+
+// Registry maps names to implementations.
+type Registry[T any] struct{ items map[string]T }
+
+// NewRegistry creates an empty registry.
+func NewRegistry[T any]() *Registry[T] { return &Registry[T]{items: map[string]T{}} }
+
+// Register adds an implementation; a duplicate name is a programming error.
+func (r *Registry[T]) Register(name string, v T) {
+	if _, dup := r.items[name]; dup {
+		panic(fmt.Sprintf("registered twice: %s", name))
+	}
+	r.items[name] = v
+}
+
+// Get returns the implementation of a name.
+func (r *Registry[T]) Get(name string) (T, bool) {
+	v, ok := r.items[name]
+	return v, ok
+}
+
+// Names lists what is registered, sorted.
+func (r *Registry[T]) Names() []string {
+	out := make([]string, 0, len(r.items))
+	for k := range r.items {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}

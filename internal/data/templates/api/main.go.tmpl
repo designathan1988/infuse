@@ -1,0 +1,24 @@
+package main
+
+// The entry point: wiring only.
+
+import (
+	"log"
+	"net/http"
+
+	"{{module}}/internal/api"
+	"{{module}}/internal/config"
+	"{{module}}/internal/domain"
+	"{{module}}/internal/platform"
+	"{{module}}/internal/store"
+)
+
+func main() {
+	items, err := domain.NewItems(store.NewFileRepo(config.Get("DATA_DIR")))
+	if err != nil {
+		log.Fatal(err)
+	}
+	addr := config.Get("ADDR")
+	platform.Observe("server.start", map[string]any{"addr": addr})
+	log.Fatal(http.ListenAndServe(addr, api.Handler(items)))
+}

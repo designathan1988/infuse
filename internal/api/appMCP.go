@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"infuse/internal/mcp"
@@ -27,7 +28,11 @@ func appMCP(w http.ResponseWriter, r *http.Request, q map[string]string, body ma
 
 func mcpAction(w http.ResponseWriter, r *http.Request, path string, body map[string]any, root string, str func(string) string, boolean func(string) bool) {
 	scope, name := str("scope"), str("name")
-	if scope != "global" {
+	if strings.TrimPrefix(path, "/api/mcp/") == "oauth" { // the browser sign-in the user asked for
+		mcpOAuth(w, r, root, scope, name)
+		return
+	}
+	if scope != "global" && !strings.HasPrefix(scope, mcp.PluginScope) {
 		scope = "project"
 	}
 	m := mcp.For(root)
@@ -52,6 +57,26 @@ func mcpAction(w http.ResponseWriter, r *http.Request, path string, body map[str
 	}
 	m.Restart(r.Context(), scope, name)
 	sendJSON(w, 200, map[string]any{"ok": true, "servers": m.Status()})
+}
+
+// mcpOAuth starts the sign-in and answers with the address to open; when it finishes the server restarts
+// with its new token.
+func mcpOAuth(w http.ResponseWriter, r *http.Request, root, scope, name string) {
+	m := mcp.For(root)
+	for _, e := range m.Entries() {
+		if e.Name != name || (scope != "" && e.Scope != scope) {
+			continue
+		}
+		restart := func(err error) {
+			if err == nil {
+				m.Restart(context.Background(), e.Scope, e.Name)
+			}
+		}
+		u, err := mcp.BeginOAuth(r.Context(), root, e.Scope, e.Name, e.Cfg, restart)
+		sendJSON(w, 200, map[string]any{"ok": err == nil, "url": u, "error": errString(err)})
+		return
+	}
+	sendJSON(w, 200, map[string]any{"ok": false, "error": "server not found"})
 }
 
 func mcpAddServer(body map[string]any, root, scope, name string, approve bool) error {

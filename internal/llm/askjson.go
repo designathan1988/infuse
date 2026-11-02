@@ -4,7 +4,8 @@ package llm
 // document) into structured data, then checks every item mechanically. The answer must arrive whole: a
 // malformed answer read as "nothing found" would silently switch a lock off. So the answer is a forced
 // call to one tool whose parameters are the schema — each provider's own way to make the model answer in
-// that shape (Anthropic tool_choice {"type":"tool"}, OpenAI-compatible and DeepSeek tool_choice with a
+// that shape (Anthropic tool_choice {"type":"tool"} where the model accepts it, else a strict tool under
+// tool_choice auto and the order in the prompt — anthropic_request.go —, OpenAI-compatible and DeepSeek tool_choice with a
 // named function — DeepSeek only with thinking disabled, https://api-docs.deepseek.com/api/create-chat-completion
 // read 2026-10-31 —, Gemini functionCallingConfig ANY, Ollama's format schema). An answer that still does
 // not parse goes back to the model with the parser's error, and after the last attempt the caller gets

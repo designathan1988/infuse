@@ -4,7 +4,7 @@
 import { $, h, esc, debounce } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { I } from '../core/icons.js';
-import { api, tokenHeader, urlWith } from '../core/api.js';
+import { api, tokenHeader, urlWith, sseUrl } from '../core/api.js';
 import { pref } from '../core/store.js';
 import { menu } from '../components/menu.js';
 import { toast } from '../components/toast.js';
@@ -141,7 +141,7 @@ function streamTab(b, tb) {
   b.frames.appendChild(img);
   const kb = tb.kb = h(`<textarea class="remote-kb" aria-label="${esc(t('browser.pageKeyboard'))}" autocomplete="off" spellcheck="false"></textarea>`);
   b.frames.appendChild(kb);
-  tb.es = new EventSource(urlWith(`/api/view/stream?id=${encodeURIComponent(tb.id)}`, { root: b.c.root }));
+  tb.es = new EventSource(sseUrl(`/api/view/stream?id=${encodeURIComponent(tb.id)}`, b.c.root));
   tb.es.onmessage = e => {
     const d = JSON.parse(e.data);
     if (d.type === 'frame') {

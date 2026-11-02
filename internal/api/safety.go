@@ -29,17 +29,7 @@ func apiToken() string {
 // sameOrigin accepts a request only from the app itself: the Host must be this server's loopback
 // address (defeats DNS rebinding), a browser Origin must be that same origin, and state-changing
 // requests must carry X-Infuse with this run's token — which a cross-site form cannot set and a local
-// process (the agent's Bash) does not know.
-// sensitiveRoute names the read-only routes that still require the application token: they read a
-// file chosen by the caller, fetch a URL, or hand a path to another application.
-func sensitiveRoute(path string) bool {
-	switch path {
-	case "/api/file", "/api/frameable", "/api/open":
-		return true
-	}
-	return false
-}
-
+// process (the agent's Bash) does not know. Which reads need the token too is the route table's call.
 func sameOrigin(host, origin, method, marker, token string) error {
 	h := strings.ToLower(host)
 	hn := h

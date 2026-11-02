@@ -118,6 +118,18 @@ for (const file of walk(join(root, 'ui'))) {
 }
 for (const [name, rel] of uses) if (!defs.has(name)) errors.push(`${rel}: undefined CSS variable ${name}`);
 
+// An event nobody listens to is a feature that silently does nothing: this caught the pane refresh
+// the store emitted for the map, files and memory panes while no pane was subscribed.
+const emitted = new Map();
+const heard = new Set();
+for (const file of walk(join(root, 'ui', 'src'))) {
+  const text = readFileSync(file, 'utf8');
+  const rel = relative(root, file).replaceAll('\\', '/');
+  for (const m of text.matchAll(/\bbus\.emit\(\s*'([^']+)'/g)) if (!emitted.has(m[1])) emitted.set(m[1], rel);
+  for (const m of text.matchAll(/\bbus\.on\(\s*'([^']+)'/g)) heard.add(m[1]);
+}
+for (const [name, rel] of emitted) if (!heard.has(name)) errors.push(`${rel}: bus event '${name}' has no listener`);
+
 if (errors.length) {
   for (const e of errors) console.error(e);
   process.exit(1);

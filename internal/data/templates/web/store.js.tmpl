@@ -1,0 +1,38 @@
+// The owner of the application state: the only writer. Its states are declared, and a change that
+// is not an allowed transition is refused.
+import { load, save } from './persist.js';
+import { observe } from './observe.js';
+import { tables } from '../data/tables.js';
+
+export const STATES = Object.freeze({ loading: 'loading', ready: 'ready', failed: 'failed' });
+
+const transitions = {
+  loading: [STATES.ready, STATES.failed],
+  ready: [STATES.failed],
+  failed: [STATES.loading],
+};
+
+export function createStore(storage) {
+  let state = { status: STATES.loading, items: load(storage, tables.storageKey, []) };
+  const listeners = new Set();
+  const commit = next => {
+    state = next;
+    save(storage, tables.storageKey, state.items);
+    observe('state.changed', { status: state.status, items: state.items.length });
+    listeners.forEach(l => l(state));
+  };
+  return {
+    state: () => state,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    ready() {
+      if (!transitions[state.status].includes(STATES.ready)) throw new Error(`cannot go from ${state.status} to ready`);
+      commit({ ...state, status: STATES.ready });
+    },
+    addItem(title) {
+      commit({ ...state, items: [...state.items, { id: state.items.length + 1, title }] });
+    },
+  };
+}

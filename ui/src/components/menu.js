@@ -60,7 +60,7 @@ export function menu(anchor, items, ev, opts = {}) {
     const r = anchor.getBoundingClientRect();
     const spaceAbove = r.top - 12, spaceBelow = innerHeight - r.bottom - 12;
     if (above && spaceAbove < Math.min(m.offsetHeight, 260) && spaceBelow > spaceAbove) above = false;
-    if (!above && spaceBelow < Math.min(m.offsetHeight, 260) && spaceAbove > spaceBelow) above = true;
+    if (!above && spaceBelow < m.offsetHeight && spaceAbove > spaceBelow) above = true;
     m.style.maxHeight = Math.max(160, above ? spaceAbove : spaceBelow) + 'px';
     x = opts.alignRight ? r.right - m.offsetWidth : r.left; y = above ? r.top - m.offsetHeight - 6 : r.bottom + 4;
   }

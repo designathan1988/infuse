@@ -17,6 +17,7 @@ func TestTheOracleGovernsTheEndOfTheTurn(t *testing.T) {
 	testHome(t)
 	root := t.TempDir()
 	s := newSession(root)
+	noContract(s)
 	s.Turn = 1
 	s.TurnStarts = []int{0}
 	s.gate.planned = true

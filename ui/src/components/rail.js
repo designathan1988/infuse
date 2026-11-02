@@ -9,6 +9,7 @@ import { effect } from '../core/signals.js';
 import { api } from '../core/api.js';
 import { pref, liveOf, busy, cache, projectLabel, ctxLimit, refreshChanges } from '../core/store.js';
 import { PLAN_ICON } from './cards-shared.js';
+import { costHTML } from './cost.js';
 
 const MSTATE = { running: ['warn', 'mission.stateRunning'], aprovada: ['ok', 'mission.stateApproved'], orcamento: ['bad', 'mission.stateBudget'], impasse: ['bad', 'mission.stateImpasse'], parada: ['', 'mission.stateStopped'] };
 const CHG_ST = { A: ['changes.new', 'ok'], D: ['changes.deleted', 'bad'] };
@@ -43,7 +44,7 @@ function railMarkup(ctx) {
       <div class="rail-card" data-card="changes"><div class="card-head">${t('rail.changes')}<span class="r mono">${c.isGit === false && !c.local ? t('changes.noGit') : `<span class="add">+${c.added || 0}</span> <span class="del">−${c.removed || 0}</span>`}</span></div>${c.local ? `<div class="segrow">${scopeSwitch()}</div>` : ''}
         ${files.length ? files.slice(0, 8).map(f => `<div class="li${f.status === 'D' ? ' gone' : ''}" data-f="${esc(f.path)}" tabindex="0" role="button"><span class="n" title="${esc(f.path)}">${esc(f.path)}</span>${CHG_ST[f.status] ? `<span class="tag ${CHG_ST[f.status][1]}">${t(CHG_ST[f.status][0])}</span>` : ''}<span class="add">+${f.added}</span><span class="del">−${f.removed}</span></div>`).join('') + (files.length > 8 ? `<div class="faint rail-more">+${files.length - 8} ${t('common.files')}</div>` : '') : `<div class="faint">${t('changes.none')}</div>`}
         <div class="prline"></div></div>
-      <div class="rail-card ctxcard clickable" data-card="context" tabindex="0" role="button"><div class="card-head">${t('rail.context')}<span class="r">${pct}%</span></div><div class="bar100"><i style="--w:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(ctxLimit(L))} tokens · ${money(snap.cost)}</div></div>
+      <div class="rail-card ctxcard clickable" data-card="context" tabindex="0" role="button"><div class="card-head">${t('rail.context')}<span class="r">${pct}%</span></div><div class="bar100"><i style="--w:${pct}%"></i></div><div class="faint">${ktok(L.lastIn)} / ${ktok(ctxLimit(L))} tokens · ${costHTML(snap, snap.cost, true)}</div></div>
       <div class="rail-card" data-card="env"><div class="card-head">${t('rail.environment')}</div>
         <div class="kv-row"><span>${t('env.where')}</span><span>${t('env.thisMachine')}</span></div>
         <div class="kv-row"><span>${t('env.folder')}</span><span title="${esc(snap.workRoot)}">${esc((snap.workRoot || L.root || '').replace(/^.*[\\/]/, ''))}</span></div>

@@ -4,7 +4,6 @@ import (
 	"infuse/internal/core"
 	"infuse/internal/store"
 	"path/filepath"
-	"strings"
 	"sync"
 )
 
@@ -40,6 +39,8 @@ type Settings struct {
 	Diagnostics          *bool                 `json:"diagnostics,omitempty"`          // check each written file with the project's checker (nil = yes)
 	EnforceConventions   *bool                 `json:"enforceConventions,omitempty"`   // refuse writes that break the project's conventions (nil = yes)
 	RequireReview        *bool                 `json:"requireReview,omitempty"`        // independent review at the end of each turn with changes (nil = yes)
+	ContainProcesses     *bool                 `json:"containProcesses,omitempty"`     // the agent's shell processes run OS-contained (nil = yes)
+	RequireContract      *bool                 `json:"requireContract,omitempty"`      // the first code write of a request needs its confirmed Contract (nil = yes)
 	MaxFileLines         int                   `json:"maxFileLines,omitempty"`         // refuse code files longer than this (0 = 400, -1 = no limit)
 	UserProhibitions     *bool                 `json:"userProhibitions,omitempty"`     // the user's prohibitions compiled and enforced (nil = on)
 	RequireDiagnosis     *bool                 `json:"requireDiagnosis,omitempty"`     // a verified diagnosis before changes and commands (nil = on)
@@ -48,6 +49,35 @@ type Settings struct {
 	BrowserViewport      string                `json:"browserViewport,omitempty"`      // agent browser window, e.g. 1440x900
 	BrowserScale         float64               `json:"browserScale,omitempty"`         // pixel density of its captures (0 = 2)
 	BrowserGestures      string                `json:"browserGestures,omitempty"`      // human (default) | slow | instant
+	Env                  map[string]string     `json:"env,omitempty"`                  // variables for Bash and hooks, never shown to the model
+	OutputStyle          string                `json:"outputStyle,omitempty"`          // the agent's output style (catalog or .infuse/output-styles)
+	StatusLine           *StatusLine           `json:"statusLine,omitempty"`           // the configurable status line
+	SearchProvider       string                `json:"searchProvider,omitempty"`       // WebSearch's provider ("" = the built-in chain)
+	SearchProviders      []SearchProvider      `json:"searchProviders,omitempty"`      // user-defined search providers
+	OTLPEndpoint         string                `json:"otlpEndpoint,omitempty"`         // OTLP/HTTP JSON collector; empty = no export
+	MarketplaceURL       string                `json:"marketplaceUrl,omitempty"`       // plugin marketplace: a JSON index
+	ModeCeiling          string                `json:"-"`                              // the machine's mode: a session cannot go past it
+}
+
+// StatusLine renders the status line: a command's first line of output, or a template over the
+// session's fields ({model}, {mode}, {branch}, {cwd}, {cost}, {tokens}, {context}).
+type StatusLine struct {
+	Command  string `json:"command,omitempty"`
+	Template string `json:"template,omitempty"`
+}
+
+// SearchProvider is one row of the web search table: a URL template with {query}, and how to read the
+// response ("html": result links scraped from the page; "json": the fields below).
+type SearchProvider struct {
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Format   string `json:"format"`             // html | json
+	Results  string `json:"results,omitempty"`  // json: the array's key path, dotted
+	Title    string `json:"title,omitempty"`    // json: each result's title key
+	Link     string `json:"link,omitempty"`     // json: each result's URL key
+	Snippet  string `json:"snippet,omitempty"`  // json: each result's text key
+	Header   string `json:"header,omitempty"`   // an authentication header's name
+	KeyVault string `json:"keyVault,omitempty"` // the vault entry holding that header's value
 }
 
 func DefaultSettings() Settings {
@@ -65,10 +95,24 @@ func DefaultSettings() Settings {
 		Permissions:    map[string]string{"Bash": "ask", "Write": "ask", "Edit": "ask", "WebFetch": "ask"},
 		ProtectedPaths: []string{".infuse/oracle/**"},
 		Pricing: map[string][2]float64{
-			"claude-opus":       {15, 75},
-			"claude-sonnet":     {3, 15},
+			"claude-fable":      {10, 50},
+			"claude-fable-5-1":  {10, 50},
+			"claude-fable-5":    {10, 50},
+			"claude-mythos-5-1": {10, 50},
+			"claude-mythos-5":   {10, 50},
+			"claude-opus":       {15, 75}, // the Opus 4.1 and 4.0 generation
+			"claude-opus-5-5":   {4, 20},
+			"claude-opus-5":     {5, 25},
+			"claude-opus-4-8":   {5, 25},
+			"claude-opus-4-7":   {5, 25},
+			"claude-opus-4-6":   {5, 25},
+			"claude-sonnet":     {3, 15}, // the Sonnet 4 generation
+			"claude-sonnet-5-5": {2, 10},
+			"claude-sonnet-5":   {2, 10},
+			"claude-sonnet-4-6": {3, 15},
 			"claude-haiku":      {1, 5},
-			"claude-fable":      {15, 75},
+			"claude-haiku-5-5":  {0.1, 0.5},
+			"claude-haiku-4-5":  {1, 5},
 			"gpt-5":             {1.25, 10},
 			"gpt-4.1":           {2, 8},
 			"gpt-4o":            {2.5, 10},
@@ -155,31 +199,22 @@ type ProjectSettings struct {
 	Mode           string            `json:"mode,omitempty"`
 	Permissions    map[string]string `json:"permissions,omitempty"`
 	ProtectedPaths []string          `json:"protectedPaths,omitempty"`
+	Env            map[string]string `json:"env,omitempty"` // for Bash and hooks; never reaches the model
+	OutputStyle    string            `json:"outputStyle,omitempty"`
 }
 
+// EffectiveSettings merges the layers (layers.go) for a project.
 func EffectiveSettings(root string) Settings {
 	s := LoadSettings()
-	var p ProjectSettings
-	if core.ReadJSON(filepath.Join(root, core.InfuseDirName, "settings.json"), &p) == nil {
-		_, _ = p.Upgrade(nil)
-		if p.Model != "" {
-			s.Model = p.Model
+	for _, file := range []string{ProjectSettingsFile(root), LocalSettingsFile(root)} {
+		var p ProjectSettings
+		if readLayer(file, &p) {
+			applyProjectLayer(&s, p)
 		}
-		// A project file is data inside the project: it may make the agent more restricted, never
-		// less. Otherwise one write to .infuse/settings.json would turn the filter off.
-		if p.Mode != "" && modeRank(p.Mode) <= modeRank(s.Mode) {
-			s.Mode = p.Mode
-		}
-		for k, v := range p.Permissions {
-			current, ok := s.Permissions[k]
-			if !ok {
-				current = "ask"
-			}
-			if permRank(v) <= permRank(current) {
-				s.Permissions[k] = v
-			}
-		}
-		s.ProtectedPaths = append(s.ProtectedPaths, p.ProtectedPaths...) // additions only tighten
+	}
+	var managed ProjectSettings
+	if readLayer(ManagedSettingsPath(), &managed) {
+		applyManaged(&s, managed)
 	}
 	return s
 }
@@ -219,25 +254,4 @@ func RootLanguage(root string) string {
 		return l
 	}
 	return "pt-BR"
-}
-
-func (s Settings) priceFor(model string) (float64, float64) {
-	best := ""
-	for prefix := range s.Pricing {
-		if strings.HasPrefix(model, prefix) && len(prefix) > len(best) {
-			best = prefix
-		}
-	}
-	if best == "" {
-		return 0, 0
-	}
-	return s.Pricing[best][0], s.Pricing[best][1]
-}
-
-// HasPrice reports whether the model's price is known (an unknown price counts as zero cost).
-func (s Settings) HasPrice(model string) bool { in, out := s.priceFor(model); return in > 0 || out > 0 }
-
-func (s Settings) CostOf(model string, u core.Usage) float64 {
-	in, out := s.priceFor(model)
-	return (float64(u.Input)+float64(u.CacheWrite)*1.25+float64(u.CacheRead)*0.1)*in/1e6 + float64(u.Output)*out/1e6
 }

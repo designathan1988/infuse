@@ -1,0 +1,11 @@
+package main
+
+// The entry point: dispatch only.
+
+import (
+	"os"
+
+	"{{module}}/internal/commands"
+)
+
+func main() { os.Exit(commands.Run(os.Args[1:], os.Stdout, os.Stderr)) }

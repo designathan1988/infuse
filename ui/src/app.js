@@ -239,6 +239,7 @@ export async function boot() {
   $('#navNew').onkeydown = e => { if (e.key === 'Enter') newSessionScreen(); };
   $('#navScheduled').onclick = () => import('./pages/scheduled.js').then(p => p.openScheduled());
   $('#navCustomize').onclick = () => import('./pages/customize.js').then(p => p.openCustomize());
+  $('#navRules').onclick = () => import('./pages/rules.js').then(p => p.openRules());
   $('#btnSettings').onclick = () => import('./pages/settings.js').then(p => p.openSettings());
   mountSidebar();
   renderPanes();

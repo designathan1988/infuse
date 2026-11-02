@@ -6,6 +6,10 @@ package mcp
 // (the agent can write .mcp.json; approvals live in ~/.infuse). Its tools reach the agent as
 // mcp__<server>__<tool>; calls ask permission unless the server marks the tool read-only. An MCP
 // server is a program of its own: what it does happens outside the filter, and the UI says so.
+//
+// The approval covers what runs, not only how it is named: a script inside the project is part of the
+// fingerprint, so an approved "node tools/mcp.js" whose file changed is a server awaiting approval. A
+// server defined by the project, or launched from it, runs contained like the agent's shell.
 
 import (
 	"crypto/sha256"
@@ -13,6 +17,8 @@ import (
 	"encoding/json"
 	"infuse/internal/config"
 	"infuse/internal/core"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -30,6 +36,7 @@ type ServerConfig struct {
 	Env      map[string]string `json:"env,omitempty"`
 	URL      string            `json:"url,omitempty"`
 	Headers  map[string]string `json:"headers,omitempty"`
+	ClientID string            `json:"clientId,omitempty"` // OAuth client, when the server has no registration
 	Disabled bool              `json:"disabled,omitempty"`
 }
 
@@ -79,12 +86,68 @@ var mcpApproveMu sync.Mutex
 
 func mcpFingerprint(root, scope, name string, c ServerConfig) string {
 	c.Disabled = false
+	launched := launchedScripts(root, c)
 	if scope == "global" {
 		root = ""
 	}
-	b, _ := json.Marshal([]any{filepath.Clean(root), scope, name, c})
+	b, _ := json.Marshal([]any{filepath.Clean(root), scope, name, c, launched})
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// launchedScripts hashes the project files a stdio server's command line names: the program itself or
+// a script handed to an interpreter. Each argument is tried as a path from the project root, where the
+// server starts; a flag's value counts too (--entry=tools/mcp.js).
+func launchedScripts(root string, c ServerConfig) map[string]string {
+	if c.IsHTTP() {
+		return nil
+	}
+	out := map[string]string{}
+	for _, raw := range append([]string{c.Command}, c.Args...) {
+		arg := os.ExpandEnv(raw)
+		if _, value, isFlag := strings.Cut(arg, "="); isFlag {
+			arg = value
+		}
+		if rel, sum := projectFileHash(root, arg); rel != "" {
+			out[rel] = sum
+		}
+	}
+	return out
+}
+
+// projectFileHash returns the file's project-relative path and content hash when arg names a regular
+// file inside root ("" otherwise).
+func projectFileHash(root, arg string) (string, string) {
+	if arg == "" || strings.ContainsRune(arg, 0) {
+		return "", ""
+	}
+	abs := arg
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(root, abs)
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", ""
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		return "", ""
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
+		return "", ""
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return filepath.ToSlash(rel), "unreadable"
+	}
+	return filepath.ToSlash(rel), hex.EncodeToString(h.Sum(nil))
+}
+
+// projectDefined reports whether a server must run contained: the project declares it, or it launches
+// a file of the project, wherever it is declared.
+func projectDefined(root, scope string, c ServerConfig) bool {
+	return scope != "global" || len(launchedScripts(root, c)) > 0
 }
 
 func mcpApprovalsFile() string { return filepath.Join(core.InfuseHome(), "approved-mcp.json") }

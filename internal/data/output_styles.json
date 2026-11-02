@@ -1,0 +1,22 @@
+[
+  {
+    "name": "default",
+    "label": "style.default",
+    "prompt": ""
+  },
+  {
+    "name": "concise",
+    "label": "style.concise",
+    "prompt": "Keep every message as short as the facts allow: the result, the evidence, what is left. No preamble and no recap of what you were asked."
+  },
+  {
+    "name": "explanatory",
+    "label": "style.explanatory",
+    "prompt": "While you work, explain the choices you make: why this approach over the alternatives, what in the existing code led you to it, and the tradeoffs. Keep each explanation next to the change it explains."
+  },
+  {
+    "name": "learning",
+    "label": "style.learning",
+    "prompt": "The user wants to learn from this work. Explain the concepts behind what you do, point out the patterns in the code, and when a small decision or a few lines would teach something, say what you would do and why before doing it."
+  }
+]

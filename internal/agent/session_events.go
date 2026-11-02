@@ -36,8 +36,16 @@ func (s *Session) emit(t string, data any) {
 	s.Mu.Unlock()
 }
 
+// setState moves the session through the table in state.go. A move the table does not allow is a bug
+// in the loop: it is journaled and refused, so an illegal state never reaches the screen.
 func (s *Session) setState(st string) {
 	s.Mu.Lock()
+	from := s.State
+	if from != "" && !CanTransition(from, st) {
+		s.Mu.Unlock()
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "illegal session state change refused: " + from + " -> " + st})
+		return
+	}
 	s.State = st
 	s.Mu.Unlock()
 	s.emit("state", map[string]any{"state": st})
@@ -49,18 +57,19 @@ func (s *Session) snapshot() map[string]any {
 	return map[string]any{
 		"id": s.ID, "root": s.Root, "title": s.Title, "model": s.Model, "state": s.State, "turn": s.Turn,
 		"messages": s.Messages, "tasks": s.Tasks, "cwd": s.Cwd, "usage": s.Usage, "cost": s.Cost,
+		"turnCost": s.turnCostLocked(), "turnCosts": s.TurnCosts, "unpriced": s.Unpriced,
 		"turnStarts": s.TurnStarts, "checkpoints": s.Checkpoints, "pendingPermission": s.pendingPerm,
 		"pendingQuestion": s.pendingAsk, "error": s.lastError, "compactions": s.Compactions, "mode": s.mode(),
 		"provider": s.providerID(), "effort": s.effort(), "archived": s.Archived, "worktree": s.Worktree, "branch": s.Branch,
-		"workRoot": s.workRoot(), "plan": s.Plan, "mission": s.Mission.clone(), "pinnedMsgs": s.PinnedMsgs, "created": s.Created, "updated": s.Updated, "lastInput": s.LastInput,
-		"procs": s.procListLocked(), "agents": s.Agents, "contextLimit": s.contextLimitLocked(), "diagnoses": s.Diagnoses,
+		"workRoot": s.workRoot(), "impasse": s.Impasse, "plan": s.Plan, "mission": s.Mission.clone(), "pinnedMsgs": s.PinnedMsgs, "created": s.Created, "updated": s.Updated, "lastInput": s.LastInput,
+		"procs": s.procListLocked(), "agents": s.Agents, "contextLimit": s.contextLimitLocked(), "diagnoses": s.Diagnoses, "outcome": s.Outcome,
 	}
 }
 
 // mode, providerID, effort: the session's own choice, else the settings default.
 func (s *Session) mode() string {
 	if s.Mode != "" {
-		return s.Mode
+		return s.settings.CapMode(s.Mode) // the machine's managed mode is a ceiling
 	}
 	if s.settings.Mode == "" {
 		return "default"
@@ -127,7 +136,7 @@ func thinkingBudget(effort string, fallback int) int {
 // ---------------------------------------------------------------- helpers used by tools
 
 func (s *Session) isProtected(abs string) bool {
-	_, ok := newGuard(s.Root, s.settings.ProtectedPaths).Protects(s.Root, abs)
+	_, ok := s.guard().Protects(s.Root, abs)
 	return ok
 }
 
@@ -149,7 +158,8 @@ func (s *Session) wasRead(abs string) bool {
 	defer s.Mu.Unlock()
 	return s.readFiles[abs]
 }
-func (s *Session) setCwd(abs string) { s.Mu.Lock(); s.Cwd = abs; s.Mu.Unlock(); s.emit("cwd", abs) }
+func (s *Session) setCwd(abs string)  { s.Mu.Lock(); s.Cwd = abs; s.Mu.Unlock(); s.emit("cwd", abs) }
+func (s *Session) currentCwd() string { s.Mu.Lock(); defer s.Mu.Unlock(); return s.Cwd }
 func (s *Session) setTasks(t []TaskItem) {
 	s.Mu.Lock()
 	s.Tasks = t

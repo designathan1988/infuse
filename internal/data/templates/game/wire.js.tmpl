@@ -1,0 +1,22 @@
+// Drawing the world as wireframes; it never changes it.
+import { project, rotateY } from './camera.js';
+import { tokens } from '../ui/tokens/tokens.js';
+import { tables } from '../data/tables.js';
+
+export function drawWorld(context, state) {
+  const { width, height } = context.canvas;
+  context.fillStyle = tokens.background;
+  context.fillRect(0, 0, width, height);
+  context.strokeStyle = tokens.accent;
+  for (const entity of state.entities) {
+    const points = tables.cube.points.map(p => project(rotateY(p, entity.angle), tables.camera, width, height));
+    context.beginPath();
+    for (const [a, b] of tables.cube.edges) {
+      if (points[a] && points[b]) {
+        context.moveTo(...points[a]);
+        context.lineTo(...points[b]);
+      }
+    }
+    context.stroke();
+  }
+}

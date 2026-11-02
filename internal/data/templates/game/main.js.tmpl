@@ -1,0 +1,27 @@
+// The entry point: wiring only.
+import { createLoop } from './engine/loop.js';
+import { createRegistry } from './engine/registry.js';
+import { actionFor } from './input/bindings.js';
+import { drawWorld } from './render/wire.js';
+import { spin } from './systems/spin.js';
+import { createWorld } from './world/world.js';
+import { tables } from './data/tables.js';
+
+const world = createWorld(window.localStorage, tables.levels[0]);
+const systems = createRegistry();
+systems.register('spin', spin);
+const loop = createLoop(ms => systems.values().forEach(s => s(world, ms)), tables.stepMillis);
+
+window.addEventListener('keydown', e => {
+  const action = actionFor(e.code);
+  if (action) world.apply(action);
+});
+
+const context = document.getElementById('view').getContext('2d');
+let last = performance.now();
+requestAnimationFrame(function frame(now) {
+  loop.advance(now - last);
+  last = now;
+  drawWorld(context, world.state());
+  requestAnimationFrame(frame);
+});

@@ -5,14 +5,12 @@ package agent
 
 import (
 	"encoding/json"
+	"infuse/internal/lang"
 	"os"
 	"path/filepath"
-	"regexp"
 )
 
-var (
-	reTestFile = regexp.MustCompile(`(?i)(^|/)(tests?|__tests__|specs?|e2e)/|[._-](test|spec)\.[a-z0-9]+$|_test\.go$|(^|/)test_[^/]+\.py$|(^|/)conftest\.py$`)
-)
+var reTestFile = lang.TestPath
 
 // turnStart is the message that started the current turn.
 func (s *Session) turnStart() (Message, bool) {
@@ -27,6 +25,12 @@ func (s *Session) turnStart() (Message, bool) {
 // turnRequest is what the user asked for in the current turn: the text they typed, or, when infuse
 // started the turn for a mission, the mission's goal (from the message's data, not its text).
 func (s *Session) turnRequest() string {
+	s.Mu.Lock()
+	stored := s.TurnRequest
+	s.Mu.Unlock()
+	if stored != "" { // kept apart from the transcript: compaction may have summarized the message
+		return stored
+	}
 	m, ok := s.turnStart()
 	if !ok {
 		return ""

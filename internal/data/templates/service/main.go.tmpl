@@ -1,0 +1,33 @@
+package main
+
+// The entry point: wiring only. It drains what is queued and exits; run it under any supervisor.
+
+import (
+	"context"
+	"log"
+	"path/filepath"
+	"strconv"
+
+	"{{module}}/internal/config"
+	"{{module}}/internal/platform"
+	"{{module}}/internal/queue"
+	"{{module}}/internal/workers"
+)
+
+func main() {
+	workers.Handlers.Register("log", func(_ context.Context, payload string) error {
+		platform.Observe("job.log", map[string]any{"payload": payload})
+		return nil
+	})
+	q, err := queue.Open(filepath.Join(config.Get("DATA_DIR"), "jobs.json"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	n, err := strconv.Atoi(config.Get("WORKERS"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := workers.Drain(context.Background(), q, n); err != nil {
+		log.Fatal(err)
+	}
+}

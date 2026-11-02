@@ -91,7 +91,7 @@ func (s *Session) sessionTools() map[string]Tool {
 }
 
 func (s *Session) toolSpecs() []ToolSpec {
-	specs := toolSpecs()
+	specs := s.withAgentKinds(toolSpecs())
 	for _, t := range mcp.For(s.Root).Tools() {
 		agent := mcpAgentTool{client: t.Client, tool: t.Tool}
 		specs = append(specs, agent.Spec())

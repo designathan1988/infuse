@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"infuse/internal/browser"
+	"infuse/internal/knowledge"
 	"infuse/internal/store"
 	"io"
 	"net/http"
@@ -164,7 +165,9 @@ type docSuggestion struct {
 	Why  string `json:"why"`
 }
 
-// SuggestDocs lists official docs for the project's dependencies that are not pinned yet.
+// SuggestDocs lists official docs for the project's dependencies that are not pinned yet. A
+// dependency whose vendor publishes a versioned documentation URL and whose manifest pins a version
+// suggests that URL; the others suggest their stable URL.
 func SuggestDocs(root string) []docSuggestion {
 	pinned := map[string]bool{}
 	for _, d := range loadDocs(root) {
@@ -172,38 +175,39 @@ func SuggestDocs(root string) []docSuggestion {
 	}
 	out := []docSuggestion{}
 	seen := map[string]bool{}
+	installed := knowledge.InstalledDependencies(root)
 	add := func(dep, version string) {
-		if d, ok := docsForDependency[dep]; ok && !pinned[d[1]] && !seen[d[1]] {
-			seen[d[1]] = true
-			out = append(out, docSuggestion{Name: d[0], URL: d[1], Why: M("docs.whyDependency", "package", dep, "version", version).Render(uiLanguage())})
+		d, ok := docsForDependency[dep]
+		if !ok {
+			return
 		}
+		version = installedOr(installed, dep, version)
+		url := d[1]
+		if v := docURL(dep, version); v != "" {
+			url = v
+		}
+		if pinned[url] || seen[url] {
+			return
+		}
+		seen[url] = true
+		out = append(out, docSuggestion{Name: d[0], URL: url, Why: M("docs.whyDependency", "package", dep, "version", version).Render(uiLanguage())})
 	}
-	var pkg struct{ Dependencies, DevDependencies map[string]string }
-	if readJSON(filepath.Join(root, "package.json"), &pkg) == nil {
-		for k, v := range pkg.Dependencies {
-			add(k, v)
-		}
-		for k, v := range pkg.DevDependencies {
-			add(k, v)
-		}
+	npm := npmDependencyVersions(root)
+	for _, dep := range sortedDependencies(npm) {
+		add(dep, npm[dep])
 	}
-	for _, f := range []string{"requirements.txt", "pyproject.toml"} {
-		if b, err := os.ReadFile(filepath.Join(root, f)); err == nil {
-			low := strings.ToLower(string(b))
-			for _, dep := range []string{"django", "flask", "fastapi", "pytest"} {
-				if strings.Contains(low, dep) {
-					add(dep, "")
-				}
-			}
-		}
+	py := pythonDependencyVersions(root)
+	for _, dep := range sortedDependencies(py) {
+		add(dep, py[dep])
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "go.mod")); err == nil {
 		for _, m := range regexp.MustCompile(`(?m)^\s*(?:require\s+)?([a-z0-9.\-]+\.[a-z]+/[^\s]+)\s+(v[^\s]+)`).FindAllStringSubmatch(string(b), 8) {
 			u := "https://pkg.go.dev/" + m[1] + "@" + m[2]
-			if !pinned[u] {
+			if !pinned[u] && !seen[u] {
+				seen[u] = true
 				out = append(out, docSuggestion{Name: m[1], URL: u, Why: M("docs.whyModule", "module", m[2]).Render(uiLanguage())})
 			}
 		}
 	}
-	return out
+	return append(out, exactVersionPages(installed, pinned, seen)...)
 }

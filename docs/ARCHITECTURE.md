@@ -76,6 +76,15 @@ internal/
 
 ## Security anchors
 
+- The kernel is the wall; the parser only explains. Every process running agent-authored code (Bash,
+  background commands, hooks, external agents' shim, the oracle's checks, its snapshot server, project
+  checkers, MCP servers, dev servers) goes through `sandbox.Wrap`, which fails closed. Windows runs it
+  at Low integrity: the project is labeled Low, `.infuse`, `.git/config`, `.git/hooks` and the
+  protected files keep a Medium label, the parent's delete-child right is denied, and everything else
+  is Medium by default, so no parser is involved. MSYS bash runs from a private copy of its runtime,
+  because the user's own Git Bash owns the shared namespace at Medium. Linux combines a Landlock
+  ruleset with a private mount namespace that binds the protected paths read-only, and macOS uses a
+  Seatbelt profile; neither was run on a real host, see `docs/AUDIT-REPORT.md`.
 - The agent's shell guard is built against the real project root even when a session works in a
   worktree, so `../../` cannot reach the project's own records. Path matching is case-insensitive where
   the filesystem is, protected records are recognized at any depth, symlinks/junctions are resolved on
@@ -84,16 +93,20 @@ internal/
   `.claude/settings.json` are protected: a project file can tighten the policy, never loosen it
   (`EffectiveSettings` ignores a looser mode or permission).
 - Hooks run through the same guard as any shell command. Hook and MCP approvals are stored with an
-  HMAC whose key lives in the OS vault (private-file fallback for headless hosts); an unsigned or
-  edited approval file approves nothing. MCP tools always go through the permission policy; a server's
+  HMAC. On Windows signing keys and provider keys live in DPAPI files with a no-read-up label, because
+  Credential Manager answers a Low process of the same user; other platforms use the OS vault with a
+  private-file fallback. An unsigned or edited approval file approves nothing. MCP tools always go through the permission policy; a server's
   own read-only hint is not evidence.
 - The oracle's criteria hash is anchored in `~/.infuse/oracle/`, outside the project, and every verdict
   carries an HMAC over its fields. A criteria/verdict pair edited inside the project no longer verifies.
   HTTP checks require a server started from the snapshot on a port that was free; the verdict records
   the child pid.
-- Read-only API routes that read a caller-chosen file, fetch a URL or open a path also require the
-  application token. The agent's browser refuses non-web schemes and `file://`; text captured from a
-  page passes secret redaction.
+- Every `/api/` route is a row of the table in `internal/api/routes.go`: its methods and how it is
+  authorized. The application token is required everywhere except the catalog (`/api/i18n`),
+  state-changing routes never take GET, only streams and screenshots (which the browser cannot give a
+  header) take the token in the query, and `root` must be a registered project or a folder inside one.
+  The agent's browser refuses non-web schemes and `file://`; text captured from a page passes secret
+  redaction.
 - The package-existence check reads a local cache (`~/.infuse/packages.json`); a miss is looked up in
   the background, never inside the gate path.
 - Folder-level instruction files (CLAUDE.md, AGENTS.md, GEMINI.md, .cursorrules) load once per session
@@ -142,16 +155,18 @@ internal/
 - None in the architecture rules: no Go function is over 60 lines (`TestFunctionsStaySmall` in
   `internal/architecture`), no frontend function or file is (checked by `tools/check-frontend.mjs`),
   and every rule above is enforced by a test or a CI step.
-- OS-level containment is not implemented: the guard, the protected paths and the signed approvals act
-  at the executor and at the file level, not inside a restricted token/Job Object. A command that
-  escapes the command parser is caught by the turn audit (content hash) but can still touch the disk.
-- The unified "Regras" policy surface is not built: settings, bans, filter rules, protected paths and
-  compiled rules still have separate sources; `.infuse/base.json` is edited as a file or through the
-  API, not yet in the UI.
-- Base scaffolds are basic: `infuse init <base>` creates the folders and the base document, but the
-  pre-filled map and a visual creation flow are not built. The FUSE/WinFsp mount remains absent.
-- The Contract tool asks the user to confirm verifiable criteria, but a confirmed Contract is not yet a
-  hard prerequisite for the first write.
+- External agents are interposed only at the shell. `infuse claude|codex|gemini` contains their Bash
+  and writes the grounds into their instruction file, but their native Read/Write tools do not pass
+  through the filter: the write gates, the turn audit and the oracle loop belong to the agent that runs
+  inside infuse. Closing this needs the FUSE/WinFsp mount, which SPEC lists and which is absent because
+  it requires a driver the user must install.
+- Containment covers writes, not reads: the agent's shell can read what the user can, except files
+  carrying a no-read-up label (signing keys, anchors, provider keys on Windows). The shell's reader
+  guard for infuse's records is best effort.
+- A contained process has no network restriction, and a Low process can still reach other Low
+  processes. Linux keys are protected by file permissions only.
+- The Windows project tree keeps its Low label after use, so a contained shell of one project can write
+  into another project that was also opened (never into that project's `.infuse`, hooks or config).
 - Compatibility route families (`/api/session/<id>` and `/api/sessions/<id>`) are kept so older pages
   and external callers keep working; both dispatch into the same domain methods.
 

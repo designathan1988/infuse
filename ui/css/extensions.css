@@ -1,0 +1,29 @@
+/* What extends the agent: cost and outcome marks, and the plugin, style and local settings screens. */
+@layer components {
+  .cost { font-variant-numeric: tabular-nums; }
+  .cost.lower, .kv-row .mono .cost.lower { color: var(--color-warn); }
+  .outcome-badge { flex: none; font-weight: 500; }
+  .view-outcome { display: inline-flex; margin-left: var(--space-4); }
+  .view-outcome:empty { display: none; }
+  .plugin-approve { align-items: flex-start; }
+  .plugin-runs { margin: var(--space-2) 0 0; padding-left: var(--space-7); font-size: var(--font-size-sm); }
+  .plugin-runs li { overflow-wrap: anywhere; }
+  .style-option { display: flex; align-items: flex-start; gap: var(--space-5); width: 100%; text-align: left; border: var(--border-1) solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6); font-size: var(--font-size-base); color: var(--color-text); cursor: pointer; }
+  .style-option:hover { background: var(--color-surface-2); }
+  .style-option.on { border-color: var(--color-text); }
+  .style-option .grow { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+  .style-option .dot { flex: none; background: none; width: var(--space-7); height: var(--space-7); margin-top: var(--space-1); border-radius: var(--radius-full); border: var(--border-1) solid var(--color-border-strong); }
+  .style-option.on .dot { background: var(--color-text); box-shadow: inset 0 0 0 var(--space-1) var(--color-app); }
+  .clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+  .layer-list { display: flex; flex-direction: column; border: var(--border-1) solid var(--color-border); border-radius: var(--radius-lg); }
+  .layer-row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4) var(--space-6); font-size: var(--font-size-base); min-width: 0; }
+  .layer-row + .layer-row { border-top: var(--border-1) solid var(--color-border); }
+  .layer-row b, .layer-row > .faint:not(.layer-file) { flex: none; }
+  .layer-row .layer-file { flex: 0 1 auto; min-width: 0; font-size: var(--font-size-sm); direction: rtl; text-align: left; }
+  .local-sub { margin: var(--space-8) 0 var(--space-2); font-size: var(--font-size-base); font-weight: 500; }
+  .env-list { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4); }
+  .env-row { display: flex; align-items: center; gap: var(--space-3); }
+  .env-row input { flex: 1 1 0; min-width: 0; }
+  .env-row input[readonly] { color: var(--color-text-secondary); }
+  .local-save { margin-top: var(--space-8); }
+}

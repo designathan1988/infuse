@@ -31,6 +31,8 @@ func ListModels(ctx context.Context, name string, cfg ProviderConfig) ([]string,
 		names, err = googleModels(ctx, client, cfg)
 	case "ollama":
 		names, err = ollamaModels(ctx, client, cfg)
+	case "bedrock", "vertex":
+		names, err = cloudModels(ctx, name, cfg)
 	case "mock":
 		names = []string{"mock"}
 	case "claudedesk", "codexdesk":
@@ -93,7 +95,7 @@ func fetchJSON(ctx context.Context, client *http.Client, provider, url string, h
 }
 
 func anthropicModels(ctx context.Context, client *http.Client, cfg ProviderConfig) ([]string, error) {
-	b, err := fetchJSON(ctx, client, "anthropic", orDefault(cfg.BaseURL, "https://api.anthropic.com")+"/v1/models?limit=100", map[string]string{"x-api-key": cfg.APIKey, "anthropic-version": "2023-06-01"})
+	b, err := fetchJSON(ctx, client, "anthropic", orDefault(cfg.BaseURL, "https://api.anthropic.com")+"/v1/models?limit=100", map[string]string{"x-api-key": cfg.APIKey, "anthropic-version": anthropicVersion})
 	if err != nil {
 		return nil, err
 	}

@@ -85,6 +85,7 @@ func (s *Session) sendMission(m Msg, note missionNote) error {
 	raw, _ := json.Marshal(note)
 	s.Mu.Lock()
 	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) {
+		s.TurnRequest = note.Goal
 		if i := s.TurnStarts[s.Turn-1]; i < len(s.Messages) && s.Messages[i].Role == "user" && len(s.Messages[i].Content) > 0 {
 			c := append([]Block{}, s.Messages[i].Content...) // a copy: the turn already running holds the old one
 			b := s.textBlockLocked(m)
@@ -195,6 +196,10 @@ func (s *Session) missionStep() {
 	if s.endMissionIfDone(m, step, spent, turns) {
 		return
 	}
+	if stop, over := s.overDailyLimit(); over {
+		s.endMissionMsg("orcamento", stop)
+		return
+	}
 	if err := s.sendMission(missionNextMsg(m, step, turns, spent), missionNote{Goal: m.Goal, Turn: turns + 1, MaxTurns: m.MaxTurns, Spent: spent, Budget: m.BudgetUSD, Verdict: step.Verdict}); err != nil {
 		s.endMissionMsg("parada", M("mission.end_cannot_continue", "error", errArg(err)))
 	}
@@ -281,6 +286,9 @@ func missionNextMsg(m *Mission, step MissionStep, turns int, spent float64) Msg 
 // auditTurn asks the fast model for one or two sentences on the last turn's course: loops, ignored
 // errors, work outside the goal. Empty when nothing stands out or no model answers.
 func (s *Session) auditTurn(ctx context.Context) string {
+	if _, over := s.overDailyLimit(); over {
+		return ""
+	}
 	p, err := providerFor(s.settings, s.providerID())
 	if err != nil {
 		return ""
@@ -323,7 +331,7 @@ func (s *Session) auditTurn(ctx context.Context) string {
 	if err != nil {
 		return ""
 	}
-	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.fastModel(), Input: res.Usage.Input, Output: res.Usage.Output, Cost: s.settings.CostOf(s.fastModel(), res.Usage)})
+	s.spend(s.fastModel(), res.Usage)
 	out := strings.TrimSpace(msgText(Message{Content: res.Content}))
 	if out == "-" || strings.HasPrefix(out, "-") && len(out) < 3 {
 		return ""
@@ -337,7 +345,7 @@ type impasseTool struct{}
 
 func (impasseTool) Category() string { return "ui" }
 func (impasseTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Impasse", Description: "Ends the running mission by declaring that it cannot be completed now: the reason, what was tried, the evidence (commands and outputs) and what would be needed (access, information, a decision from the user). An honest impasse is a valid result; carrying on with no way forward is not.",
+	return ToolSpec{Name: "Impasse", Description: "Declares that the work cannot be completed now, in a mission or in an ordinary turn: the reason, what was tried, the evidence (commands and outputs) and what would be needed (access, information, a decision from the user). The turn ends there and the user sees all of it. An honest impasse is a valid result; carrying on with no way forward is not.",
 		InputSchema: schema(`{"type":"object","properties":{"reason":{"type":"string"},"tried":{"type":"array","items":{"type":"string"}},"evidence":{"type":"string"},"needs":{"type":"string"}},"required":["reason","tried","needs"]}`)}
 }
 
@@ -352,7 +360,7 @@ func (impasseTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessa
 	}
 	s.Mu.Unlock()
 	if !running {
-		return tc.Say(M("impasse.no_mission")), false
+		return s.declareImpasse(tc, im), false
 	}
 	s.endMission("impasse", im.Reason) // the agent's own words, shown as it wrote them
 	return tc.Say(M("impasse.recorded")), false

@@ -19,8 +19,8 @@ type grepTool struct{}
 
 func (grepTool) Category() string { return "read" }
 func (grepTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Grep", Description: "Searches file contents with a regular expression. Returns file:line:text.",
-		InputSchema: schema(`{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string","description":"Filter files, e.g. *.ts"},"ignore_case":{"type":"boolean"},"context":{"type":"integer","description":"Lines of context"},"files_only":{"type":"boolean"}},"required":["pattern"]}`)}
+	return ToolSpec{Name: "Grep", Description: "Searches file contents with a regular expression. Returns file:line:text. count=true returns how many lines match in each file; type filters by language (go, js, ts, py, rust, ...).",
+		InputSchema: schema(`{"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string","description":"Filter files, e.g. *.ts"},"ignore_case":{"type":"boolean"},"context":{"type":"integer","description":"Lines of context"},"files_only":{"type":"boolean"},"count":{"type":"boolean","description":"Matching lines per file instead of the lines"},"type":{"type":"string","description":"Language filter, e.g. go, ts, py"}},"required":["pattern"]}`)}
 }
 
 type grepInput struct {
@@ -30,6 +30,8 @@ type grepInput struct {
 	IgnoreCase bool   `json:"ignore_case"`
 	Context    int    `json:"context"`
 	FilesOnly  bool   `json:"files_only"`
+	Count      bool   `json:"count"`
+	Type       string `json:"type"`
 }
 
 func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
@@ -43,12 +45,14 @@ func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if err != nil {
 		return tc.Say(M("grep.bad_regex", "error", err.Error())), true
 	}
-	base := tc.Root
-	if in.Path != "" {
-		if abs, err := tc.resolvePath(in.Path, false); err == nil {
-			base = abs
-		}
+	if in.Type != "" && !grepTypeKnown(in.Type) {
+		return tc.Say(M("grep.bad_type", "type", in.Type)), true
 	}
+	base, err := tc.walkBase(in.Path)
+	if err != nil {
+		return tc.SayErr(err), true
+	}
+	hidden := tc.walkFilter()
 	var fileRe *regexp.Regexp
 	if in.Glob != "" {
 		fileRe = globToRegex("**/" + in.Glob)
@@ -56,7 +60,13 @@ func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	var sb strings.Builder
 	matches := 0
 	_ = filepath.WalkDir(base, func(p string, d os.DirEntry, err error) error {
-		if err != nil || matches > 500 {
+		if err != nil || matches > 500 && !in.Count { // counting reads everything: its output stays short
+			return nil
+		}
+		if hidden(p, d) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if d.IsDir() {
@@ -72,6 +82,9 @@ func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if matches == 0 {
 		return tc.Say(M("grep.none")), false
 	}
+	if in.Count {
+		return tc.clip(sb.String() + tc.Say(M("grep.total", "count", matches)) + "\n"), false
+	}
 	if m := LoadMap(tc.Root); m != nil { // the same directory context LS gives
 		if d := DescribeDir(m, relTo(tc.Root, base)); d != "" {
 			sb.WriteString("\n" + d + "\n")
@@ -81,7 +94,7 @@ func (grepTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 }
 
 func grepFile(p, rel string, re, fileRe *regexp.Regexp, in *grepInput, sb *strings.Builder, matches *int) {
-	if fileRe != nil && !fileRe.MatchString(rel) {
+	if fileRe != nil && !fileRe.MatchString(rel) || !grepTypeMatches(in.Type, rel) {
 		return
 	}
 	b, err := os.ReadFile(p)
@@ -89,12 +102,21 @@ func grepFile(p, rel string, re, fileRe *regexp.Regexp, in *grepInput, sb *strin
 		return
 	}
 	lines := strings.Split(string(b), "\n")
-	fileHit := false
+	fileHit, inFile := false, 0
+	defer func() {
+		if in.Count && inFile > 0 {
+			fmt.Fprintf(sb, "%s:%d\n", rel, inFile)
+		}
+	}()
 	for i, l := range lines {
 		if !re.MatchString(l) {
 			continue
 		}
 		*matches++
+		inFile++
+		if in.Count {
+			continue
+		}
 		if in.FilesOnly {
 			if !fileHit {
 				sb.WriteString(rel + "\n")

@@ -41,25 +41,7 @@ func (s *Session) Revert(toTurn int) error {
 		return errors.New(M("session.stop_first_revert").Render(s.uiLang()))
 	}
 	for t := s.Turn; t >= toTurn; t-- {
-		// Restore the whole tree recorded when the turn started, so a shell deletion (which has no
-		// per-write checkpoint) is reverted too.
-		workspace.RestoreTurn(s.Root, s.workRoot(), s.ID, t)
-		files := s.Checkpoints[t]
-		for i := len(files) - 1; i >= 0; i-- {
-			c := files[i]
-			abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
-			if c.New {
-				_ = os.Remove(abs)
-				continue
-			}
-			src := filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t), filepath.FromSlash(c.Path))
-			if b, err := os.ReadFile(src); err == nil {
-				_ = os.MkdirAll(filepath.Dir(abs), 0o755)
-				_ = os.WriteFile(abs, b, 0o644)
-			}
-		}
-		_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
-		delete(s.Checkpoints, t)
+		s.restoreTurnLocked(t)
 	}
 	if toTurn-1 < len(s.TurnStarts) && toTurn >= 1 {
 		s.Messages = s.Messages[:s.TurnStarts[toTurn-1]]
@@ -70,6 +52,30 @@ func (s *Session) Revert(toTurn int) error {
 	s.saveLocked()
 	s.scheduleMapRefreshLocked()
 	return nil
+}
+
+// restoreTurnLocked puts the files back as they were when turn t started. The per-write checkpoints
+// go first and only cover what the tree snapshot skips (large and build files); the snapshot is taken
+// before anything in the turn ran, so it has the last word: a checkpoint is taken at the first write,
+// possibly after a shell command already changed or deleted the file.
+func (s *Session) restoreTurnLocked(t int) {
+	files := s.Checkpoints[t]
+	for i := len(files) - 1; i >= 0; i-- {
+		c := files[i]
+		abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
+		if c.New {
+			_ = os.Remove(abs)
+			continue
+		}
+		src := filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t), filepath.FromSlash(c.Path))
+		if b, err := os.ReadFile(src); err == nil {
+			_ = os.MkdirAll(filepath.Dir(abs), 0o755)
+			_ = os.WriteFile(abs, b, 0o644)
+		}
+	}
+	workspace.RestoreTurn(s.Root, s.workRoot(), s.ID, t)
+	_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
+	delete(s.Checkpoints, t)
 }
 
 func (s *Session) scheduleMapRefreshLocked() {

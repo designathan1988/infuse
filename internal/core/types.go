@@ -5,11 +5,12 @@ package core
 import "encoding/json"
 
 type Block struct {
-	Type      string          `json:"type"` // text | tool_use | tool_result | thinking | image
+	Type      string          `json:"type"` // text | tool_use | tool_result | thinking | redacted_thinking | image
 	MediaType string          `json:"mediaType,omitempty"`
-	Data      string          `json:"data,omitempty"` // image: base64
+	Data      string          `json:"data,omitempty"` // image: base64; redacted_thinking: the provider's opaque data
 	Text      string          `json:"text,omitempty"`
 	Thinking  string          `json:"thinking,omitempty"`
+	Signature string          `json:"signature,omitempty"` // thinking: the provider's signature, needed to send the block back
 	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`

@@ -10,6 +10,7 @@ import { effect } from '../core/signals.js';
 import { pref, liveOf, busy, curRoot } from '../core/store.js';
 import { messageText as msgText } from '../core/messages.js';
 import { toolBlock, thinkBlock, agentBlock } from './toolblock.js';
+import { turnSummary } from './turnSummary.js';
 
 
 function permCard(p) {
@@ -24,27 +25,13 @@ function permCard(p) {
   return `<div class="perm-card" role="alertdialog" aria-label="${esc(p.tool)}"><div class="hd"><b>${esc(p.tool)}</b><span class="muted">${t('perm.wants')} ${t(verbs[p.category] || 'perm.useTool')}</span></div>${p.reason ? `<div class="sentinel">${t('perm.sentinel')} ${esc(t(p.reason))}. ${t('perm.sentinelWhy')}</div>` : ''}${detail}
     <div class="perm-opts" role="group">
       <div class="perm-opt" data-id="${esc(p.id)}" data-perm="allow" tabindex="0" role="button">${t('perm.yes')}<span class="kbd">Y</span></div>
-      <div class="perm-opt" data-id="${esc(p.id)}" data-perm="always" tabindex="0" role="button">${t('perm.always')}${p.tool === 'Bash' ? ` <span class="faint">(${esc((inp.command || '').trim().split(/\s+/).slice(0, 2).join(' '))})</span>` : ''}<span class="kbd">A</span></div>
+      <div class="perm-opt" data-id="${esc(p.id)}" data-perm="always" tabindex="0" role="button">${t('perm.always')}${p.prefix ? ` <span class="faint">(${esc(p.prefix)})</span>` : ''}<span class="kbd">A</span></div>
       <div class="perm-opt" data-id="${esc(p.id)}" data-perm="all" tabindex="0" role="button">${t('perm.all')}<span class="kbd">T</span></div>
       <div class="perm-opt" data-id="${esc(p.id)}" data-perm="deny" tabindex="0" role="button">${t('perm.no')}<span class="kbd">N</span></div>
     </div></div>`;
 }
 const questionCard = q => `<div class="perm-card"><div class="hd"><b>${esc(q.question)}</b></div><div class="perm-opts">${(q.options || []).map((o, i) => `<div class="perm-opt" data-id="${esc(q.id)}" data-ans="${esc(o)}" tabindex="0" role="button">${esc(o)}<span class="kbd">${i + 1}</span></div>`).join('')}</div>
   <div class="question-free"><input data-id="${esc(q.id)}" data-freeans placeholder="${esc(t('question.freeForm'))}"></div></div>`;
-
-function turnSummary(s, msgs, from, to) {
-  if (from == null) return '';
-  const first = msgs[from], last = msgs[to];
-  let tools = 0, tokens = 0, texts = 0;
-  for (let k = from; k <= to; k++) {
-    const m = msgs[k]; if (m.role !== 'assistant') continue;
-    tokens += m.tokens || 0;
-    for (const b of m.content || []) { if (b.type === 'tool_use') tools++; if (b.type === 'text' && b.text?.trim()) texts++; }
-  }
-  if (!texts && !tools) return '';
-  const dur = first?.ts && last?.ts ? last.ts - first.ts : null;
-  return `<div class="turn-summary"><span class="ok">✓</span><span class="meta">${dur != null ? `${t('turn.workedFor')} ${fmtDur(dur)}` : ''}${tools ? ` · ${t('turn.toolsCount', { count: tools })}` : ''}${tokens ? ` · ${fmtTok(tokens)} tokens` : ''}</span><span class="grow"></span>${texts ? `<button class="btn sm ghost" data-copy-turn="${from}:${to}">${I.copy} ${t('action.copy')}</button>` : ''}</div>`;
-}
 
 function msgBar(s, m, i, user) {
   const pinned = (s.pinnedMsgs || []).includes(i);

@@ -2,12 +2,10 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"infuse/internal/agent"
 	"infuse/internal/core"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -30,11 +28,9 @@ func legacySessions(w http.ResponseWriter, r *http.Request, body map[string]any,
 	switch action {
 	case "":
 		c.rootRoute()
-	case "duplicate":
-		c.duplicate()
 	case "send":
 		c.send()
-	case "stop", "permission", "answer", "revert", "events":
+	case "stop", "permission", "answer", "events":
 		c.control(action)
 	default:
 		http.NotFound(w, r)
@@ -85,19 +81,6 @@ func (c *legacySessionAPI) rootRoute() {
 	}
 }
 
-func (c *legacySessionAPI) duplicate() {
-	d := agent.NewSession(c.root)
-	d.Mu.Lock()
-	d.Title = c.s.Title + " (copy)"
-	d.Model = c.s.Model
-	d.Messages = c.s.CopyMessages()
-	d.Turn = c.s.Turn
-	d.TurnStarts = append([]int{}, c.s.TurnStarts...)
-	d.Mu.Unlock()
-	d.Save()
-	sendJSON(c.w, 200, d.Snapshot())
-}
-
 func (c *legacySessionAPI) send() {
 	var atts []core.Attachment
 	ab, _ := json.Marshal(c.body["attachments"])
@@ -121,13 +104,6 @@ func (c *legacySessionAPI) control(action string) {
 		sendJSON(c.w, 200, map[string]any{"ok": c.s.ResolvePermission(c.str("id"), c.str("decision"))})
 	case "answer":
 		sendJSON(c.w, 200, map[string]any{"ok": c.s.Answer(c.str("id"), c.str("answer"))})
-	case "revert":
-		t, _ := strconv.Atoi(fmt.Sprint(c.body["turn"]))
-		if err := c.s.Revert(t); err != nil {
-			sendJSON(c.w, 409, map[string]any{"error": err.Error()})
-			return
-		}
-		sendJSON(c.w, 200, c.s.Snapshot())
 	case "events":
 		streamEvents(c.w, c.r, c.s)
 	}

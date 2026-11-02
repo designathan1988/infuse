@@ -57,22 +57,7 @@ func (s *Session) rewindPromptLocked(toTurn int) string {
 
 func (s *Session) restoreCodeLocked(toTurn int) {
 	for t := s.Turn; t >= toTurn; t-- {
-		files := s.Checkpoints[t]
-		for i := len(files) - 1; i >= 0; i-- {
-			c := files[i]
-			abs := filepath.Join(s.workRoot(), filepath.FromSlash(c.Path))
-			if c.New {
-				_ = os.Remove(abs)
-				continue
-			}
-			src := filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t), filepath.FromSlash(c.Path))
-			if b, err := os.ReadFile(src); err == nil {
-				_ = os.MkdirAll(filepath.Dir(abs), 0o755)
-				_ = os.WriteFile(abs, b, 0o644)
-			}
-		}
-		_ = os.RemoveAll(filepath.Join(s.Root, infuseDirName, "checkpoints", s.ID, fmt.Sprint(t)))
-		delete(s.Checkpoints, t)
+		s.restoreTurnLocked(t)
 	}
 	Journal(s.Root, JournalEntry{Kind: "revert", Detail: fmt.Sprintf("session %s: code restored to before turn %d", s.ID, toTurn)})
 }
@@ -117,6 +102,7 @@ func (s *Session) SummarizeUpTo(ctx context.Context, upTo int, hint string) erro
 	if err != nil {
 		return err
 	}
+	s.spend(model, res.Usage)
 	summary := ""
 	for _, b := range res.Content {
 		if b.Type == "text" {
@@ -127,16 +113,13 @@ func (s *Session) SummarizeUpTo(ctx context.Context, upTo int, hint string) erro
 	head := compactionHead("[Conversation summarized]\n\n"+summary, nil)
 	rest := s.Messages[cut:]
 	shift := cut - len(head)
-	var starts []int
-	starts = append(starts, 0)
+	starts := compactedStarts(upTo-1, len(head)) // the turn numbers stay: checkpoints are filed under them
 	for _, st := range s.TurnStarts[upTo-1:] {
 		starts = append(starts, st-shift)
 	}
 	s.Messages = append(head, rest...)
 	s.TurnStarts = starts
-	s.Turn = len(starts)
 	s.Compactions++
-	s.Cost += s.settings.CostOf(model, res.Usage)
 	s.Mu.Unlock()
 	s.save()
 	s.emit("session", s.snapshot())

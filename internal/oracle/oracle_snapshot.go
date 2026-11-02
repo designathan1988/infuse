@@ -1,116 +1,111 @@
 package oracle
 
+// The snapshot is a real, neutral copy of the working tree, made fresh for each run under a private
+// folder. It takes the tree as the disk has it, not as git describes it: a file listed in .gitignore or
+// dropped from the index still reaches the checks, and nothing the repository configures (hooks,
+// filters) runs, because the copy never goes through checkout. Directories the fixed policy calls build
+// output are left out unless git tracks something in them.
+//
+// Dependency folders are copied too, byte for byte, instead of linked: the chosen trade-off is a slower
+// first step for a tree that cannot change under the run. The copy alone would freeze a patched
+// node_modules, so each folder's hash is also compared with the anchored baseline (oracle_deps.go) and
+// enters the fingerprint a cached verdict is keyed on. A project that wants a clean install declares it
+// in "setup".
+
 import (
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"infuse/internal/core"
-	"infuse/internal/fsx"
-	"infuse/internal/platform/process"
-	"infuse/internal/workspace"
+	"infuse/internal/platform/gitx"
+	"infuse/internal/sandbox"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
-// Immutable snapshots with git or a content-addressed copy.
+// staleSnapshot is how old a leftover must be before a later run removes it (a crash skips cleanup).
+const staleSnapshot = 24 * time.Hour
 
-func takeSnapshot(workDir, evDir string) (string, string, func(), error) {
-	snap := filepath.Join(os.TempDir(), "infuse-oracle-"+filepath.Base(evDir))
+// snapshotPrefix names snapshots inside the private folder, beside the isolated caches.
+const snapshotPrefix = "s-"
+
+// snapshot is one run's frozen tree.
+type snapshot struct {
+	dir          string
+	id           string            // shown with the verdict: the commit it is based on and the content hash
+	fingerprint  string            // sha256 of the manifest, dependency folders included
+	trees        map[string]string // dependency folder → hash of its content
+	outsideLinks int               // links pointing outside the project, not followed
+	cleanup      func()
+}
+
+func takeSnapshot(workDir, evDir string) (*snapshot, error) {
+	parent, err := sandbox.PrivateDir()
+	if err != nil {
+		return nil, err
+	}
+	sweepSnapshots(parent)
+	name := make([]byte, 16)
+	if _, err := rand.Read(name); err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(parent, snapshotPrefix+hex.EncodeToString(name))
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		return nil, err
+	}
+	if err := sandbox.PrepareRoot(dir); err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, err
+	}
+	c := newCopier(workDir, dir)
+	if err := c.run(); err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, err
+	}
+	s := &snapshot{dir: dir, fingerprint: c.fingerprint, trees: c.trees, outsideLinks: c.outside, cleanup: func() { _ = os.RemoveAll(dir) }}
+	s.id = "sha256:" + s.fingerprint[:12]
 	if core.Exists(filepath.Join(workDir, ".git")) {
-		return takeGitSnapshot(workDir, evDir, snap)
+		neutralRepository(dir)
+		s.id = "git:" + short(gitx.Output(workDir, "rev-parse", "--verify", "HEAD")) + "+" + s.fingerprint[:12]
 	}
-	return takeCopySnapshot(workDir, evDir, snap)
+	_ = os.WriteFile(filepath.Join(evDir, "snapshot.txt"), []byte(c.manifest), 0o644)
+	return s, nil
 }
 
-// takeGitSnapshot commits the whole tree through a temporary index and checks it out in a detached
-// worktree under snap.
-func takeGitSnapshot(workDir, evDir, snap string) (string, string, func(), error) {
-	idx := filepath.Join(os.TempDir(), "infuse-index-"+filepath.Base(evDir))
-	defer os.Remove(idx)
-	git := func(args ...string) (string, error) {
-		cmd := exec.Command("git", args...)
-		process.NoConsoleWindow(cmd)
-		cmd.Dir = workDir
-		cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+idx)
-		out, err := cmd.CombinedOutput()
-		return strings.TrimSpace(string(out)), err
+// neutralRepository gives the copy of a git project a repository of its own, so tools that expect one
+// keep working: fresh configuration, no hooks, and a single commit of what was copied.
+func neutralRepository(dir string) {
+	if _, err := gitx.Run(dir, "init", "-q"); err != nil {
+		return
 	}
-	if _, err := git("add", "-A", "--", ".", ":(exclude).infuse"); err != nil {
-		return "", "", nil, errors.New("git add (temporary index) failed")
+	var exclude strings.Builder
+	for name := range dependencyDirs {
+		exclude.WriteString("/" + name + "/\n")
 	}
-	tree, err := git("write-tree")
-	if err != nil {
-		return "", "", nil, errors.New("git write-tree failed: " + tree)
+	_ = os.WriteFile(filepath.Join(dir, ".git", "info", "exclude"), []byte(exclude.String()), 0o644)
+	if _, err := gitx.Run(dir, "add", "-A"); err != nil {
+		return
 	}
-	parent := []string{}
-	if head, err := git("rev-parse", "--verify", "HEAD"); err == nil && head != "" {
-		parent = []string{"-p", head}
-	}
-	// the snapshot is infuse's own commit: it must not depend on the machine having a git identity
-	args := append([]string{"-c", "user.name=infuse", "-c", "user.email=oracle@infuse.local", "commit-tree", tree}, parent...)
-	commit, err := git(append(args, "-m", "infuse oracle snapshot "+filepath.Base(evDir))...)
-	if err != nil {
-		return "", "", nil, errors.New("git commit-tree failed: " + commit)
-	}
-	if out, err := workspace.GitRun(workDir, "worktree", "add", "--detach", snap, commit); err != nil {
-		return "", "", nil, errors.New("git worktree add failed: " + strings.TrimSpace(out))
-	}
-	linkDependencies(workDir, snap)
-	_ = os.WriteFile(filepath.Join(evDir, "snapshot.txt"), []byte("git commit "+commit+"\ntree "+tree+"\n"), 0o644)
-	return snap, "git:" + commit[:12], func() { _, _ = workspace.GitRun(workDir, "worktree", "remove", "--force", snap) }, nil
+	_, _ = gitx.Run(dir, "-c", "user.name=infuse", "-c", "user.email=oracle@infuse.local", "commit", "-qm", "snapshot", "--no-gpg-sign")
 }
 
-// takeCopySnapshot copies the tree under snap and returns the sha256 of its manifest.
-func takeCopySnapshot(workDir, evDir, snap string) (string, string, func(), error) {
-	h := sha256.New()
-	var manifest strings.Builder
-	err := fsx.Walk(workDir, fsx.Snapshot, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		rel := core.RelTo(workDir, p)
-		if d.IsDir() {
-			return nil
-		}
-		b, err := os.ReadFile(p)
-		if err != nil {
-			return nil
-		}
-		sum := sha256.Sum256(b)
-		line := hex.EncodeToString(sum[:]) + "  " + filepath.ToSlash(rel) + "\n"
-		manifest.WriteString(line)
-		h.Write([]byte(line))
-		dst := filepath.Join(snap, rel)
-		_ = os.MkdirAll(filepath.Dir(dst), 0o755)
-		return os.WriteFile(dst, b, 0o644)
-	})
+// sweepSnapshots removes what an interrupted run left behind.
+func sweepSnapshots(parent string) {
+	entries, err := os.ReadDir(parent)
 	if err != nil {
-		return "", "", nil, err
+		return
 	}
-	linkDependencies(workDir, snap)
-	_ = os.WriteFile(filepath.Join(evDir, "snapshot.txt"), []byte(manifest.String()), 0o644)
-	id := hex.EncodeToString(h.Sum(nil))
-	return snap, "sha256:" + id[:12], func() { _ = os.RemoveAll(snap) }, nil
-}
-
-// linkDependencies points installed dependency folders (node_modules, .venv, vendor) of the project
-// into the snapshot, read through a link: checks run against the code snapshot with the dependencies
-// already installed, without copying gigabytes.
-func linkDependencies(from, snap string) {
-	for _, d := range []string{"node_modules", ".venv", "venv"} {
-		src := filepath.Join(from, d)
-		if st, err := os.Stat(src); err == nil && st.IsDir() && !core.Exists(filepath.Join(snap, d)) {
-			if err := os.Symlink(src, filepath.Join(snap, d)); err != nil && isWindows() {
-				cmd := exec.Command("cmd", "/c", "mklink", "/J", filepath.Join(snap, d), src) // junction: no privilege needed
-				process.NoConsoleWindow(cmd)
-				_ = cmd.Run()
-			}
+	for _, e := range entries {
+		info, err := e.Info()
+		if err == nil && strings.HasPrefix(e.Name(), snapshotPrefix) && time.Since(info.ModTime()) > staleSnapshot {
+			_ = os.RemoveAll(filepath.Join(parent, e.Name()))
 		}
 	}
 }
 
 func isWindows() bool { return filepath.Separator == '\\' }
 
-// ListVerdicts returns the most recent runs of a project, newest first.
+// errSnapshotTooLarge stops a copy that would fill the disk, instead of measuring part of the tree.
+var errSnapshotTooLarge = errors.New("the project is too large to snapshot (over 16 GiB outside the build folders)")

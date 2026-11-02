@@ -160,19 +160,26 @@ func (r Rule) expandMsgs(root, file string) []core.Msg {
 		out = append(out, core.M("text.verbatim", "text", r.Infuse))
 	}
 	if r.InfuseFile != "" {
-		p := r.InfuseFile
-		if !filepath.IsAbs(p) {
-			p = filepath.Join(root, p)
-		}
-		if b, err := os.ReadFile(p); err == nil {
-			out = append(out, core.M("text.verbatim", "text", strings.TrimRight(string(b), " \t\r\n")))
-		} else if file != "" {
-			out = append(out, core.M("rules.file_missing_in", "file", file, "rule", r.ID, "path", r.InfuseFile))
-		} else {
-			out = append(out, core.M("rules.file_missing", "rule", r.ID, "path", r.InfuseFile))
-		}
+		out = append(out, r.infusedFile(root, file))
 	}
 	return out
+}
+
+// infusedFile is the text of the rule's file. The file is read on the host and handed to the model, so
+// it must be the project's or infuse's own, never a record: a rule cannot be a way to read the machine.
+func (r Rule) infusedFile(root, file string) core.Msg {
+	p := RealPath(CanonPath(root, r.InfuseFile))
+	inPlace := core.Within(RealPath(root), p) || core.Within(RealPath(core.InfuseHome()), p)
+	if !inPlace || containsRel(p, internalRels) {
+		return core.M("rules.file_refused", "rule", r.ID, "path", r.InfuseFile)
+	}
+	if b, err := os.ReadFile(p); err == nil {
+		return core.M("text.verbatim", "text", strings.TrimRight(string(b), " \t\r\n"))
+	}
+	if file != "" {
+		return core.M("rules.file_missing_in", "file", file, "rule", r.ID, "path", r.InfuseFile)
+	}
+	return core.M("rules.file_missing", "rule", r.ID, "path", r.InfuseFile)
 }
 
 // msgStrings is the English of each message (for callers that only pass text to the model).

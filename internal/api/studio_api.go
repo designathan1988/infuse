@@ -122,18 +122,7 @@ func fileTree(root, dir string, depth int) *treeNode {
 
 func gitDiff(root, path string) map[string]any {
 	if path != "" {
-		out, _ := workspace.GitRun(root, "diff", "--", path)
-		if strings.TrimSpace(out) == "" {
-			// untracked: show whole file as added
-			if b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path))); err == nil {
-				lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
-				for i := range lines {
-					lines[i] = "+" + lines[i]
-				}
-				out = "--- /dev/null\n+++ b/" + path + "\n" + strings.Join(lines, "\n")
-			}
-		}
-		return map[string]any{"path": path, "diff": out}
+		return gitFileDiff(root, path)
 	}
 	status, _ := workspace.GitRun(root, "status", "--porcelain") // untrimmed: the first column is significant
 	files := []map[string]string{}

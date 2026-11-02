@@ -1,0 +1,11 @@
+{
+  "consoleErrors": [],
+  "httpErrors": [
+    {
+      "url": "http://127.0.0.1:7473/api/term/t0546e7a6c030/stream?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+      "method": "GET",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "requests": 81
+}

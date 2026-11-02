@@ -13,6 +13,7 @@ type Status struct {
 	Name     string          `json:"name"`
 	Target   string          `json:"target"` // command line or URL
 	HTTP     bool            `json:"http"`
+	LoggedIn bool            `json:"loggedIn,omitempty"` // the vault holds an OAuth login
 	Approved bool            `json:"approved"`
 	Disabled bool            `json:"disabled"`
 	State    string          `json:"state"`
@@ -32,7 +33,7 @@ func (m *Manager) Status() []Status {
 	out := []Status{}
 	lang := config.RootLanguage(m.root)
 	for _, e := range m.Entries() {
-		st := Status{Scope: e.Scope, Name: e.Name, Target: e.Cfg.Describe(), HTTP: e.Cfg.IsHTTP(), Approved: Approved(m.root, e.Scope, e.Name, e.Cfg), Disabled: e.Cfg.Disabled, State: "stopped", Tools: []ToolDefStatus{}, Config: e.Cfg}
+		st := Status{Scope: e.Scope, Name: e.Name, Target: e.Cfg.Describe(), HTTP: e.Cfg.IsHTTP(), LoggedIn: e.Cfg.IsHTTP() && HasOAuthLogin(m.root, e.Scope, e.Name, e.Cfg), Approved: Approved(m.root, e.Scope, e.Name, e.Cfg), Disabled: e.Cfg.Disabled, State: "stopped", Tools: []ToolDefStatus{}, Config: e.Cfg}
 		m.mu.Lock()
 		c := m.clients[e.Scope+"/"+e.Name]
 		m.mu.Unlock()

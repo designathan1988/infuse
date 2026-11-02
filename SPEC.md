@@ -86,14 +86,15 @@ What escapes: what the model thinks (touches nothing) and the final message it w
 > verdict), the criteria are anchored in the user's store outside the project and the verdict carries an
 > HMAC, so neither file can be forged inside the project. A shell/MCP/subagent write is judged by the
 > same write rules before the turn can end — heredocs before they run, everything else at the turn
-> boundary. Slice 2 is partially delivered: the starter bases (api, web, cli, interactive), the
-> `.infuse/base.json` choice, out-of-base refusal and a basic scaffold (`infuse init <base>` creates the
-> folders and the base document) exist; the pre-filled map and a visual creation flow do not. Slice 3 is
-> delivered and anchored. Slice 5's vice catalog now ships as a data table (`internal/data/vices.json`)
-> and lessons carry signature + remedy. Also delivered: tools, permissions, sessions, checkpoints,
-> compaction, git, subagents with an independent reviewer, the MCP client, web search, the desktop
-> bridges and the `infuse claude|codex|gemini` launcher. Still absent: the FUSE/WinFsp mount and
-> OS-level sandboxing of the agent's processes.
+> boundary. The agent's processes are contained by the OS: a write the parser never saw is refused by
+> the kernel. Slice 2 is delivered: seven bases (api, web, cli, interactive, library, game, service)
+> scaffold running starter code with a pre-filled map. Slice 3 is delivered and anchored, with web checks
+> through a real browser. Slice 5's vice catalog ships as a data table (`internal/data/vices.json`) and
+> every gate refusal records its vice with signature and remedy. Also delivered: tools, permissions,
+> sessions, checkpoints, compaction, git, subagents with an independent reviewer, the MCP client, web
+> search, the desktop bridges and the launcher. Still absent: the FUSE/WinFsp mount (slice 4), which is
+> why an external agent's own Read and Write tools do not pass through the filter: for those agents
+> the interposition point is the shell, and the full filter is the agent that runs inside infuse.
 
 
 1. **Minimal filter** — launcher + interposed shell (heredoc → write) + map v0 + write watcher. ← this one

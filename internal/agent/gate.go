@@ -24,11 +24,11 @@ import (
 )
 
 type researchGate struct {
-	fails      int      // failed commands since the last investigation
-	errors     []string // their first lines, shown when the gate closes
-	trips      int      // how many times the gate closed in this turn
-	needWeb    bool     // local reading was not enough: only outside research opens it
-	reportAsks int      // times the agent was sent back for a Report in this turn
+	fails       int      // failed commands since the last investigation
+	errors      []string // their first lines, shown when the gate closes
+	trips       int      // how many times the gate closed in this turn
+	needWeb     bool     // local reading was not enough: only outside research opens it
+	unconfirmed int      // claims of the turn's latest Report that execution did not confirm
 
 	planned        bool     // a plan (TodoWrite) was registered in this turn
 	researched     []string // what research calls looked at in this turn (queries, addresses, doc files)
@@ -49,9 +49,13 @@ type researchGate struct {
 	oracleKey     string // the tree the last automatic verdict was produced from
 	oracleVerdict string // that verdict's result code
 
-	// gatedPaths are the paths a write tool judged in this turn. A heredoc or any shell write also
-	// creates a checkpoint; only a path that passed the write gates may be skipped by the shell audit.
-	gatedPaths map[string]bool
+	// gatedPaths holds, per path, the content a write tool wrote in this turn after every gate and the
+	// user's decision. The shell audit skips a path only while it still has exactly that content: a
+	// later shell edit of the same file is judged like any other.
+	gatedPaths map[string]string
+
+	structureAsked bool            // the turn's structure audit already sent the agent back once
+	shellSeen      map[string]bool // shell changes already counted as this turn's writes
 }
 
 func (g *researchGate) reset() { *g = researchGate{} }
@@ -157,7 +161,8 @@ type shortcut struct {
 }
 
 var shortcuts = []shortcut{
-	{regexp.MustCompile(`\b(it|test|describe)\.(skip|only)\(|\bx(it|describe|test)\(|\btest\.todo\(`), M("shortcut.skip_only"), true},
+	{regexp.MustCompile(`\b(it|test|describe)\.skip\(|\bx(it|describe|test)\(|\btest\.todo\(`), M("shortcut.skip_only"), true},
+	{regexp.MustCompile(`\b(it|test|describe)\.only\(|\bf(it|describe)\(`), M("shortcut.focus"), true},
 	{regexp.MustCompile(`@pytest\.mark\.(skip|xfail)|\bpytest\.skip\(|\bunittest\.skip|@unittest\.skip`), M("shortcut.pytest_skip"), true},
 	{regexp.MustCompile(`\bt\.Skip(f|Now)?\(`), M("shortcut.t_skip"), true},
 	{regexp.MustCompile(`@(Disabled|Ignore)\b`), M("shortcut.disabled"), true},
@@ -273,6 +278,8 @@ func editedContent(root, cwd string, name string, input json.RawMessage) (path, 
 		for _, e := range in.Edits {
 			after = strings.Replace(after, e.OldString, e.NewString, map[bool]int{true: -1, false: 1}[e.ReplaceAll])
 		}
+	case "NotebookEdit":
+		after = notebookEdited(before, input)
 	default:
 		return
 	}
@@ -282,10 +289,14 @@ func editedContent(root, cwd string, name string, input json.RawMessage) (path, 
 // missingReport returns the reminder when the turn changed files and ended without a Report (empty
 // otherwise).
 func (s *Session) missingReport() Msg {
+	shell := len(s.ungatedChanges()) // a change made by a shell command owes the same account
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 	changed := len(s.Checkpoints[s.Turn])
-	if changed == 0 || s.gate.reportAsks > 0 || s.Turn < 1 || s.Turn-1 >= len(s.TurnStarts) {
+	if changed == 0 {
+		changed = shell
+	}
+	if changed == 0 || s.Turn < 1 || s.Turn-1 >= len(s.TurnStarts) {
 		return Msg{}
 	}
 	for _, m := range s.Messages[min(s.TurnStarts[s.Turn-1], len(s.Messages)):] {
@@ -296,4 +307,16 @@ func (s *Session) missingReport() Msg {
 		}
 	}
 	return M("gate.no_report", "count", changed)
+}
+
+// unconfirmedReport refuses the end of a turn whose latest Report claims what execution did not
+// confirm: the agent fixes the work or corrects the claim. "Not achieved" is a legitimate report; a
+// false "achieved" is not.
+func (s *Session) unconfirmedReport() Msg {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	if s.gate.unconfirmed == 0 {
+		return Msg{}
+	}
+	return M("gate.report_unconfirmed", "count", s.gate.unconfirmed)
 }

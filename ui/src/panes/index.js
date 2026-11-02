@@ -4,24 +4,26 @@
 import { $, $$, h, esc } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { I } from '../core/icons.js';
-import { pref, ui, curRoot, curDir, liveOf } from '../core/store.js';
+import { pref, ui, curRoot, curDir, liveOf, bus } from '../core/store.js';
 import { effect } from '../core/signals.js';
 
+// project: the pane reads inside a project, so without one it says so instead of asking the API.
 const PANES = {
-  changes: { title: 'pane.changes', load: () => import('./changes.js') },
+  changes: { title: 'pane.changes', load: () => import('./changes.js'), project: true },
   terminal: { title: 'pane.terminal', load: () => import('./terminal.js'), keep: true },
-  files: { title: 'pane.files', load: () => import('./files.js') },
+  files: { title: 'pane.files', load: () => import('./files.js'), project: true },
   browser: { title: 'pane.browser', load: () => import('./browser.js'), keep: true },
   tasks: { title: 'pane.tasks', load: () => import('./tasks.js') },
   procs: { title: 'pane.procs', load: () => import('./procs.js') },
   agents: { title: 'pane.agents', load: () => import('./agents.js') },
   plan: { title: 'pane.plan', load: () => import('./plan.js') },
-  oracle: { title: 'pane.oracle', load: () => import('./oracle.js') },
-  memory: { title: 'pane.memory', load: () => import('./memory.js') },
+  oracle: { title: 'pane.oracle', load: () => import('./oracle.js'), project: true },
+  memory: { title: 'pane.memory', load: () => import('./memory.js'), project: true },
   rules: { title: 'pane.rules', load: () => import('./rules.js') },
-  journal: { title: 'pane.journal', load: () => import('./journal.js') },
-  vices: { title: 'pane.vices', load: () => import('./vices.js') },
-  map: { title: 'pane.map', load: () => import('./map.js') },
+  journal: { title: 'pane.journal', load: () => import('./journal.js'), project: true },
+  turnlog: { title: 'pane.turnlog', load: () => import('./turnlog.js'), project: true },
+  vices: { title: 'pane.vices', load: () => import('./vices.js'), project: true },
+  map: { title: 'pane.map', load: () => import('./map.js'), project: true },
 };
 
 const state = { inst: {}, focus: null };
@@ -64,6 +66,7 @@ export function closePane(id) {
 }
 export const closeFocusedPane = () => { if (state.focus) closePane(state.focus); };
 export function paneRefresh(id) { state.inst[id]?.refresh?.(); }
+bus.on('pane-refresh', paneRefresh); // the agent wrote: map, files and memory follow without polling
 export function paneCall(id, fn, ...a) { state.inst[id]?.[fn]?.(...a); }
 export async function openFileInPane(path) {
   togglePane('files', true);
@@ -132,7 +135,8 @@ async function mount(id, pane) {
   state.inst[id]?.destroy?.();
   const pb = pane.querySelector('.pane-body'), extra = pane.querySelector('.extra');
   const c = { root: curRoot(), dir: curDir(), L: liveOf(ui.views.get()[ui.focus.get()]?.sid) };
-  state.inst[id] = mod.mount(pb, extra, c) || {};
+  if (PANES[id].project && !c.root) pb.innerHTML = `<div class="empty">${t('cust.needProject')}</div>`;
+  state.inst[id] = (PANES[id].project && !c.root ? null : mod.mount(pb, extra, c)) || {};
   state.inst[id]._pane = pane;
   markButtons();
 }

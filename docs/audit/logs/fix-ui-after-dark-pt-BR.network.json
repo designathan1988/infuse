@@ -1,0 +1,432 @@
+[
+  {
+    "url": "http://127.0.0.1:7473/",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/vendor/xterm.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/css/tokens.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/css/base.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/css/layout.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/css/components.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/vendor/addon-fit.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/vendor/xterm.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/app.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/dom.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/icons.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/i18n.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/fmt.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/signals.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/api.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/store.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/sidebar.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/view.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/toast.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/dialog.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/menu.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/panes/index.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/session-actions.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/open-in.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/rail.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/transcript.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/mount.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/options.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/cards-shared.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/markdown.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/messages.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/toolblock.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/markup.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/wire.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/context.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/effect.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/keys.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/menus.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/vim.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/send.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/autocomplete.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/attachments.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/under.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/composer/slash.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/statusline.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/i18n",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/settings/full",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/icon.png",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/projects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/models",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/usage",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/editors",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/pages/rules.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/pages/shell.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/pages/writePolicy.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/policy/filterRules.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/base?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/settings/full",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/sessions/1793592061570?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/sessions/1793592061570/events?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj&token=dev-preview-only",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/session/1793592061570/statusline?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/session/1793592061570/bans?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/projects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/session/1793592061570/bans?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/changes?session=1793592061570&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/pr?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/panes/map.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/core/mapdata.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/components/data-table.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/map?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/panes/files.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/map?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/files/tree?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/changes?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/panes/changes.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/changes?session=1793592061570&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/diff?path=src%2Freport.txt&session=1793592061570&scope=all&project=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/diff?path=src%2Freport.txt&session=1793592061570&scope=all&project=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/src/panes/terminal.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/term/open?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/term/t513c57709019/stream?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj&token=dev-preview-only",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/term/t513c57709019/input?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7473/api/term/t513c57709019/input?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj",
+    "status": 200,
+    "method": "POST"
+  }
+]

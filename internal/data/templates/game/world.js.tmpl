@@ -1,0 +1,32 @@
+// The owner of the world: the only writer of what exists. Systems ask it to change; rendering only
+// reads. Its phases are declared, and the saved game is versioned.
+import { load, save } from './persist.js';
+import { observe } from '../engine/observe.js';
+import { tables } from '../data/tables.js';
+
+export const PHASES = Object.freeze({ menu: 'menu', playing: 'playing', paused: 'paused', over: 'over' });
+
+const moves = {
+  start: { menu: PHASES.playing, paused: PHASES.playing },
+  pause: { playing: PHASES.paused },
+  end: { playing: PHASES.over },
+};
+
+export function createWorld(storage, level) {
+  const saved = load(storage, tables.saveKey, { steps: 0 });
+  let state = { phase: PHASES.menu, steps: saved.steps, entities: level.entities.map(e => ({ ...e })) };
+  return {
+    state: () => state,
+    apply(action) {
+      const next = moves[action]?.[state.phase];
+      if (!next) return;
+      state = { ...state, phase: next };
+      observe('world.phase', { phase: next });
+      if (next === PHASES.paused) save(storage, tables.saveKey, { steps: state.steps });
+    },
+    update(entityId, change) {
+      const entities = state.entities.map(e => (e.id === entityId ? { ...e, ...change } : e));
+      state = { ...state, entities, steps: state.steps + 1 };
+    },
+  };
+}

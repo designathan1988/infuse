@@ -137,7 +137,7 @@ func (c *sessionAPI) settings() {
 	s := c.s
 	s.Mu.Lock()
 	if v := c.str("mode"); v != "" {
-		s.Mode = v
+		s.Mode, s.PlanReturn = v, "" // the user's choice replaces what plan mode would return to
 	}
 	if v := c.str("provider"); v != "" {
 		s.Provider = v

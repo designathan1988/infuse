@@ -1,0 +1,34 @@
+package tests
+
+// The observable surface: commands, their output and their exit codes.
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"{{module}}/internal/commands"
+)
+
+func run(t *testing.T, args ...string) (string, int) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	code := commands.Run(args, &out, &errOut)
+	return out.String() + errOut.String(), code
+}
+
+func TestAddThenList(t *testing.T) {
+	t.Setenv("APP_DATA_DIR", t.TempDir())
+	if out, code := run(t, "add", "first", "item"); code != 0 || !strings.Contains(out, "added 1") {
+		t.Fatalf("add: %d %q", code, out)
+	}
+	if out, code := run(t, "list"); code != 0 || !strings.Contains(out, "first item") {
+		t.Fatalf("list: %d %q", code, out)
+	}
+}
+
+func TestUnknownCommandFails(t *testing.T) {
+	if _, code := run(t, "nope"); code != 2 {
+		t.Fatalf("exit %d", code)
+	}
+}

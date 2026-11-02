@@ -1,0 +1,16 @@
+{
+  "consoleErrors": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    }
+  ],
+  "httpErrors": [
+    {
+      "url": "http://127.0.0.1:7473/api/view/stream?id=b1-1793592465431&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cclaude%5CC--Users-Jonathan--claude-spares-spare-Y8wWfy%5C0d6838d5-d546-4efb-a98a-6d3484a2d592%5Cscratchpad%5Cui%5Cproj&token=dev-preview-only",
+      "status": 500,
+      "method": "GET"
+    }
+  ],
+  "requests": 73
+}

@@ -6,11 +6,12 @@ package agent
 import (
 	"fmt"
 	"infuse/internal/journal"
+	"infuse/internal/knowledge"
+	"infuse/internal/projectmap"
+	"infuse/internal/workspace"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"time"
 )
@@ -59,6 +60,9 @@ func writePromptEnvironment(b *strings.Builder, s *Session) {
 	}
 }
 
+// promptLevelRows bounds each level of the map in the prompt; MAP.md has the rest.
+const promptLevelRows = 12
+
 func writePromptGrounds(b *strings.Builder, s *Session, rules *RuleSet) {
 	if m := LoadOrBuildMap(s.Root); m != nil {
 		b.WriteString("\n## Project map (generated from the code)\n")
@@ -72,10 +76,22 @@ func writePromptGrounds(b *strings.Builder, s *Session, rules *RuleSet) {
 				fmt.Fprintf(b, "- %s (%d lines)\n", h.Path, h.Lines)
 			}
 		}
+		if levels := projectmap.LevelsBrief(m, promptLevelRows); levels != "" {
+			b.WriteString(levels)
+		}
 		b.WriteString("Use LS on any folder to see its map; when you write a file you are told what depends on it.\n")
 	}
 	if bg := baseGrounds(s.Root); bg != "" {
-		b.WriteString("\n## Architecture base (chosen by the user; code outside it is refused)\n" + bg + "\n")
+		b.WriteString("\n## Architecture base (chosen by the user; code outside it is refused)\n" + bg)
+	}
+	if v := knowledge.InstalledPrompt(s.Root, 30); v != "" {
+		b.WriteString("\n## Installed versions (use the documentation of these, not what you remember)\n" + v)
+	}
+	if slow := journal.SlowCommands(s.Root, 6); len(slow) > 0 {
+		b.WriteString("\n## Slow commands in this project (measured; do not repeat them without a reason)\n")
+		for _, c := range slow {
+			b.WriteString("- " + c.CostLine() + "\n")
+		}
 	}
 	if oracle := readOracle(s.Root); oracle != "" {
 		b.WriteString("\n## Definition of done (set by the user; read-only — you cannot change it)\n" + oracle + "\n")
@@ -95,6 +111,12 @@ func writePromptInstructions(b *strings.Builder, s *Session) {
 	if inst := loadInstructions(s.Root); inst != "" {
 		b.WriteString("\n## User and project instructions\n" + inst + "\n")
 	}
+	if st := s.outputStylePrompt(); st != "" {
+		b.WriteString("\n## Output style (chosen by the user)\n" + st + "\n")
+	}
+	if c := s.sessionStartContext(); c != "" {
+		b.WriteString("\n## Context from the session's start hooks\n" + c + "\n")
+	}
 	if mem := readIfExists(filepath.Join(s.Root, infuseDirName, "memory.md")); mem != "" {
 		b.WriteString("\n## Project memory\n" + mem + "\n")
 	}
@@ -112,16 +134,7 @@ func writePromptInstructions(b *strings.Builder, s *Session) {
 	}
 }
 
-func gitOutput(root string, args ...string) string {
-	cmd := exec.Command("git", args...)
-	noConsoleWindow(cmd)
-	cmd.Dir = root
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
+func gitOutput(root string, args ...string) string { return workspace.GitOutput(root, args...) }
 
 func readIfExists(p string) string {
 	b, err := os.ReadFile(p)
@@ -160,40 +173,7 @@ func alwaysRuleTexts(root string, set *RuleSet) []string {
 	return out
 }
 
-func lessonsSummary(root string) string {
-	list := readJSONL(filepath.Join(root, infuseDirName, "lessons.jsonl"))
-	if len(list) == 0 {
-		return ""
-	}
-	count := map[string]int{}
-	for _, e := range list {
-		if v, ok := e["vice"].(string); ok {
-			count[v]++
-		}
-	}
-	type kv struct {
-		k string
-		v int
-	}
-	var kvs []kv
-	for k, v := range count {
-		kvs = append(kvs, kv{k, v})
-	}
-	sort.Slice(kvs, func(i, j int) bool { return kvs[i].v > kvs[j].v })
-	var parts []string
-	for i, e := range kvs {
-		if i >= 8 {
-			break
-		}
-		signature, remedy := journal.Vice(e.k)
-		line := fmt.Sprintf("- %s (%d time(s))", e.k, e.v)
-		if remedy != "" {
-			line += "\n  signature: " + signature + "\n  remedy: " + remedy
-		}
-		parts = append(parts, line)
-	}
-	return strings.Join(parts, "\n")
-}
+func lessonsSummary(root string) string { return journal.LessonsBrief(root) }
 
 // groundsBrief is the project's knowledge in a bounded form, for the independent reviewer, the
 // subagents and the mission auditor: the same grounds the agent gets, never only the diff.
@@ -230,8 +210,8 @@ func loadInstructions(root string) string {
 		filepath.Join(root, ".github", "copilot-instructions.md"),
 		filepath.Join(root, ".claude", "CLAUDE.md"),
 	} {
-		t := readIfExists(p)
-		if t == "" && strings.HasPrefix(p, root) { // deleted from the working tree: the committed version still rules
+		t := strings.TrimSpace(projectmap.StripGeneratedBlocks(readIfExists(p))) // the grounds reach the prompt above
+		if t == "" && strings.HasPrefix(p, root) {                               // deleted from the working tree: the committed version still rules
 			if rel, err := filepath.Rel(root, p); err == nil && contains(loadProjectRules(root).Missing, filepath.ToSlash(rel)) {
 				t = gitHeadFile(root, filepath.ToSlash(rel))
 			}

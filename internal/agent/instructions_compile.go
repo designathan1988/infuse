@@ -22,9 +22,7 @@ func (s *Session) compileInstructions(ctx context.Context, p Provider, text stri
 		Rules []CompiledRule `json:"rules"`
 	}
 	usage, err := askJSON(ctx, p, s.fastModel(), knowledge.CompilePrompt, text, knowledge.ProjectRulesSpec, 8000, &out)
-	s.Mu.Lock()
-	s.Cost += s.settings.CostOf(s.fastModel(), usage)
-	s.Mu.Unlock()
+	s.spend(s.fastModel(), usage)
 	if err != nil {
 		return nil, err
 	}

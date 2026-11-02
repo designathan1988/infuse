@@ -21,6 +21,7 @@ func TestResearchGateStopsTrialAndError(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(root, "a.js"), []byte("x\n"), 0o644)
 	s := newSession(root)
 	s.gate.diagnosed = true // this test is about another gate
+	noContract(s)
 	s.Mode = "bypass"
 	run := func(b Block) (string, bool) { return s.runTool(context.Background(), &RuleSet{}, b) }
 
@@ -80,6 +81,7 @@ func TestShortcutsInEditsAreCaught(t *testing.T) {
 	root := t.TempDir()
 	s := newSession(root)
 	s.gate.diagnosed = true // this test is about another gate
+	noContract(s)
 	s.Mode = "bypass"
 	s.gate.planned = true // the protocol's plan rule is tested apart
 	test := filepath.Join(root, "sum.test.js")
@@ -129,6 +131,7 @@ func TestTurnWithChangesNeedsAReport(t *testing.T) {
 	root := t.TempDir()
 	s := newSession(root)
 	s.gate.diagnosed = true // this test is about another gate
+	noContract(s)
 	s.Turn, s.TurnStarts = 1, []int{0}
 	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "do it"}}}}
 	if !s.missingReport().Empty() {

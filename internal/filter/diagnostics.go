@@ -3,14 +3,18 @@ package filter
 // Diagnostics after each write: the file is checked with the project's own tools (the role a language
 // server plays in an editor), and problems go back to the agent with the write's result, so a broken
 // file is noticed at once instead of at the end of the turn. No server to install: the checks are the
-// compiler or checker the project already uses, limited to a few seconds.
+// compiler or checker the project already uses, limited to a few seconds. These checkers read and may
+// load code the agent just wrote (a project's tsc, a Python module beside the file), so they run
+// contained, like the agent's own shell.
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"infuse/internal/config"
 	"infuse/internal/core"
 	"infuse/internal/platform/process"
+	"infuse/internal/sandbox"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,29 +32,37 @@ func FileDiagnostics(root, abs string) string {
 	case ".json":
 		return jsonDiagnostics(abs, rel)
 	case ".js", ".mjs", ".cjs":
-		return nodeDiagnostics(ctx, abs)
+		return nodeDiagnostics(ctx, root, abs)
 	case ".py":
-		return pythonDiagnostics(ctx, abs)
+		return pythonDiagnostics(ctx, root, abs)
 	case ".go":
-		return goDiagnostics(ctx, abs)
+		return goDiagnostics(ctx, root, abs)
 	case ".ts", ".tsx", ".mts", ".cts":
-		return typescriptDiagnostics(ctx, abs)
+		return typescriptDiagnostics(ctx, root, abs)
 	}
 	return ""
 }
 
-// runChecker runs a project checker, reporting its trimmed output and whether it succeeded.
-func runChecker(ctx context.Context, dir, name string, args ...string) (string, bool) {
+// notRunExit is the sandbox's "could not be contained": the checker never ran, so it found nothing.
+const notRunExit = 126
+
+// runChecker runs a project checker contained to root, reporting its trimmed output and whether it
+// succeeded.
+func runChecker(ctx context.Context, root, dir, name string, args ...string) (string, bool) {
 	exe, err := exec.LookPath(name)
 	if err != nil {
 		return "", true // checker not installed: nothing to say
 	}
-	cmd := exec.CommandContext(ctx, exe, args...)
+	argv := sandbox.Wrap(append([]string{exe}, args...), root, InfuseRecords(), config.EffectiveSettings(root).ContainProcesses)
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	process.NoConsoleWindow(cmd)
 	cmd.Dir = dir
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	err = cmd.Run()
+	if core.ExitCode(err) == notRunExit {
+		return "", true
+	}
 	return strings.TrimSpace(out.String()), err == nil
 }
 
@@ -66,37 +78,38 @@ func jsonDiagnostics(abs, rel string) string {
 }
 
 // nodeDiagnostics checks JavaScript with node --check.
-func nodeDiagnostics(ctx context.Context, abs string) string {
-	if out, ok := runChecker(ctx, filepath.Dir(abs), "node", "--check", abs); !ok && out != "" {
+func nodeDiagnostics(ctx context.Context, root, abs string) string {
+	if out, ok := runChecker(ctx, root, filepath.Dir(abs), "node", "--check", abs); !ok && out != "" {
 		return core.Truncate(out, 1500)
 	}
 	return ""
 }
 
-// pythonDiagnostics checks Python with py_compile.
-func pythonDiagnostics(ctx context.Context, abs string) string {
-	if out, ok := runChecker(ctx, filepath.Dir(abs), "python", "-m", "py_compile", abs); !ok && out != "" {
+// pythonDiagnostics checks Python with py_compile. -I keeps the file's folder off the module path: a
+// py_compile.py planted beside the file must not be what runs.
+func pythonDiagnostics(ctx context.Context, root, abs string) string {
+	if out, ok := runChecker(ctx, root, filepath.Dir(abs), "python", "-I", "-m", "py_compile", abs); !ok && out != "" {
 		return core.Truncate(out, 1500)
 	}
 	return ""
 }
 
 // goDiagnostics checks Go with gofmt and go vet, inside a module.
-func goDiagnostics(ctx context.Context, abs string) string {
+func goDiagnostics(ctx context.Context, root, abs string) string {
 	if findUp(filepath.Dir(abs), "go.mod") == "" {
 		return ""
 	}
-	if out, ok := runChecker(ctx, filepath.Dir(abs), "gofmt", "-e", "-l", abs); !ok && out != "" {
+	if out, ok := runChecker(ctx, root, filepath.Dir(abs), "gofmt", "-e", "-l", abs); !ok && out != "" {
 		return core.Truncate(out, 1500)
 	}
-	if out, ok := runChecker(ctx, filepath.Dir(abs), "go", "vet", "."); !ok && out != "" {
+	if out, ok := runChecker(ctx, root, filepath.Dir(abs), "go", "vet", "."); !ok && out != "" {
 		return core.Truncate(out, 2000)
 	}
 	return ""
 }
 
 // typescriptDiagnostics checks TypeScript with the project's own tsc.
-func typescriptDiagnostics(ctx context.Context, abs string) string {
+func typescriptDiagnostics(ctx context.Context, root, abs string) string {
 	dir := findUp(filepath.Dir(abs), "tsconfig.json")
 	if dir == "" {
 		return ""
@@ -108,7 +121,7 @@ func typescriptDiagnostics(ctx context.Context, abs string) string {
 		}
 		tsc += ".cmd"
 	}
-	out, ok := runChecker(ctx, dir, tsc, "--noEmit", "--pretty", "false", "-p", ".")
+	out, ok := runChecker(ctx, root, dir, tsc, "--noEmit", "--pretty", "false", "-p", ".")
 	if ok || out == "" {
 		return ""
 	}

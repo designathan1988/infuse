@@ -133,6 +133,8 @@ func (d *mockDialogue) demoStep() (string, map[string]any, bool) {
 			{"id": "1", "text": "Create the demo file", "status": "in_progress", "proof": "src/demo.ts exists and exports demo"},
 			{"id": "2", "text": "Confirm the turn closes with every task done", "status": "pending", "proof": "the plan shows both tasks done"},
 		}}, true
+	case counts["Contract"] == 0:
+		return "Contract", map[string]any{"goal": "Create the demo file", "criteria": []string{"src/demo.ts exists and exports demo"}}, true
 	case counts["Write"] == 0:
 		return "Write", map[string]any{"path": "src/demo.ts", "content": "export const demo = () => `ok ${1}`;\n"}, true
 	case counts["TodoWrite"] == 1:

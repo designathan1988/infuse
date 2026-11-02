@@ -14,10 +14,11 @@ package knowledge
 //                      read from git.
 
 import (
+	"context"
 	"infuse/internal/core"
-	"infuse/internal/platform/process"
+	"infuse/internal/platform/gitx"
+	"infuse/internal/projectmap"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -100,8 +101,13 @@ func readInstructionFiles(root string) (ProjectRules, []string) {
 				continue
 			}
 		}
+		// what infuse generated in the file is the map, not the user's instructions: it never becomes a lock
+		text := projectmap.StripGeneratedBlocks(string(b))
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
 		r.Files = append(r.Files, n)
-		texts = append(texts, ResolveInstructionImports(root, filepath.Dir(filepath.Join(root, filepath.FromSlash(n))), string(b), 0))
+		texts = append(texts, ResolveInstructionImports(root, filepath.Dir(filepath.Join(root, filepath.FromSlash(n))), text, 0))
 	}
 	return r, texts
 }
@@ -177,10 +183,7 @@ func GitHeadFile(root, rel string) string {
 	if !core.Exists(filepath.Join(root, ".git")) {
 		return ""
 	}
-	cmd := exec.Command("git", "show", "HEAD:"+rel)
-	cmd.Dir = root
-	process.NoConsoleWindow(cmd)
-	out, err := cmd.Output()
+	out, err := gitx.Command(context.Background(), root, "show", "HEAD:"+rel).Output()
 	if err != nil {
 		return ""
 	}

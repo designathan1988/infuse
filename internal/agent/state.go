@@ -3,7 +3,7 @@ package agent
 // The session state machine, in one place. The table documents every state a conversation can be in
 // and which states may follow; tests keep it aligned with the loop.
 var sessionStates = map[string][]string{
-	"idle":               {"thinking", "error"},
+	"idle":               {"thinking", "compacting", "error"},
 	"thinking":           {"tool", "idle", "error", "compacting", "waiting_permission", "waiting_user"},
 	"tool":               {"thinking", "idle", "error", "compacting", "waiting_permission", "waiting_user"},
 	"waiting_permission": {"thinking", "tool", "idle", "error"},

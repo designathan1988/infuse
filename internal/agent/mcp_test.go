@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"infuse/internal/mcp"
+	"infuse/internal/sandbox"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +17,15 @@ import (
 
 // TestMain doubles as a fake stdio MCP server when INFUSE_FAKE_MCP is set (the test binary runs itself).
 func TestMain(m *testing.M) {
+	// this test binary plays the __sandbox role: sandbox.Wrap re-executes os.Executable, so every Bash
+	// in these tests runs through the same containment as the real program, never around it
+	if len(os.Args) > 1 && os.Args[1] == sandbox.Role {
+		os.Exit(sandbox.Main(os.Args[2:]))
+	}
 	if os.Getenv("INFUSE_FAKE_MCP") == "1" {
+		if probe := os.Getenv("INFUSE_FAKE_MCP_PROBE"); probe != "" {
+			_ = os.WriteFile(probe, []byte("reached"), 0o644)
+		}
 		fakeMCPStdio(os.Stdin, os.Stdout)
 		os.Exit(0)
 	}

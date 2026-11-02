@@ -184,9 +184,6 @@ func RememberProject(root string)         { config.RememberProject(root) }
 func snapshotTurn(root, work, session string, turn int) error {
 	return workspace.SnapshotTurn(root, work, session, turn)
 }
-func RefreshTurnProtected(root, session string, turn int) {
-	workspace.RefreshTurnProtected(root, session, turn)
-}
 func msgStrings(ms []Msg) []string            { return filter.MsgStrings(ms) }
 func hiddenInternal(rel string) bool          { return filter.HiddenInternal(rel) }
 func fileDiagnostics(root, abs string) string { return filter.FileDiagnostics(root, abs) }

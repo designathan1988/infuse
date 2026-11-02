@@ -19,7 +19,8 @@ func TestProtocolDecidesNotTheModel(t *testing.T) {
 	root := t.TempDir()
 	s := newSession(root)
 	s.gate.diagnosed = true // this test is about another gate
-	s.Mode = "bypass"       // the protocol holds even when the user accepts everything
+	noContract(s)
+	s.Mode = "bypass" // the protocol holds even when the user accepts everything
 	off := false
 	s.settings.RequireReview = &off
 	run := func(b Block) (string, bool) { return s.runTool(context.Background(), &RuleSet{}, b) }

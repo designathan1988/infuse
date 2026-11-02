@@ -17,7 +17,7 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) Msg {
 		return Msg{}
 	}
 	rel := filepath.ToSlash(p)
-	if strings.Contains(rel, ".infuse/") || strings.HasSuffix(rel, ".md") && !strings.Contains(rel, "/src/") {
+	if strings.HasPrefix(filepath.ToSlash(relTo(s.workRoot(), p)), ".infuse/") || strings.HasSuffix(rel, ".md") && !strings.Contains(rel, "/src/") {
 		return Msg{} // infuse's own files and prose documents are not code
 	}
 	// 0. the project's instructions: not edited, references not written, the declared measurements used
@@ -30,6 +30,10 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) Msg {
 	s.Mu.Unlock()
 	if !planned {
 		return M("protocol.no_plan")
+	}
+	// 2. the request's contract: the user confirmed what done means before code moves
+	if why := s.contractGate(); !why.Empty() {
+		return why
 	}
 	ext := strings.ToLower(filepath.Ext(p))
 	if m := s.docsBeforeUse(p, before, after); !m.Empty() {
@@ -49,7 +53,7 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) Msg {
 		}
 	}
 	// 5. the user's base: code lives where the chosen architecture says
-	if why := s.baseViolation(relTo(s.workRoot(), p), codeExts[ext]); !why.Empty() {
+	if why := s.baseViolation(relTo(s.workRoot(), p), codeExts[ext], after); !why.Empty() {
 		return why
 	}
 	return s.sizeViolation(rel, ext, before, after)
@@ -75,10 +79,7 @@ func (s *Session) docsBeforeUse(p, before, after string) Msg {
 }
 
 func (s *Session) sizeViolation(rel, ext, before, after string) Msg {
-	limit := s.settings.MaxFileLines
-	if limit == 0 {
-		limit = 400
-	}
+	limit := s.fileLineLimit()
 	if limit <= 0 || !codeExts[ext] {
 		return Msg{}
 	}

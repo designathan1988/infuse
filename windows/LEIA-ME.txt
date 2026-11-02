@@ -51,10 +51,12 @@ AGENTE COMPLETO, DENTRO DO FILTRO
     ficam ancorados fora do projeto e o veredito e assinado, entao um arquivo
     editado dentro do projeto nao vale como aprovacao;
   - a base de arquitetura que voce escolher em .infuse\base.json recusa codigo
-    escrito fora das pastas declaradas;
+    escrito fora das pastas declaradas e imports que quebram as camadas dela, e
+    define o limite de linhas por arquivo;
   - hooks e servidores MCP so rodam depois que voce aprova, e a aprovacao e
     assinada: editar o arquivo de aprovacoes nao libera nada;
-  - tudo que foi escrito fica no Jornal; vicios, na aba Vicios, com o remedio.
+  - tudo que foi escrito fica no Jornal; cada recusa registra o vicio exato, na
+    aba Vicios, com a assinatura e o remedio.
 
 PERMISSOES (seletor no topo)
   Perguntar        - pede antes de executar comandos, escrever e acessar a web
@@ -77,7 +79,9 @@ PAINEL DIREITO
               mostra o que o filtro faria com um comando)
   Jornal      tudo que passou pelo filtro
   Vicios      vicios detectados, com contagem
-  Mapa        o projeto como ele e: exportacoes, dependentes, arquivos grandes
+  Mapa        o projeto como ele e: exportacoes, dependentes, arquivos grandes,
+              onde cada funcionalidade esta dividida, quem e dono de cada dado,
+              exemplos reais do projeto, e o que foge da base escolhida
   Memoria     notas persistentes do projeto; mostra tambem CLAUDE.md/AGENTS.md
               encontrados (compatibilidade)
 
@@ -91,14 +95,28 @@ CLAUDE CODE (opcional)
   Se voce continuar usando o Claude Code desktop, o filtro pode ser instalado
   nele em Configuracoes > Integracao com o Claude Code.
 
+BASES (criar um projeto novo que ja funciona)
+  infuse init <base> [pasta], com a base api, web, cli, interactive, library,
+  game ou service. O projeto nasce com codigo real: modelo com dono e estados,
+  camadas, registro de extensoes, configuracao em um lugar, persistencia
+  versionada, observabilidade, teste de fumaca e criterios padrao do oraculo.
+  Arquivos que ja existem nunca sao alterados.
+
+LANCADOR
+  infuse claude, infuse codex ou infuse gemini atualiza o mapa, liga o vigia e
+  escreve os fundamentos do projeto em um bloco marcado do CLAUDE.md, AGENTS.md
+  ou GEMINI.md da raiz antes de abrir o agente. O que voce escreveu nesses
+  arquivos fica intacto. infuse context on gera o mesmo tipo de bloco, com o
+  mapa de cada pasta, em cada pasta; infuse context off remove.
+
 O QUE AINDA NAO ESTA NESTA VERSAO (ver SPEC.md e docs/PROMPT-infuse-studio.md)
-  os scaffolds das bases (criar um projeto novo a partir de uma base) e o mount
-  FUSE/WinFsp. A escolha de base, a recusa de codigo fora dela, o restante do
-  SPEC.md, os subagentes com revisor independente, o cliente MCP, a busca na
-  web, o executor do oraculo com evidencia em snapshot, a janela nativa e o
-  multi-provedor estao implementados.
+  o mount FUSE/WinFsp. A escolha de base, os scaffolds, a recusa de codigo fora
+  da base, o restante do SPEC.md, os subagentes com revisor independente, o
+  cliente MCP, a busca na web, o executor do oraculo com evidencia em snapshot,
+  a janela nativa e o multi-provedor estao implementados.
 
 Tudo fica no seu computador. A interface responde apenas em 127.0.0.1.
 Dados: %USERPROFILE%\.infuse\settings.json (as chaves de API ficam no cofre do
 sistema operacional, nao no arquivo) e, em cada projeto, a pasta .infuse\
-(sessoes, checkpoints, regras, base, oraculo, jornal).
+(sessoes, checkpoints, regras, base, oraculo, jornal, licoes, mapa). Sessoes,
+checkpoints e capturas ficam fora do git; o resto e versionado com o projeto.

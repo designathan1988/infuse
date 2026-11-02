@@ -1,7 +1,8 @@
-// settings/permissions — default mode and per-tool policy, plus protected paths.
+// settings/permissions — default mode and per-tool policy. Protected paths and the write policy live
+// on the Rules page.
 import { h } from '../../core/dom.js';
 import { t } from '../../core/i18n.js';
-import { setRow, selectEl, inputEl } from '../shell.js';
+import { setRow, selectEl } from '../shell.js';
 import { MODE_INFO } from '../../components/composer.js';
 
 export function renderPermissions({ el, s, save }) {
@@ -11,5 +12,4 @@ export function renderPermissions({ el, s, save }) {
   for (const tool of ['Bash', 'Write', 'Edit', 'WebFetch']) {
     el.append(setRow(tool, descriptions[tool], selectEl([['ask', 'perm.ask'], ['allow', 'perm.allow'], ['deny', 'perm.deny']], (s.permissions || {})[tool] || 'ask', v => save({ permissions: { ...s.permissions, [tool]: v } }))));
   }
-  el.append(setRow('settings.protectedPaths', 'settings.protectedPathsDesc', inputEl((s.protectedPaths || []).join(', '), v => save({ protectedPaths: v.split(',').map(x => x.trim()).filter(Boolean) }))));
 }

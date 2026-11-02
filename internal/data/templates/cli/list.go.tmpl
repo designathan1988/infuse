@@ -1,0 +1,22 @@
+package commands
+
+import (
+	"fmt"
+	"io"
+
+	"{{module}}/internal/core"
+)
+
+func init() { registry.Register("list", list) }
+
+func list(_ []string, out, errOut io.Writer) int {
+	items := []core.Item{}
+	if err := core.LoadDocument(itemsFile(), &items); err != nil {
+		fmt.Fprintln(errOut, err)
+		return 1
+	}
+	for _, i := range items {
+		fmt.Fprintf(out, "%d\t%s\t%s\n", i.ID, i.State, i.Title)
+	}
+	return 0
+}

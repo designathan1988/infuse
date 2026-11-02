@@ -10,6 +10,7 @@ import { ui, pref, liveOf, busy, focusedView, cache, projectLabel, openSession, 
 import { togglePane } from '../panes/index.js';
 import { MODE_INFO } from './composer.js';
 import { toast } from './toast.js';
+import { costHTML } from './cost.js';
 
 // ---------------------------------------------------------------- rewind
 export function rewindDialog(v, preselect) {
@@ -87,7 +88,8 @@ export async function contextDialog() {
     <h4 class="context-h4">${t('context.thisSession')}</h4>
     <div class="kv-row"><span>${t('context.input')}</span><span class="mono">${ktok((u.input || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0))} tokens</span></div>
     <div class="kv-row"><span>${t('context.output')}</span><span class="mono">${ktok(u.output)} tokens</span></div>
-    <div class="kv-row"><span>${t('context.cost')}</span><span class="mono">${money(L.snap.get()?.cost)}</span></div>
+    <div class="kv-row"><span>${t('context.turnCost')}</span><span class="mono">${costHTML(L.snap.get(), L.snap.get()?.turnCost, true)}</span></div>
+    <div class="kv-row"><span>${t('context.cost')}</span><span class="mono">${costHTML(L.snap.get(), L.snap.get()?.cost, true)}</span></div>
     <div class="faint mt-4">${t('context.hint')}</div>`;
 }
 
@@ -127,6 +129,7 @@ function paletteItems(kind) {
     { label: t('sidebar.newSession'), d: 'Ctrl N', f: () => newSessionScreen() },
     { label: t('nav.scheduled'), f: () => import('../pages/scheduled.js').then(p => p.openScheduled()) },
     { label: t('nav.customize'), f: () => import('../pages/customize.js').then(p => p.openCustomize()) },
+    { label: t('nav.rules'), f: () => import('../pages/rules.js').then(p => p.openRules()) },
     { label: t('nav.settings'), d: 'Ctrl ,', f: () => import('../pages/settings.js').then(p => p.openSettings()) },
     { label: t('settings.providers'), f: () => import('../pages/settings.js').then(p => p.openSettings('providers')) },
     { label: t('rewind.title') + '…', d: 'Esc Esc', f: () => rewindDialog(v) },

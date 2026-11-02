@@ -140,6 +140,7 @@ function renderSidebar(ctx) {
   $('#sbHeadLabel').textContent = t(sbState.showArchived ? 'sidebar.archived' : 'sidebar.sessions');
   $('#navScheduled').classList.toggle('on', ui.page.get() === 'scheduled');
   $('#navCustomize').classList.toggle('on', ui.page.get() === 'customize');
+  $('#navRules').classList.toggle('on', ui.page.get() === 'rules');
   let list = (sbState.showArchived ? cache.archived.get() : cache.sessions.get())
     .filter(s => !q || sbState.hits.get()[s.id] || (s.title || '').toLowerCase().includes(q) || (s.root || '').toLowerCase().includes(q) || (s.branch || '').toLowerCase().includes(q));
   const sortKey = sb.sort;

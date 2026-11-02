@@ -77,5 +77,6 @@ export function mount(pb, extra, c) {
   };
   extra.querySelector('.help').onclick = () => { helpOpen = !helpOpen; pref('memHelp', helpOpen); draw(); };
   load();
-  return { refresh: load };
+  // the agent's memory events must not redraw the row being typed in
+  return { refresh: () => { if (!pb.contains(document.activeElement)) load(); } };
 }

@@ -1,79 +1,16 @@
 package api
 
-// Integrated terminal and slash commands for the window.
+// Slash commands for the window: the built-ins it handles and the user's custom ones.
 
 import (
-	"context"
 	"infuse/internal/agent"
 	"infuse/internal/core"
-	"infuse/internal/filter"
-	"infuse/internal/journal"
-	"infuse/internal/platform/process"
+	"infuse/internal/knowledge"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 )
-
-type terminalResult struct {
-	Output string   `json:"output"`
-	Cwd    string   `json:"cwd"`
-	Exit   int      `json:"exit"`
-	Notes  []string `json:"notes"`
-}
-
-// runTerminal runs one command through the filter (heredoc transform, rules, journal) and returns what the
-// agent would have seen, plus the new working directory.
-func runTerminal(root, cwd, command string) terminalResult {
-	if cwd == "" || !core.Within(root, cwd) {
-		cwd = root
-	}
-	if strings.TrimSpace(command) == "" {
-		return terminalResult{Cwd: cwd, Notes: []string{}}
-	}
-	rules := filter.LoadRules(root)
-	tr := filter.TransformCommand(command, cwd)
-	if rules.Disabled["heredoc"] {
-		tr = filter.TransformResult{Command: command}
-	}
-	final, ruleLines := filter.ApplyCommandRules(root, rules, tr.Command)
-	journal.Journal(root, journal.JournalEntry{Kind: "command", Command: command, Detail: "terminal"})
-	for _, a := range tr.Actions {
-		if a.Kind ==
-			filter.ActLesson &&
-			a.Vice != "" {
-			journal.Lesson(root, a.Vice, a.Detail)
-		} else {
-			journal.Journal(root, journal.JournalEntry{Kind: "transform", Path: a.Path, Bytes: a.Bytes, Detail: a.Detail})
-		}
-	}
-	started := time.Now().UnixMilli()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, core.FindRealBash(), "-c", final+"\nprintf '\\n__INFUSE_CWD__%s' \"$PWD\"")
-	process.NoConsoleWindow(cmd)
-	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	buf := core.NewCapWriter(1 << 20)
-	cmd.Stdout, cmd.Stderr = buf, buf
-	err := cmd.Run()
-	out := buf.String()
-	res := terminalResult{Cwd: cwd, Exit: core.ExitCode(err), Notes: []string{}}
-	if i := strings.LastIndex(out, "__INFUSE_CWD__"); i >= 0 {
-		if nc := core.FromMsysPath(strings.TrimSpace(out[i+len("__INFUSE_CWD__"):])); nc != "" &&
-			core.Within(root, nc) {
-			res.Cwd = nc
-		}
-		out = strings.TrimRight(out[:i], "\n")
-	}
-	res.Output = out
-	if trailer := filter.BuildTrailer(root, cwd, command, tr.Actions, started, rules, ruleLines); trailer != "" {
-		res.Notes = strings.Split(strings.TrimSpace(trailer), "\n")
-	}
-	return res
-}
 
 type slashCommand struct {
 	Name        string `json:"name"`
@@ -110,10 +47,10 @@ func listCommands(root string) []slashCommand {
 		{Name: "help", Description: "slash.help", Builtin: true},
 	}
 	seen := map[string]bool{}
-	for _, dir := range []string{
-		filepath.Join(root, core.InfuseDirName, "commands"), filepath.Join(root, ".claude", "commands"),
-		filepath.Join(core.InfuseHome(), "commands"), filepath.Join(core.HomeDir(), ".claude", "commands"),
-	} {
+	dirs := []string{filepath.Join(root, core.InfuseDirName, "commands"), filepath.Join(root, ".claude", "commands")}
+	dirs = append(dirs, knowledge.PluginContentDirs(root, "commands")...)
+	dirs = append(dirs, filepath.Join(core.InfuseHome(), "commands"), filepath.Join(core.HomeDir(), ".claude", "commands"))
+	for _, dir := range dirs {
 		entries, _ := os.ReadDir(dir)
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {

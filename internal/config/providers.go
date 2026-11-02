@@ -1,7 +1,7 @@
 package config
 
 // Connections: the model providers the user has connected. Each one has a kind (the wire protocol:
-// anthropic | openai | google | ollama | mock), an endpoint and a key. Keys live in the OS secret store,
+// anthropic | bedrock | vertex | openai | google | ollama | mock), an endpoint and a key. Keys live in the OS secret store,
 // never in settings.json. The preset table is data (internal/data/providers.json).
 
 import (
@@ -27,6 +27,9 @@ type ProviderPreset struct {
 	NeedKey bool   `json:"needKey"`
 	KeyURL  string `json:"keyUrl,omitempty"`
 	Local   bool   `json:"local,omitempty"`
+	// What an OpenAI-compatible endpoint accepts, where it differs from OpenAI.
+	MaxTokensField string `json:"maxTokensField,omitempty"` // default max_completion_tokens
+	NoStreamUsage  bool   `json:"noStreamUsage,omitempty"`  // stream_options is rejected or has no effect
 }
 
 func loadProviderPresets() []ProviderPreset {

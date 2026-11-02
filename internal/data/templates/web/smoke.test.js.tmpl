@@ -1,0 +1,31 @@
+// The observable surface: the state's owner, its persistence and the rendered markup.
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createStore, STATES } from '../src/core/store.js';
+import { setHook } from '../src/core/observe.js';
+import { homePage } from '../src/pages/home.js';
+
+function memoryStorage() {
+  const data = new Map();
+  return { getItem: k => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, v) };
+}
+
+test('an item survives a reload and reaches the page', () => {
+  const seen = [];
+  setHook(e => seen.push(e.name));
+  const storage = memoryStorage();
+  const store = createStore(storage);
+  store.ready();
+  store.addItem('<first>');
+  const reloaded = createStore(storage);
+  assert.equal(reloaded.state().status, STATES.loading);
+  assert.equal(reloaded.state().items.length, 1);
+  assert.match(homePage(reloaded.state()), /&#60;first&#62;/);
+  assert.ok(seen.includes('state.changed'));
+});
+
+test('a transition the states do not declare is refused', () => {
+  const store = createStore(memoryStorage());
+  store.ready();
+  assert.throws(() => store.ready());
+});

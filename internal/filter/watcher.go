@@ -2,8 +2,9 @@ package filter
 
 // Instant write watcher — the always-available half of the filesystem interposition.
 // Every write by any tool (native Write/Edit, apply_patch, write_file, or a shell command) is
-// journaled within milliseconds and the map is refreshed. Runs as a detached process per project,
-// started by the interposed shell on first use, stopping after a period with no writes.
+// journaled within milliseconds and the map is updated for the files touched; a full build follows
+// when the writes stop, for the levels that read every file. Runs as a detached process per project,
+// started by the interposed shell or the launcher on first use, stopping after a period with no writes.
 
 import (
 	"infuse/internal/core"
@@ -14,6 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -26,6 +29,26 @@ type watcherState struct {
 }
 
 func watcherFile(root string) string { return filepath.Join(root, core.InfuseDirName, "watcher.json") }
+
+// watcherRoleEnv marks the process started as the watcher. The shell shim is this same binary named
+// bash, so its first argument cannot say it: `bash watch x` is a script named watch.
+const watcherRoleEnv = "INFUSE_WATCHER_ROLE"
+
+// watcherRole reports whether this process is a watcher started by EnsureWatcher, and for which root.
+func watcherRole(args []string) (string, bool) {
+	if os.Getenv(watcherRoleEnv) == "" || len(args) != 2 || args[0] != "watch" {
+		return "", false
+	}
+	return args[1], true
+}
+
+// WatcherIdle is how long a watcher waits for a write before it stops.
+func WatcherIdle() time.Duration {
+	if v, err := strconv.Atoi(os.Getenv("INFUSE_WATCHER_IDLE_MIN")); err == nil && v > 0 {
+		return time.Duration(v) * time.Minute
+	}
+	return 45 * time.Minute
+}
 
 func WatcherAlive(root string) (int, bool) {
 	var st watcherState
@@ -40,8 +63,13 @@ func EnsureWatcher(root string) {
 	if _, alive := WatcherAlive(root); alive {
 		return
 	}
+	spawnWatcher(root)
+}
+
+// spawnWatcher starts the detached process; it returns at once, so the shell never waits for a build.
+var spawnWatcher = func(root string) {
 	cmd := exec.Command(core.SelfPath(), "watch", root)
-	cmd.Env = append(os.Environ(), "INFUSE_ROOT="+root)
+	cmd.Env = append(os.Environ(), "INFUSE_ROOT="+root, watcherRoleEnv+"=1")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
 	process.Detach(cmd)
 	if err := cmd.Start(); err != nil {
@@ -68,10 +96,20 @@ func StopWatcher(root string) bool {
 
 func IgnoredPath(root, p string) bool { return fsx.IgnoredPath(root, p) }
 
+// Timing of the map's refresh after an event: the touched files soon, everything once writes stop.
+const (
+	refreshDelay  = 300 * time.Millisecond
+	fullDelay     = 20 * time.Second
+	maxIncludable = 64 // past this many files in one burst, a full build is the cheaper reading
+)
+
 type writeWatcher struct {
 	root    string
 	w       *fsnotify.Watcher
+	mu      sync.Mutex
+	pending map[string]bool // files touched since the last refresh
 	refresh *time.Timer
+	full    *time.Timer
 	last    map[string]int64 // dedupe Create+Write bursts for the same path
 }
 
@@ -86,7 +124,7 @@ func RunWatcher(root string, idle time.Duration) {
 		return
 	}
 	defer w.Close()
-	wt := &writeWatcher{root: root, w: w, last: map[string]int64{}}
+	wt := &writeWatcher{root: root, w: w, last: map[string]int64{}, pending: map[string]bool{}}
 	wt.addTree(root)
 
 	idleTimer := time.NewTimer(idle)
@@ -133,6 +171,7 @@ func (wt *writeWatcher) handleEvent(ev fsnotify.Event) bool {
 		return wt.recordWrite(ev, rel)
 	case ev.Has(fsnotify.Remove) || ev.Has(fsnotify.Rename):
 		journal.Journal(wt.root, journal.JournalEntry{Kind: "unlink", Path: rel})
+		wt.touch(rel)
 		return true
 	}
 	return false
@@ -143,6 +182,7 @@ func (wt *writeWatcher) handleEvent(ev fsnotify.Event) bool {
 func (wt *writeWatcher) recordWrite(ev fsnotify.Event, rel string) bool {
 	st, err := os.Stat(ev.Name)
 	if err != nil {
+		wt.touch(rel)
 		return true
 	}
 	if st.IsDir() {
@@ -156,13 +196,42 @@ func (wt *writeWatcher) recordWrite(ev fsnotify.Event, rel string) bool {
 		journal.Journal(wt.root, journal.JournalEntry{Kind: "write", Path: rel, Bytes: int(st.Size())})
 	}
 	wt.last[rel] = now
+	wt.touch(rel)
 	return true
 }
 
-// scheduleRefresh rebuilds the map shortly after the last event.
+func (wt *writeWatcher) touch(rel string) {
+	wt.mu.Lock()
+	wt.pending[rel] = true
+	wt.mu.Unlock()
+}
+
+// scheduleRefresh updates the map shortly after the last event, and rebuilds it when events stop.
 func (wt *writeWatcher) scheduleRefresh() {
 	if wt.refresh != nil {
 		wt.refresh.Stop()
 	}
-	wt.refresh = time.AfterFunc(300*time.Millisecond, func() { projectmap.WriteMap(wt.root, projectmap.BuildMap(wt.root)) })
+	if wt.full != nil {
+		wt.full.Stop()
+	}
+	wt.refresh = time.AfterFunc(refreshDelay, wt.flush)
+	wt.full = time.AfterFunc(fullDelay, wt.rebuild)
 }
+
+// flush applies the touched files to the map.
+func (wt *writeWatcher) flush() {
+	wt.mu.Lock()
+	rels := make([]string, 0, len(wt.pending))
+	for r := range wt.pending {
+		rels = append(rels, r)
+	}
+	wt.pending = map[string]bool{}
+	wt.mu.Unlock()
+	if len(rels) > maxIncludable {
+		wt.rebuild()
+		return
+	}
+	projectmap.UpdateFiles(wt.root, rels)
+}
+
+func (wt *writeWatcher) rebuild() { projectmap.WriteMap(wt.root, projectmap.BuildMap(wt.root)) }

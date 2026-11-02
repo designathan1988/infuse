@@ -184,7 +184,7 @@ func (b baseline) text(root string) (string, bool) {
 // localFileChanges compares the scope's base with the folder now.
 func localFileChanges(root, work, session, scope string, src SnapshotSource) ([]FileChange, map[string]baseline) {
 	base, complete, since := localBase(root, work, session, scope, src)
-	now := walkTree(root, work, false)
+	now := walkTreeCached(root, work)
 	paths := map[string]bool{}
 	for p := range base {
 		paths[p] = true

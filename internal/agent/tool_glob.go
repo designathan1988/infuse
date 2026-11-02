@@ -25,12 +25,11 @@ func (globTool) Spec() ToolSpec {
 func (globTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
 	var in struct{ Pattern, Path string }
 	_ = json.Unmarshal(input, &in)
-	base := tc.Root
-	if in.Path != "" {
-		if abs, err := tc.resolvePath(in.Path, false); err == nil {
-			base = abs
-		}
+	base, err := tc.walkBase(in.Path)
+	if err != nil {
+		return tc.SayErr(err), true
 	}
+	hidden := tc.walkFilter()
 	re := globToRegex(strings.TrimPrefix(in.Pattern, "./"))
 	type hit struct {
 		p string
@@ -39,6 +38,12 @@ func (globTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	var hits []hit
 	_ = filepath.WalkDir(base, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
+			return nil
+		}
+		if hidden(p, d) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if d.IsDir() {

@@ -1,0 +1,24 @@
+package store
+
+// The only place that touches the stored data.
+
+import (
+	"path/filepath"
+
+	"{{module}}/internal/domain"
+)
+
+// FileRepo keeps the items in one versioned document.
+type FileRepo struct{ Path string }
+
+// NewFileRepo stores the items under a data folder.
+func NewFileRepo(dir string) *FileRepo { return &FileRepo{Path: filepath.Join(dir, "items.json")} }
+
+// Load reads the items.
+func (r *FileRepo) Load() ([]domain.Item, error) {
+	list := []domain.Item{}
+	return list, LoadDocument(r.Path, &list)
+}
+
+// Save writes the items.
+func (r *FileRepo) Save(list []domain.Item) error { return SaveDocument(r.Path, list) }

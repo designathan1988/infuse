@@ -1,0 +1,34 @@
+// The simulation stepped and projected without a screen.
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { tables } from '../src/data/tables.js';
+import { createLoop } from '../src/engine/loop.js';
+import { project, rotateY } from '../src/render/camera.js';
+import { spin } from '../src/systems/spin.js';
+import { createWorld, PHASES } from '../src/world/world.js';
+
+function memoryStorage() {
+  const data = new Map();
+  return { getItem: k => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, v) };
+}
+
+test('systems advance the world only while playing, and a pause saves it', () => {
+  const storage = memoryStorage();
+  const world = createWorld(storage, tables.levels[0]);
+  const loop = createLoop(ms => spin(world, ms), tables.stepMillis);
+  loop.advance(100);
+  assert.equal(world.state().steps, 0);
+  world.apply('start');
+  loop.advance(100);
+  assert.ok(world.state().entities[0].angle > 0);
+  world.apply('pause');
+  assert.equal(world.state().phase, PHASES.paused);
+  assert.equal(createWorld(storage, tables.levels[0]).state().steps, world.state().steps);
+});
+
+test('the camera projects in front of it and drops what is behind', () => {
+  assert.equal(tables.cube.edges.length, 12);
+  const front = project(rotateY([0, 0, 0], 1), tables.camera, 800, 450);
+  assert.deepEqual(front, [400, 225]);
+  assert.equal(project([0, 0, -10], tables.camera, 800, 450), null);
+});

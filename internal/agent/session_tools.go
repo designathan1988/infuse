@@ -2,8 +2,12 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"infuse/internal/journal"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -23,9 +27,14 @@ func (s *Session) failMsg(m Msg) { s.fail(errors.New(m.Render(s.uiLang()))) }
 
 // refuse is a gate's refusal of a call: journaled, shown to the user, recorded with the call.
 func (s *Session) refuse(callID, command string, m Msg) (string, bool) {
-	Journal(s.Root, JournalEntry{Kind: "gate", Command: command, Detail: firstLine(m.Render(s.uiLang()))})
+	s.recordRefusal(command, "", m)
 	s.emitMsg("gate", m)
 	return s.say(callID, m), true
+}
+
+// recordRefusal journals a refusal with the exact vice it stands for and adds that vice to the lessons.
+func (s *Session) recordRefusal(command, path string, m Msg) {
+	journal.Refused(s.Root, JournalEntry{Kind: "gate", Command: command, Path: path, Detail: firstLine(m.Render(s.uiLang()))}, m)
 }
 
 func hasResult(results []Block, id string) bool {
@@ -68,6 +77,9 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	}
 	var toolInput any
 	_ = json.Unmarshal(b.Input, &toolInput)
+	if refusal, refused := s.refuseProtectedWrite(tool, b); refused { // first: every attempt is journaled
+		return refusal, true
+	}
 	if refusal, refused := s.preflight(ctx, tool, b, toolInput); refused {
 		return refusal, true
 	}
@@ -86,7 +98,7 @@ func (s *Session) runTool(ctx context.Context, rules *RuleSet, b Block) (string,
 	}
 	out, isErr := s.runToolChecked(ctx, rules, tool, b)
 	s.recordToolOutcome(tool, b, out, isErr)
-	return s.finishToolOutput(ctx, b, toolInput, out, isErr, shortcutWarn), isErr
+	return s.maskSettingsEnv(s.finishToolOutput(ctx, b, toolInput, out, isErr, shortcutWarn)), isErr
 }
 
 func (s *Session) preflight(ctx context.Context, tool Tool, b Block, toolInput any) (string, bool) {
@@ -133,11 +145,19 @@ func (s *Session) writeGuards(ctx context.Context, tool Tool, b Block) (string, 
 		}
 		// the test infrastructure may have to change: the user decides, every time
 		if !s.askPermissionWhy(ctx, tool, b.Input, "cheat:"+rel, why) {
+			s.recordRefusal("", rel, why)
 			return s.say(b.ID, M("perm.user_refused", "why", why)), true
 		}
 	}
 	if why, changed := baselineChange(rel, before, after); changed { // B9: a verdict container is the user's call
 		if !s.askPermissionWhy(ctx, tool, b.Input, "baseline:"+rel, why) {
+			s.recordRefusal("", rel, why)
+			return s.say(b.ID, M("perm.user_refused", "why", why)), true
+		}
+	}
+	if why := s.scopeCut(rel, before, after); !why.Empty() { // after a failure, cutting scope is the user's call
+		if !s.askPermissionWhy(ctx, tool, b.Input, "scope:"+rel, why) {
+			s.recordRefusal("", rel, why)
 			return s.say(b.ID, M("perm.user_refused", "why", why)), true
 		}
 	}
@@ -145,18 +165,26 @@ func (s *Session) writeGuards(ctx context.Context, tool Tool, b Block) (string, 
 	if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
 		return s.refuse(b.ID, "", M("shortcut.justify", "lines", strings.Join(lines, "\n")))
 	}
-	s.markGated(rel) // everything above passed: the shell audit may skip this path
 	return "", false
 }
 
-// markGated records a path the write gates accepted in this turn.
-func (s *Session) markGated(rel string) {
+// markGated records the content a write tool left in a path, after every gate and the user's decision.
+func (s *Session) markGated(rel, abs string) {
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		return
+	}
 	s.Mu.Lock()
 	if s.gate.gatedPaths == nil {
-		s.gate.gatedPaths = map[string]bool{}
+		s.gate.gatedPaths = map[string]string{}
 	}
-	s.gate.gatedPaths[rel] = true
+	s.gate.gatedPaths[rel] = contentHash(b)
 	s.Mu.Unlock()
+}
+
+func contentHash(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *Session) commandGuards(ctx context.Context, tool Tool, b Block) (string, bool) {
@@ -208,6 +236,7 @@ func (s *Session) shortcutGuard(ctx context.Context, tool Tool, b Block) ([]Msg,
 	Journal(s.Root, JournalEntry{Kind: "sentinel", Path: p, Detail: why.Render(s.uiLang())})
 	if !s.askPermissionWhy(ctx, tool, b.Input, key, why) {
 		Lesson(s.Root, "shortcut-in-test", why.String()+" in "+p)
+		s.recordRefusal("", p, why)
 		return warn, s.say(b.ID, M("shortcut.user_refused", "why", why)), true
 	}
 	return warn, "", false
@@ -227,6 +256,7 @@ func (s *Session) recordToolOutcome(tool Tool, b Block, out string, isErr bool) 
 			}
 			s.noteUIChange(relTo(s.workRoot(), abs))
 			s.noteAuthored(abs, writtenTexts(b.Input)...)
+			s.markGated(relTo(s.workRoot(), abs), abs)
 		}
 	}
 }
@@ -254,7 +284,9 @@ func (s *Session) finishToolOutput(ctx context.Context, b Block, toolInput any, 
 		}
 	}
 	if len(shortcutWarn) > 0 && !isErr {
-		Lesson(s.Root, "atalho", strings.Join(msgStrings(shortcutWarn), ", "))
+		for _, w := range shortcutWarn {
+			s.recordRefusal("", toolPath(b.Input), w)
+		}
 		out += "\n" + s.say(b.ID, M("shortcut.introduced", "items", shortcutWarn))
 	}
 	for _, m := range s.procNoteMsgs() {
@@ -290,6 +322,10 @@ func (s *Session) runToolChecked(ctx context.Context, rules *RuleSet, tool Tool,
 				decision = "allow"
 			}
 		}
+	}
+	decision, refusal, refused := s.destructiveGate(ctx, tool, b, decision)
+	if refused {
+		return refusal, true
 	}
 	switch decision {
 	case "deny":

@@ -47,8 +47,8 @@ func specWarnings(s OracleSpec) []string {
 	}
 	var out []string
 	for _, c := range s.Checks {
-		if c.Kind == "http" {
-			out = append(out, fmt.Sprintf("http check %s reads %s: it measures the server that answers that address, not the snapshot. Declare \"server\" in the criteria so the executor starts the server from the snapshot", c.ID, c.URL))
+		if c.Kind == "http" || c.Kind == "browser" {
+			out = append(out, fmt.Sprintf("%s check %s reads %s: it measures the server that answers that address, not the snapshot. Declare \"server\" in the criteria so the executor starts the server from the snapshot", c.Kind, c.ID, c.URL))
 		}
 	}
 	return out

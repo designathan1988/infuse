@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"infuse/internal/config"
+	"infuse/internal/oracle"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,6 +48,13 @@ func writeSpec(t *testing.T, root, spec string) {
 	p := filepath.Join(root, ".infuse", "oracle", "checks.json")
 	_ = os.MkdirAll(filepath.Dir(p), 0o755)
 	if err := os.WriteFile(p, []byte(spec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := LoadOracleSpec(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := oracle.SaveAnchor(root, s); err != nil { // what the user's editor does on saving
 		t.Fatal(err)
 	}
 }

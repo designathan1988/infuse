@@ -4,7 +4,6 @@ package api
 // native window (window_*.go). Nothing leaves the machine. `infuse serve` serves without a window.
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"infuse/internal/agent"
@@ -80,22 +79,9 @@ func StartUI(window bool) {
 	})
 	// The token is the app's own key to its API. Other sites cannot send it (CSRF), rebound hostnames are
 	// refused (DNS rebinding), and local processes — the agent's own Bash included — do not know it, so
-	// they cannot approve permissions, edit the oracle or run the executor through the API.
+	// they cannot approve permissions, edit the oracle, run the executor or read a file through the API.
 	token := apiToken()
-	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		if err := sameOrigin(r.Host, r.Header.Get("Origin"), r.Method, r.Header.Get("X-Infuse"), token); err != nil {
-			sendJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
-			return
-		}
-		// Reading an arbitrary file or fetching an arbitrary URL is as sensitive as a mutation: the
-		// application token is required even on GET, so a local process (the agent's shell included)
-		// cannot use the API as its own file or network oracle.
-		if sensitiveRoute(r.URL.Path) && subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Infuse")), []byte(token)) != 1 {
-			sendJSON(w, http.StatusForbidden, map[string]any{"error": "request without the application token"})
-			return
-		}
-		apiHandler(w, r)
-	})
+	mux.HandleFunc("/api/", guardAPI(token, apiHandler))
 	go func() { _ = http.Serve(ln, mux) }()
 	StartScheduler()
 	go agent.ResumeInterruptedSessions() // turns that infuse stopped by closing or restarting go on

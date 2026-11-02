@@ -2,6 +2,7 @@
 // body with command/entry/diff/result. Also reasoning blocks, the Report card and subagent trails.
 import { esc } from '../core/dom.js';
 import { t } from '../core/i18n.js';
+import { sseUrl } from '../core/api.js';
 import { fmtDur } from '../core/fmt.js';
 import { md } from '../core/markdown.js';
 import { I } from '../core/icons.js';
@@ -180,6 +181,6 @@ export function toolBlock(id, name, input, result, running, meta, curRoot) {
   const summ = isPath ? `<span class="sum"><span class="path-link" data-path="${esc(shown)}" title="${esc(fullPath)}">${esc(shown)}</span></span>` : `<span class="sum">${esc(toolSummary(name, inp))}</span>`;
   const mcp = name.startsWith('mcp__') ? name.slice(5).split('__') : null;
   const shot = name === 'Browser' && result && String(result.content || '').match(/\.infuse\/shots\/([\w.-]+\.png)/);
-  if (shot) body = `<img class="shot" src="/api/shot?name=${encodeURIComponent(shot[1])}&root=${encodeURIComponent(curRoot)}" alt="${esc(t('common.screenshot'))}">` + body;
+  if (shot) body = `<img class="shot" src="${esc(sseUrl(`/api/shot?name=${encodeURIComponent(shot[1])}`, curRoot))}" alt="${esc(t('common.screenshot'))}">` + body;
   return `<div class="tool-block${open || shot ? ' open' : ''}" data-foldable><div class="tool-head" data-fold="${esc(id)}" role="button" tabindex="0" aria-expanded="${!!open}"><span class="chev" aria-hidden="true">›</span><span class="dot ${dot}"></span><b>${mcp ? `${esc(t('common.connector'))} ${esc(mcp[0])}` : esc(t(TOOL_LABELS[name] || name))}</b>${mcp ? `<span class="sum mono">${esc(mcp[1] || '')}</span>` : ''}${summ}${errLine ? `<span class="tool-err" title="${esc(errLine)}">${esc(errLine.replace(/^\[infuse\]\s*/, '').slice(0, 120))}</span>` : ''}${lineCounts(name, inp, result)}${result?.ms != null ? `<span class="tdur faint" title="${esc(t('common.runTime'))}">${fmtDur(result.ms)}</span>` : ''}</div><div class="tool-body">${body}</div></div>`;
 }

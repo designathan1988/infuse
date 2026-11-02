@@ -45,5 +45,10 @@ export async function apiOk(url, opts) {
   catch (e) { return { ok: false, error: e }; }
 }
 export const tokenHeader = () => ({ 'content-type': 'application/json', 'X-Infuse': TOKEN || readToken() });
-export const sseUrl = (url, root) => urlWith(url, { root });
+// EventSource and <img> cannot send a header: the few routes the server lists as streams take the
+// token in the query. A cookie would not do: on 127.0.0.1 it would also reach every other local port.
+export const sseUrl = (url, root) => {
+  const u = urlWith(url, { root });
+  return u + (u.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN || readToken());
+};
 export { urlWith };

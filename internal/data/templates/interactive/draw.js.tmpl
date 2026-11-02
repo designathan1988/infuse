@@ -1,0 +1,11 @@
+// Drawing the current state; it never changes it.
+import { hudText } from '../ui/hud.js';
+import { tokens } from '../ui/tokens/tokens.js';
+
+export function draw(context, state) {
+  context.fillStyle = tokens.background;
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+  context.fillStyle = tokens.text;
+  context.font = tokens.font;
+  context.fillText(hudText(state), tokens.margin, tokens.margin * 2);
+}

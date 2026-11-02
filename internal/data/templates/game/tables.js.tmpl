@@ -1,0 +1,16 @@
+// Levels, balance, geometry and controls as data, in one place.
+const corners = [-1, 1].flatMap(x => [-1, 1].flatMap(y => [-1, 1].map(z => [x, y, z])));
+
+export const tables = Object.freeze({
+  stepMillis: 16,
+  spinPerMilli: 0.001,
+  saveKey: '{{module}}.save',
+  camera: { distance: 5, near: 0.1, focal: 0.9 },
+  bindings: { Enter: 'start', KeyP: 'pause', Escape: 'end' },
+  levels: [{ entities: [{ id: 'cube', angle: 0 }] }],
+  cube: {
+    points: corners,
+    edges: corners.flatMap((a, i) => corners.flatMap((b, j) => (
+      j > i && a.filter((v, k) => v !== b[k]).length === 1 ? [[i, j]] : []))),
+  },
+});

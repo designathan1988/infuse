@@ -30,6 +30,7 @@ type scheduledRunner struct{}
 func (scheduledRunner) RunTask(t scheduler.Task) (string, error) {
 	s := agent.NewSession(t.Root)
 	s.Mu.Lock()
+	s.Unattended = true
 	s.Title = "⏱ " + t.Name
 	if t.Mode != "" {
 		s.Mode = t.Mode

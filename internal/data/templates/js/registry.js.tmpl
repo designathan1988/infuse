@@ -1,0 +1,13 @@
+// The extension point: behavior is added by registering it, never by another conditional.
+export function createRegistry() {
+  const items = new Map();
+  return {
+    register(name, value) {
+      if (items.has(name)) throw new Error(`registered twice: ${name}`);
+      items.set(name, value);
+    },
+    get: name => items.get(name),
+    names: () => [...items.keys()].sort(),
+    values: () => [...items.values()],
+  };
+}

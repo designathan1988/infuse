@@ -25,6 +25,7 @@ func diagProject(t *testing.T) (*Session, string) {
 	}
 	s := newSession(root)
 	s.Mode = "bypass"
+	noContract(s)
 	return s, root
 }
 

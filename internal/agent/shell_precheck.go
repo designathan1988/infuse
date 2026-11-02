@@ -16,13 +16,16 @@ type shellWriteIntent struct {
 	Content string
 }
 
-// precheckShellWrites applies the write policy to a heredoc body before the transform writes it.
+// precheckShellWrites applies the write policy to a heredoc body before the transform writes it. The
+// transform writes on the host, outside the OS sandbox: a target outside the work root is refused, as
+// Write refuses it, and never skipped.
 func (s *Session) precheckShellWrites(ctx context.Context, intents []shellWriteIntent) Msg {
 	for _, in := range intents {
-		rel := filepath.ToSlash(relTo(s.workRoot(), in.Abs))
-		if rel == "" || strings.HasPrefix(rel, "..") {
-			continue // outside the work root: the turn audit cannot see it either
+		if !within(realPath(s.workRoot()), realPath(in.Abs)) {
+			Journal(s.Root, JournalEntry{Kind: "blocked", Path: toPosix(in.Abs), Detail: "heredoc outside the project"})
+			return M("path.outside", "path", toPosix(in.Abs))
 		}
+		rel := filepath.ToSlash(relTo(s.workRoot(), in.Abs))
 		if b := s.banViolationPath(rel); !b.Empty() {
 			return b
 		}
@@ -30,51 +33,70 @@ func (s *Session) precheckShellWrites(ctx context.Context, intents []shellWriteI
 		if b, err := os.ReadFile(in.Abs); err == nil {
 			before = string(b)
 		}
-		if why := s.largeRemoval(rel, before, in.Content); !why.Empty() {
+		if why := s.judgeShellContent(ctx, rel, before, in.Content); !why.Empty() {
 			return why
-		}
-		if why := cheatWriteCheck(s.workRoot(), rel, before, in.Content); !why.Empty() {
-			if why.ID != "cheat.test_infra" {
-				return why
-			}
-			if !s.askPermissionWhy(ctx, bashTool{}, nil, "cheat:"+rel, why) {
-				return M("perm.user_refused", "why", why)
-			}
-		}
-		if why, changed := baselineChange(rel, before, in.Content); changed {
-			if !s.askPermissionWhy(ctx, bashTool{}, nil, "baseline:"+rel, why) {
-				return M("perm.user_refused", "why", why)
-			}
-		}
-		if lines := unjustifiedSuppressions(before, in.Content); len(lines) > 0 {
-			return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
 		}
 		ext := strings.ToLower(filepath.Ext(in.Abs))
 		if strings.HasSuffix(ext, ".md") {
 			continue // prose: the checks below are for code
 		}
-		if why := s.baseViolation(rel, codeExts[ext]); !why.Empty() {
-			return why
-		}
-		if codeExts[ext] && !s.planned() {
-			return M("gate.shell_write_plan", "files", rel)
-		}
-		if m := s.docsBeforeUse(in.Abs, before, in.Content); !m.Empty() {
-			return m
-		}
-		if s.settings.EnforceConventions == nil || *s.settings.EnforceConventions {
-			if why := conventionViolation(s.Root, in.Abs, before, in.Content); !why.Empty() {
-				return M("protocol.convention", "why", why)
-			}
-		}
-		if s.settings.EnforceArchitecture == nil || *s.settings.EnforceArchitecture {
-			if why := archCheck(s.Root, s.workRoot(), rel, before, in.Content); !why.Empty() {
-				return M("protocol.architecture", "why", why)
-			}
-		}
-		if why := s.sizeViolation(rel, ext, before, in.Content); !why.Empty() {
+		if why := s.judgeShellCode(in, rel, ext, before); !why.Empty() {
 			return why
 		}
 	}
 	return Msg{}
+}
+
+// judgeShellContent is the part of the policy every file passes, prose included.
+func (s *Session) judgeShellContent(ctx context.Context, rel, before, after string) Msg {
+	if why := s.instructionWriteCheck(rel, before); !why.Empty() {
+		return why
+	}
+	if why := s.largeRemoval(rel, before, after); !why.Empty() {
+		return why
+	}
+	if why := cheatWriteCheck(s.workRoot(), rel, before, after); !why.Empty() {
+		if why.ID != "cheat.test_infra" {
+			return why
+		}
+		if !s.askPermissionWhy(ctx, bashTool{}, nil, "cheat:"+rel, why) {
+			return M("perm.user_refused", "why", why)
+		}
+	}
+	if why, changed := baselineChange(rel, before, after); changed {
+		if !s.askPermissionWhy(ctx, bashTool{}, nil, "baseline:"+rel, why) {
+			return M("perm.user_refused", "why", why)
+		}
+	}
+	if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
+		return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
+	}
+	return Msg{}
+}
+
+// judgeShellCode is the part of the policy for code: plan, contract, docs, conventions, architecture, size.
+func (s *Session) judgeShellCode(in shellWriteIntent, rel, ext, before string) Msg {
+	if why := s.baseViolation(rel, codeExts[ext], in.Content); !why.Empty() {
+		return why
+	}
+	if codeExts[ext] && !s.planned() {
+		return M("gate.shell_write_plan", "files", rel)
+	}
+	if why := s.contractGate(); codeExts[ext] && !why.Empty() {
+		return why
+	}
+	if m := s.docsBeforeUse(in.Abs, before, in.Content); !m.Empty() {
+		return m
+	}
+	if s.settings.EnforceConventions == nil || *s.settings.EnforceConventions {
+		if why := conventionViolation(s.Root, in.Abs, before, in.Content); !why.Empty() {
+			return M("protocol.convention", "why", why)
+		}
+	}
+	if s.settings.EnforceArchitecture == nil || *s.settings.EnforceArchitecture {
+		if why := archCheck(s.Root, s.workRoot(), rel, before, in.Content); !why.Empty() {
+			return M("protocol.architecture", "why", why)
+		}
+	}
+	return s.sizeViolation(rel, ext, before, in.Content)
 }

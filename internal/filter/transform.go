@@ -44,11 +44,12 @@ func TransformCommand(cmd, cwd string) TransformResult {
 		return TransformResult{Command: cmd}
 	}
 	var actions []TransformAction
+	dirs := heredocDirs(cmd, cwd, hs)
 	out := cmd
 	for i := len(hs) - 1; i >= 0; i-- { // last to first so earlier offsets stay valid
 		h := hs[i]
 		lineStart, lineEnd, lineText := CommandLineOf(out, h)
-		intent := DetectFileWrite(lineText)
+		intent := hostWriteIntent(lineText)
 		literal := h.Quoted
 
 		if !h.Quoted && intent != nil && LooksLikeLiteralIntent(h.Body) {
@@ -63,11 +64,11 @@ func TransformCommand(cmd, cwd string) TransformResult {
 
 		switch {
 		case intent != nil && literal:
-			action, line := heredocDirectWrite(cwd, intent, h.Body)
+			action, line := heredocDirectWrite(dirs[i], intent, h.Body)
 			actions = append(actions, action)
 			out = spliceHeredoc(out, h, lineStart, line)
 		case intent != nil:
-			action, line := heredocPrintf(cwd, intent, h.Body)
+			action, line := heredocPrintf(dirs[i], intent, h.Body)
 			actions = append(actions, action)
 			out = spliceHeredoc(out, h, lineStart, line)
 		case literal:
@@ -84,6 +85,37 @@ func TransformCommand(cmd, cwd string) TransformResult {
 	return TransformResult{Command: out, Actions: actions}
 }
 
+// hostWriteIntent is the file write the transform performs itself. A target the shell must expand, and
+// the null device, are left to the shell: only it knows the first, and the second is no file.
+func hostWriteIntent(line string) *FileWriteIntent {
+	intent := DetectFileWrite(line)
+	if intent == nil || isNullDevice(intent.Path) || strings.ContainsAny(intent.Path, "$`") {
+		return nil
+	}
+	return intent
+}
+
+// HeredocTarget is a file the transform will write on the host, with its content.
+type HeredocTarget struct {
+	Abs     string
+	Content string
+}
+
+// HeredocTargets lists the writes TransformCommand will perform, each with the directory the shell
+// would be in, so a caller judges the same files the transform writes.
+func HeredocTargets(cmd, cwd string) []HeredocTarget {
+	hs := FindHeredocs(cmd)
+	dirs := heredocDirs(cmd, cwd, hs)
+	var out []HeredocTarget
+	for i, h := range hs {
+		_, _, line := CommandLineOf(cmd, h)
+		if intent := hostWriteIntent(line); intent != nil {
+			out = append(out, HeredocTarget{Abs: CanonPath(dirs[i], intent.Path), Content: h.Body})
+		}
+	}
+	return out
+}
+
 // spliceHeredoc replaces the command text from from through the heredoc block's end with line.
 func spliceHeredoc(out string, h Heredoc, from int, line string) string {
 	return out[:from] + line + "\n" + out[h.BlockEnd:]
@@ -91,8 +123,8 @@ func spliceHeredoc(out string, h Heredoc, from int, line string) string {
 
 // heredocDirectWrite writes a literal body to the intent's file and returns its action and the no-op
 // line that replaces the command.
-func heredocDirectWrite(cwd string, intent *FileWriteIntent, body string) (TransformAction, string) {
-	target := ResolveIn(cwd, core.FromMsysPath(intent.Path))
+func heredocDirectWrite(dir string, intent *FileWriteIntent, body string) (TransformAction, string) {
+	target := CanonPath(dir, intent.Path)
 	_ = os.MkdirAll(filepath.Dir(target), 0o755)
 	flag := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	if intent.Append {
@@ -113,14 +145,14 @@ func heredocDirectWrite(cwd string, intent *FileWriteIntent, body string) (Trans
 
 // heredocPrintf rewrites an expanded body as a double-quoted printf in the same shell, keeping
 // expansion semantics.
-func heredocPrintf(cwd string, intent *FileWriteIntent, body string) (TransformAction, string) {
+func heredocPrintf(dir string, intent *FileWriteIntent, body string) (TransformAction, string) {
 	redir := ">"
 	verb := "write"
 	if intent.Append {
 		redir, verb = ">>", "append to"
 	}
 	line := fmt.Sprintf("printf '%%s' %s %s %s", doubleQuote(body), redir, ShellQuote(intent.Path))
-	action := TransformAction{Kind: ActHeredocToFile, Path: ResolveIn(cwd, core.FromMsysPath(intent.Path)), Bytes: len(body),
+	action := TransformAction{Kind: ActHeredocToFile, Path: CanonPath(dir, intent.Path), Bytes: len(body),
 		Detail: fmt.Sprintf("%s %s via printf (shell expansion kept) without heredoc", verb, intent.Path)}
 	return action, line
 }

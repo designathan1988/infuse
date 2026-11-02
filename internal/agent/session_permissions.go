@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -13,47 +12,33 @@ import (
 func (s *Session) permissionFor(tool Tool, input json.RawMessage) string {
 	name := tool.Spec().Name
 	cat := tool.Category()
-	switch s.mode() {
-	case "bypass":
+	rule := s.patternDecision(name, input)
+	if rule == "deny" { // a deny rule holds in every mode
+		return "deny"
+	}
+	mode := s.mode()
+	if mode == "bypass" {
 		return "allow"
-	case "plan":
-		if cat == "write" || cat == "exec" {
-			return "deny"
-		}
-	case "acceptEdits":
-		if cat == "write" || cat == "memory" {
-			return "allow"
-		}
+	}
+	if mode == "plan" && (cat == "write" || cat == "exec") {
+		return "deny"
+	}
+	if rule != "" {
+		return rule
+	}
+	if mode == "acceptEdits" && (cat == "write" || cat == "memory") {
+		return "allow"
 	}
 	if cat == "read" || cat == "ui" {
 		return "allow"
 	}
-	s.Mu.Lock()
-	always := s.allowAlways[name] || s.allowAlways[name+":"+bashPrefix(name, input)]
-	s.Mu.Unlock()
-	if always {
+	if s.alwaysAllowed(name, input) {
 		return "allow"
 	}
 	if v, ok := s.settings.Permissions[name]; ok {
 		return v
 	}
 	return "ask"
-}
-
-func bashPrefix(tool string, input json.RawMessage) string {
-	if tool != "Bash" {
-		return ""
-	}
-	var in struct{ Command string }
-	_ = json.Unmarshal(input, &in)
-	f := strings.Fields(in.Command)
-	if len(f) == 0 {
-		return ""
-	}
-	if len(f) > 1 && (f[0] == "git" || f[0] == "npm" || f[0] == "go" || f[0] == "docker" || f[0] == "pnpm" || f[0] == "yarn") {
-		return f[0] + " " + f[1]
-	}
-	return f[0]
 }
 
 func (s *Session) askPermission(ctx context.Context, tool Tool, input json.RawMessage) bool {
@@ -63,6 +48,10 @@ func (s *Session) askPermission(ctx context.Context, tool Tool, input json.RawMe
 // askPermissionWhy asks the user about a call a sentinel caught: reason is shown in the user's language;
 // key identifies the sentinel, so "don't ask again" silences that sentinel for the session.
 func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.RawMessage, key string, reason Msg) bool {
+	if s.unattended() {
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "refused, nobody to approve it: " + tool.Spec().Name + " " + reason.Render("en")})
+		return false
+	}
 	s.askMu.Lock()
 	defer s.askMu.Unlock()
 	asked := time.Now()
@@ -71,12 +60,13 @@ func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.Ra
 		s.permWaitNs += time.Since(asked).Nanoseconds()
 		s.Mu.Unlock()
 	}()
-	req := &permRequest{ID: fmt.Sprintf("p%d", time.Now().UnixNano()), Tool: tool.Spec().Name, Input: input, Category: tool.Category(), Reason: reason.Render(s.uiLang()), reply: make(chan string, 1)}
+	req := &permRequest{ID: fmt.Sprintf("p%d", time.Now().UnixNano()), Tool: tool.Spec().Name, Input: input, Category: tool.Category(), Reason: reason.Render(s.uiLang()), Prefix: bashPrefix(tool.Spec().Name, input), reply: make(chan string, 1)}
 	s.Mu.Lock()
 	s.pendingPerm = req
 	s.Mu.Unlock()
 	s.setState("waiting_permission")
 	s.emit("permission", req)
+	s.notificationHooks("permission_prompt", req.Tool)
 	defer func() { s.Mu.Lock(); s.pendingPerm = nil; s.Mu.Unlock() }()
 	select {
 	case d := <-req.reply:
@@ -84,11 +74,12 @@ func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.Ra
 			s.Mu.Lock()
 			s.allowAlways["sentinel:"+key] = true
 			s.Mu.Unlock()
-		} else if d == "always" {
+		} else if d == "always" { // Bash: the prefix the question showed, never all of Bash
 			s.Mu.Lock()
-			s.allowAlways[req.Tool] = true
-			if p := bashPrefix(req.Tool, input); p != "" {
-				s.allowAlways[req.Tool+":"+p] = true
+			if req.Prefix != "" {
+				s.allowAlways[alwaysKey(req.Prefix)] = true
+			} else if req.Tool != "Bash" {
+				s.allowAlways[req.Tool] = true
 			}
 			s.Mu.Unlock()
 		}
@@ -109,7 +100,17 @@ func (s *Session) ResolvePermission(id, decision string) bool {
 	return true
 }
 
+// unattended: nobody is there to answer. A question fails at once instead of holding the turn forever.
+func (s *Session) unattended() bool {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	return s.Unattended
+}
+
 func (s *Session) askUser(ctx context.Context, question string, options []string) (string, bool) {
+	if s.unattended() {
+		return "", false
+	}
 	s.askMu.Lock()
 	defer s.askMu.Unlock()
 	req := &askRequest{ID: fmt.Sprintf("q%d", time.Now().UnixNano()), Question: question, Options: options, reply: make(chan string, 1)}
@@ -118,6 +119,7 @@ func (s *Session) askUser(ctx context.Context, question string, options []string
 	s.Mu.Unlock()
 	s.setState("waiting_user")
 	s.emit("question", req)
+	s.notificationHooks("question", question)
 	defer func() { s.Mu.Lock(); s.pendingAsk = nil; s.Mu.Unlock() }()
 	select {
 	case a := <-req.reply:

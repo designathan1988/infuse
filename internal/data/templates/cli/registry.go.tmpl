@@ -1,0 +1,35 @@
+package commands
+
+// Dispatch. Each command is one file that registers itself: a new command never touches this file.
+
+import (
+	"fmt"
+	"io"
+	"path/filepath"
+	"strings"
+
+	"{{module}}/internal/core"
+	"{{module}}/internal/data"
+)
+
+// Command is one thing the tool does; it returns the process exit code.
+type Command func(args []string, out, errOut io.Writer) int
+
+var registry = core.NewRegistry[Command]()
+
+// Run dispatches one command line.
+func Run(args []string, out, errOut io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(errOut, "commands:", strings.Join(registry.Names(), ", "))
+		return 2
+	}
+	cmd, ok := registry.Get(args[0])
+	if !ok {
+		fmt.Fprintf(errOut, "unknown command %q\n", args[0])
+		return 2
+	}
+	core.Observe("command.run", map[string]any{"name": args[0]})
+	return cmd(args[1:], out, errOut)
+}
+
+func itemsFile() string { return filepath.Join(data.Get("DATA_DIR"), "items.json") }

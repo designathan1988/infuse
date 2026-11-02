@@ -10,3 +10,4 @@ decisao	stored memory-type keys and their labels (protocol table)
 "correcao"	stored memory-type key in the memory tool schema
 "oráculo"	the demonstration provider also answers the Portuguese word the user may type
 arquivo: ['mem.type.file'	the memory pane's type table (key = stored protocol value)
+data-i18n="nav.rules">Regras<	pt-BR fallback of a data-i18n label before the catalog loads (like the neighboring buttons)

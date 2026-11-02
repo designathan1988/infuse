@@ -1,0 +1,26 @@
+// The entry point: wiring only.
+import { createLoop } from './engine/loop.js';
+import { createRegistry } from './engine/registry.js';
+import { createStore } from './state/store.js';
+import { actionFor } from './input/bindings.js';
+import { draw } from './render/draw.js';
+import { tables } from './data/tables.js';
+
+const store = createStore(window.localStorage);
+const systems = createRegistry();
+systems.register('score', ms => store.tick(ms));
+const loop = createLoop(ms => systems.values().forEach(s => s(ms)), tables.stepMillis);
+
+window.addEventListener('keydown', e => {
+  const action = actionFor(e.code);
+  if (action) store.apply(action);
+});
+
+const context = document.getElementById('view').getContext('2d');
+let last = performance.now();
+requestAnimationFrame(function frame(now) {
+  loop.advance(now - last);
+  last = now;
+  draw(context, store.state());
+  requestAnimationFrame(frame);
+});

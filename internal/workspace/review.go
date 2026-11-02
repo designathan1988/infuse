@@ -10,6 +10,7 @@ import (
 	"infuse/internal/config"
 	"infuse/internal/core"
 	"infuse/internal/journal"
+	"infuse/internal/platform/gitx"
 	"infuse/internal/platform/process"
 	"os"
 	"os/exec"
@@ -87,6 +88,7 @@ func PRStatus(dir string) map[string]any {
 	cmd := exec.Command("gh", "pr", "view", "--json", "number,title,url,state,isDraft,reviewDecision,statusCheckRollup,mergeStateStatus")
 	process.NoConsoleWindow(cmd)
 	cmd.Dir = dir
+	cmd.Env = gitx.Env() // gh starts git itself, in the project
 	out, err := cmd.Output()
 	if err != nil {
 		return map[string]any{"gh": true, "pr": nil}
@@ -103,6 +105,7 @@ func ghRun(dir string, args ...string) (string, error) {
 	cmd := exec.Command("gh", args...)
 	process.NoConsoleWindow(cmd)
 	cmd.Dir = dir
+	cmd.Env = gitx.Env()
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

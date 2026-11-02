@@ -1,0 +1,58 @@
+package domain
+
+// Items owns the Item records: it is the only writer. Storage is behind Repository, so the domain
+// depends on nothing below it.
+
+import (
+	"fmt"
+	"strings"
+	"sync"
+
+	"{{module}}/internal/platform"
+)
+
+// Repository stores the items; the store layer implements it.
+type Repository interface {
+	Load() ([]Item, error)
+	Save([]Item) error
+}
+
+// Items is the owner of the data.
+type Items struct {
+	mu   sync.Mutex
+	repo Repository
+	list []Item
+}
+
+// NewItems loads the owner's data.
+func NewItems(repo Repository) (*Items, error) {
+	list, err := repo.Load()
+	if err != nil {
+		return nil, err
+	}
+	return &Items{repo: repo, list: list}, nil
+}
+
+// List returns a copy of every item.
+func (s *Items) List() []Item {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Item{}, s.list...)
+}
+
+// Add creates an item in its first state.
+func (s *Items) Add(title string) (Item, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return Item{}, fmt.Errorf("an item needs a title")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item := Item{ID: len(s.list) + 1, Title: title, State: Draft}
+	s.list = append(s.list, item)
+	if err := s.repo.Save(s.list); err != nil {
+		return Item{}, err
+	}
+	platform.Observe("item.added", map[string]any{"id": item.ID})
+	return item, nil
+}

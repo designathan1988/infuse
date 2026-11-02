@@ -6,8 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/config"
 	"infuse/internal/core"
+	"infuse/internal/filter"
 	"infuse/internal/platform/process"
+	"infuse/internal/sandbox"
 	"io"
 	"net/http"
 	"os"
@@ -55,6 +58,7 @@ type Client struct {
 
 	httpc     *http.Client
 	sessionID string
+	root      string // the project, for the server's login in the vault
 }
 
 func (c *Client) SetErr(m core.Msg) {
@@ -66,6 +70,7 @@ func (c *Client) SetErr(m core.Msg) {
 func (c *Client) Start(ctx context.Context, root string) error {
 	c.mu.Lock()
 	c.state, c.err, c.pending = "starting", core.Msg{}, map[int64]chan RPCMessage{}
+	c.root = root
 	c.mu.Unlock()
 	if c.cfg.IsHTTP() {
 		c.httpc = &http.Client{Timeout: 120 * time.Second}
@@ -121,7 +126,11 @@ func (c *Client) Spawn(root string) error {
 	for i, a := range c.cfg.Args {
 		args[i] = os.ExpandEnv(a)
 	}
-	cmd := exec.Command(exe, args...)
+	argv := append([]string{exe}, args...)
+	if projectDefined(root, c.scope, c.cfg) {
+		argv = sandbox.Wrap(argv, root, filter.InfuseRecords(), config.EffectiveSettings(root).ContainProcesses)
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
 	for k, v := range c.cfg.Env {
@@ -296,7 +305,19 @@ func (c *Client) Post(ctx context.Context, body []byte, id int64) (RPCMessage, e
 	if err != nil {
 		return RPCMessage{}, err
 	}
+	if resp.StatusCode == http.StatusUnauthorized && c.retryAuth(ctx) { // an expired login, once
+		resp.Body.Close()
+		if req, err = c.newPostRequest(ctx, body); err != nil {
+			return RPCMessage{}, err
+		}
+		if resp, err = c.httpc.Do(req); err != nil {
+			return RPCMessage{}, err
+		}
+	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return RPCMessage{}, core.ErrMsg(core.M("mcp.oauth_login_needed", "name", c.name))
+	}
 	if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {
 		c.mu.Lock()
 		c.sessionID = sid

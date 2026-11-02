@@ -2,6 +2,7 @@ package filter
 
 import (
 	"infuse/internal/core"
+	"infuse/internal/journal"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -9,7 +10,7 @@ import (
 
 // Command policy: redirections, writing commands and nested shells.
 
-var ReRedir = regexp.MustCompile(`(?:^|[^<>&0-9])(\d?)(>>|>\||<>|>)\s*("[^"]*"|'[^']*'|[^\s;&|<>()]+)`)
+var ReRedir = regexp.MustCompile(`(?:^|[^<>&0-9])(\d*)(&>>|&>|>>|>\||<>|>&|>)\s*("[^"]*"|'[^']*'|[^\s;&|<>()]+)`)
 
 // writingCommands: commands whose path arguments are created, moved, changed or deleted.
 var writingCommands = map[string]bool{
@@ -25,17 +26,23 @@ var writingCommands = map[string]bool{
 // scripting commands can write anything their arguments name; a protected path among them is refused.
 var scriptingCommands = map[string]bool{"python": true, "python3": true, "node": true, "perl": true, "ruby": true, "php": true, "deno": true, "bun": true}
 
-var gitWriting = map[string]bool{"rm": true, "clean": true, "stash": true, "checkout": true, "restore": true, "reset": true, "mv": true, "apply": true}
-
 type shellSeg struct {
 	text       string
 	start, end int    // offsets in the command
-	sep        string // operator after this segment: ; && || | & newline, or ""
+	sep        string // operator after this segment: ; && || | & newline ( ) {, or ""
 }
 
 type guardEdit struct {
 	start, end int
 	with       string
+}
+
+// guardRun is one command under inspection.
+type guardRun struct {
+	cmd    string
+	hds    []Heredoc
+	segs   []shellSeg
+	nested bool
 }
 
 // GuardCommand inspects a shell command before it runs. It returns the (possibly rewritten) command,
@@ -56,45 +63,60 @@ func (g *Guard) GuardCommandMsgs(cmd, cwd string) (string, []core.Msg, error) {
 	return g.guard(cmd, cwd, false)
 }
 
+// Reguard judges a command a rule rewrote after the guard saw it: what finally runs is what is guarded.
+func (g *Guard) Reguard(before, after, cwd string) (string, []core.Msg, error) {
+	if before == after {
+		return after, nil, nil
+	}
+	return g.GuardCommandMsgs(after, cwd)
+}
+
 func (g *Guard) guard(cmd, cwd string, nested bool) (string, []core.Msg, error) {
 	hds := FindHeredocs(cmd)
-	segs := splitSegments(maskHeredocBodies(cmd, hds))
+	run := guardRun{cmd: cmd, hds: hds, segs: splitSegments(maskHeredocBodies(cmd, hds)), nested: nested}
 	var notes []core.Msg
 	var edits []guardEdit
-	dir := cwd
-	var stack []string
+	walk := newDirWalk(cwd)
 	pipeStart := 0
-	for i, sg := range segs {
-		fields := shellFields(sg.text)
-		if err := g.checkHeredocTargets(sg, cmd, dir, hds); err != nil {
-			return "", nil, err
-		}
-		if len(fields) > 0 {
-			if err := g.checkSimple(fields, dir, sg.text); err != nil {
-				return "", nil, err
-			}
-			// xargs running a writer: everything the pipeline names is a potential target
-			if baseCmd(fields[0]) == "xargs" && xargsWrites(fields) {
-				if err := g.checkXargsSegments(segs, pipeStart, i, dir); err != nil {
-					return "", nil, err
-				}
-			}
-		}
-		ns, es, err := g.redirEdits(sg, dir, nested)
+	for i, sg := range run.segs {
+		ns, es, err := g.checkSegment(run, i, pipeStart, walk.dir)
 		if err != nil {
 			return "", nil, err
 		}
 		notes = append(notes, ns...)
 		edits = append(edits, es...)
-		// the directory for the next segment
-		if len(fields) > 0 {
-			dir = g.nextDir(fields, dir, &stack)
-		}
-		if sg.sep != "|" {
+		walk.step(sg) // the directory for the next segment
+		if sg.sep != "|" && sg.sep != "(" && sg.sep != ")" {
 			pipeStart = i + 1
 		}
 	}
 	return applyGuardEdits(cmd, edits), notes, nil
+}
+
+// checkSegment judges one simple command with the directory in effect at it.
+func (g *Guard) checkSegment(run guardRun, i, pipeStart int, dir string) ([]core.Msg, []guardEdit, error) {
+	sg := run.segs[i]
+	if err := g.checkHeredocTargets(sg, run, dir); err != nil {
+		return nil, nil, err
+	}
+	for _, script := range substitutions(sg.text) {
+		if _, _, err := g.guard(script, dir, true); err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := g.checkInputRedirects(sg.text, dir); err != nil {
+		return nil, nil, err
+	}
+	if fields := commandWords(shellFields(sg.text)); len(fields) > 0 {
+		if err := g.checkSimple(fields, dir, sg.text); err != nil {
+			return nil, nil, err
+		}
+		// xargs running a writer or a reader: everything the pipeline names is a potential target
+		if err := g.checkXargs(fields, run.segs[pipeStart:i+1], dir); err != nil {
+			return nil, nil, err
+		}
+	}
+	return g.redirEdits(sg, dir, run.nested)
 }
 
 // maskHeredocBodies blanks heredoc bodies (same length, newlines kept): offsets stay valid and
@@ -111,27 +133,68 @@ func maskHeredocBodies(cmd string, hds []Heredoc) string {
 	return string(masked)
 }
 
-// checkHeredocTargets refuses a heredoc whose command writes a protected path, with the directory in
-// effect at that segment.
-func (g *Guard) checkHeredocTargets(sg shellSeg, cmd, dir string, hds []Heredoc) error {
-	for _, h := range hds {
-		if h.OpStart >= sg.start && h.OpStart < sg.end {
-			if intent := DetectFileWrite(strings.TrimSpace(cmd[sg.start:h.OpEnd])); intent != nil {
-				if rel, ok := g.Protects(dir, intent.Path); ok {
-					return g.block(rel, core.M("guard.heredoc"))
-				}
-			}
+// checkHeredocTargets refuses a heredoc whose command writes a protected path, or a path the agent's
+// Write could not reach, with the directory in effect at that segment. The transform runs on the host,
+// outside the OS sandbox, so this is the only wall such a write has. A nested shell's heredoc is not
+// transformed: it runs inside the sandbox.
+func (g *Guard) checkHeredocTargets(sg shellSeg, run guardRun, dir string) error {
+	for _, h := range run.hds {
+		if h.OpStart < sg.start || h.OpStart >= sg.end {
+			continue
+		}
+		intent := DetectFileWrite(strings.TrimSpace(run.cmd[sg.start:h.OpEnd]))
+		if intent == nil {
+			continue
+		}
+		if rel, ok := g.Protects(dir, intent.Path); ok {
+			return g.block(rel, core.M("guard.heredoc"))
+		}
+		if !run.nested && g.outsideWork(dir, intent.Path) {
+			return g.blockOutside(filepath.ToSlash(CanonPath(dir, intent.Path)))
 		}
 	}
 	return nil
 }
 
-// checkXargsSegments refuses a pipeline in which xargs runs a writer that names a protected path.
-func (g *Guard) checkXargsSegments(segs []shellSeg, pipeStart, i int, dir string) error {
-	for _, p := range segs[pipeStart : i+1] {
+// blockOutside records a heredoc refused for where it lands: the path is ordinary, the place is not.
+func (g *Guard) blockOutside(p string) error {
+	m := core.M("guard.heredoc_outside", "path", p)
+	journal.Journal(g.Root, journal.JournalEntry{Kind: "blocked", Path: p, Detail: m.String()})
+	return core.ErrMsg(m)
+}
+
+// outsideWork reports whether a path lands outside the folder the agent writes in: the session's
+// worktree, or the project. A path the shell must expand is decided at run time, inside the sandbox.
+func (g *Guard) outsideWork(dir, p string) bool {
+	if isNullDevice(p) || strings.ContainsAny(p, "$`") {
+		return false
+	}
+	boundary := g.Root
+	if g.Work != "" {
+		boundary = g.Work
+	}
+	return !core.Within(RealPath(boundary), RealPath(CanonPath(dir, p)))
+}
+
+func isNullDevice(p string) bool { return p == "/dev/null" || strings.EqualFold(p, "NUL") }
+
+// checkXargs refuses a pipeline in which xargs runs a writer or a reader and the pipeline names a path
+// that command may not touch.
+func (g *Guard) checkXargs(fields []string, pipeline []shellSeg, dir string) error {
+	if baseCmd(fields[0]) != "xargs" {
+		return nil
+	}
+	writes, reads := xargsWrites(fields), xargsReads(fields)
+	if !writes && !reads {
+		return nil
+	}
+	for _, p := range pipeline {
 		for _, f := range shellFields(p.text) {
-			if rel, ok := g.Protects(dir, f); ok {
+			if rel, ok := g.Protects(dir, f); ok && writes {
 				return g.block(rel, core.M("guard.xargs"))
+			}
+			if rel, ok := g.readsHidden(dir, f); ok {
+				return g.blockRead(rel)
 			}
 		}
 	}
@@ -142,40 +205,33 @@ func (g *Guard) checkXargsSegments(segs []shellSeg, pipeStart, i int, dir string
 func (g *Guard) redirEdits(sg shellSeg, dir string, nested bool) ([]core.Msg, []guardEdit, error) {
 	var notes []core.Msg
 	var edits []guardEdit
-	for _, loc := range ReRedir.FindAllStringSubmatchIndex(sg.text, -1) {
-		target := sg.text[loc[6]:loc[7]]
+	for _, loc := range redirTargets(sg.text) {
+		target := sg.text[loc[0]:loc[1]]
 		if rel, ok := g.Protects(dir, target); ok {
 			if nested {
 				return nil, nil, g.block(rel, core.M("guard.nested_redir"))
 			}
 			notes = append(notes, core.M("guard.redirected", "file", rel))
 			_ = g.block(rel, core.M("guard.redir_blocked"))
-			edits = append(edits, guardEdit{sg.start + loc[6], sg.start + loc[7], "/dev/null"})
+			edits = append(edits, guardEdit{sg.start + loc[0], sg.start + loc[1], "/dev/null"})
 		}
 	}
 	return notes, edits, nil
 }
 
-// nextDir returns the directory in effect for the segments after fields, following cd / pushd / popd.
-func (g *Guard) nextDir(fields []string, dir string, stack *[]string) string {
-	switch baseCmd(fields[0]) {
-	case "cd", "chdir", "set-location", "sl":
-		if t := firstArg(fields); t != "" && t != "-" {
-			dir = resolveDir(dir, t)
-		} else if t == "" {
-			dir = g.Root
+// redirTargets gives the offsets of every redirection target. Each search restarts right after the
+// previous target, so `>a>b` is two redirections although the first one ate the second's left side.
+func redirTargets(text string) [][2]int {
+	var out [][2]int
+	for pos := 0; pos < len(text); {
+		loc := ReRedir.FindStringSubmatchIndex(text[pos:])
+		if loc == nil {
+			break
 		}
-	case "pushd", "push-location":
-		if t := firstArg(fields); t != "" {
-			*stack = append(*stack, dir)
-			dir = resolveDir(dir, t)
-		}
-	case "popd", "pop-location":
-		if n := len(*stack); n > 0 {
-			dir, *stack = (*stack)[n-1], (*stack)[:n-1]
-		}
+		out = append(out, [2]int{pos + loc[6], pos + loc[7]})
+		pos += loc[7]
 	}
-	return dir
+	return out
 }
 
 // applyGuardEdits rewrites the command, last edit first so earlier offsets stay valid.
@@ -187,77 +243,8 @@ func applyGuardEdits(cmd string, edits []guardEdit) string {
 	return out
 }
 
-// checkSimple refuses a simple command that writes, moves or deletes a protected path.
-func (g *Guard) checkSimple(fields []string, dir, text string) error {
-	for len(fields) > 0 {
-		switch baseCmd(fields[0]) {
-		case "sudo", "env", "command", "exec", "nohup", "time", "nice", "builtin":
-			fields = fields[1:]
-			for len(fields) > 0 && (strings.HasPrefix(fields[0], "-") || strings.Contains(fields[0], "=")) {
-				fields = fields[1:]
-			}
-			continue
-		}
-		break
-	}
-	if len(fields) == 0 {
-		return nil
-	}
-	head, args := baseCmd(fields[0]), fields[1:]
-	refuse := func(why core.Msg) error {
-		for _, a := range args {
-			for _, cand := range strings.Split(strings.TrimPrefix(a, "of="), "=") {
-				if rel, ok := g.Protects(dir, cand); ok {
-					return g.block(rel, core.M("guard.with_command", "why", why, "command", core.Truncate(strings.TrimSpace(text), 120)))
-				}
-			}
-		}
-		return nil
-	}
-	if payload, opaque := encodedPayload(head, args); opaque {
-		if payload == "" { // a base64 payload we cannot read is not allowed near the project
-			return g.block("", core.M("guard.command"))
-		}
-		_, _, err := g.guard(payload, dir, true)
-		return err
-	}
-	if payload := nestedPayload(head, args); payload != "" {
-		_, _, err := g.guard(payload, dir, true)
-		return err
-	}
-	switch {
-	case scriptingCommands[head]:
-		if rel, ok := g.scriptProtected(dir, args); ok {
-			return g.block(rel, core.M("guard.command"))
-		}
-		return refuse(core.M("guard.command"))
-	case writingCommands[head]:
-		return refuse(core.M("guard.command"))
-	case head == "sed" && hasInPlace(args):
-		return refuse(core.M("guard.sed"))
-	case head == "sort" && (hasFlag(args, "-o") || hasLongFlag(args, "--output")):
-		return refuse(core.M("guard.command"))
-	case (head == "curl" || head == "wget") && outputTarget(args) != "":
-		return refuse(core.M("guard.command"))
-	case head == "find" && findWrites(args):
-		return refuse(core.M("guard.find"))
-	case head == "git" && len(args) > 0 && gitWriting[args[0]]:
-		return refuse(core.M("guard.git", "sub", args[0]))
-	}
-	return nil
-}
-
 func baseCmd(f string) string {
 	return strings.TrimSuffix(strings.ToLower(filepath.Base(strings.ReplaceAll(strings.Trim(f, `"'`), `\`, "/"))), ".exe")
-}
-
-func firstArg(fields []string) string {
-	for _, f := range fields[1:] {
-		if !strings.HasPrefix(f, "-") {
-			return f
-		}
-	}
-	return ""
 }
 
 // nestedPayload returns the script a shell command runs (bash -c "…", eval …, cmd /c …, powershell -Command …).
@@ -279,7 +266,7 @@ func nestedPayload(head string, args []string) string {
 		}
 	case "powershell", "pwsh":
 		for i, a := range args {
-			if (strings.EqualFold(a, "-command") || strings.EqualFold(a, "-c")) && i+1 < len(args) {
+			if psFlag(a, "command") && i+1 < len(args) {
 				return strings.Join(args[i+1:], " ")
 			}
 		}
@@ -301,25 +288,25 @@ func findWrites(args []string) bool {
 	return false
 }
 
-func xargsWrites(fields []string) bool {
+// xargsTool is the command xargs runs ("" when it runs the default echo).
+func xargsTool(fields []string) string {
 	for _, f := range fields[1:] {
-		if strings.HasPrefix(f, "-") {
-			continue
+		if !strings.HasPrefix(f, "-") {
+			return baseCmd(f)
 		}
-		return writingCommands[baseCmd(f)] || scriptingCommands[baseCmd(f)]
 	}
-	return false
+	return ""
 }
 
+func xargsWrites(fields []string) bool {
+	tool := xargsTool(fields)
+	return writingCommands[tool] || scriptingCommands[tool]
+}
+
+func xargsReads(fields []string) bool { return readingCommands[xargsTool(fields)] }
+
 func resolveDir(cur, to string) string {
-	to = core.FromMsysPath(strings.ReplaceAll(strings.Trim(to, `"'`), `\`, "/"))
-	if strings.HasPrefix(to, "~") {
-		to = filepath.Join(core.HomeDir(), to[1:])
-	}
-	if filepath.IsAbs(to) {
-		return filepath.Clean(to)
-	}
-	return filepath.Clean(filepath.Join(cur, to))
+	return CanonPath(cur, strings.Trim(to, `"'`))
 }
 
 func hasFlag(fields []string, flag string) bool {
@@ -330,6 +317,3 @@ func hasFlag(fields []string, flag string) bool {
 	}
 	return false
 }
-
-// splitSegments splits a command at top-level ; && || | & and newlines, respecting quotes, escapes and
-// parentheses, recording each segment's offsets and the operator after it.

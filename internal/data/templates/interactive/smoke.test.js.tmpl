@@ -1,0 +1,31 @@
+// The engine stepped without a screen.
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createLoop } from '../src/engine/loop.js';
+import { actionFor } from '../src/input/bindings.js';
+import { createStore, STATES } from '../src/state/store.js';
+import { hudText } from '../src/ui/hud.js';
+
+function memoryStorage() {
+  const data = new Map();
+  return { getItem: k => (data.has(k) ? data.get(k) : null), setItem: (k, v) => data.set(k, v) };
+}
+
+test('the loop advances in fixed steps and the best score persists', () => {
+  const storage = memoryStorage();
+  const store = createStore(storage);
+  store.apply(actionFor('Enter'));
+  assert.equal(store.state().status, STATES.running);
+  const loop = createLoop(ms => store.tick(ms), 20);
+  assert.equal(loop.advance(50), 2);
+  assert.equal(loop.advance(30), 2);
+  assert.ok(store.state().score > 0);
+  assert.equal(createStore(storage).state().best, store.state().best);
+  assert.match(hudText(store.state()), /running/);
+});
+
+test('an action with no declared move changes nothing', () => {
+  const store = createStore(memoryStorage());
+  store.apply('pause');
+  assert.equal(store.state().status, STATES.menu);
+});

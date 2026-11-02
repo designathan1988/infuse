@@ -8,6 +8,7 @@ import { signal, batch } from './signals.js';
 import { api } from './api.js';
 import { t } from './i18n.js';
 import { sseUrl } from './api.js';
+import { spendPatch } from './spend.js';
 
 // ------------------------------------------------------------------ tiny event bus (store → UI notices)
 const listeners = {};
@@ -19,6 +20,7 @@ export const bus = {
 // ------------------------------------------------------------------ versioned ui prefs (single key, migratable)
 const PREFS_KEY = 'uiPrefs.v1';
 const DEFAULT_PREFS = {
+  v: 1,
   sidebar: { group: 'folder', sort: 'updated', closed: {} },
   viewMode: 'normal', rail: true, unread: [], recent: [], hist: [], lastRoot: '',
   layout: null, panes: { open: [], width: 520, sizes: {} }, railFolds: {}, fold: {},
@@ -70,6 +72,7 @@ export async function ensureModels() {
   return cache.models.get();
 }
 export const filesOf = async root => {
+  if (!root) return [];
   if (!cache.filesByRoot[root]) cache.filesByRoot[root] = await api('/api/files/list', { root }).catch(() => []);
   return cache.filesByRoot[root];
 };
@@ -142,7 +145,7 @@ function onState(L, d) {
 function onTurn(L, d) {
   const s = L.snap.get();
   setSnap(L, {
-    turn: d.turn, title: d.title,
+    turn: d.turn, title: d.title, outcome: '',
     turnStarts: [...s.turnStarts, s.messages.length],
     messages: [...s.messages, { role: 'user', content: [{ type: 'text', text: d.text }], ts: Date.now() }]
   });
@@ -164,7 +167,7 @@ function onMessage(L, d) {
   const s = L.snap.get();
   setSnap(L, {
     messages: [...s.messages, d.message],
-    usage: d.totalUsage, cost: d.cost
+    usage: d.totalUsage, cost: d.cost, ...spendPatch(s, d)
   });
   L.lastIn = d.lastInput; L.lastOut = d.usage?.output || 0;
   resetStream(L);
@@ -188,7 +191,7 @@ function onQuestion(L, d) {
 }
 
 function onDone(L, d) {
-  setSnap(L, { pendingPermission: null, pendingQuestion: null, cost: d.cost, usage: d.usage });
+  setSnap(L, { pendingPermission: null, pendingQuestion: null, cost: d.cost, usage: d.usage, turnCost: d.turnCost, turnCosts: d.turnCosts, unpriced: d.unpriced, outcome: d.outcome });
   refreshChanges(L); reloadUsage();
   bus.emit('attention', { L, kind: 'done' });
   if (!d.reason) bus.emit('suggest-next', L);

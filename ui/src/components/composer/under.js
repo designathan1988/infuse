@@ -5,6 +5,7 @@ import { I } from '../../core/icons.js';
 import { liveOf, busy, projectLabel } from '../../core/store.js';
 import { MODE_INFO, EFFORT_INFO, vopts } from './options.js';
 import { renderAttachments } from './attachments.js';
+import { statusLineChip } from '../statusline.js';
 import { folderMenu, modeMenu, modelMenu } from './menus.js';
 
 export function renderUnder(ctx) {
@@ -21,6 +22,7 @@ export function renderUnder(ctx) {
   } else {
     const L = liveOf(ctx.v.sid); const s = L.snap.get();
     add(h(`<span class="chip static" title="${esc(s.workRoot || o.root)}">${I.folder}<span class="v">${esc(projectLabel(o.root))}</span></span>`));
+    add(statusLineChip(ctx.v.sid, o.root));
   }
   add(h('<span class="flex-1"></span>'));
   const mo = h(`<span class="chip mode-${o.mode}" role="button" tabindex="0" title="${esc(t('mode.aria'))}"><span class="v">${t(MODE_INFO[o.mode]?.[0] || o.mode)}</span>${I.caret}</span>`);

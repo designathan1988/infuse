@@ -27,9 +27,10 @@ type SearchResult struct {
 }
 
 type searchEngine struct {
-	name  string
-	url   func(q string) string
-	parse func(page string) []SearchResult
+	name    string
+	url     func(q string) string
+	parse   func(page string) []SearchResult
+	headers map[string]string
 }
 
 const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
@@ -101,8 +102,13 @@ func WebSearch(ctx context.Context, q string, max int) ([]SearchResult, string, 
 	if max <= 0 || max > 20 {
 		max = 8
 	}
+	return searchWith(ctx, searchEngines, q, max)
+}
+
+// searchWith returns the results of the first engine of the list that answers with any.
+func searchWith(ctx context.Context, engines []searchEngine, q string, max int) ([]SearchResult, string, error) {
 	var lastErr error
-	for _, e := range searchEngines {
+	for _, e := range engines {
 		req, err := http.NewRequestWithContext(ctx, "GET", e.url(q), nil)
 		if err != nil {
 			lastErr = err
@@ -110,6 +116,9 @@ func WebSearch(ctx context.Context, q string, max int) ([]SearchResult, string, 
 		}
 		req.Header.Set("User-Agent", browserUA)
 		req.Header.Set("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.8")
+		for k, v := range e.headers {
+			req.Header.Set(k, v)
+		}
 		resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 		if err != nil {
 			lastErr = err
@@ -151,7 +160,7 @@ func (webSearchTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 	}
 	_ = json.Unmarshal(input, &in)
 	Journal(tc.Root, JournalEntry{Kind: "fetch", Command: in.Query, Detail: "web search"})
-	res, engine, err := WebSearch(ctx, in.Query, in.Max)
+	res, engine, err := tc.S.webSearch(ctx, in.Query, in.Max)
 	if err != nil {
 		return tc.Say(M("search.failed", "error", errArg(err))), true
 	}

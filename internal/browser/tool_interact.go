@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"infuse/internal/core"
-	"path/filepath"
 	"time"
 )
 
@@ -138,8 +137,8 @@ func (a *action) interactSelect() (string, bool) {
 }
 
 func (a *action) interactUpload() (string, bool) {
-	abs := filepath.Join(a.h.RootDir(), filepath.FromSlash(a.in.Path))
-	if !core.Within(a.h.RootDir(), abs) || !core.Exists(abs) {
+	abs, err := a.h.ProjectFile(a.in.Path)
+	if err != nil || !core.Exists(abs) {
 		return a.h.Say(core.M("browser.upload_outside", "path", a.in.Path)), true
 	}
 	if l, why := a.locate(a.in.Selector); l == nil {

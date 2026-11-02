@@ -1,7 +1,7 @@
 package connections
 
 // Connections: the model providers the user has connected. Each one has a kind (the wire protocol:
-// anthropic | openai | google | ollama | mock), an endpoint and a key. Keys live in the OS secret store
+// anthropic | bedrock | vertex | openai | google | ollama | mock), an endpoint and a key. Keys live in the OS secret store
 // (secrets_*.go), never in settings.json. Sessions pick a connection and a model from it.
 
 import (
@@ -51,7 +51,12 @@ func ConnectionConfig(s Settings, id string) (string, ProviderConfig) {
 		base = p.BaseURL
 	}
 	key, _ := secretGet(secretName(id))
-	return kind, ProviderConfig{APIKey: key, BaseURL: base}
+	return kind, ProviderConfig{APIKey: key, BaseURL: base, Wire: wireOf(p)}
+}
+
+// wireOf is what the preset's endpoint accepts.
+func wireOf(p config.ProviderPreset) llm.WireCaps {
+	return llm.WireCaps{MaxTokensField: p.MaxTokensField, NoStreamUsage: p.NoStreamUsage}
 }
 
 func ProviderFor(s Settings, id string) (Provider, error) {
@@ -112,7 +117,7 @@ func ConnectProvider(ctx context.Context, id, key, base string) (Connection, err
 		s.Provider = id
 		if len(c.Models) > 0 && !contains(c.Models, s.Model) {
 			s.Model = PreferredModel(c.Models)
-			s.FastModel = s.Model
+			s.FastModel = PreferredFastModel(c.Models, s.Model)
 		}
 	}
 	return c, SaveSettings(s)
@@ -136,7 +141,7 @@ func DisconnectProvider(id string) error {
 
 // preferredModel picks a sensible default from a provider's list: a coding/chat model, not an embedding one.
 func PreferredModel(models []string) string {
-	for _, want := range []string{"claude-sonnet", "gpt-5", "gemini-2.5-pro", "deepseek-chat", "deepseek-v4", "qwen", "llama"} {
+	for _, want := range []string{"claude-sonnet-5-5", "claude-sonnet", "gpt-5", "gemini-2.5-pro", "deepseek-chat", "deepseek-v4", "qwen", "llama"} {
 		for _, m := range models {
 			if strings.Contains(m, want) && !strings.Contains(m, "embed") {
 				return m
@@ -152,6 +157,19 @@ func PreferredModel(models []string) string {
 		return models[0]
 	}
 	return ""
+}
+
+// PreferredFastModel picks the provider's cheap model for infuse's own short tasks, or main when the
+// list has none (a fast model that equals the main one is valid, only dearer).
+func PreferredFastModel(models []string, main string) string {
+	for _, want := range []string{"claude-haiku-5-5", "claude-haiku", "gpt-5-mini", "gemini-2.5-flash", "deepseek-flash", "deepseek-v4-flash"} {
+		for _, m := range models {
+			if strings.Contains(m, want) {
+				return m
+			}
+		}
+	}
+	return main
 }
 
 type ModelChoice struct {

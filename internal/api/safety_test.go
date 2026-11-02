@@ -2,18 +2,6 @@ package api
 
 import "testing"
 
-// Routes that read a caller-chosen file, fetch a URL or open a path require the token even on GET.
-func TestSensitiveRoutesRequireTheToken(t *testing.T) {
-	for _, p := range []string{"/api/file", "/api/frameable", "/api/open"} {
-		if !sensitiveRoute(p) {
-			t.Errorf("%s is not treated as sensitive", p)
-		}
-	}
-	if sensitiveRoute("/api/map") || sensitiveRoute("/api/journal") {
-		t.Error("a plain read route must not require the token")
-	}
-}
-
 func TestSameOrigin(t *testing.T) {
 	const tok = "s3cr3t-token"
 	if sameOrigin("127.0.0.1:7470", "", "GET", "", tok) != nil {

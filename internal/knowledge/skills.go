@@ -24,12 +24,27 @@ type Skill struct {
 
 func SkillDirs(root string) [][2]string {
 	home, _ := os.UserHomeDir()
-	return [][2]string{
+	dirs := [][2]string{
 		{filepath.Join(root, core.InfuseDirName, "skills"), "project"},
 		{filepath.Join(root, ".claude", "skills"), "project"},
-		{filepath.Join(core.InfuseHome(), "skills"), "global"},
-		{filepath.Join(home, ".claude", "skills"), "global"},
 	}
+	for _, d := range PluginContentDirs(root, "skills") {
+		dirs = append(dirs, [2]string{d, "plugin"})
+	}
+	return append(dirs, [2]string{filepath.Join(core.InfuseHome(), "skills"), "global"}, [2]string{filepath.Join(home, ".claude", "skills"), "global"})
+}
+
+// PluginContentDirs lists one kind of content (agents, commands, skills) of the installed plugins.
+func PluginContentDirs(root, kind string) []string {
+	base := filepath.Join(root, core.InfuseDirName, "plugins")
+	entries, _ := os.ReadDir(base)
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			out = append(out, filepath.Join(base, e.Name(), kind))
+		}
+	}
+	return out
 }
 
 // ParseSkill reads the frontmatter (name, description) and the body of a SKILL.md.

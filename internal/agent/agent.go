@@ -2,10 +2,7 @@ package agent
 
 // Subagents: the Agent tool runs a task in a fresh conversation (no history of the session) and returns
 // only its conclusion. Every tool call of a subagent goes through the session's permissions, the filter
-// and the guard, like the agent's own. Kinds:
-//   explore — read-only search and reading across the project;
-//   review  — independent reviewer: sees the diff, the plan and the criteria, never the agent's reasoning;
-//   general — any tool except Agent itself.
+// and the guard, like the agent's own. Its kinds are a table (subagent_kinds.go).
 
 import (
 	"context"
@@ -18,34 +15,24 @@ import (
 	"time"
 )
 
-var readOnlyTools = map[string]bool{"Read": true, "Glob": true, "Grep": true, "LS": true, "WebFetch": true, "WebSearch": true}
-
-func subagentAllows(kind, tool string) bool {
-	switch kind {
-	case "explore", "review":
-		return readOnlyTools[tool]
-	default:
-		return tool != "Agent"
-	}
-}
-
 // RunSubagent runs task in a fresh conversation and returns the final text.
-func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (string, error) {
+func (s *Session) RunSubagent(ctx context.Context, name, title, task string) (string, error) {
+	kind, known := s.subagentKind(name)
+	if !known {
+		return "", errMsg(M("agent.unknown_kind", "kind", name))
+	}
 	provider, rules, specs, allowed, err := s.subagentSetup(ctx, kind)
 	if err != nil {
 		return "", err
 	}
-	if kind == "" {
-		kind = "general"
-	}
 	id := "a" + randomHex(6)
-	run := s.agentStart(id, kind, title, task)
+	run := s.agentStart(id, kind.Name, title, task)
 	defer s.agentUpdate(run, func(a *AgentRun) { // an error or the step limit: the run shows as failed
 		if a.State == "running" {
 			a.State = "failed"
 		}
 	})
-	s.emit("subagent", map[string]any{"id": id, "kind": kind, "title": title, "state": "start"})
+	s.emit("subagent", map[string]any{"id": id, "kind": kind.Name, "title": title, "state": "start"})
 	msgs := []Message{{Role: "user", Content: []Block{{Type: "text", Text: task}}, TS: time.Now().UnixMilli()}}
 	var breaker loopBreaker
 	for iter := 0; iter < 60; iter++ {
@@ -68,7 +55,7 @@ func (s *Session) RunSubagent(ctx context.Context, kind, title, task string) (st
 	return "", errMsg(M("agent.step_limit"))
 }
 
-func (s *Session) subagentSetup(ctx context.Context, kind string) (Provider, *RuleSet, []ToolSpec, func(string) bool, error) {
+func (s *Session) subagentSetup(ctx context.Context, kind SubagentKind) (Provider, *RuleSet, []ToolSpec, func(string) bool, error) {
 	provider, err := providerFor(s.settings, s.providerID())
 	if err != nil {
 		return nil, nil, nil, nil, err
@@ -76,11 +63,11 @@ func (s *Session) subagentSetup(ctx context.Context, kind string) (Provider, *Ru
 	rules := LoadRules(s.Root)
 	mcp.For(s.Root).Ensure(ctx)
 	allowed := func(name string) bool {
-		if subagentAllows(kind, name) {
+		if kind.allows(name) {
 			return true
 		}
-		t, ok := s.lookupTool(name) // read-only connector tools serve the read-only kinds too
-		return ok && strings.HasPrefix(name, "mcp__") && (kind == "general" || t.Category() == "read")
+		t, ok := s.lookupTool(name) // read-only connector tools serve the read-only built-in kinds too
+		return ok && strings.HasPrefix(name, "mcp__") && kind.Source == "builtin" && t.Category() == "read"
 	}
 	var specs []ToolSpec
 	for _, sp := range s.toolSpecs() {
@@ -92,18 +79,16 @@ func (s *Session) subagentSetup(ctx context.Context, kind string) (Provider, *Ru
 }
 
 // subagentTurn asks the model once and records its cost and trail.
-func (s *Session) subagentTurn(ctx context.Context, provider Provider, specs []ToolSpec, kind string, run int, id string, iter int, msgs *[]Message) (ModelResult, bool, string, error) {
-	res, err := provider.Stream(ctx, ModelRequest{Model: s.Model, System: subagentSystem(s, kind), Messages: *msgs, Tools: specs, MaxTokens: s.settings.MaxTokens}, func(StreamEvent) {})
+func (s *Session) subagentTurn(ctx context.Context, provider Provider, specs []ToolSpec, kind SubagentKind, run int, id string, iter int, msgs *[]Message) (ModelResult, bool, string, error) {
+	if stop, over := s.overDailyLimit(); over {
+		return ModelResult{}, false, "", errMsg(stop)
+	}
+	model := s.subagentModel(kind)
+	res, err := provider.Stream(ctx, ModelRequest{Model: model, System: subagentSystem(s, kind), Messages: *msgs, Tools: specs, MaxTokens: s.settings.MaxTokens}, func(StreamEvent) {})
 	if err != nil {
 		return res, false, "", err
 	}
-	cost := s.settings.CostOf(s.Model, res.Usage)
-	s.Mu.Lock()
-	s.Cost += cost
-	s.Usage.Input += res.Usage.Input
-	s.Usage.Output += res.Usage.Output
-	s.Mu.Unlock()
-	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cost: cost})
+	s.spend(model, res.Usage)
 	*msgs = append(*msgs, Message{Role: "assistant", Content: res.Content})
 	for _, b := range res.Content { // what the subagent says between its steps joins its trail
 		if b.Type == "text" && strings.TrimSpace(b.Text) != "" && res.StopReason == "tool_use" {
@@ -120,22 +105,7 @@ func (s *Session) subagentTurn(ctx context.Context, provider Provider, specs []T
 	return res, false, "", nil
 }
 
-func (s *Session) subagentToolTurn(ctx context.Context, rules *RuleSet, allowed func(string) bool, content []Block, run int, id string, breaker *loopBreaker) ([]Block, error) {
-	var results []Block
-	for _, b := range content {
-		if b.Type != "tool_use" {
-			continue
-		}
-		out, isErr, err := s.subagentTool(ctx, rules, allowed, b, run, id, breaker)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, Block{Type: "tool_result", ToolUseID: b.ID, Content: out, IsError: isErr})
-	}
-	return results, nil
-}
-
-func (s *Session) subagentTool(ctx context.Context, rules *RuleSet, allowed func(string) bool, b Block, run int, id string, breaker *loopBreaker) (string, bool, error) {
+func (s *Session) subagentTool(ctx context.Context, rules *RuleSet, allowed func(string) bool, b Block, run int, id string, record callRecorder) (string, bool, error) {
 	input := truncate(string(b.Input), 2000)
 	step := -1
 	s.agentUpdate(run, func(a *AgentRun) { // the step shows while it runs, as the main agent's do
@@ -163,7 +133,7 @@ func (s *Session) subagentTool(ctx context.Context, rules *RuleSet, allowed func
 			}
 		}
 	})
-	if err := breaker.record(b.Name, b.Input, isErr); err != nil {
+	if err := record(b.Name, b.Input, isErr); err != nil {
 		return "", false, errMsg(M("agent.stopped", "error", errArg(err)))
 	}
 	return out, isErr, nil
@@ -268,8 +238,7 @@ type agentTool struct{}
 
 func (agentTool) Category() string { return "ui" }
 func (agentTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Agent", Description: "Delegates a task to a subagent with a clean context, which returns only its conclusion. Several explore/review subagents called in the same reply work at the same time (a team): split independent research among them. kind=explore: research and reading in the project (read-only). kind=review: independent reviewer of the current changes (sees the diff, the plan and the criteria, not your reasoning) — use it before declaring a piece of work done. kind=general: a bounded task with any tool. The subagent's actions go through the same permissions and the filter.",
-		InputSchema: schema(`{"type":"object","properties":{"kind":{"type":"string","enum":["explore","review","general"]},"description":{"type":"string","description":"short title"},"prompt":{"type":"string","description":"the full task: the subagent does not see this conversation"}},"required":["kind","prompt"]}`)}
+	return ToolSpec{Name: "Agent", Description: agentToolDescription(builtinKinds), InputSchema: agentToolSchema(builtinKinds)}
 }
 
 func (agentTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {

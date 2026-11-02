@@ -73,6 +73,8 @@ const render = (s, params) => s.replace(/\{(\w+)\}/g, (m, k) => String(params[k]
 
 export const fmtNum = n => new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(n);
 export const fmtMoney = usd => new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD' }).format(usd || 0);
+// A turn can cost a fraction of a cent: below one cent the two usual decimals would round it to nothing.
+export const fmtMoneyFine = usd => { const digits = usd > 0 && usd < 0.01 ? 4 : 2; return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits }).format(usd || 0); };
 export const fmtDateTime = ts => new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(ts));
 export const fmtTime = ts => new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(new Date(ts));
 export const fmtDate = ts => new Intl.DateTimeFormat(locale, { dateStyle: 'short' }).format(new Date(ts));

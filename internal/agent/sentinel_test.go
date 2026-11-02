@@ -17,8 +17,9 @@ func TestSentinelAsksBeforeChangingAnExistingTest(t *testing.T) {
 	root := t.TempDir()
 	s := newSession(root)
 	s.gate.diagnosed = true // this test is about another gate
-	s.Mode = "bypass"       // even "accept everything" stops here
-	s.gate.planned = true   // the protocol's plan rule is tested apart
+	noContract(s)
+	s.Mode = "bypass"     // even "accept everything" stops here
+	s.gate.planned = true // the protocol's plan rule is tested apart
 	s.Turn, s.TurnStarts = 1, []int{0}
 	s.Messages = []Message{{Role: "user", Content: []Block{{Type: "text", Text: "any request"}}}}
 	write := toolRegistry["Write"]

@@ -1,0 +1,16 @@
+// The entry point: wiring only.
+import { createRegistry } from './core/registry.js';
+import { createStore } from './core/store.js';
+import { homePage } from './pages/home.js';
+import { tables } from './data/tables.js';
+
+const pages = createRegistry();
+pages.register('home', homePage);
+
+const store = createStore(window.localStorage);
+const root = document.getElementById('app');
+const render = () => { root.innerHTML = pages.get(tables.startPage)(store.state()); };
+store.subscribe(render);
+store.ready();
+store.addItem('first item');
+render();

@@ -10,6 +10,9 @@ import { pageShell } from './shell.js';
 import { menu } from '../components/menu.js';
 import { toast } from '../components/toast.js';
 import { md } from '../core/markdown.js';
+import { pluginsSection } from './customize/plugins.js';
+import { stylesSection } from './customize/outputStyles.js';
+import { localSection } from './customize/localSettings.js';
 
 const MCP_PRESETS = [
   { name: 'playwright', title: 'mcp.playwright.title', what: 'mcp.playwright.what', cfg: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] }, needs: 'Node.js' },
@@ -25,7 +28,23 @@ const HOOK_EVENTS = {
   PostToolUse: ['hooks.postToolUse', 'hooks.postToolUseDesc'],
   UserPromptSubmit: ['hooks.promptSubmit', 'hooks.promptSubmitDesc'],
   Stop: ['hooks.stop', 'hooks.stopDesc'],
+  SessionStart: ['hooks.sessionStart', 'hooks.sessionStartDesc'],
+  PreCompact: ['hooks.preCompact', 'hooks.preCompactDesc'],
+  Notification: ['hooks.notification', 'hooks.notificationDesc'],
 };
+// what the matcher of each event compares against; Stop and UserPromptSubmit have nothing to match
+const HOOK_MATCHERS = {
+  PreToolUse: ['hooks.forTools', 'Bash|Write'], PostToolUse: ['hooks.forTools', 'Bash|Write'],
+  SessionStart: ['hooks.forSource', 'startup|resume'], PreCompact: ['hooks.forTrigger', 'auto'],
+  Notification: ['hooks.forKind', 'permission_prompt|question'],
+};
+const scopeLabel = scope => (scope === 'global' ? t('rules.allProjects') : scope?.startsWith('plugin:') ? scope : t('rules.thisProject'));
+// the browser sign-in of an HTTP connector: the server restarts by itself when the browser comes back
+async function mcpSignIn(s, root) {
+  const r = await api('/api/mcp/oauth', { body: { scope: s.scope, name: s.name }, root }).catch(e => ({ error: String(e) }));
+  if (r.url) window.open(r.url, '_blank', 'noopener');
+  else if (r.error) toast(r.error);
+}
 const HOOK_PRESETS = [
   { title: 'hooks.preset.tests', what: 'hooks.preset.testsWhat', event: 'Stop', matcher: '', command: "npm test --silent >/dev/null 2>&1 || { echo 'The tests failed. Run npm test, fix them, and only then finish.' >&2; exit 2; }" },
   { title: 'hooks.preset.noPush', what: 'hooks.preset.noPushWhat', event: 'PreToolUse', matcher: 'Bash', command: "grep -q 'git push' && { echo 'git push is done by the user, not by the agent.' >&2; exit 2; } || exit 0" },
@@ -36,7 +55,8 @@ const HOOK_PRESETS = [
 export async function openCustomize(section = 'commands') {
   const sections = [
     ['commands', 'cust.commands'], ['skills', 'cust.skills'], ['connectors', 'cust.connectors'],
-    ['hooks', 'cust.hooks'], ['docs', 'cust.docs'], ['conventions', 'cust.conventions'], ['instructions', 'cust.instructions']
+    ['hooks', 'cust.hooks'], ['plugins', 'cust.plugins'], ['docs', 'cust.docs'], ['conventions', 'cust.conventions'],
+    ['instructions', 'cust.instructions'], ['styles', 'cust.styles'], ['local', 'cust.local']
   ];
   const el = pageShell('customize', sections, section, openCustomize);
   const root = curRoot() || cache.projects.get()[0]?.root || '';
@@ -50,6 +70,9 @@ export async function openCustomize(section = 'commands') {
   if (section === 'conventions') return conventionsSection(el, root);
   if (section === 'skills') return skillsSection(el, root);
   if (section === 'instructions') return instructionsSection(el, root);
+  if (section === 'plugins') return pluginsSection(el, root);
+  if (section === 'styles') return stylesSection(el, root);
+  if (section === 'local') return localSection(el, root, () => openCustomize('local'));
 }
 
 async function commandsSection(el, root) {
@@ -114,7 +137,7 @@ async function connectorsSection(el, root) {
     list.innerHTML = servers.length ? '' : `<div class="empty">${t('mcp.noneYet')}</div>`;
     for (const s of servers) {
       const [cls, label] = !s.approved ? ['warn', 'mcp.awaiting'] : s.disabled ? ['', 'mcp.off'] : MCP_STATE[s.state] || ['', s.state];
-      const card = h(`<div class="connector-card"><div class="row"><span class="conn-dot ${cls}"></span><b>${esc(s.name)}</b><span class="tag">${t(s.scope === 'global' ? 'rules.allProjects' : 'rules.thisProject')}</span><span class="faint">${t(label)}${s.state === 'running' && !s.disabled ? ' · ' + t('mcp.toolsCount', { count: s.tools.length }) : ''}</span><span class="grow"></span>${s.approved ? `<span class="switch${s.disabled ? '' : ' on'} tg" role="switch" tabindex="0" aria-checked="${!s.disabled}" title="${esc(t('mcp.toggle'))}"></span>` : ''}<button class="icon-btn more" aria-label="${esc(t('common.more'))}">${I.more}</button></div>
+      const card = h(`<div class="connector-card"><div class="row"><span class="conn-dot ${cls}"></span><b>${esc(s.name)}</b><span class="tag">${esc(scopeLabel(s.scope))}</span><span class="faint">${t(label)}${s.state === 'running' && !s.disabled ? ' · ' + t('mcp.toolsCount', { count: s.tools.length }) : ''}</span><span class="grow"></span>${s.approved ? `<span class="switch${s.disabled ? '' : ' on'} tg" role="switch" tabindex="0" aria-checked="${!s.disabled}" title="${esc(t('mcp.toggle'))}"></span>` : ''}<button class="icon-btn more" aria-label="${esc(t('common.more'))}">${I.more}</button></div>
         <div class="mono faint connector-target">${esc(s.target)}</div>
         ${!s.approved ? `<div class="connector-approve"><span>${t('mcp.approveWarning')}</span><button class="btn sm pri ap">${t('mcp.approveStart')}</button></div>` : ''}
         ${s.error ? `<div class="errbox mt-4">${esc(s.error)}${s.stderr ? '\n\n' + esc(s.stderr) : ''}</div>` : ''}
@@ -125,6 +148,7 @@ async function connectorsSection(el, root) {
       if (tg) tg.onclick = () => act('toggle', { scope: s.scope, name: s.name, disabled: !s.disabled });
       card.querySelector('.more').onclick = e => menu(e.currentTarget, [
         { label: t('common.restart'), f: () => act('restart', { scope: s.scope, name: s.name }) },
+        ...(s.http ? [{ label: t(s.loggedIn ? 'mcp.signedIn' : 'mcp.signIn'), f: () => mcpSignIn(s, root) }] : []),
         { sep: 1 },
         { label: t('common.remove'), danger: 1, f: () => act('remove', { scope: s.scope, name: s.name }) },
       ], null, { alignRight: true });
@@ -158,10 +182,11 @@ async function hooksSection(el, root) {
     const hooks = await api('/api/hooks', { root }).catch(() => []);
     list.innerHTML = hooks.length ? '' : `<div class="empty">${t('hooks.noneYet')}</div>`;
     for (const x of hooks) {
-      const card = h(`<div class="connector-card"><div class="row"><span class="conn-dot ${x.approved ? 'ok' : 'warn'}"></span><b>${t(HOOK_EVENTS[x.event]?.[0] || x.event)}</b>${x.matcher ? `<span class="tag mono">${esc(x.matcher)}</span>` : ''}<span class="faint">${t(x.approved ? 'hooks.active' : 'mcp.awaiting')}</span><span class="grow"></span><span class="tag">${t(x.scope === 'global' ? 'rules.allProjects' : 'rules.thisProject')}</span><button class="icon-btn del" aria-label="${esc(t('common.remove'))}">${I.trash}</button></div><pre class="mono hook-cmd">${esc(x.command)}</pre><div class="faint text-sm">${esc(x.source)}</div>${x.approved ? '' : `<div class="connector-approve"><span>${t('hooks.approveWarning')}</span><button class="btn sm pri ap">${t('mcp.approve')}</button></div>`}</div>`);
+      const card = h(`<div class="connector-card"><div class="row"><span class="conn-dot ${x.approved ? 'ok' : 'warn'}"></span><b>${t(HOOK_EVENTS[x.event]?.[0] || x.event)}</b>${x.matcher ? `<span class="tag mono">${esc(x.matcher)}</span>` : ''}<span class="faint">${t(x.approved ? 'hooks.active' : 'mcp.awaiting')}</span><span class="grow"></span><span class="tag">${esc(scopeLabel(x.scope))}</span>${x.scope?.startsWith('plugin:') ? '' : `<button class="icon-btn del" aria-label="${esc(t('common.remove'))}">${I.trash}</button>`}</div><pre class="mono hook-cmd">${esc(x.command)}</pre><div class="faint text-sm">${esc(x.source)}</div>${x.approved ? '' : `<div class="connector-approve"><span>${t('hooks.approveWarning')}</span><button class="btn sm pri ap">${t('mcp.approve')}</button></div>`}</div>`);
       const ap = card.querySelector('.ap');
       if (ap) ap.onclick = async () => { await api('/api/hooks/approve', { body: { key: x.key }, root }).catch(() => { }); draw(); };
-      card.querySelector('.del').onclick = async () => {
+      const del = card.querySelector('.del');
+      if (del) del.onclick = async () => {
         const r = await api('/api/hooks/remove', { body: { key: x.key }, root }).catch(e => ({ error: String(e) }));
         if (r.error) toast(r.error);
         draw();
@@ -176,15 +201,21 @@ async function hooksSection(el, root) {
     draw();
   };
   el.append(h(`<h2>${t('hooks.readyMade')}</h2>`));
-  const grid = h(`<div class="connector-grid">${HOOK_PRESETS.map((p, i) => `<div class="connector-preset"><b>${t(p.title)}</b><span class="faint">${t(p.what)}</span><span class="faint">${t('hooks.when')}: ${t(HOOK_EVENTS[p.event][0])}${p.matcher ? ' · ' + esc(p.matcher) : ''}</span><span class="mono faint">${esc(p.command)}</span><div class="row"><button class="btn sm" data-h="${i}">${I.plus} ${t('rules.thisProject')}</button><button class="btn sm" data-h="${i}" data-sc="global">${t('rules.allProjects')}</button></div></div>`).join('')}</div>`);
+  const grid = h(`<div class="connector-grid">${HOOK_PRESETS.map((p, i) => `<div class="connector-preset"><b>${t(p.title)}</b><span class="faint">${t(p.what)}</span><span class="faint">${t('hooks.when')} ${t(HOOK_EVENTS[p.event][0])}${p.matcher ? ' · ' + esc(p.matcher) : ''}</span><span class="mono faint">${esc(p.command)}</span><div class="row"><button class="btn sm" data-h="${i}">${I.plus} ${t('rules.thisProject')}</button><button class="btn sm" data-h="${i}" data-sc="global">${t('rules.allProjects')}</button></div></div>`).join('')}</div>`);
   el.append(grid);
   $$('[data-h]', grid).forEach(b => b.onclick = () => { const p = HOOK_PRESETS[+b.dataset.h]; add(p.event, p.matcher, p.command, b.dataset.sc || 'project'); });
   let ev = 'PreToolUse';
-  const custom = h(`<div class="connector-custom"><b>${t('hooks.other')}</b><div class="crit-sentence"><span class="chip hev" role="button" tabindex="0">${t(HOOK_EVENTS[ev][0])} ${I.caret}</span> ${t('hooks.forTools')} <input class="slot mono hm" placeholder="Bash|Write" spellcheck="false"> ${t('mcp.run')} <input class="slot mono hc field-wide" placeholder="./scripts/checar.sh" spellcheck="false"></div><div class="faint hevd text-md">${t(HOOK_EVENTS[ev][1])} ${t('hooks.jsonStdin')}</div><div class="row"><button class="btn sm pri hadd">${t('mcp.addToProject')}</button></div></div>`);
+  const custom = h(`<div class="connector-custom"><b>${t('hooks.other')}</b><div class="crit-sentence"><span class="chip hev" role="button" tabindex="0">${t(HOOK_EVENTS[ev][0])} ${I.caret}</span> <span class="hmbox"><span class="hml"></span> <input class="slot mono hm" spellcheck="false"></span> ${t('mcp.run')} <input class="slot mono hc field-wide" placeholder="./scripts/checar.sh" spellcheck="false"></div><div class="faint hevd text-md">${t(HOOK_EVENTS[ev][1])} ${t('hooks.jsonStdin')}</div><div class="row"><button class="btn sm pri hadd">${t('mcp.addToProject')}</button></div></div>`);
   el.append(custom);
+  const drawMatcher = () => {
+    const m = HOOK_MATCHERS[ev], box = custom.querySelector('.hmbox'), inp = custom.querySelector('.hm');
+    box.hidden = !m;
+    if (m) { custom.querySelector('.hml').textContent = t(m[0]); inp.placeholder = m[1]; } else inp.value = '';
+  };
+  drawMatcher();
   custom.querySelector('.hev').onclick = e => menu(e.currentTarget, Object.entries(HOOK_EVENTS).map(([k, [l, d]]) => ({
-    label: t(l), d: t(d), check: ev === k,
-    f: () => { ev = k; custom.querySelector('.hev').firstChild.textContent = t(l) + ' '; custom.querySelector('.hevd').textContent = t(d) + ' ' + t('hooks.jsonStdin'); }
+    label: t(l), sub: t(d), check: ev === k,
+    f: () => { ev = k; custom.querySelector('.hev').firstChild.textContent = t(l) + ' '; custom.querySelector('.hevd').textContent = t(d) + ' ' + t('hooks.jsonStdin'); drawMatcher(); }
   })));
   custom.querySelector('.hadd').onclick = () => add(ev, custom.querySelector('.hm').value.trim(), custom.querySelector('.hc').value.trim());
   draw();

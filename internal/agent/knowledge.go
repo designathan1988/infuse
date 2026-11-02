@@ -42,9 +42,7 @@ func (s *Session) digestDocument(ctx context.Context, p Provider, rel string, b 
 			Facts []knowledgeFact `json:"facts"`
 		}
 		usage, err := askJSON(ctx, p, s.fastModel(), knowledge.DigestPrompt, fmt.Sprintf("Document %s, lines %d–%d of %d:\n\n%s", rel, start+1, end, len(lines), part.String()), knowledge.FactsSpec, 16000, &out)
-		s.Mu.Lock()
-		s.Cost += s.settings.CostOf(s.fastModel(), usage)
-		s.Mu.Unlock()
+		s.spend(s.fastModel(), usage)
 		if err != nil { // a part not read is a document not known: no digest is kept, the next run tries again
 			return nil, fmt.Errorf("lines %d–%d: %w", start+1, end, err)
 		}

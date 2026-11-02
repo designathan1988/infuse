@@ -25,6 +25,7 @@ import (
 // attach images for the model, output clipping and the message recorder.
 type Host interface {
 	RootDir() string
+	ProjectFile(path string) (string, error) // a project file the agent may read, by its real path
 	Settings() config.Settings
 	AttachImage(core.Block)
 	Clip(string) string

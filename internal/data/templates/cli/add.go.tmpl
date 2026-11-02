@@ -1,0 +1,33 @@
+package commands
+
+// add: the only writer of the items.
+
+import (
+	"fmt"
+	"io"
+	"strings"
+
+	"{{module}}/internal/core"
+)
+
+func init() { registry.Register("add", add) }
+
+func add(args []string, out, errOut io.Writer) int {
+	title := strings.TrimSpace(strings.Join(args, " "))
+	if title == "" {
+		fmt.Fprintln(errOut, "add needs a title")
+		return 2
+	}
+	list := []core.Item{}
+	if err := core.LoadDocument(itemsFile(), &list); err != nil {
+		fmt.Fprintln(errOut, err)
+		return 1
+	}
+	list = append(list, core.Item{ID: len(list) + 1, Title: title, State: core.Draft})
+	if err := core.SaveDocument(itemsFile(), list); err != nil {
+		fmt.Fprintln(errOut, err)
+		return 1
+	}
+	fmt.Fprintf(out, "added %d\n", len(list))
+	return 0
+}

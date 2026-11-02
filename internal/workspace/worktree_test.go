@@ -2,12 +2,55 @@ package workspace
 
 import (
 	"infuse/internal/core"
+	"infuse/internal/sandbox"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// Creating a worktree checks files out: a hook the project planted must not run on the host.
+func TestWorktreeFiresNoProjectHook(t *testing.T) {
+	testHome(t)
+	root := gitRepo(t)
+	marker := filepath.Join(t.TempDir(), "ran")
+	hook := "#!/bin/sh\necho ran > '" + filepath.ToSlash(marker) + "'\n"
+	if err := os.WriteFile(filepath.Join(root, ".git", "hooks", "post-checkout"), []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := CreateWorktree(root, "x"); err != nil {
+		t.Fatal(err)
+	}
+	if core.Exists(marker) {
+		t.Fatal("a project hook ran on the host")
+	}
+}
+
+// A dev server's command is approved, the code behind it is not: it runs contained.
+func TestDevServerRunsContained(t *testing.T) {
+	bash := core.FindRealBash()
+	if bash == "" || !sandbox.Available() {
+		t.Skip("no bash or no OS containment")
+	}
+	testHome(t)
+	root := t.TempDir()
+	escaped := filepath.Join(t.TempDir(), "escaped.txt")
+	inside := filepath.Join(root, "inside.txt")
+	script := "echo x > '" + filepath.ToSlash(escaped) + "'; echo x > '" + filepath.ToSlash(inside) + "'"
+	cmd, err := devCommand(root, LaunchConfig{RuntimeExecutable: bash, RuntimeArgs: []string{"-c", script}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Dir = root
+	_ = cmd.Run()
+	if core.Exists(escaped) {
+		t.Fatal("a dev server wrote outside the project")
+	}
+	if !core.Exists(inside) {
+		t.Fatal("the contained dev server did not run")
+	}
+}
 
 func TestWorktreeAndChanges(t *testing.T) {
 	testHome(t)

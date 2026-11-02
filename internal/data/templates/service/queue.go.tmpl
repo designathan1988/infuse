@@ -1,0 +1,86 @@
+package queue
+
+// Queue owns the jobs: the only writer. Every change is stored before it is visible, so a restart
+// finds the jobs where they were; a job left running by a crash is queued again.
+
+import (
+	"sync"
+
+	"{{module}}/internal/platform"
+)
+
+// Queue is the durable list of jobs.
+type Queue struct {
+	mu   sync.Mutex
+	path string
+	jobs []Job
+}
+
+// Open loads the queue stored at path.
+func Open(path string) (*Queue, error) {
+	q := &Queue{path: path, jobs: []Job{}}
+	if err := LoadDocument(path, &q.jobs); err != nil {
+		return nil, err
+	}
+	for i := range q.jobs {
+		if q.jobs[i].State == Running {
+			q.jobs[i].State = Queued
+		}
+	}
+	return q, nil
+}
+
+// Add queues a job.
+func (q *Queue) Add(kind, payload string) (Job, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	j := Job{ID: len(q.jobs) + 1, Kind: kind, Payload: payload, State: Queued}
+	q.jobs = append(q.jobs, j)
+	return j, q.saveLocked()
+}
+
+// Next takes the oldest queued job.
+func (q *Queue) Next() (Job, bool, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for i, j := range q.jobs {
+		if j.State == Queued {
+			running, err := j.moved(Running)
+			if err != nil {
+				return j, false, err
+			}
+			q.jobs[i] = running
+			return running, true, q.saveLocked()
+		}
+	}
+	return Job{}, false, nil
+}
+
+// Finish records a job's outcome.
+func (q *Queue) Finish(id int, failure error) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	next := Done
+	if failure != nil {
+		next = Failed
+	}
+	moved, err := q.jobs[id-1].moved(next)
+	if err != nil {
+		return err
+	}
+	if failure != nil {
+		moved.Error = failure.Error()
+	}
+	q.jobs[id-1] = moved
+	platform.Observe("job.finished", map[string]any{"id": id, "state": string(next)})
+	return q.saveLocked()
+}
+
+// Jobs returns a copy of every job.
+func (q *Queue) Jobs() []Job {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return append([]Job{}, q.jobs...)
+}
+
+func (q *Queue) saveLocked() error { return SaveDocument(q.path, q.jobs) }

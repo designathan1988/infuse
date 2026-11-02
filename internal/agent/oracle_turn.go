@@ -15,7 +15,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"infuse/internal/oracle"
+	"infuse/internal/workspace"
 )
+
+// criteriaRel is the criteria file as the turn audit names it.
+const criteriaRel = ".infuse/oracle/checks.json"
 
 // oracleObligation runs the user's criteria for this turn (at most once per tree state) and returns
 // what still fails.
@@ -26,6 +32,11 @@ func (s *Session) oracleObligation(ctx context.Context) Msg {
 		return M("turn.oracle_spec", "error", err.Error())
 	}
 	if len(spec.Checks) == 0 {
+		// nothing to run, unless the user's criteria were removed: that is a refusal, not an absence
+		if err := oracle.VerifyCriteria(s.Root, spec); err != nil {
+			Journal(s.Root, JournalEntry{Kind: "gate", Detail: "oracle criteria removed: " + err.Error()})
+			return M("turn.oracle_spec", "error", err.Error())
+		}
 		return Msg{}
 	}
 	key := s.oracleRunKey()
@@ -36,7 +47,7 @@ func (s *Session) oracleObligation(ctx context.Context) Msg {
 		return Msg{}
 	}
 	v, err := RunOracleTurn(ctx, s.Root, s.workRoot(), s.ID, s.Turn)
-	RefreshTurnProtected(s.Root, s.ID, s.Turn) // the evidence is the executor's, not the agent's
+	s.acceptExecutorWrites(v.Run)
 	if err != nil {
 		return M("turn.oracle", "verdict", "error", "summary", err.Error(), "items", "")
 	}
@@ -50,12 +61,41 @@ func (s *Session) oracleObligation(ctx context.Context) Msg {
 	return M("turn.oracle", "verdict", v.Verdict, "summary", v.Summary, "items", failingChecks(v.Checks))
 }
 
-// oracleRunKey identifies the tree the verdict belongs to: the turn, the criteria and the newest
-// change of the files this turn touched. The same state reuses the verdict instead of re-running.
+// acceptExecutorWrites moves into the turn's baseline what this run of the executor wrote, and nothing
+// else: its own evidence folder and criteria the user really saved. A criteria file the agent changed
+// matches no anchor, so it stays a protected change however often the executor runs.
+func (s *Session) acceptExecutorWrites(run string) {
+	evidence := ".infuse/evidence/" + run + "/"
+	workspace.RefreshTurnProtected(s.Root, s.ID, s.Turn, func(rel string) bool {
+		return run != "" && strings.HasPrefix(rel, evidence) || isAnchoredCriteria(s.Root, rel)
+	})
+}
+
+// isAnchoredCriteria reports whether rel is the criteria file holding exactly what the user saved.
+func isAnchoredCriteria(root, rel string) bool {
+	return rel == criteriaRel && oracle.CriteriaAnchored(root)
+}
+
+// protectedChanges lists the protected files changed since the turn started, minus criteria the user
+// saved while it ran: the user editing them mid-turn is not the agent writing them.
+func (s *Session) protectedChanges() []string {
+	all := workspace.TurnProtectedChanges(s.Root, s.ID, s.Turn)
+	out := all[:0]
+	for _, rel := range all {
+		if !isAnchoredCriteria(s.Root, rel) {
+			out = append(out, rel)
+		}
+	}
+	return out
+}
+
+// oracleRunKey identifies the tree the verdict belongs to: the turn, the criteria, the content of the
+// files this turn touched and of the installed dependencies, which the checks run but no project-file
+// audit sees. The same state reuses the verdict instead of re-running.
 func (s *Session) oracleRunKey() string {
 	b, _ := os.ReadFile(SpecFile(s.Root))
 	sum := sha256.Sum256(b)
-	return fmt.Sprintf("%d|%s|%s", s.Turn, hex.EncodeToString(sum[:8]), s.changeFingerprint())
+	return fmt.Sprintf("%d|%s|%s|%s", s.Turn, hex.EncodeToString(sum[:8]), s.changeFingerprint(), oracle.DependencyFingerprint(s.workRoot()))
 }
 
 // changeFingerprint hashes the content of the files this turn changed. Modification times and sizes

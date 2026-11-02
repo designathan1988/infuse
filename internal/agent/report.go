@@ -1,15 +1,13 @@
 package agent
 
-// The agent's report and the turn contract. Report: at the end of a turn the agent states what it did as
-// claims, each with the evidence it relies on (a command it ran, a file it changed); infuse checks every
-// claim against what actually happened in the turn — the tool calls and their results, the checkpoints —
-// and shows the outcome beside the agent's words. Contract: the agent turns the order into verifiable
-// criteria and the user confirms them; confirmed criteria become session memory of the highest priority.
+// The agent's report: at the end of a turn the agent states what it did as claims, each with the
+// evidence it relies on (a command it ran, a file it changed); infuse checks every claim against what
+// actually happened in the turn — the tool calls and their results, the checkpoints — and shows the
+// outcome beside the agent's words.
 
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 )
@@ -137,6 +135,9 @@ func (s *Session) checkReport(r *TurnReport) []Msg {
 	if r.Unconfirmed > 0 {
 		out = append(out, M("report.unconfirmed", "count", r.Unconfirmed))
 	}
+	s.Mu.Lock()
+	s.gate.unconfirmed = r.Unconfirmed
+	s.Mu.Unlock()
 	return out
 }
 
@@ -190,45 +191,4 @@ func (reportTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessag
 	s.attachToCall(tc.CallID, r)
 	s.emit("report", r)
 	return strings.Join(lines, "\n"), false
-}
-
-type contractTool struct{}
-
-func (contractTool) Category() string { return "ui" }
-func (contractTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Contract", Description: "Before a piece of work with more than one step, turn the request into verifiable criteria (what must be true at the end, each one checkable by a command, a file or using the program) and ask the user to confirm them. Confirmed criteria go into the session memory with the highest priority.",
-		InputSchema: schema(`{"type":"object","properties":{"goal":{"type":"string"},"criteria":{"type":"array","items":{"type":"string"}}},"required":["goal","criteria"]}`)}
-}
-
-func (contractTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
-	var in struct {
-		Goal     string   `json:"goal"`
-		Criteria []string `json:"criteria"`
-	}
-	_ = json.Unmarshal(input, &in)
-	if len(in.Criteria) == 0 {
-		return tc.Say(M("contract.no_criteria")), true
-	}
-	var list strings.Builder
-	for i, c := range in.Criteria {
-		fmt.Fprintf(&list, "%d. %s\n", i+1, c)
-	}
-	// the question is the user's alone: written in their language; the answer is the option they chose
-	lang := tc.S.uiLang()
-	confirm := M("contract.confirm").Render(lang)
-	ans, ok := tc.S.askUser(ctx, M("contract.question", "goal", in.Goal, "criteria", strings.TrimRight(list.String(), "\n")).Render(lang), []string{confirm})
-	if !ok {
-		return tc.Say(M("ask.no_answer")), true
-	}
-	if strings.TrimSpace(ans) != confirm {
-		return tc.Say(M("contract.changes", "answer", ans)), false
-	}
-	for _, c := range in.Criteria {
-		it := MemoryItem{Type: "criterio", Text: c, Priority: 3, Origin: "usuario", Session: tc.S.ID}
-		if normalizeMemory(&it) == nil {
-			_ = tc.S.editMemory("session", func(items []MemoryItem) []MemoryItem { return append(items, it) })
-		}
-	}
-	tc.S.emit("memory", map[string]any{"action": "contract"})
-	return tc.Say(M("contract.confirmed")), false
 }

@@ -52,6 +52,7 @@ func (m *Manager) Entries() []Entry {
 	for name, c := range proj {
 		out = append(out, Entry{"project", name, c})
 	}
+	out = append(out, m.pluginEntries()...)
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }

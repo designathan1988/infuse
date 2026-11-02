@@ -14,6 +14,19 @@ func (tc *ToolContext) RootDir() string { return tc.Root }
 
 func (tc *ToolContext) Settings() config.Settings { return tc.S.settings }
 
+// ProjectFile resolves a path the page will receive: the read gate applies, and the real file must be
+// inside the project, because what is uploaded leaves the machine.
+func (tc *ToolContext) ProjectFile(p string) (string, error) {
+	abs, err := tc.resolvePath(p, false)
+	if err != nil {
+		return "", err
+	}
+	if !within(tc.Root, abs) || !within(realPath(tc.Root), realPath(abs)) {
+		return "", errMsg(M("path.outside", "path", p))
+	}
+	return abs, nil
+}
+
 func (tc *ToolContext) AttachImage(b Block) {
 	tc.S.Mu.Lock()
 	tc.S.pendingImages = append(tc.S.pendingImages, b)

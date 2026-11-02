@@ -40,7 +40,7 @@ func (s *Session) missingScreenshot() Msg {
 		return Msg{}
 	}
 	if l.shotSeq < l.uiChangeSeq {
-		return M("agent.no_screenshot", "files", strings.Join(firstN(dedupe(l.uiChanged), 6), ", "))
+		return M("agent.no_screenshot", "files", strings.Join(firstN(dedupe(l.uiChanged), 6), ", "), "vice", uiChangeVice(l.uiChanged))
 	}
 	// A capture only counts for the origin the criteria measure: a screenshot of another page proves
 	// nothing about the project's own screen.

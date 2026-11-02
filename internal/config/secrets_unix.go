@@ -6,6 +6,7 @@ package config
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -13,7 +14,16 @@ import (
 
 type osSecrets struct{}
 
+// vaultIsOurs: the keychain belongs to the user, not to a folder. A process on a redirected infuse
+// home (a test, a second instance) must not read or remove the user's real keys.
+func vaultIsOurs() bool { return os.Getenv("INFUSE_HOME") == "" }
+
+var errForeignHome = errors.New("the OS vault is not used on a redirected infuse home")
+
 func (osSecrets) Set(name, value string) error {
+	if !vaultIsOurs() {
+		return errForeignHome
+	}
 	if runtime.GOOS == "darwin" {
 		return exec.Command("security", "add-generic-password", "-U", "-a", "infuse", "-s", name, "-w", value).Run()
 	}
@@ -26,6 +36,9 @@ func (osSecrets) Set(name, value string) error {
 }
 
 func (osSecrets) Get(name string) (string, error) {
+	if !vaultIsOurs() {
+		return "", nil
+	}
 	var out []byte
 	var err error
 	if runtime.GOOS == "darwin" {
@@ -40,6 +53,9 @@ func (osSecrets) Get(name string) (string, error) {
 }
 
 func (osSecrets) Delete(name string) error {
+	if !vaultIsOurs() {
+		return nil
+	}
 	if runtime.GOOS == "darwin" {
 		_ = exec.Command("security", "delete-generic-password", "-a", "infuse", "-s", name).Run()
 		return nil

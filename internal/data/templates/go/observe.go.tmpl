@@ -1,0 +1,43 @@
+package {{package}}
+
+// The observability hook: everything the program does that someone may need to see goes through
+// Observe. Replace the hook to send events anywhere; tests read them through it.
+
+import (
+	"encoding/json"
+	"os"
+	"sync"
+	"time"
+)
+
+// Event is one observable fact.
+type Event struct {
+	Time   time.Time      `json:"time"`
+	Name   string         `json:"name"`
+	Fields map[string]any `json:"fields,omitempty"`
+}
+
+// Hook receives every event.
+type Hook func(Event)
+
+var (
+	hookMu sync.RWMutex
+	hook   Hook = func(e Event) { _ = json.NewEncoder(os.Stderr).Encode(e) }
+)
+
+// SetHook replaces the hook and returns the previous one.
+func SetHook(h Hook) Hook {
+	hookMu.Lock()
+	defer hookMu.Unlock()
+	old := hook
+	hook = h
+	return old
+}
+
+// Observe records one event.
+func Observe(name string, fields map[string]any) {
+	hookMu.RLock()
+	h := hook
+	hookMu.RUnlock()
+	h(Event{Time: time.Now(), Name: name, Fields: fields})
+}

@@ -1,11 +1,20 @@
 package workspace
 
 import (
+	"infuse/internal/sandbox"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 )
+
+// TestMain plays the __sandbox role: contained commands re-execute this binary as the real one would.
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == sandbox.Role {
+		os.Exit(sandbox.Main(os.Args[2:]))
+	}
+	os.Exit(m.Run())
+}
 
 func testHome(t *testing.T) {
 	t.Helper()

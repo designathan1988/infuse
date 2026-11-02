@@ -172,7 +172,7 @@ func workspaceRoutes(w http.ResponseWriter, r *http.Request, body map[string]any
 		sendJSON(w, 200, reverse(core.ReadJSONL(filepath.Join(root, core.InfuseDirName, "lessons.jsonl")), 300))
 	case "/api/map":
 		var m *projectmap.ProjectMap
-		if q["refresh"] != "" {
+		if r.Method == http.MethodPost { // regenerating rewrites the stored map
 			m = projectmap.BuildMap(root)
 			projectmap.WriteMap(root, m)
 		} else {

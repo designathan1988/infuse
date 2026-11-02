@@ -11,7 +11,7 @@ const CHG_ST = { A: ['changes.new', 'ok'], D: ['changes.deleted', 'bad'] };
 
 function makeState(pb, extra, c) {
   pb.innerHTML = `<div class="changes-split"><div class="file-list" role="list"></div><div class="diff-view-host"></div></div>
-    <div class="pane-foot"><span class="faint ncom"></span><button class="btn sm line sendc hidden">${t('changes.sendComments')} <span class="kbd">Ctrl Enter</span></button><span class="grow"></span><input class="cmsg" placeholder="${esc(t('changes.commitMsg'))}"><button class="btn sm pri commit">${t('changes.commit')}</button></div>`;
+    <div class="pane-foot"><span class="faint ncom"></span><button class="btn sm line sendc hidden">${t('changes.sendComments')} <span class="kbd">Ctrl Enter</span></button><span class="grow"></span><span class="mono faint trunc brname"></span><button class="btn sm line newbranch">${t('changes.newBranch')}</button><input class="brinput hidden" placeholder="${esc(t('changes.branchName'))}" aria-label="${esc(t('changes.branchName'))}" spellcheck="false"><input class="cmsg" placeholder="${esc(t('changes.commitMsg'))}"><button class="btn sm pri commit">${t('changes.commit')}</button></div>`;
   extra.innerHTML = `<span class="scopeslot"></span><button class="icon-btn" title="${esc(t('common.refresh'))}">${I.reload}</button>`;
   return {
     pb, extra, c, sel: null, files: [], comments: [],
@@ -66,6 +66,8 @@ async function loadChanges(s) {
   bindScopeSwitch(s);
   s.pb.querySelector('.cmsg').classList.toggle('hidden', !!r.local);
   s.pb.querySelector('.commit').classList.toggle('hidden', !!r.local);
+  s.pb.querySelector('.newbranch').classList.toggle('hidden', !!r.local);
+  s.pb.querySelector('.brname').textContent = r.branch || '';
   renderFiles(s);
   if (s.sel && s.files.find(f => f.path === s.sel)) selectFile(s, s.sel);
   else if (s.files[0]) selectFile(s, s.files[0].path);
@@ -113,20 +115,43 @@ async function sendComments(s) {
   selectFile(s, s.sel);
 }
 
-function diffHead(s, p) {
-  const head = h(`<div class="row changes-head"><span class="mono trunc grow">${esc(p)}</span><button class="btn sm danger">${t('changes.discard')}</button></div>`);
-  head.querySelector('button').onclick = () => discardPath(s, p);
+function diffHead(s, p, r) {
+  const head = h(`<div class="row changes-head"><span class="mono trunc grow">${esc(p)}</span>${r.accepted ? `<span class="tag ok">${t('changes.acceptedCount', { count: r.accepted })}</span>` : ''}${r.allAccepted ? '' : `<button class="btn sm danger">${t('changes.discard')}</button>`}</div>`);
+  const discard = head.querySelector('button');
+  if (discard) discard.onclick = () => discardPath(s, p);
   return head;
 }
 
-function renderDiff(s, p, lines) {
-  let nNew = 0;
+// Accept keeps the hunk (staged) and Reject reverts just it; the server re-reads the diff and acts
+// on its own copy, so a hunk that changed in the meantime is refused, not guessed at.
+async function decideHunk(s, p, hunk, op) {
+  if (op === 'reject' && !confirm(t('changes.rejectConfirm', { path: p }))) return;
+  const scope = `project=${encodeURIComponent(s.c.root)}&session=${encodeURIComponent(s.c.L?.id || '')}&scope=${pref('chgScope')}`;
+  const r = await api(`/api/git/hunk?${scope}`, { body: { path: p, id: hunk.id, op }, root: s.c.dir })
+    .catch(e => ({ error: e.body?.code ? t(e.body.code, e.body.args) : e.message }));
+  if (r.error) toast(r.error);
+  await loadChanges(s);
+  if (s.c.L) refreshChanges(s.c.L);
+}
+
+function hunkRow(s, p, l, hunk, local) {
+  const row = h(`<div class="ln diff-hunk"><span class="no"></span><span class="tx">${esc(l)}</span>${hunk ? `<span class="hunk-acts">${local ? '' : `<button class="btn sm line hunk-accept" title="${esc(t('changes.acceptHint'))}">${t('changes.accept')}</button>`}<button class="btn sm danger hunk-reject" title="${esc(t('changes.rejectHint'))}">${t('changes.reject')}</button></span>` : ''}</div>`);
+  if (hunk) {
+    row.querySelector('.hunk-reject').onclick = () => decideHunk(s, p, hunk, 'reject');
+    if (!local) row.querySelector('.hunk-accept').onclick = () => decideHunk(s, p, hunk, 'accept');
+  }
+  return row;
+}
+
+function renderDiff(s, p, r) {
+  const lines = (r.diff || '').replace(/\n$/, '').split('\n');
+  let nNew = 0, nHunk = 0;
   const out = h('<div class="rich-diff"></div>');
-  out.appendChild(diffHead(s, p));
+  out.appendChild(diffHead(s, p, r));
   for (const l of lines) {
     if (/^(diff |index |--- |\+\+\+ )/.test(l)) continue;
     const m = l.match(/^@@ -\d+(?:,\d+)? \+(\d+)/);
-    if (m) { nNew = +m[1]; out.appendChild(h(`<div class="ln diff-hunk"><span class="no"></span><span class="tx">${esc(l)}</span></div>`)); continue; }
+    if (m) { nNew = +m[1]; out.appendChild(hunkRow(s, p, l, r.hunks?.[nHunk++], r.local)); continue; }
     const cls = l.startsWith('+') ? 'diff-add-line' : l.startsWith('-') ? 'diff-del-line' : '';
     const lineNo = l.startsWith('-') ? '' : nNew;
     const row = h(`<div class="ln ${cls}"><span class="no">${lineNo}</span><span class="tx">${esc(l) || ' '}</span>${lineNo ? `<span class="comment-add" role="button" tabindex="0" aria-label="${esc(t('changes.comment'))}" title="${esc(t('changes.comment'))}">+</span>` : ''}</div>`);
@@ -143,9 +168,28 @@ async function selectFile(s, p) {
   $$('.file-item', s.fl).forEach(x => x.classList.toggle('on', x.title === p));
   const L = s.c.L;
   const r = await api(`/api/diff?path=${encodeURIComponent(p)}&session=${encodeURIComponent(L?.id || '')}&scope=${pref('chgScope')}&project=${encodeURIComponent(s.c.root)}`, { root: s.c.dir }).catch(() => ({}));
-  const lines = (r.diff || '').replace(/\n$/, '').split('\n');
-  const out = renderDiff(s, p, lines);
+  const out = renderDiff(s, p, r);
   s.dv.innerHTML = ''; s.dv.appendChild(out);
+}
+
+async function createBranch(s, name) {
+  const scope = `project=${encodeURIComponent(s.c.root)}&session=${encodeURIComponent(s.c.L?.id || '')}`;
+  const r = await api(`/api/git/branch?${scope}`, { body: { name }, root: s.c.dir })
+    .catch(e => ({ error: e.body?.code ? t(e.body.code, e.body.args) : e.message }));
+  toast(r.error || t('changes.branchCreated', { name: r.branch }));
+  if (!r.error) loadChanges(s);
+}
+
+function wireBranch(s) {
+  const btn = s.pb.querySelector('.newbranch'), inp = s.pb.querySelector('.brinput');
+  const fold = () => { inp.value = ''; inp.classList.add('hidden'); btn.classList.remove('hidden'); };
+  btn.onclick = () => { btn.classList.add('hidden'); inp.classList.remove('hidden'); inp.focus(); };
+  inp.onblur = fold;
+  inp.onkeydown = e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') fold();
+    if (e.key === 'Enter' && inp.value.trim()) { const name = inp.value.trim(); fold(); createBranch(s, name); }
+  };
 }
 
 async function commitChanges(s) {
@@ -159,6 +203,7 @@ async function commitChanges(s) {
 function wireChanges(s) {
   s.pb.querySelector('.sendc').onclick = () => sendComments(s);
   s.pb.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && s.comments.length) { e.preventDefault(); sendComments(s); } });
+  wireBranch(s);
   s.pb.querySelector('.commit').onclick = () => commitChanges(s);
   s.pb.querySelector('.cmsg').onkeydown = e => { if (e.key === 'Enter') commitChanges(s); };
   s.extra.querySelector('button:not(.scopeslot *)')?.addEventListener('click', () => loadChanges(s));

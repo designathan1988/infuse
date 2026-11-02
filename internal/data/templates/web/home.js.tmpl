@@ -1,0 +1,7 @@
+// The home page.
+import { itemList } from '../components/item-list.js';
+import { tables } from '../data/tables.js';
+
+export function homePage(state) {
+  return `<h1>${tables.title}</h1>${itemList(state.items)}`;
+}

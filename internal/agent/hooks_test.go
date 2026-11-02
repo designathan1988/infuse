@@ -65,7 +65,9 @@ func TestStopHookSendsTheAgentBackOnce(t *testing.T) {
 	root := t.TempDir()
 	s := newSession(root)
 	s.Provider = "mock"
-	flag := filepath.ToSlash(filepath.Join(root, "already-ran"))
+	// the flag lives in a build folder: the tree audit ignores it, so the hook itself changes no source
+	_ = os.MkdirAll(filepath.Join(root, "build"), 0o755)
+	flag := filepath.ToSlash(filepath.Join(root, "build", "already-ran"))
 	cmd := `test -f '` + flag + `' && exit 0; touch '` + flag + `'; echo 'run the tests before finishing' >&2; exit 2`
 	_ = addHook(root, "project", "Stop", "", cmd)
 	_ = approveHook(LoadHooks(root)[0].Key)

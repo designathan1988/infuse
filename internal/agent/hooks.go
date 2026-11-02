@@ -5,6 +5,9 @@ package agent
 //   PostToolUse  after a tool ran; what it prints to stderr with exit 2 goes back to the agent
 //   UserPromptSubmit  before a message reaches the agent; a block stops the message
 //   Stop         when the agent finishes; a block makes it continue with the reason
+//   SessionStart when a session opens (matcher = startup | resume); what it prints joins the prompt
+//   PreCompact   before a compaction (matcher = auto)
+//   Notification when the agent needs the user (matcher = permission_prompt | question)
 // The hook gets the event as JSON on stdin. Sources: .infuse/hooks.json and .claude/settings.json of the
 // project, ~/.infuse/hooks.json for every project. Every hook command runs only after the user approved
 // that exact command (the agent can write the project's files).
@@ -17,6 +20,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"infuse/internal/config"
+	"infuse/internal/filter"
+	"infuse/internal/sandbox"
 	"infuse/internal/store"
 	"os"
 	"os/exec"
@@ -27,7 +32,7 @@ import (
 	"time"
 )
 
-var hookEvents = []string{"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"}
+var hookEvents = []string{"PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SessionStart", "PreCompact", "Notification"}
 
 type hookCommand struct {
 	Type    string `json:"type"`
@@ -119,7 +124,7 @@ func LoadHooks(root string) []HookEntry {
 			}
 		}
 	}
-	return out
+	return append(out, allPluginHooks(root)...)
 }
 
 // addHook appends a hook to .infuse/hooks.json (project) or ~/.infuse/hooks.json (global).
@@ -224,10 +229,11 @@ func (s *Session) runHooks(ctx context.Context, event, target string, payload ma
 			timeout = 60 * time.Second
 		}
 		hctx, cancel := context.WithTimeout(ctx, timeout)
-		cmd := exec.CommandContext(hctx, FindRealBash(), "-c", h.Command)
+		argv := sandbox.Wrap([]string{FindRealBash(), "-c", h.Command}, s.workRoot(), filter.InfuseRecords(), s.settings.ContainProcesses)
+		cmd := exec.CommandContext(hctx, argv[0], argv[1:]...)
 		noConsoleWindow(cmd)
 		cmd.Dir = s.workRoot()
-		cmd.Env = append(os.Environ(), "INFUSE_PROJECT_DIR="+s.Root, "CLAUDE_PROJECT_DIR="+s.Root)
+		cmd.Env = append(append(os.Environ(), "INFUSE_PROJECT_DIR="+s.Root, "CLAUDE_PROJECT_DIR="+s.Root), s.settingsEnv()...)
 		cmd.Stdin = bytes.NewReader(in)
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -250,8 +256,8 @@ func (s *Session) runHooks(ctx context.Context, event, target string, payload ma
 		case dec.Decision == "block":
 			res.Block = true
 			res.Message = dec.Reason
-		case event == "UserPromptSubmit" && code == 0 && strings.TrimSpace(stdout.String()) != "":
-			res.Message = strings.TrimSpace(stdout.String()) // context added to the user's message
+		case hookContextEvents[event] && code == 0 && strings.TrimSpace(stdout.String()) != "":
+			res.Message = strings.TrimSpace(stdout.String()) // context added for the agent
 		}
 		if res.Block {
 			res.Command = h.Command

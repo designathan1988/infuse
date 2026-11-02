@@ -12,9 +12,21 @@ import (
 func (s *Session) needsCompaction() bool {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
-	// Estimate: 4 chars per token over the serialized messages.
+	return s.contextTokensLocked() > int(float64(s.contextLimitLocked())*0.75)
+}
+
+// contextTokensLocked is the conversation's size: what the provider measured for the latest request,
+// which includes the system prompt and the tools, plus an estimate (4 characters per token) for what
+// came after it. Without a measurement of this same transcript (a new session, a provider that reports
+// nothing, a compaction or a rewind since) the whole conversation is estimated.
+func (s *Session) contextTokensLocked() int {
+	at := s.LastInputAt
+	if s.LastInput > 0 && at > 0 && at <= len(s.Messages) && s.Messages[at-1].TS == s.LastInputMark && s.LastInputMark != 0 {
+		b, _ := json.Marshal(s.Messages[at:])
+		return s.LastInput + len(b)/4
+	}
 	b, _ := json.Marshal(s.Messages)
-	return len(b)/4 > int(float64(s.contextLimitLocked())*0.75)
+	return len(b) / 4
 }
 
 func (s *Session) compact(ctx context.Context, p Provider) error {
@@ -38,14 +50,29 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 			summary += b.Text
 		}
 	}
+	s.spend(s.fastModel(), res.Usage)
 	s.Mu.Lock()
-	s.Messages = append(compactionHead("[Context compacted — summary of the work so far]\n\n"+summary, verbatimRequests(older[:len(older)-1])), keep...)
-	s.TurnStarts = []int{0}
+	s.adoptCompaction(compactionHead("[Context compacted — summary of the work so far]\n\n"+summary, verbatimRequests(older[:len(older)-1])), keep)
 	s.Compactions++
-	s.Cost += s.settings.CostOf(s.fastModel(), res.Usage)
 	s.Mu.Unlock()
 	s.emit("compacted", map[string]any{"summary": summary})
 	return nil
+}
+
+// adoptCompaction replaces the transcript. Turn keeps counting and keeps indexing TurnStarts: every
+// turn the summary absorbed starts right after it, with what was kept verbatim. Checkpoints, tree
+// snapshots and the request of the current turn stay addressed by the same number.
+func (s *Session) adoptCompaction(head, keep []Message) {
+	s.Messages = append(head, keep...)
+	s.TurnStarts = compactedStarts(s.Turn, len(head))
+}
+
+func compactedStarts(turns, at int) []int {
+	out := make([]int, turns)
+	for i := range out {
+		out[i] = at
+	}
+	return out
 }
 
 // compactRequest is what the model is asked when the conversation is summarized.

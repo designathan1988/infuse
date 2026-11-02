@@ -10,6 +10,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"infuse/internal/filter"
+	"infuse/internal/sandbox"
 	"os"
 	"os/exec"
 	"regexp"
@@ -102,11 +104,12 @@ var allProcs sync.Map // every running process of every session, for shutdown
 
 // startBackground runs command in the session's shell and returns at once.
 func (s *Session) startBackground(command, original, description, cwd string) (*bgProc, error) {
-	cmd := exec.Command(FindRealBash(), "-c", command)
+	argv := sandbox.Wrap([]string{FindRealBash(), "-c", command}, s.workRoot(), filter.InfuseRecords(), s.settings.ContainProcesses)
+	cmd := exec.Command(argv[0], argv[1:]...)
 	noConsoleWindow(cmd)
 	procGroup(cmd)
 	cmd.Dir = cwd
-	cmd.Env = append(os.Environ(), "INFUSE_AGENT=1", "GIT_TERMINAL_PROMPT=0", "CI=1")
+	cmd.Env = append(append(os.Environ(), "INFUSE_AGENT=1", "GIT_TERMINAL_PROMPT=0", "CI=1"), s.settingsEnv()...)
 	p := &bgProc{Command: command, Original: original, Description: description, Started: time.Now().UnixMilli(), State: "running", out: &procLog{}, cmd: cmd}
 	cmd.Stdout, cmd.Stderr = p.out, p.out
 	if err := cmd.Start(); err != nil {

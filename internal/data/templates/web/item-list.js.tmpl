@@ -1,0 +1,6 @@
+// One responsibility: the list of items as markup.
+const escapeHtml = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+
+export function itemList(items) {
+  return `<ul class="items">${items.map(i => `<li>${escapeHtml(i.title)}</li>`).join('')}</ul>`;
+}

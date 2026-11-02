@@ -24,14 +24,18 @@ func ReadJSON(file string, v any) error {
 // directory, is flushed, and replaces the old file in one rename. A crash never leaves a half-written
 // document.
 func WriteJSON(file string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-		return err
-	}
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	b = append(b, '\n')
+	return WriteFileAtomic(file, append(b, '\n'))
+}
+
+// WriteFileAtomic replaces a file in one rename, its directory created when missing.
+func WriteFileAtomic(file string, b []byte) error {
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(file), ".infuse-tmp-*")
 	if err != nil {
 		return err

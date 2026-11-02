@@ -7,6 +7,19 @@ import (
 	"strings"
 )
 
+// psFlag matches a PowerShell parameter the way powershell.exe does: - or /, any case, and any prefix
+// of the name (-e, -enc, -EncodedCommand; -c, -com, -Command).
+func psFlag(a, name string) bool {
+	if len(a) < 2 || a[0] != '-' && a[0] != '/' {
+		return false
+	}
+	return strings.HasPrefix(name, strings.ToLower(a[1:]))
+}
+
+func isEncodedFlag(a string) bool {
+	return psFlag(a, "encodedcommand") || strings.EqualFold(a, "-ec") || strings.EqualFold(a, "/ec")
+}
+
 // encodedPayload extracts a PowerShell -EncodedCommand script. opaque is true when the flag is
 // present; payload is empty when the base64 cannot be decoded, which must not run silently.
 func encodedPayload(head string, args []string) (payload string, opaque bool) {
@@ -14,16 +27,14 @@ func encodedPayload(head string, args []string) (payload string, opaque bool) {
 		return "", false
 	}
 	for i, a := range args {
-		if strings.EqualFold(a, "-encodedcommand") || strings.EqualFold(a, "-enc") {
+		if isEncodedFlag(a) {
 			if i+1 < len(args) {
 				return decodePowerShell(args[i+1]), true
 			}
 			return "", true
 		}
-		for _, flag := range []string{"-encodedcommand:", "-enc:"} {
-			if len(a) > len(flag) && strings.EqualFold(a[:len(flag)], flag) {
-				return decodePowerShell(a[len(flag):]), true
-			}
+		if flag, value, ok := strings.Cut(a, ":"); ok && isEncodedFlag(flag) {
+			return decodePowerShell(value), true
 		}
 	}
 	return "", false
@@ -56,29 +67,39 @@ func (g *Guard) scriptProtected(dir string, args []string) (string, bool) {
 	return "", false
 }
 
-// outputTarget returns where curl -o / wget -O writes ("" when it writes to stdout).
+// outputTarget returns where curl -o / wget -O writes ("" when it writes to stdout). Short options
+// cluster and may carry their value attached: -o f, -of, -sSo f, -sSof.
 func outputTarget(args []string) string {
 	for i, a := range args {
 		switch {
-		case a == "-O" || a == "--remote-name" || a == "--output-document" || a == "--output":
-			if i+1 < len(args) {
-				if args[i+1] == "-" {
-					return ""
-				}
-				return args[i+1]
-			}
-			return "(implied)"
-		case strings.HasPrefix(a, "--output="):
-			if v := strings.TrimPrefix(a, "--output="); v != "-" {
+		case a == "--remote-name" || a == "--output-document" || a == "--output":
+			return outputValue(args, i)
+		case strings.HasPrefix(a, "--output=") || strings.HasPrefix(a, "--output-document="):
+			if v := a[strings.IndexByte(a, '=')+1:]; v != "-" {
 				return v
 			}
-		case a == "-o" && i+1 < len(args):
-			if args[i+1] != "-" {
-				return args[i+1]
+		case strings.HasPrefix(a, "--") || !strings.HasPrefix(a, "-"):
+		default:
+			if at := strings.IndexAny(a, "oO"); at > 0 {
+				if attached := a[at+1:]; attached != "" {
+					return attached
+				}
+				return outputValue(args, i)
 			}
 		}
 	}
 	return ""
+}
+
+// outputValue reads the value after the option at i. -O without one names the file after the URL.
+func outputValue(args []string, i int) string {
+	if i+1 >= len(args) {
+		return "(implied)"
+	}
+	if args[i+1] == "-" {
+		return ""
+	}
+	return args[i+1]
 }
 
 // hasInPlace recognizes both -i and --in-place, with or without an attached value.

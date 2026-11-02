@@ -29,7 +29,8 @@
     "label": "DeepSeek",
     "baseUrl": "https://api.deepseek.com",
     "needKey": true,
-    "keyUrl": "https://platform.deepseek.com/api_keys"
+    "keyUrl": "https://platform.deepseek.com/api_keys",
+    "maxTokensField": "max_tokens"
   },
   {
     "id": "openrouter",
@@ -37,7 +38,8 @@
     "label": "OpenRouter",
     "baseUrl": "https://openrouter.ai/api",
     "needKey": true,
-    "keyUrl": "https://openrouter.ai/keys"
+    "keyUrl": "https://openrouter.ai/keys",
+    "noStreamUsage": true
   },
   {
     "id": "groq",
@@ -53,7 +55,9 @@
     "label": "Together",
     "baseUrl": "https://api.together.xyz",
     "needKey": true,
-    "keyUrl": "https://api.together.ai/settings/api-keys"
+    "keyUrl": "https://api.together.ai/settings/api-keys",
+    "maxTokensField": "max_tokens",
+    "noStreamUsage": true
   },
   {
     "id": "mistral",
@@ -61,7 +65,9 @@
     "label": "Mistral",
     "baseUrl": "https://api.mistral.ai",
     "needKey": true,
-    "keyUrl": "https://console.mistral.ai/api-keys"
+    "keyUrl": "https://console.mistral.ai/api-keys",
+    "maxTokensField": "max_tokens",
+    "noStreamUsage": true
   },
   {
     "id": "xai",
@@ -70,6 +76,21 @@
     "baseUrl": "https://api.x.ai",
     "needKey": true,
     "keyUrl": "https://console.x.ai"
+  },
+  {
+    "id": "bedrock",
+    "kind": "bedrock",
+    "label": "Amazon Bedrock",
+    "baseUrl": "https://bedrock-mantle.us-east-1.api.aws/anthropic",
+    "needKey": true,
+    "keyUrl": "https://console.aws.amazon.com/iam/home#/security_credentials"
+  },
+  {
+    "id": "vertex",
+    "kind": "vertex",
+    "label": "Google Cloud Vertex AI",
+    "baseUrl": "",
+    "needKey": false
   },
   {
     "id": "claudedesk",
@@ -97,14 +118,17 @@
     "kind": "openai",
     "label": "LM Studio",
     "baseUrl": "http://127.0.0.1:1234",
-    "local": true
+    "local": true,
+    "maxTokensField": "max_tokens",
+    "noStreamUsage": true
   },
   {
     "id": "custom",
     "kind": "openai",
     "label": "Compatível com OpenAI",
     "baseUrl": "",
-    "needKey": false
+    "needKey": false,
+    "maxTokensField": "max_tokens"
   },
   {
     "id": "mock",

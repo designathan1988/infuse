@@ -3,10 +3,12 @@
 import { $, h, esc, baseName, debounce } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { I } from '../core/icons.js';
-import { api, tokenHeader, sseUrl } from '../core/api.js';
+import { api, tokenHeader, sseUrl, urlWith } from '../core/api.js';
 
 function makeState(pb, extra, c) {
   const s = { pb, extra, c, tabs: [], cur: null };
+  // This shell is the human's: it runs unfiltered, so it says so rather than look like the agent's.
+  pb.appendChild(h(`<div class="term-note" role="note">${esc(t('terminal.outsideFilter'))}</div>`));
   s.host = h('<div class="term-host"></div>');
   pb.appendChild(s.host);
   s.bar = h('<span class="row row-tight" role="tablist"></span>');
@@ -55,7 +57,7 @@ function bindExit(tb, es, term) {
   es.addEventListener('exit', () => { term.write(`\r\n\x1b[2m[${t('terminal.exited')}]\x1b[0m\r\n`); es.close(); tb.dead = true; tb.stopInput?.(); });
   es.onerror = () => {
     if (es.readyState === EventSource.CLOSED || tb.dead) return;
-    fetch(sseUrl(`/api/term/${tb.id}/resize`, tb.root), {
+    fetch(urlWith(`/api/term/${tb.id}/resize`, { root: tb.root }), {
       method: 'POST', headers: tokenHeader(), body: JSON.stringify({ cols: term.cols, rows: term.rows })
     }).then(x => {
       if (x.status === 404) { es.close(); tb.dead = true; term.write(`\r\n\x1b[2m[${t('terminal.ended')}]\x1b[0m\r\n`); }

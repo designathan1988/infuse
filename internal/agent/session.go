@@ -23,6 +23,7 @@ type permRequest struct {
 	Input    json.RawMessage `json:"input"`
 	Category string          `json:"category"`
 	Reason   string          `json:"reason,omitempty"` // why infuse asks although the mode would allow it (a sentinel)
+	Prefix   string          `json:"prefix,omitempty"` // the Bash prefix an "always" answer remembers
 	reply    chan string
 }
 
@@ -59,18 +60,31 @@ type SessionData struct {
 	Working     bool                     `json:"working,omitempty"`   // a turn was in progress when last saved (resumed at startup)
 	Worktree    string                   `json:"worktree,omitempty"`  // absolute path when the session has its own worktree
 	Branch      string                   `json:"branch,omitempty"`
-	Plan        string                   `json:"plan,omitempty"`       // the latest plan proposed in plan mode
-	LastInput   int                      `json:"lastInput,omitempty"`  // context size of the latest request
-	Memory      []MemoryItem             `json:"memory,omitempty"`     // structured memory of this session only
-	Pinned      bool                     `json:"pinned,omitempty"`     // shown at the top of the sidebar
-	Mission     *Mission                 `json:"mission,omitempty"`    // the session's mission, running or ended
-	PinnedMsgs  []int                    `json:"pinnedMsgs,omitempty"` // messages the user pinned (indices)
+	Plan        string                   `json:"plan,omitempty"`        // the latest plan proposed in plan mode
+	LastInput   int                      `json:"lastInput,omitempty"`   // context size of the latest request
+	LastInputAt int                      `json:"lastInputAt,omitempty"` // messages that request carried
+	// LastInputMark is the time of the last of those messages: a changed transcript no longer matches it.
+	LastInputMark int64        `json:"lastInputMark,omitempty"`
+	TurnCosts     []float64    `json:"turnCosts,omitempty"`    // what each turn cost, by turn number
+	Unpriced      []string     `json:"unpriced,omitempty"`     // models used without a known price
+	Memory        []MemoryItem `json:"memory,omitempty"`       // structured memory of this session only
+	Pinned        bool         `json:"pinned,omitempty"`       // shown at the top of the sidebar
+	Mission       *Mission     `json:"mission,omitempty"`      // the session's mission, running or ended
+	PinnedMsgs    []int        `json:"pinnedMsgs,omitempty"`   // messages the user pinned (indices)
+	Contract      *Contract    `json:"contract,omitempty"`     // the request's confirmed contract (contract.go)
+	TurnRequest   string       `json:"turnRequest,omitempty"`  // what the current turn was asked to do: compaction must not lose it
+	Outcome       string       `json:"outcome,omitempty"`      // how the last turn ended when it was not plainly done (unverified)
+	Unattended    bool         `json:"unattended,omitempty"`   // nobody is there to answer (a scheduled task): a question is refused at once
+	AuditPending  bool         `json:"auditPending,omitempty"` // the last turn ended before its audit: the next one keeps its base
+	PlanReturn    string       `json:"planReturn,omitempty"`   // the mode to return to when the agent entered plan mode itself
+	Impasse       *Impasse     `json:"impasse,omitempty"`      // the latest impasse declared outside a mission
 }
 
 type Session struct {
 	SessionData
 	State string `json:"state"` // idle | thinking | tool | waiting_permission | waiting_user | compacting | error
 
+	warnedDay     string // the day the session last warned about the daily limit
 	Mu            sync.Mutex
 	subs          map[chan Event]struct{}
 	seq           int
@@ -86,18 +100,21 @@ type Session struct {
 	lastOracleErr string // the failing checks of that run, for the mission's next message
 
 	localInstrSeen map[string]bool // folder instruction files already shown in this session
-	mapTimer      *time.Timer
-	settings      Settings
-	inflight      []Block               // results of the current reply's tool calls, before they join the transcript
-	pendingImages []Block               // images the agent opened with Read, sent with the next tool results
-	askMu         sync.Mutex            // one question to the user at a time (parallel subagents may each need one)
-	gate          researchGate          // research gate and report requirement of the current turn
-	docs          docLedger             // what the agent read as documentation in this session (docgate.go)
-	procs         []*bgProc             // background processes (procs.go)
-	cover         map[string]*readCover // lines of each file actually shown to the agent (instructions_gate.go)
-	callMsgs      map[string][]Msg      // infuse's messages recorded per tool call (msgs.go)
-	procSeq       int
-	permWaitNs    int64 // time the current tool spent waiting for the user's approval, subtracted from its duration
+	mapTimer       *time.Timer
+	settings       Settings
+	inflight       []Block               // results of the current reply's tool calls, before they join the transcript
+	pendingImages  []Block               // images the agent opened with Read, sent with the next tool results
+	askMu          sync.Mutex            // one question to the user at a time (parallel subagents may each need one)
+	gate           researchGate          // research gate and report requirement of the current turn
+	docs           docLedger             // what the agent read as documentation in this session (docgate.go)
+	procs          []*bgProc             // background processes (procs.go)
+	cover          map[string]*readCover // lines of each file actually shown to the agent (instructions_gate.go)
+	callMsgs       map[string][]Msg      // infuse's messages recorded per tool call (msgs.go)
+	procSeq        int
+	permWaitNs     int64     // time the current tool spent waiting for the user's approval, subtracted from its duration
+	impasseTurn    int       // the turn an impasse ended (impasse.go)
+	startHooks     sync.Once // the SessionStart hooks run once per open session
+	startContext   string    // what they printed: it joins the system prompt
 }
 
 var (

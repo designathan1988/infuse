@@ -1,23 +1,42 @@
 package agent
 
-// The architecture base is the user's structure: code written outside it is refused before disk.
+// The architecture base is the user's structure: code written outside it, or across layers it does
+// not allow, is refused before disk.
 
 import (
 	"infuse/internal/base"
 )
 
-func (s *Session) baseViolation(rel string, isCode bool) Msg {
+func (s *Session) baseViolation(rel string, isCode bool, content string) Msg {
 	if name := base.CheckWrite(s.Root, rel, isCode); name != "" {
 		return M("protocol.out_of_base", "file", rel, "base", name)
+	}
+	if !isCode {
+		return Msg{}
+	}
+	if from, target := base.CheckLayers(s.Root, rel, content); from != "" {
+		return M("protocol.layer", "file", rel, "rule", from, "target", target)
 	}
 	return Msg{}
 }
 
-// baseGrounds is the base as the prompt states it.
+// fileLineLimit is the size standard: the base's when the project chose one, else the user's setting
+// (0 means 400, a negative value means no limit).
+func (s *Session) fileLineLimit() int {
+	if b := base.Load(s.Root); b != nil && b.MaxFileLines > 0 {
+		return b.MaxFileLines
+	}
+	if s.settings.MaxFileLines == 0 {
+		return 400
+	}
+	return s.settings.MaxFileLines
+}
+
+// baseGrounds is the base's whole contract, as the prompt states it.
 func baseGrounds(root string) string {
 	b := base.Load(root)
 	if b == nil {
 		return ""
 	}
-	return b.Summary()
+	return b.Contract()
 }

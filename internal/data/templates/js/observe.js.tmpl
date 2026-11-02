@@ -1,0 +1,13 @@
+// The observability hook: everything worth seeing goes through observe(). Replace the hook to send
+// events anywhere; tests read them through it.
+let hook = () => {};
+
+export function setHook(next) {
+  const previous = hook;
+  hook = next;
+  return previous;
+}
+
+export function observe(name, fields = {}) {
+  hook({ time: Date.now(), name, fields });
+}

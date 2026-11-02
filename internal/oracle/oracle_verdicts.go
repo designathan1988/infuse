@@ -15,7 +15,8 @@ func ListVerdicts(root string, n int) []Verdict {
 		var v Verdict
 		dir := filepath.Join(EvidenceDir(root), entries[i].Name())
 		if entries[i].IsDir() && core.ReadJSON(filepath.Join(dir, "verdict.json"), &v) == nil {
-			v.SpecVerified = verifySpecCopy(dir, v.SpecHash) && verifyVerdict(v)
+			v.SpecVerified = verifySpecCopy(dir, v.SpecHash) && verifyVerdict(v) &&
+				verdictBelongs(root, entries[i].Name(), v) && verifyManifest(dir, v.Fingerprint)
 			out = append(out, v)
 		}
 	}

@@ -19,14 +19,15 @@ type readTool struct{}
 
 func (readTool) Category() string { return "read" }
 func (readTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Read", Description: "Reads a project file with line numbers. Use offset/limit for large files.",
-		InputSchema: schema(`{"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer","description":"First line (1-based)"},"limit":{"type":"integer","description":"Number of lines"}},"required":["path"]}`)}
+	return ToolSpec{Name: "Read", Description: "Reads a project file with line numbers. Use offset/limit for large files. Images are shown to you. PDFs come back as the text of each page: pass pages (e.g. \"3\" or \"10-20\", at most 20 at a time). Jupyter notebooks come back cell by cell with their outputs: pass cells (e.g. \"1-5\") for part of one.",
+		InputSchema: schema(`{"type":"object","properties":{"path":{"type":"string"},"offset":{"type":"integer","description":"First line (1-based)"},"limit":{"type":"integer","description":"Number of lines"},"pages":{"type":"string","description":"PDF only: page range, e.g. 3 or 10-20"},"cells":{"type":"string","description":"Notebook only: cell range, e.g. 2 or 1-5"}},"required":["path"]}`)}
 }
 
 func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) (string, bool) {
 	var in struct {
 		Path          string `json:"path"`
 		Offset, Limit int
+		Pages, Cells  string
 	}
 	_ = json.Unmarshal(input, &in)
 	abs, err := tc.resolvePath(in.Path, false)
@@ -37,15 +38,14 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	if err != nil {
 		return err.Error(), true
 	}
-	if mt := imageType(abs); mt != "" { // the model sees the image itself
-		if len(b) > 5<<20 {
-			return tc.Say(M("read.image_too_large", "bytes", len(b))), true
-		}
-		tc.S.Mu.Lock()
-		tc.S.pendingImages = append(tc.S.pendingImages, Block{Type: "image", MediaType: mt, Data: base64.StdEncoding.EncodeToString(b)})
-		tc.S.Mu.Unlock()
-		tc.S.markRead(abs)
-		return tc.Say(M("read.image_attached", "file", relTo(tc.Root, abs), "bytes", len(b))), false
+	if mt := imageType(abs); mt != "" {
+		return tc.readImage(abs, mt, b)
+	}
+	if isPDF(abs) {
+		return tc.readPDF(abs, b, in.Pages)
+	}
+	if isNotebook(abs) {
+		return tc.readNotebook(abs, b, in.Cells)
 	}
 	if bytes.IndexByte(b, 0) >= 0 {
 		return tc.Say(M("read.binary", "bytes", len(b))), true
@@ -78,6 +78,18 @@ func (readTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 	tc.S.markRead(abs)
 	out := sb.String() + tc.readContext(abs)
 	return tc.clip(out), false
+}
+
+// readImage attaches an image: the model sees it itself.
+func (tc *ToolContext) readImage(abs, mt string, b []byte) (string, bool) {
+	if len(b) > 5<<20 {
+		return tc.Say(M("read.image_too_large", "bytes", len(b))), true
+	}
+	tc.S.Mu.Lock()
+	tc.S.pendingImages = append(tc.S.pendingImages, Block{Type: "image", MediaType: mt, Data: base64.StdEncoding.EncodeToString(b)})
+	tc.S.Mu.Unlock()
+	tc.S.markRead(abs)
+	return tc.Say(M("read.image_attached", "file", relTo(tc.Root, abs), "bytes", len(b))), false
 }
 
 // readContext is what infuse adds to a file's content: its dependents and the rules of its folder.

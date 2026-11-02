@@ -117,3 +117,24 @@ State: **covered** (lock in code, with a test) · **partial** · **missing**.
 | Package gate reads a local cache; map parsed once per file generation | network and re-parsing in the gate path | covered (`locks_test.go`) |
 | Base `.infuse/base.json` refuses code outside its folders | work with no intended structure | covered (`base_test.go`) |
 | `infuse claude|codex|gemini` and the app launcher start external CLIs through the shim | the Studio launching unfiltered agents | build + desktop tests |
+
+## H. Corrections from the 2026-11-02 audit
+
+The states above were written from reading the code. Running the program showed these rows were not
+true at that point; each is now fixed and has a test.
+
+| Rows | What was wrong | Fix |
+|---|---|---|
+| B1, B2, B6, A8, C6, C7, D3 | the Bash tool appended a `printf` after the command, so every failing command read as success and no lock that reads an exit code ever fired | the status is kept across the trailer (`TestBashKeepsTheExitStatusOfTheCommand`) |
+| F3, F7, G "Control files", G "Indirect writers" | the OS containment never ran a process: no command could start on Windows, and the deny on `.infuse` was never written | Low integrity containment, tested through the Bash tool with commands the parser cannot read (`TestContainmentStopsWhatTheParserCannotRead`) |
+| B3, B4, C4, E1, F4 | a shell edit skipped the sentinel, the shortcut detector, the contract and the screenshot obligation, and a path once gated was never judged again whatever it later held | gates are bound to content; `shellHonesty`, `noteShellChanges` |
+| B1 | the Report was waived after one reminder and unconfirmed claims were display only; a pass followed by a failure stayed confirmed | `unconfirmedReport`, last run decides, a run older than the last edit is stale |
+| A10, D2 | compaction disconnected Turn from TurnStarts, turning the Report gate off and opening every later Contract | turns stay addressable, the request is stored apart from the transcript |
+| D2 | failed or cancelled turns laundered their shell writes into the next baseline; a crash left a mission running forever | `AuditPending` carries the base; a stale mission is closed at startup |
+| G "Oracle criteria anchored", SPEC "immutable snapshot" | checks ran uncontained, the snapshot linked live dependencies, git hooks ran on the host | contained checks, private snapshot, `gitx` is the only way to run git |
+| G "revert restores shell deletions" | checkpoints were reapplied after the snapshot, restoring shell-modified bytes | the snapshot has the last word |
+
+Still honest gaps: B13 and C2 are not mechanical. F2 and F8 remain partial. B8 cannot see a new test
+file whose `TestMain` exits early, because nothing in a new file distinguishes that from a real one;
+the oracle's own criteria are the defense. D4 tracks `run_in_background`; on Windows a `cmd &` inside a
+foreground command dies with the wrapper's job instead of being declared.

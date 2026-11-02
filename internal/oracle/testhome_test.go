@@ -2,13 +2,41 @@ package oracle
 
 import (
 	"infuse/internal/config"
-	"infuse/internal/filter"
-	"infuse/internal/workspace"
+	"infuse/internal/platform/gitx"
+	"infuse/internal/sandbox"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 )
+
+// serveEnv makes this test binary the snapshot's static file server.
+const serveEnv = "ORACLETEST_SERVE"
+
+// TestMain plays the __sandbox role, as the real binary does, so the executor's containment runs end
+// to end, and the file server the server checks start from the snapshot.
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == sandbox.Role {
+		os.Exit(sandbox.Main(os.Args[2:]))
+	}
+	if os.Getenv(serveEnv) == "1" {
+		serveCurrentFolder()
+		return
+	}
+	os.Exit(m.Run())
+}
+
+func serveCurrentFolder() {
+	ln, err := net.Listen("tcp", "127.0.0.1:"+os.Getenv("PORT"))
+	if err != nil {
+		os.Exit(3)
+	}
+	_ = http.Serve(ln, http.FileServer(http.Dir(".")))
+}
+
+func runGit(root string, args ...string) (string, error) { return gitx.Run(root, args...) }
 
 func testHome(t *testing.T) {
 	t.Helper()
@@ -25,28 +53,16 @@ func gitRepo(t *testing.T) string {
 	}
 	root := t.TempDir()
 	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "t@t"}, {"config", "user.name", "t"}} {
-		if out, err := workspace.GitRun(root, args...); err != nil {
+		if out, err := gitx.Run(root, args...); err != nil {
 			t.Fatal(out)
 		}
 	}
 	_ = os.WriteFile(filepath.Join(root, "a.txt"), []byte("one\ntwo\n"), 0o644)
-	_, _ = workspace.GitRun(root, "add", "-A")
-	if out, err := workspace.GitRun(root, "commit", "-qm", "init"); err != nil {
+	_, _ = gitx.Run(root, "add", "-A")
+	if out, err := gitx.Run(root, "commit", "-qm", "init"); err != nil {
 		t.Fatal(out)
 	}
 	return root
 }
 
-func gitOutput(root string, args ...string) string { return workspace.GitOutput(root, args...) }
-
-func bypassRoot(t *testing.T) (string, *filter.Guard) {
-	t.Helper()
-	t.Setenv("INFUSE_HOME", t.TempDir())
-	root := t.TempDir()
-	oracle := filepath.Join(root, ".infuse", "oracle", "ready.md")
-	_ = os.MkdirAll(filepath.Dir(oracle), 0o755)
-	_ = os.WriteFile(oracle, []byte("ORIGINAL\n"), 0o644)
-	_ = os.MkdirAll(filepath.Join(root, "secrets"), 0o755)
-	_ = os.WriteFile(filepath.Join(root, "secrets", "key.pem"), []byte("K\n"), 0o644)
-	return root, filter.NewGuard(root, filter.Policy{Protected: []string{"secrets/**"}})
-}
+func gitOutput(root string, args ...string) string { return gitx.Output(root, args...) }

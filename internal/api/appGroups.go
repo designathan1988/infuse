@@ -10,6 +10,8 @@ var appGroups = []appGroup{
 	appProviders,
 	appOracle,
 	appDocs,
+	appPolicy,
+	appExtensions,
 	appHooks,
 	appMCP,
 	appMemory,

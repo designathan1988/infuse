@@ -1,0 +1,40 @@
+package queue
+
+// The canonical Job and its declared states.
+
+import "fmt"
+
+// State is where a job is in its life.
+type State string
+
+// The declared states.
+const (
+	Queued  State = "queued"
+	Running State = "running"
+	Done    State = "done"
+	Failed  State = "failed"
+)
+
+var transitions = map[State][]State{
+	Queued:  {Running},
+	Running: {Done, Failed},
+}
+
+// Job is one unit of work.
+type Job struct {
+	ID      int    `json:"id"`
+	Kind    string `json:"kind"`
+	Payload string `json:"payload"`
+	State   State  `json:"state"`
+	Error   string `json:"error,omitempty"`
+}
+
+func (j Job) moved(next State) (Job, error) {
+	for _, s := range transitions[j.State] {
+		if s == next {
+			j.State = next
+			return j, nil
+		}
+	}
+	return j, fmt.Errorf("job %d cannot go from %s to %s", j.ID, j.State, next)
+}

@@ -34,12 +34,19 @@ func (p *openAIProvider) Stream(ctx context.Context, req ModelRequest, emit func
 
 func (p *openAIProvider) body(req ModelRequest) map[string]any {
 	ds := strings.Contains(p.base, "deepseek.com")
-	body := map[string]any{"model": req.Model, "stream": true, "stream_options": map[string]any{"include_usage": true}, "messages": openAIMessages(req.System, req.Messages, ds)}
+	body := map[string]any{"model": req.Model, "stream": true, "messages": openAIMessages(req.System, req.Messages, ds)}
+	if !p.wire.NoStreamUsage {
+		body["stream_options"] = map[string]any{"include_usage": true}
+	}
 	if ds {
 		deepseekThinking(body, req)
 	}
 	if req.MaxTokens > 0 {
-		body["max_completion_tokens"] = req.MaxTokens
+		field := p.wire.MaxTokensField
+		if field == "" {
+			field = "max_completion_tokens"
+		}
+		body[field] = req.MaxTokens
 	}
 	if len(req.Tools) > 0 {
 		var ts []map[string]any

@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"infuse/internal/core"
+	"infuse/internal/filter"
+	"infuse/internal/platform/process"
+	"infuse/internal/sandbox"
 	"os"
 	"os/exec"
 	"strings"
@@ -56,13 +59,8 @@ func (bashTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 // prepareBash applies the guard, judges and checkpoints heredoc targets, transforms and rules the command.
 func prepareBash(ctx context.Context, tc *ToolContext, in *bashInput) (string, TransformResult, []Msg, int64, string, bool) {
 	started := time.Now().UnixMilli()
-	// The guard is rooted at the real project, not at a session worktree: from a worktree, ../../
-	// reaches the project's own .infuse records and settings.
-	guardRoot := tc.Root
-	if tc.S != nil {
-		guardRoot = tc.S.Root
-	}
-	guarded, guardNotes, gerr := newGuard(guardRoot, tc.S.settings.ProtectedPaths).GuardCommandMsgs(in.Command, tc.Cwd)
+	guard := tc.S.guard()
+	guarded, guardNotes, gerr := guard.GuardCommandMsgs(in.Command, tc.Cwd)
 	if gerr != nil {
 		return "", TransformResult{}, nil, started, tc.SayErr(gerr), false
 	}
@@ -70,22 +68,22 @@ func prepareBash(ctx context.Context, tc *ToolContext, in *bashInput) (string, T
 	// Heredoc file writes happen inside TransformCommand: judge their content by the write policy and
 	// checkpoint their targets first. A checkpoint alone never exempts the path from the turn audit.
 	intents := make([]shellWriteIntent, 0)
-	for _, h := range FindHeredocs(in.Command) {
-		_, _, line := CommandLineOf(in.Command, h)
-		if intent := DetectFileWrite(line); intent != nil {
-			abs := resolveIn(tc.Cwd, FromMsysPath(intent.Path))
-			tc.S.checkpointBeforeWrite(abs)
-			intents = append(intents, shellWriteIntent{Abs: abs, Content: h.Body})
-		}
+	for _, t := range filter.HeredocTargets(in.Command, tc.Cwd) {
+		tc.S.checkpointBeforeWrite(t.Abs)
+		intents = append(intents, shellWriteIntent{Abs: t.Abs, Content: t.Content})
 	}
 	if m := tc.S.precheckShellWrites(ctx, intents); !m.Empty() {
 		return "", TransformResult{}, nil, started, tc.SayErr(core.ErrMsg(m)), false
 	}
-	tr := TransformCommand(in.Command, tc.Cwd)
-	if tc.Rules.Disabled["heredoc"] {
-		tr = TransformResult{Command: in.Command}
+	tr := TransformResult{Command: in.Command}
+	if !tc.Rules.Disabled["heredoc"] { // the transform writes as it goes: it must not run at all
+		tr = TransformCommand(in.Command, tc.Cwd)
 	}
-	command, ruleLines := ApplyCommandRulesMsgs(tc.Root, tc.Rules, tr.Command)
+	rewritten, ruleLines := ApplyCommandRulesMsgs(tc.Root, tc.Rules, tr.Command)
+	command, ruleNotes, gerr := guard.Reguard(tr.Command, rewritten, tc.Cwd)
+	if gerr != nil {
+		return "", TransformResult{}, nil, started, tc.SayErr(gerr), false
+	}
 	Journal(tc.Root, JournalEntry{Kind: "command", Command: in.Command, Detail: "agent"})
 	for _, a := range tr.Actions {
 		if a.Kind == ActLesson && a.Vice != "" {
@@ -94,7 +92,7 @@ func prepareBash(ctx context.Context, tc *ToolContext, in *bashInput) (string, T
 			Journal(tc.Root, JournalEntry{Kind: "transform", Path: a.Path, Bytes: a.Bytes, Detail: a.Detail})
 		}
 	}
-	return command, tr, append(guardNotes, ruleLines...), started, "", true
+	return command, tr, append(append(guardNotes, ruleLines...), ruleNotes...), started, "", true
 }
 
 func runBackground(ctx context.Context, tc *ToolContext, in *bashInput, command, original string) (string, bool) {
@@ -127,17 +125,24 @@ func runBackground(ctx context.Context, tc *ToolContext, in *bashInput, command,
 }
 
 func runForeground(ctx context.Context, tc *ToolContext, in *bashInput, command string, tr TransformResult, notes []Msg, started int64) (string, bool) {
-	// Track the working directory across commands, as a human shell would.
-	wrapped := command + "\nprintf '\\n__INFUSE_CWD__%s' \"$PWD\""
+	// Track the working directory across commands, as a human shell would. The command's status is
+	// kept across the trailer: every lock that reads an exit code depends on it.
+	wrapped := command + "\n__infuse_status=$?\nprintf '\\n__INFUSE_CWD__%s' \"$PWD\"\nexit $__infuse_status"
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(in.Timeout)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, FindRealBash(), "-c", wrapped)
+	argv := sandbox.Wrap([]string{FindRealBash(), "-c", wrapped}, tc.S.workRoot(), filter.InfuseRecords(), tc.S.settings.ContainProcesses)
+	cmd := exec.CommandContext(cctx, argv[0], argv[1:]...)
 	noConsoleWindow(cmd)
 	cmd.Dir = tc.Cwd
-	cmd.Env = append(os.Environ(), "INFUSE_AGENT=1", "GIT_TERMINAL_PROMPT=0", "CI=1")
+	cmd.Env = append(append(os.Environ(), "INFUSE_AGENT=1", "GIT_TERMINAL_PROMPT=0", "CI=1"), tc.S.settingsEnv()...)
 	buf := newCapWriter(1 << 20) // head and tail kept: unbounded output cannot exhaust memory
 	cmd.Stdout, cmd.Stderr = buf, buf
-	err := cmd.Run()
+	err := cmd.Start()
+	if err == nil {
+		process.AttachJob(cmd) // the whole tree ends with infuse, even on a crash
+		err = cmd.Wait()
+		process.ReleaseJob(cmd) // a timed-out command leaves nothing behind, and no handle
+	}
 	out := buf.String()
 	if i := strings.LastIndex(out, "__INFUSE_CWD__"); i >= 0 {
 		if nc := strings.TrimSpace(out[i+len("__INFUSE_CWD__"):]); nc != "" {
@@ -156,6 +161,9 @@ func runForeground(ctx context.Context, tc *ToolContext, in *bashInput, command 
 		isErr = true
 	}
 	var trailer []string
+	if inst := tc.S.localInstructions(tc.S.currentCwd()); inst != "" { // the shell entered a folder with its own rules
+		trailer = append(trailer, tc.Say(M("read.localInstructions"))+"\n"+inst)
+	}
 	for _, m := range trailerMsgs(tc.Root, tc.Cwd, in.Command, tr.Actions, started, tc.Rules, notes) {
 		trailer = append(trailer, tc.Say(m)) // each note recorded: the user reads it in their language
 	}

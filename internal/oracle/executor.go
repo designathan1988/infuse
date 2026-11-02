@@ -8,12 +8,11 @@ import (
 	"infuse/internal/fsx"
 	"infuse/internal/journal"
 	"infuse/internal/lang"
-	"infuse/internal/platform/process"
+	"infuse/internal/sandbox"
 	"infuse/internal/security"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -42,7 +41,7 @@ func RunOracleTurn(ctx context.Context, evidenceRoot, workDir, session string, t
 	mu.(*sync.Mutex).Lock()
 	defer mu.(*sync.Mutex).Unlock()
 
-	v := Verdict{Run: time.Now().Format("20060102-150405.000"), Started: time.Now().UnixMilli(), Session: session, Turn: turn, Checks: []CheckResult{}}
+	v := Verdict{Run: time.Now().Format("20060102-150405.000"), Started: time.Now().UnixMilli(), Session: session, Turn: turn, Project: projectID(evidenceRoot), Checks: []CheckResult{}}
 	spec, err := LoadOracleSpec(evidenceRoot)
 	if err != nil {
 		return v, fmt.Errorf("invalid checks.json: %w", err)
@@ -60,64 +59,83 @@ func RunOracleTurn(ctx context.Context, evidenceRoot, workDir, session string, t
 		journal.Journal(evidenceRoot, journal.JournalEntry{Kind: "oracle", Detail: fmt.Sprintf("verdict %s (%s) — evidence in .infuse/evidence/%s", v.Verdict, v.Summary, v.Run)})
 		return v, nil
 	}
+	// the criteria are verified first: an empty spec is only "no criteria" when nobody removed them
+	if err := VerifyCriteria(evidenceRoot, spec); err != nil {
+		v.Verdict, v.Summary = "erro", err.Error()
+		return finish()
+	}
 	if len(spec.Checks) == 0 {
 		v.Verdict, v.Summary = "sem-criterios", uiText("oracle.noChecks")
 		return finish()
 	}
-	if summary, ok := oraclePreflight(evidenceRoot, spec); !ok {
-		v.Verdict, v.Summary = "erro", summary
+	if needsServer(spec) && strings.TrimSpace(spec.Server) == "" {
+		v.Verdict, v.Summary = "erro", uiText("oracle.httpNeedsServer")
 		return finish()
 	}
 	v.Warnings = specWarnings(spec)
-
-	snapDir, snapID, cleanup, err := takeSnapshot(workDir, dir)
+	snap, err := takeSnapshot(workDir, dir)
 	if err != nil {
 		v.Verdict, v.Summary = "erro", uiText("oracle.snapshotFailed", "error", err.Error())
 		return finish()
 	}
-	defer cleanup()
-	v.Snapshot = snapID
+	defer snap.cleanup()
+	v.Snapshot, v.Fingerprint = snap.id, snap.fingerprint
+	measureSnapshot(ctx, &v, evidenceRoot, workDir, dir, spec, snap)
+	return finish()
+}
 
-	if summary, ok := runSetup(ctx, snapDir, dir, spec.Setup); !ok {
-		v.Verdict, v.Summary = "erro", summary
-		return finish()
+// measureSnapshot runs the criteria against the snapshot and fills the verdict in.
+func measureSnapshot(ctx context.Context, v *Verdict, evidenceRoot, workDir, dir string, spec OracleSpec, snap *snapshot) {
+	warnings, refused := checkDependencies(workDir, snap.trees)
+	v.Warnings = append(v.Warnings, warnings...)
+	if refused != "" {
+		v.Verdict, v.Summary = "erro", refused
+		return
 	}
-	pid, stop, summary, ok := startSnapshotServer(ctx, spec, snapDir, dir)
+	x := newContainment(evidenceRoot, snap.dir)
+	if !sandbox.Contained(x.setting) {
+		v.Warnings = append(v.Warnings, uiText("oracle.notContained"))
+	}
+	if snap.outsideLinks > 0 {
+		v.Warnings = append(v.Warnings, uiText("oracle.outsideLinks", "count", snap.outsideLinks))
+	}
+	if summary, ok := runSetup(ctx, x, dir, spec.Setup); !ok {
+		v.Verdict, v.Summary = "erro", summary
+		return
+	}
+	pid, stop, summary, ok := startSnapshotServer(ctx, spec, x, dir)
 	if !ok {
 		v.Verdict, v.Summary = "erro", summary
-		return finish()
+		return
 	}
 	v.ServerPID = pid
 	defer stop()
 	var passed int
-	v.Checks, passed = runChecks(ctx, snapDir, dir, spec.Checks)
-	if passed == len(spec.Checks) {
-		v.Verdict = "aprovado"
-	} else {
-		v.Verdict = "reprovado"
-	}
-	v.Summary = uiText("oracle.summary", "passed", passed, "total", len(spec.Checks))
-	return finish()
+	v.Checks, passed = runChecks(ctx, x, dir, spec.Checks)
+	v.Verdict, v.Summary = verdictOf(v.Checks, passed)
 }
 
-// oraclePreflight refuses criteria that cannot produce a trustworthy verdict: criteria that do not
-// match the user's anchored copy, or an HTTP check with no server started from the snapshot.
-func oraclePreflight(evidenceRoot string, spec OracleSpec) (summary string, ok bool) {
-	if err := verifyAnchor(evidenceRoot, spec); err != nil {
-		return uiText("oracle.anchor", "error", err.Error()), false
+// verdictOf reads the results: a check that could not be measured makes the run an error, never a pass
+// and never a plain failure of the project.
+func verdictOf(checks []CheckResult, passed int) (verdict, summary string) {
+	for _, c := range checks {
+		if c.Errored {
+			return "erro", c.Detail
+		}
 	}
-	if hasHTTPChecks(spec) && strings.TrimSpace(spec.Server) == "" {
-		return uiText("oracle.httpNeedsServer"), false
+	summary = uiText("oracle.summary", "passed", passed, "total", len(checks))
+	if passed == len(checks) {
+		return "aprovado", summary
 	}
-	return "", true
+	return "reprovado", summary
 }
 
 // startSnapshotServer starts the criteria's server from the snapshot when there is one to start.
-func startSnapshotServer(ctx context.Context, spec OracleSpec, snapDir, dir string) (pid int, stop func(), summary string, ok bool) {
-	if !hasHTTPChecks(spec) || strings.TrimSpace(spec.Server) == "" {
+func startSnapshotServer(ctx context.Context, spec OracleSpec, x containment, dir string) (pid int, stop func(), summary string, ok bool) {
+	if !needsServer(spec) || strings.TrimSpace(spec.Server) == "" {
 		return 0, func() {}, "", true
 	}
-	stop, pid, err := startServer(ctx, snapDir, dir, spec)
+	stop, pid, err := startServer(ctx, x, dir, spec)
 	if err != nil {
 		return 0, nil, err.Error(), false
 	}
@@ -125,11 +143,11 @@ func startSnapshotServer(ctx context.Context, spec OracleSpec, snapDir, dir stri
 }
 
 // runSetup runs the spec's preparation command against the snapshot; ok is false when it failed.
-func runSetup(ctx context.Context, snapDir, dir, setup string) (summary string, ok bool) {
+func runSetup(ctx context.Context, x containment, dir, setup string) (summary string, ok bool) {
 	if strings.TrimSpace(setup) == "" {
 		return "", true
 	}
-	res := runCheckCommand(ctx, snapDir, setup, 600)
+	res := runCheckCommand(ctx, x, setup, 600)
 	_ = os.WriteFile(filepath.Join(dir, "setup.log"), []byte(res.out), 0o644)
 	if res.exit != 0 {
 		return uiText("oracle.setupFailed", "exit", res.exit), false
@@ -138,7 +156,7 @@ func runSetup(ctx context.Context, snapDir, dir, setup string) (summary string, 
 }
 
 // runChecks runs every check against the snapshot in order and returns the results and how many passed.
-func runChecks(ctx context.Context, snapDir, dir string, checks []OracleCheck) ([]CheckResult, int) {
+func runChecks(ctx context.Context, x containment, dir string, checks []OracleCheck) ([]CheckResult, int) {
 	results := make([]CheckResult, 0, len(checks))
 	passed := 0
 	for i, c := range checks {
@@ -146,7 +164,7 @@ func runChecks(ctx context.Context, snapDir, dir string, checks []OracleCheck) (
 			c.ID = fmt.Sprintf("check-%d", i+1)
 		}
 		start := time.Now()
-		r := runCheck(ctx, snapDir, dir, c)
+		r := runCheck(ctx, x, dir, c)
 		r.Target = checkTarget(c)
 		r.Millis = time.Since(start).Milliseconds()
 		if c.Expect.MaxMillis > 0 && r.Passed && r.Millis > int64(c.Expect.MaxMillis) {
@@ -166,16 +184,13 @@ type cmdResult struct {
 	exit int
 }
 
-func runCheckCommand(ctx context.Context, dir, command string, timeoutSec int) cmdResult {
+func runCheckCommand(ctx context.Context, x containment, command string, timeoutSec int) cmdResult {
 	if timeoutSec <= 0 {
 		timeoutSec = 300
 	}
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, core.FindRealBash(), "-c", command)
-	process.NoConsoleWindow(cmd)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "CI=1", "INFUSE_ORACLE=1")
+	cmd := x.command(cctx, command)
 	buf := core.NewCapWriter(512 << 10)
 	cmd.Stdout, cmd.Stderr = buf, buf
 	err := cmd.Run()
@@ -187,17 +202,19 @@ func runCheckCommand(ctx context.Context, dir, command string, timeoutSec int) c
 	return cmdResult{security.RedactSecrets(buf.String()), code}
 }
 
-func runCheck(ctx context.Context, snap, evDir string, c OracleCheck) CheckResult {
+func runCheck(ctx context.Context, x containment, evDir string, c OracleCheck) CheckResult {
 	safe := regexp.MustCompile(`[^\w.-]+`).ReplaceAllString(c.ID, "_")
 	switch c.Kind {
 	case "command":
-		return checkCommand(ctx, snap, evDir, safe, c)
+		return checkCommand(ctx, x, evDir, safe, c)
 	case "http":
 		return checkHTTP(ctx, evDir, safe, c)
+	case "browser":
+		return checkBrowser(ctx, evDir, safe, c)
 	case "file":
-		return checkFile(snap, c)
+		return checkFile(x.snap, c)
 	case "maxLines":
-		return checkMaxLines(snap, evDir, safe, c)
+		return checkMaxLines(x.snap, evDir, safe, c)
 	default:
 		return CheckResult{ID: c.ID, Kind: c.Kind, Detail: "unknown check type: " + c.Kind}
 	}
@@ -230,9 +247,9 @@ func textOK(c OracleCheck, text string) (bool, string) {
 }
 
 // checkCommand runs a command in the snapshot and checks its exit code and output.
-func checkCommand(ctx context.Context, snap, evDir, safe string, c OracleCheck) CheckResult {
+func checkCommand(ctx context.Context, x containment, evDir, safe string, c OracleCheck) CheckResult {
 	r := CheckResult{ID: c.ID, Kind: c.Kind}
-	res := runCheckCommand(ctx, snap, c.Run, c.TimeoutSec)
+	res := runCheckCommand(ctx, x, c.Run, c.TimeoutSec)
 	writeEvidence(&r, evDir, safe+".log", fmt.Sprintf("$ %s\n%s\n[exit %d]\n", c.Run, res.out, res.exit))
 	want := 0
 	if c.Expect.Exit != nil {
@@ -330,7 +347,3 @@ func checkMaxLines(snap, evDir, safe string, c OracleCheck) CheckResult {
 	r.Detail = map[bool]string{true: fmt.Sprintf("no file above %d lines", c.Max), false: fmt.Sprintf("%d file(s) above %d lines", len(over), c.Max)}[r.Passed]
 	return r
 }
-
-// takeSnapshot freezes the working tree. With git: a commit of everything (tracked + untracked, honoring
-// .gitignore) built through a temporary index, checked out in a detached worktree. Without git: a copy
-// of the files plus a sha256 manifest. Returns the folder to run in, its id, and a cleanup.

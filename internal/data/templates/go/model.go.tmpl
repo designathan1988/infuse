@@ -1,0 +1,40 @@
+package {{package}}
+
+// The canonical model: the one definition of an Item, its declared states and the transitions
+// between them. Only the owner named by the base writes Items.
+
+import "fmt"
+
+// State is where an Item is in its life.
+type State string
+
+// The declared states.
+const (
+	Draft    State = "draft"
+	Active   State = "active"
+	Archived State = "archived"
+)
+
+// transitions is the state machine as data.
+var transitions = map[State][]State{
+	Draft:  {Active, Archived},
+	Active: {Archived},
+}
+
+// Item is the canonical record.
+type Item struct {
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+	State State  `json:"state"`
+}
+
+// Moved returns the Item in the next state, or why it cannot go there.
+func (i Item) Moved(next State) (Item, error) {
+	for _, s := range transitions[i.State] {
+		if s == next {
+			i.State = next
+			return i, nil
+		}
+	}
+	return i, fmt.Errorf("item %d cannot go from %s to %s", i.ID, i.State, next)
+}

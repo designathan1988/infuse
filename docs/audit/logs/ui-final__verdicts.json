@@ -1,0 +1,287 @@
+[
+  {
+    "name": "no index yet asks for the address",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "install from a git URL",
+    "ok": true,
+    "detail": "[[\"lint-kit\",false]]"
+  },
+  {
+    "name": "the approval names what will run",
+    "ok": true,
+    "detail": "lint-kit 1.2.0 aguardando sua aprovação Runs the linter after every edit. file:///C:/Users/Jonathan/AppData/Local/Temp/claude/C--Users-Jonathan--claude-spares-s"
+  },
+  {
+    "name": "marketplace lists the index",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "an installed entry is marked",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "install from the marketplace",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "remove",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "approve",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "a bad address is refused out loud",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "a reserved variable is refused",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "saved in .infuse/settings.local.json",
+    "ok": true,
+    "detail": "{\"schemaVersion\":1,\"model\":\"local-model\",\"mode\":\"plan\",\"env\":[\"API_TOKEN\"]}"
+  },
+  {
+    "name": "the value does not leave the server",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the value is not on the page",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "a later save keeps the value",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the four styles are listed",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the picker writes the local file and keeps the rest",
+    "ok": true,
+    "detail": "concise"
+  },
+  {
+    "name": "the picked style is marked",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "sign-in opens the authorization page",
+    "ok": true,
+    "detail": "http://127.0.0.1:7477/authorize?client_id=fixture-client&code_challenge=RF5MB1ez"
+  },
+  {
+    "name": "a finished turn has no badge",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the done event raises the badge with no reload",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the next turn clears it",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__pt-br: badge on the session bar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__pt-br: badge on the last turn only",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__pt-br: the unverified turn has no check mark",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__pt-br: lower bound on each turn",
+    "ok": true,
+    "detail": "≥ US$ 0,0031 | ≥ US$ 0,42"
+  },
+  {
+    "name": "light__pt-br: the badge survives a reload",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__pt-br: plain cost per turn",
+    "ok": true,
+    "detail": "US$ 0,12 | US$ 0,03"
+  },
+  {
+    "name": "light__pt-br: oracle menu rows do not overlap",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__pt-br: sign-in entry on a real card",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__pt-br: the matcher names what it matches",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__pt-br: badge on the session bar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__pt-br: badge on the last turn only",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__pt-br: the unverified turn has no check mark",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__pt-br: lower bound on each turn",
+    "ok": true,
+    "detail": "≥ US$ 0,0031 | ≥ US$ 0,42"
+  },
+  {
+    "name": "dark__pt-br: the badge survives a reload",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__pt-br: plain cost per turn",
+    "ok": true,
+    "detail": "US$ 0,12 | US$ 0,03"
+  },
+  {
+    "name": "dark__pt-br: oracle menu rows do not overlap",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__pt-br: sign-in entry on a real card",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__pt-br: the matcher names what it matches",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__en: badge on the session bar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__en: badge on the last turn only",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__en: the unverified turn has no check mark",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__en: lower bound on each turn",
+    "ok": true,
+    "detail": "≥ $0.0031 | ≥ $0.42"
+  },
+  {
+    "name": "light__en: the badge survives a reload",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__en: plain cost per turn",
+    "ok": true,
+    "detail": "$0.12 | $0.03"
+  },
+  {
+    "name": "light__en: oracle menu rows do not overlap",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__en: sign-in entry on a real card",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light__en: the matcher names what it matches",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__en: badge on the session bar",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__en: badge on the last turn only",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__en: the unverified turn has no check mark",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__en: lower bound on each turn",
+    "ok": true,
+    "detail": "≥ $0.0031 | ≥ $0.42"
+  },
+  {
+    "name": "dark__en: the badge survives a reload",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__en: plain cost per turn",
+    "ok": true,
+    "detail": "$0.12 | $0.03"
+  },
+  {
+    "name": "dark__en: oracle menu rows do not overlap",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__en: sign-in entry on a real card",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "dark__en: the matcher names what it matches",
+    "ok": true,
+    "detail": ""
+  }
+]

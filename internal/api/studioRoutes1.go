@@ -67,10 +67,14 @@ func settingsAPI(w http.ResponseWriter, r *http.Request, path string, body map[s
 	}
 	if r.Method == http.MethodPut {
 		s := config.LoadSettings()
+		key := s.APIKey
 		b, _ := json.Marshal(body)
 		if err := json.Unmarshal(b, &s); err != nil {
 			sendJSON(w, 400, map[string]any{"error": err.Error()})
 			return
+		}
+		if s.APIKey == keyMask { // the mask coming back is not a new key
+			s.APIKey = key
 		}
 		if err := config.SaveSettings(s); err != nil {
 			sendJSON(w, 500, map[string]any{"error": err.Error()})
@@ -80,11 +84,17 @@ func settingsAPI(w http.ResponseWriter, r *http.Request, path string, body map[s
 		return
 	}
 	s := config.LoadSettings()
-	masked := s
-	if len(masked.APIKey) > 8 {
-		masked.APIKey = masked.APIKey[:6] + "…" + masked.APIKey[len(masked.APIKey)-4:]
+	sendJSON(w, 200, map[string]any{"settings": maskSettings(s), "hasKey": s.APIKey != "", "providers": llm.ProviderNames(), "tools": agent.ToolSpecs()})
+}
+
+// keyMask stands for a stored key: no part of it leaves the server.
+const keyMask = "…"
+
+func maskSettings(s config.Settings) config.Settings {
+	if s.APIKey != "" {
+		s.APIKey = keyMask
 	}
-	sendJSON(w, 200, map[string]any{"settings": masked, "hasKey": s.APIKey != "", "providers": llm.ProviderNames(), "tools": agent.ToolSpecs()})
+	return s
 }
 
 func projectFiles(root string) []string {

@@ -13,6 +13,8 @@ import { menu } from './menu.js';
 import { archiveSession, deleteSession } from './session-actions.js';
 import { openInItems } from './open-in.js';
 import { toast } from './toast.js';
+import { isUnverified } from '../core/spend.js';
+import { outcomeBadge } from './cost.js';
 
 const VIEW_MODES = [
   ['normal', 'view.normal', 'view.normalDesc'],
@@ -38,7 +40,7 @@ function viewMarkup() {
     <header class="view-bar">
       <span class="title" tabindex="0" role="button" title="${esc(t('view.renameHint'))}"></span>
       <button class="icon-btn caret" title="${esc(t('view.sessionMenu'))}" aria-haspopup="menu">${I.caret}</button>
-      <span class="branch"></span><span class="sp"></span>
+      <span class="branch"></span><span class="view-outcome"></span><span class="sp"></span>
       <span class="r row row-tight">
         <button class="changes-btn" data-a="changes" title="${esc(t('changes.aria'))}"></button>
         <button class="icon-btn" data-a="terminal" title="${esc(t('pane.terminal'))} (Ctrl\`)">${I.term}</button>
@@ -99,6 +101,7 @@ function viewChrome(v, el) {
     el.querySelector('.branch').innerHTML = snap.branch ? `${snap.worktree ? '⑂ ' : ''}${esc(snap.branch)}` : '';
     el.querySelector('.branch').title = snap.worktree ? t('env.worktree') + ': ' + snap.worktree : '';
   }
+  el.querySelector('.view-outcome').innerHTML = isUnverified(snap) ? outcomeBadge() : '';
   const cb = el.querySelector('.changes-btn');
   cb.innerHTML = (changes?.isGit || changes?.local) && (changes.added || changes.removed)
     ? `<span class="add">+${changes.added || 0}</span><span class="del">−${changes.removed || 0}</span>` : I.diff;

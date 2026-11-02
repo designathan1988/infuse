@@ -1,11 +1,13 @@
 package oracle
 
-// HTTP checks only measure the snapshot when the server they talk to was started from the snapshot.
-// The criteria declare that command in "server"; the executor starts it in the snapshot folder, waits
-// for the first address to answer, runs every check, and ends the process tree.
+// HTTP and browser checks only measure the snapshot when the server they talk to was started from the
+// snapshot. The criteria declare that command in "server"; the executor starts it in the snapshot
+// folder, contained, waits for every address to answer, verifies that each answering listener belongs
+// to the process tree it started, runs every check, and ends the tree.
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,40 +15,37 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
-	"infuse/internal/core"
 	"infuse/internal/platform/process"
 )
 
-// hasHTTPChecks reports whether any check needs a server.
-func hasHTTPChecks(s OracleSpec) bool {
-	for _, c := range s.Checks {
-		if c.Kind == "http" {
-			return true
-		}
-	}
-	return false
+// needsServer reports whether any check talks to a server.
+func needsServer(s OracleSpec) bool {
+	return len(serverURLs(s)) > 0
 }
 
-// startServer runs the spec's server in the snapshot and waits for the first HTTP check's address.
-// The port must be free and the answering listener must belong to the child we started: an impostor
-// already on the port is refused instead of measured.
-func startServer(ctx context.Context, snapDir, evDir string, s OracleSpec) (func(), int, error) {
-	if err := portFree(firstURL(s)); err != nil {
-		return nil, 0, err
+// startServer runs the spec's server in the snapshot and waits for the addresses the checks use. The
+// ports must be free, and every answering listener must belong to the child we started: an impostor,
+// on any address family and at any moment, is refused instead of measured.
+func startServer(ctx context.Context, x containment, evDir string, s OracleSpec) (func(), int, error) {
+	urls := serverURLs(s)
+	for _, u := range urls {
+		if err := portFree(u); err != nil {
+			return nil, 0, err
+		}
 	}
 	logPath := filepath.Join(evDir, "server.log")
 	logFile, err := os.Create(logPath)
 	if err != nil {
 		return nil, 0, err
 	}
-	cmd := exec.Command(core.FindRealBash(), "-c", s.Server)
-	process.NoConsoleWindow(cmd)
-	cmd.Dir = snapDir
-	cmd.Env = append(os.Environ(), "CI=1", "INFUSE_ORACLE=1", "PORT="+portOf(firstURL(s)))
+	cmd := x.command(context.Background(), s.Server)
+	cmd.Env = append(cmd.Env, "PORT="+portOf(firstURL(s)))
 	cmd.Stdout, cmd.Stderr = logFile, logFile
+	process.ProcGroup(cmd)
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
 		return nil, 0, err
@@ -58,59 +57,109 @@ func startServer(ctx context.Context, snapDir, evDir string, s OracleSpec) (func
 		process.KillTree(cmd)
 		logFile.Close()
 	}
-	pid := cmd.Process.Pid
 	wait := s.ServerSec
 	if wait <= 0 {
 		wait = 60
 	}
-	deadline := time.Now().Add(time.Duration(wait) * time.Second)
-	for time.Now().Before(deadline) {
+	if err := awaitServer(ctx, cmd, urls, exited, wait); err != nil {
+		stop()
+		return nil, 0, err
+	}
+	return stop, cmd.Process.Pid, nil
+}
+
+// awaitServer returns once every address answers from the started tree, or says why that did not happen.
+func awaitServer(ctx context.Context, cmd *exec.Cmd, urls []string, exited <-chan error, waitSec int) error {
+	gone := func() error {
 		select {
 		case err := <-exited:
-			logFile.Close()
-			return nil, 0, fmt.Errorf("the server exited before answering (%v); see server.log", err)
+			return fmt.Errorf("the server exited before answering (%v); see server.log", err)
 		default:
+			return nil
 		}
-		if serverAnswers(ctx, firstURL(s)) {
-			select {
-			case err := <-exited:
-				logFile.Close()
-				return nil, 0, fmt.Errorf("the server exited before answering (%v); see server.log", err)
-			default:
+	}
+	deadline := time.Now().Add(time.Duration(waitSec) * time.Second)
+	for time.Now().Before(deadline) {
+		if err := gone(); err != nil {
+			return err
+		}
+		if allAnswer(ctx, urls) {
+			if err := gone(); err != nil {
+				return err
 			}
-			return stop, pid, nil
+			return verifyListeners(urls, cmd)
 		}
 		select {
 		case <-ctx.Done():
-			stop()
-			return nil, 0, ctx.Err()
+			return ctx.Err()
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
-	stop()
-	return nil, 0, fmt.Errorf("the server did not answer within %ds (see server.log)", wait)
+	return fmt.Errorf("the server did not answer within %ds (see server.log)", waitSec)
 }
 
-// portFree reserves the check's loopback port for a moment: if another process already answers there,
-// the verdict would measure it instead of the snapshot.
+// isLocal reports whether a URL points at this machine, whatever the spelling.
+func isLocal(host string) bool {
+	if host == "" || strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsUnspecified())
+}
+
+// portFree refuses a port something already answers on, or the verdict would measure it instead of the
+// snapshot. Both loopback stacks count: localhost resolves to either, and a listener on one is
+// invisible to a probe of the other.
 func portFree(rawURL string) error {
 	u, err := url.Parse(rawURL)
-	if err != nil {
+	if err != nil || !isLocal(u.Hostname()) {
 		return nil
 	}
-	host := u.Hostname()
-	if host != "" && host != "127.0.0.1" && host != "localhost" && host != "::1" {
-		return nil
-	}
-	port := u.Port()
-	if port == "" {
-		return nil
+	port := portOf(rawURL)
+	busy := fmt.Errorf("port %s is already in use: refusing to measure a server that is not the snapshot's", port)
+	for _, host := range []string{"127.0.0.1", "::1"} {
+		if conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 300*time.Millisecond); err == nil {
+			_ = conn.Close()
+			return busy
+		}
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:"+port)
 	if err != nil {
-		return fmt.Errorf("port %s is already in use: refusing to measure a server that is not the snapshot's", port)
+		return busy
 	}
 	return ln.Close()
+}
+
+// verifyListeners checks that what answers each local address belongs to the started process tree.
+func verifyListeners(urls []string, cmd *exec.Cmd) error {
+	for _, raw := range urls {
+		u, err := url.Parse(raw)
+		if err != nil || !isLocal(u.Hostname()) {
+			continue
+		}
+		port, err := strconv.Atoi(portOf(raw))
+		if err != nil {
+			return err
+		}
+		owned, err := process.OwnsListener(cmd, port)
+		if err != nil {
+			return err
+		}
+		if !owned {
+			return errors.New(uiText("oracle.serverNotOwned", "url", raw))
+		}
+	}
+	return nil
+}
+
+// allAnswer reports whether every address answers.
+func allAnswer(ctx context.Context, urls []string) bool {
+	for _, u := range urls {
+		if !serverAnswers(ctx, u) {
+			return false
+		}
+	}
+	return true
 }
 
 // serverAnswers: any HTTP status means the server is up; a connection error means it is not.
@@ -131,11 +180,22 @@ func serverAnswers(ctx context.Context, url string) bool {
 	return true
 }
 
-func firstURL(s OracleSpec) string {
+// serverURLs lists the addresses the checks read, once each.
+func serverURLs(s OracleSpec) []string {
+	var out []string
+	seen := map[string]bool{}
 	for _, c := range s.Checks {
-		if c.Kind == "http" && c.URL != "" {
-			return c.URL
+		if (c.Kind == "http" || c.Kind == "browser") && c.URL != "" && !seen[c.URL] {
+			seen[c.URL] = true
+			out = append(out, c.URL)
 		}
+	}
+	return out
+}
+
+func firstURL(s OracleSpec) string {
+	if urls := serverURLs(s); len(urls) > 0 {
+		return urls[0]
 	}
 	return ""
 }

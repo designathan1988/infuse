@@ -1,7 +1,8 @@
 // fmt — display formatting on top of Intl (locale-aware), plus compact token counts and durations.
-import { t, fmtMoney, fmtTime, fmtDate, lang } from './i18n.js';
+import { t, fmtMoney, fmtMoneyFine, fmtTime, fmtDate, lang } from './i18n.js';
 
 export const money = v => fmtMoney(v || 0);
+export const moneyFine = v => fmtMoneyFine(v || 0);
 
 export function ktok(n) {
   n = n || 0;

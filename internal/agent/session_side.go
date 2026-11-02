@@ -9,6 +9,9 @@ import (
 // Side questions, context breakdown and next-message suggestion.
 
 func (s *Session) SideQuestion(ctx context.Context, question string) (string, error) {
+	if stop, over := s.overDailyLimit(); over {
+		return "", userError(s.uiLang(), stop)
+	}
 	p, err := providerFor(s.settings, s.providerID())
 	if err != nil {
 		return "", err
@@ -41,8 +44,7 @@ func (s *Session) SideQuestion(ctx context.Context, question string) (string, er
 			out += b.Text
 		}
 	}
-	cost := s.settings.CostOf(s.Model, res.Usage)
-	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.Model, Input: res.Usage.Input, Output: res.Usage.Output, Cost: cost})
+	s.spend(s.Model, res.Usage)
 	return out, nil
 }
 
@@ -89,6 +91,9 @@ func (s *Session) ContextBreakdown() map[string]any {
 // SuggestNext guesses the user's likely next message from the end of the conversation, for the gray
 // suggestion in the prompt box (Tab accepts). The fast model sees only the recent text, no tools.
 func (s *Session) SuggestNext(ctx context.Context) (string, error) {
+	if _, over := s.overDailyLimit(); over {
+		return "", nil
+	}
 	p, err := providerFor(s.settings, s.providerID())
 	if err != nil {
 		return "", err
@@ -119,7 +124,7 @@ func (s *Session) SuggestNext(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	recordUsage(usageEntry{Root: s.Root, Session: s.ID, Provider: s.providerID(), Model: s.fastModel(), Input: res.Usage.Input, Output: res.Usage.Output, Cost: s.settings.CostOf(s.fastModel(), res.Usage)})
+	s.spend(s.fastModel(), res.Usage)
 	out := strings.Trim(strings.TrimSpace(msgText(Message{Content: res.Content})), "\"'“”")
 	if out == "-" || out == "" || strings.Contains(out, "\n") || len([]rune(out)) > 120 {
 		return "", nil

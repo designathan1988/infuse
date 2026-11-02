@@ -47,9 +47,14 @@ func scanHeredocOps(cmd string) []heredocOp {
 	var ops []heredocOp
 	n := len(cmd)
 	inSingle, inDouble := false, false
+	pending := 0 // operators whose bodies start at the next newline
 	for i := 0; i < n; {
 		c := cmd[i]
 		switch {
+		case c == '\n' && pending > 0 && !inSingle && !inDouble:
+			// document text is not a command: an operator or a stray quote in a body means nothing
+			i = skipHeredocBodies(cmd, i+1, ops[len(ops)-pending:])
+			pending = 0
 		case inSingle:
 			if c == '\'' {
 				inSingle = false
@@ -81,12 +86,34 @@ func scanHeredocOps(cmd string) []heredocOp {
 			i = next
 			if ok {
 				ops = append(ops, op)
+				pending++
 			}
 		default:
 			i++
 		}
 	}
 	return ops
+}
+
+// skipHeredocBodies returns the offset after the bodies of the operators of one command line.
+func skipHeredocBodies(cmd string, pos int, ops []heredocOp) int {
+	for _, o := range ops {
+		for pos < len(cmd) {
+			end := len(cmd)
+			if nl := strings.IndexByte(cmd[pos:], '\n'); nl != -1 {
+				end = pos + nl
+			}
+			line := strings.TrimSuffix(cmd[pos:end], "\r")
+			pos = end + 1
+			if o.strip {
+				line = strings.TrimLeft(line, "\t")
+			}
+			if strings.TrimSpace(line) == o.delim {
+				break
+			}
+		}
+	}
+	return min(pos, len(cmd))
 }
 
 func parseHeredocOp(cmd string, start int) (heredocOp, int, bool) {

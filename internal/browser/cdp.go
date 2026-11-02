@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -36,37 +35,25 @@ type Browser struct {
 	closed   bool
 }
 
-func findChromium() string {
-	var cands []string
-	switch runtime.GOOS {
-	case "windows":
-		for _, base := range []string{os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramFiles"), os.Getenv("LOCALAPPDATA")} {
-			if base != "" {
-				cands = append(cands, filepath.Join(base, `Microsoft\Edge\Application\msedge.exe`), filepath.Join(base, `Google\Chrome\Application\chrome.exe`))
-			}
-		}
-	case "darwin":
-		cands = []string{"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge", "/Applications/Chromium.app/Contents/MacOS/Chromium"}
-	default:
-		for _, n := range []string{"google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge"} {
-			if p, err := exec.LookPath(n); err == nil {
-				cands = append(cands, p)
-			}
-		}
+// startCDP opens the first installed browser that answers: an installation that never opens its
+// debugging port (a broken profile, a policy) must not take the feature down when another one works.
+func startCDP(profile string) (*Browser, error) {
+	cands := chromiumCandidates()
+	if len(cands) == 0 {
+		return nil, errors.New("no Edge, Chrome or Chromium browser was found on this computer")
 	}
-	for _, c := range cands {
-		if _, err := os.Stat(c); err == nil {
-			return c
+	var last error
+	for _, exe := range cands {
+		b, err := startCDPWith(exe, profile)
+		if err == nil {
+			return b, nil
 		}
+		last = err
 	}
-	return ""
+	return nil, last
 }
 
-func startCDP(profile string) (*Browser, error) {
-	exe := findChromium()
-	if exe == "" {
-		return nil, errors.New("nenhum navegador Edge, Chrome ou Chromium encontrado neste computador")
-	}
+func startCDPWith(exe, profile string) (*Browser, error) {
 	_ = os.MkdirAll(profile, 0o755)
 	_ = os.Remove(filepath.Join(profile, "DevToolsActivePort"))
 	cmd := exec.Command(exe, "--headless=new", "--remote-debugging-port=0", "--user-data-dir="+profile, "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-blink-features=AutomationControlled", "--window-size=1280,800", "about:blank")

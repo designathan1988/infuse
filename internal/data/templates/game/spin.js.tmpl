@@ -1,0 +1,11 @@
+// One system: it advances the world by one step, only while the game is being played.
+import { PHASES } from '../world/world.js';
+import { tables } from '../data/tables.js';
+
+export function spin(world, ms) {
+  const state = world.state();
+  if (state.phase !== PHASES.playing) return;
+  for (const e of state.entities) {
+    world.update(e.id, { angle: e.angle + ms * tables.spinPerMilli });
+  }
+}

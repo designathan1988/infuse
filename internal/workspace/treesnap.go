@@ -74,9 +74,20 @@ type hashEntry struct {
 	hash string
 }
 
-// walkTree hashes every project file of work (skipping dependency and build folders). With store, the
-// contents go to root's blob store.
+// walkTree hashes every project file of work (skipping dependency and build folders) by content. With
+// store, the contents go to root's blob store. A size and mtime cache cannot serve the audit: a same-size
+// edit with its timestamp restored would be invisible, so only the changes pane, which decides nothing,
+// reads through it (walkTreeCached).
 func walkTree(root, work string, store bool) map[string]string {
+	return walkTreeWith(root, work, store, false)
+}
+
+// walkTreeCached is walkTree for display: it reuses the hash of a file whose size and mtime are unchanged.
+func walkTreeCached(root, work string) map[string]string {
+	return walkTreeWith(root, work, false, true)
+}
+
+func walkTreeWith(root, work string, store, useCache bool) map[string]string {
 	out := map[string]string{}
 	_ = fsx.Walk(work, fsx.Snapshot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -98,7 +109,7 @@ func walkTree(root, work string, store bool) map[string]string {
 		e, ok := hashCache[p]
 		hashCacheMu.Unlock()
 		settled := time.Since(info.ModTime()) > 2*time.Second // a just-written file may change again within the same mtime
-		if ok && settled && e.mod == info.ModTime().UnixNano() && e.size == info.Size() && (!store || core.Exists(blobPath(root, e.hash))) {
+		if useCache && ok && settled && e.mod == info.ModTime().UnixNano() && e.size == info.Size() {
 			out[rel] = e.hash
 			return nil
 		}
@@ -145,30 +156,31 @@ func SnapshotTurn(root, work, session string, turn int) error {
 
 // protectedHashes hashes what the agent must never write: the oracle's criteria and the executor's
 // evidence. The shell guard reads the command line; a script that writes the file directly is caught
-// by comparing these hashes at the end of the turn.
+// by comparing these hashes at the end of the turn. Always by content and with no size or count limit:
+// a limit is a place to hide a change.
 func protectedHashes(root string) map[string]string {
 	out := map[string]string{}
 	for _, dir := range []string{"oracle", "evidence"} {
 		base := filepath.Join(root, core.InfuseDirName, dir)
 		_ = filepath.WalkDir(base, func(p string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || len(out) > 2000 {
+			if err != nil || d.IsDir() {
 				return nil
 			}
-			if info, err := d.Info(); err != nil || info.Size() > 1<<20 {
-				return nil
+			rel, _ := filepath.Rel(root, p)
+			h, err := hashFile(p)
+			if err != nil {
+				h = "unreadable" // a file that cannot be read is not a file that did not change
 			}
-			if h, err := hashFile(p); err == nil {
-				rel, _ := filepath.Rel(root, p)
-				out[filepath.ToSlash(rel)] = h
-			}
+			out[filepath.ToSlash(rel)] = h
 			return nil
 		})
 	}
 	return out
 }
 
-// TurnProtectedChanges lists oracle/evidence files that changed since the turn started. The executor's
-// own writes are accepted by refreshing the manifest after each run (RefreshTurnProtected).
+// TurnProtectedChanges lists oracle/evidence files that changed or vanished since the turn started: a
+// deleted criterion is the cheapest way to disarm the oracle. The executor's own writes are accepted by
+// refreshing the manifest after each run (RefreshTurnProtected).
 func TurnProtectedChanges(root, session string, turn int) []string {
 	var m treeManifest
 	if core.ReadJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), &m) != nil {
@@ -181,19 +193,32 @@ func TurnProtectedChanges(root, session string, turn int) []string {
 			out = append(out, rel)
 		}
 	}
+	for rel := range m.Protected {
+		if _, still := now[rel]; !still {
+			out = append(out, rel)
+		}
+	}
 	sort.Strings(out)
 	return out
 }
 
-// RefreshTurnProtected accepts what infuse itself just wrote (the executor's evidence) as the turn's
-// baseline, so the next audit does not blame the agent for it.
-func RefreshTurnProtected(root, session string, turn int) {
+// RefreshTurnProtected moves into the turn's baseline only the protected paths accept approves: what
+// infuse itself just wrote. Anything else keeps its old hash, so a criteria file changed by the agent
+// stays reported however many times the executor runs.
+func RefreshTurnProtected(root, session string, turn int, accept func(rel string) bool) {
 	p := filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json")
 	var m treeManifest
 	if core.ReadJSON(p, &m) != nil {
 		return
 	}
-	m.Protected = protectedHashes(root)
+	if m.Protected == nil {
+		m.Protected = map[string]string{}
+	}
+	for rel, h := range protectedHashes(root) {
+		if accept(rel) {
+			m.Protected[rel] = h
+		}
+	}
 	_ = core.WriteJSON(p, m)
 }
 

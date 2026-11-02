@@ -22,7 +22,8 @@ type CheckSuggestion struct {
 	TitleMsg core.Msg    `json:"titleMsg"` // the same, as messages of the catalog
 	WhyMsg   core.Msg    `json:"whyMsg"`
 	Check    OracleCheck `json:"check"`
-	Setup    string      `json:"setup,omitempty"` // preparation the check needs in the snapshot (install dependencies)
+	Setup    string      `json:"setup,omitempty"`  // preparation the check needs in the snapshot (install dependencies)
+	Server   string      `json:"server,omitempty"` // the command that serves the check's address from the snapshot
 }
 
 func hasPath(root, rel string) bool { _, err := os.Stat(filepath.Join(root, rel)); return err == nil }
@@ -104,7 +105,49 @@ func (s *suggester) node() {
 		c := OracleCheck{ID: "pagina", Kind: "http", URL: "http://localhost:" + port + "/", Description: "The home page opens"}
 		c.Expect.Status = 200
 		s.add(core.M("suggest.home_opens"), core.M("suggest.why_page", "url", "http://localhost:"+port+"/"), c, "")
+		s.serveLast(pkg.Scripts, run)
+		s.browserCheck(port, setup, pkg.Dependencies, pkg.DevDependencies)
+		s.serveLast(pkg.Scripts, run)
 	}
+}
+
+// serveLast tells the last suggestion how to serve its address, from the project's own scripts.
+func (s *suggester) serveLast(scripts map[string]string, run func(string) string) {
+	for _, name := range []string{"dev", "start"} {
+		if scripts[name] != "" && len(s.out) > 0 {
+			s.out[len(s.out)-1].Server = run(name)
+			return
+		}
+	}
+}
+
+// browserCheck suggests opening the page in a real browser when the project is a browser application:
+// an HTTP status says the server answered, not that the application rendered.
+func (s *suggester) browserCheck(port, setup string, deps ...map[string]string) {
+	selector := mountPoint(deps...)
+	if selector == "" {
+		return
+	}
+	url := "http://localhost:" + port + "/"
+	c := OracleCheck{ID: "rendered", Kind: "browser", URL: url, Description: "The application renders in a browser"}
+	c.Expect.Selector = selector
+	s.add(core.M("suggest.page_renders"), core.M("suggest.why_browser", "url", url), c, setup)
+}
+
+// mountPoint is the selector of a rendered application: something inside the framework's root element,
+// which only exists once the client code ran.
+func mountPoint(deps ...map[string]string) string {
+	for _, d := range deps {
+		switch {
+		case d["next"] != "":
+			return "#__next > *"
+		case d["@angular/core"] != "":
+			return "app-root > *"
+		case d["vite"] != "", d["react-scripts"] != "":
+			return "#root > *, #app > *"
+		}
+	}
+	return ""
 }
 
 func nodePackageManager(root string) (string, string) {
