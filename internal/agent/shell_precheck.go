@@ -46,35 +46,41 @@ func (s *Session) precheckShellWrites(ctx context.Context, intents []shellWriteI
 		if why, changed := baselineChange(rel, before, in.Content); changed {
 			return why
 		}
-		if lines := unjustifiedSuppressions(before, in.Content); len(lines) > 0 {
-			return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
-		}
-		ext := strings.ToLower(filepath.Ext(in.Abs))
-		if strings.HasSuffix(ext, ".md") {
-			continue // prose: the checks below are for code
-		}
-		if why := s.baseViolation(rel, codeExts[ext]); !why.Empty() {
-			return why
-		}
-		if codeExts[ext] && !s.planned() {
-			return M("gate.shell_write_plan", "files", rel)
-		}
-		if m := s.docsBeforeUse(in.Abs, before, in.Content); !m.Empty() {
-			return m
-		}
-		if s.settings.EnforceConventions == nil || *s.settings.EnforceConventions {
-			if why := conventionViolation(s.Root, in.Abs, before, in.Content); !why.Empty() {
-				return M("protocol.convention", "why", why)
-			}
-		}
-		if s.settings.EnforceArchitecture == nil || *s.settings.EnforceArchitecture {
-			if why := archCheck(s.Root, s.workRoot(), rel, before, in.Content); !why.Empty() {
-				return M("protocol.architecture", "why", why)
-			}
-		}
-		if why := s.sizeViolation(rel, ext, before, in.Content); !why.Empty() {
+		if why := s.heredocShape(rel, in.Abs, before, in.Content); !why.Empty() {
 			return why
 		}
 	}
 	return Msg{}
+}
+
+func (s *Session) heredocShape(rel, abs, before, after string) Msg {
+	ext := strings.ToLower(filepath.Ext(abs))
+	if codeExts[ext] {
+		if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
+			return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
+		}
+	}
+	if strings.HasSuffix(ext, ".md") {
+		return Msg{} // prose: the checks below are for code
+	}
+	if why := s.baseViolation(rel, codeExts[ext]); !why.Empty() {
+		return why
+	}
+	if codeExts[ext] && !s.planned() {
+		return M("gate.shell_write_plan", "files", rel)
+	}
+	if m := s.docsBeforeUse(abs, before, after); !m.Empty() {
+		return m
+	}
+	if s.settings.EnforceConventions == nil || *s.settings.EnforceConventions {
+		if why := conventionViolation(s.Root, abs, before, after); !why.Empty() {
+			return M("protocol.convention", "why", why)
+		}
+	}
+	if s.settings.EnforceArchitecture == nil || *s.settings.EnforceArchitecture {
+		if why := archCheck(s.Root, s.workRoot(), rel, before, after); !why.Empty() {
+			return M("protocol.architecture", "why", why)
+		}
+	}
+	return s.sizeViolation(rel, ext, before, after)
 }

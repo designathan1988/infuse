@@ -20,6 +20,7 @@ import (
 	"infuse/internal/platform/process"
 	"infuse/internal/sandbox"
 	"infuse/internal/store"
+	"infuse/internal/workspace"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -230,6 +231,14 @@ func (s *Session) runHookCommand(ctx context.Context, h HookEntry, payload map[s
 }
 
 // runHooks runs the approved hooks of an event whose matcher fits target (a tool name; "" for others).
+func changePathSet(changes []workspace.TreeChange) map[string]bool {
+	out := make(map[string]bool, len(changes))
+	for _, ch := range changes {
+		out[ch.Path] = true
+	}
+	return out
+}
+
 func (s *Session) runHooks(ctx context.Context, event, target string, payload map[string]any) hookOutcome {
 	var res hookOutcome
 	for _, h := range LoadHooks(s.Root) {
@@ -249,7 +258,15 @@ func (s *Session) runHooks(ctx context.Context, event, target string, payload ma
 		payload["hook_event_name"] = event
 		payload["session_id"] = s.ID
 		payload["cwd"] = s.workRoot()
+		before := changePathSet(s.ungatedChanges())
 		code, stdout, stderr := s.runHookCommand(ctx, h, payload)
+		// Files the user's hook writes are infuse-controlled, not agent work: the turn audit must not
+		// demand a Report for them (a Stop hook commonly touches a marker file).
+		for _, ch := range s.ungatedChanges() {
+			if !before[ch.Path] {
+				s.markGated(ch.Path)
+			}
+		}
 		Journal(s.Root, JournalEntry{Kind: "hook", Command: h.Command, Detail: fmt.Sprintf("%s · output %d", event, code)})
 		var dec struct {
 			Decision string `json:"decision"`

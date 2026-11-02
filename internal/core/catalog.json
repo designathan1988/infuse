@@ -3427,6 +3427,10 @@
     "en": "No agent tasks yet.",
     "pt-BR": "Nenhuma tarefa do agente ainda."
   },
+  "plan.no_open": {
+    "en": "a plan must contain at least one open task; a first plan cannot arrive already finished",
+    "pt-BR": "um plano precisa ter ao menos uma tarefa aberta; um primeiro plano não pode chegar já concluído"
+  },
   "plan.no_proof": {
     "en": "plan refused: every open task needs a proof (the command, the page or the file that will prove it works). Without proof: {tasks}",
     "pt-BR": "plano recusado: cada tarefa aberta precisa de proof (o comando, a página ou o arquivo que comprovará que funciona). Sem proof: {tasks}"
@@ -4356,8 +4360,8 @@
     "pt-BR": "Limite de gasto diário (US$)"
   },
   "settings.dailyLimitDesc": {
-    "en": "Sum of all sessions in the day; the agent stops past it; 0 turns it off",
-    "pt-BR": "Soma de todas as sessões no dia; o agente para ao ultrapassar; 0 desliga"
+    "en": "Paid API providers only. Local bridges (Claude Code Desktop, Codex, Ollama) and the demo run unmetered; 0 turns the cap off.",
+    "pt-BR": "Somente provedores de API pagos. As pontes locais (Claude Code Desktop, Codex, Ollama) e a demonstração não são limitadas; 0 desliga o teto."
   },
   "settings.defaultEffort": {
     "en": "Default effort",

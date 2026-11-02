@@ -86,7 +86,7 @@ func DefaultSettings() Settings {
 			"deepseek-reasoner": {0.3, 1.2},
 			"deepseek-v4-pro":   {1.32, 3.96},
 		},
-		DailyLimitUSD: 50,
+		DailyLimitUSD: 0, // unlimited; the user opts into a paid-API cap
 		Language:      "pt-BR",
 		Notify:        true,
 		Theme:         "system",

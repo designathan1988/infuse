@@ -216,7 +216,7 @@ func (s *Session) recordRun(cmd string, ok bool) {
 	if !ok {
 		for _, want := range loadProjectRules(s.Root).AfterChange {
 			w := normSpace(want)
-			if !strings.Contains(normSpace(cmd), w) {
+			if !commandRuns(cmd, w) {
 				continue
 			}
 			for _, prev := range g.ran[:len(g.ran)-1] {
@@ -251,7 +251,7 @@ func (s *Session) missingVerification() Msg {
 		w := normSpace(want)
 		done := false
 		for _, c := range ran {
-			if c.ok && c.afterWrites == writes && strings.Contains(c.cmd, w) {
+			if c.ok && c.afterWrites == writes && commandRuns(c.cmd, w) {
 				done = true
 			}
 		}

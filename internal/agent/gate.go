@@ -16,6 +16,7 @@ package agent
 
 import (
 	"encoding/json"
+	"infuse/internal/shellparse"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -35,6 +36,7 @@ type researchGate struct {
 	obligationAsks  int      // times the turn was refused an end
 	reviewed        bool     // the mandatory review ran in this turn
 	acceptanceAsked bool     // the user was already asked to accept this turn's delivery
+	shellCounted    bool     // a shell change was counted as a change for declared verification
 
 	runs      map[string]*runCount // commands run in this turn, for the measure-and-tweak loop
 	ran       []ranCommand         // every command of the turn with its outcome
@@ -56,6 +58,32 @@ type researchGate struct {
 }
 
 func (g *researchGate) reset() { *g = researchGate{} }
+
+// commandRuns reports whether a command line actually starts one segment with the declared command;
+// a quoted string in echo or a comment cannot satisfy a declared check.
+func commandRuns(cmd, want string) bool {
+	w := strings.Fields(want)
+	if len(w) == 0 {
+		return false
+	}
+	for _, seg := range shellparse.Segments(cmd) {
+		f := strings.Fields(seg)
+		if len(f) < len(w) {
+			continue
+		}
+		match := true
+		for i := range w {
+			if f[i] != w[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
 
 // isResearch reports whether a tool call counts as investigation, and whether it reaches outside the
 // project (the web, the browser, pinned docs, a skill).
@@ -283,18 +311,33 @@ func editedContent(root, cwd string, name string, input json.RawMessage) (path, 
 // missingReport returns the reminder when the turn changed files and ended without a Report (empty
 // otherwise).
 func (s *Session) missingReport() Msg {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	changed := len(s.Checkpoints[s.Turn])
-	if changed == 0 || s.gate.reportAsks > 0 || s.Turn < 1 || s.Turn-1 >= len(s.TurnStarts) {
+	changed, _, _ := s.turnState()
+	if len(changed) == 0 {
 		return Msg{}
 	}
-	for _, m := range s.Messages[min(s.TurnStarts[s.Turn-1], len(s.Messages)):] {
-		for _, b := range m.Content {
-			if b.Type == "tool_use" && b.Name == "Report" {
-				return Msg{}
+	s.Mu.Lock()
+	start := len(s.Messages)
+	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) && s.TurnStarts[s.Turn-1] < len(s.Messages) {
+		start = s.TurnStarts[s.Turn-1]
+	} else {
+		for i := len(s.Messages) - 1; i >= 0; i-- {
+			if s.Messages[i].Role == "user" {
+				start = i
+				break
 			}
 		}
 	}
-	return M("gate.no_report", "count", changed)
+	found := false
+	for _, m := range s.Messages[start:] {
+		for _, b := range m.Content {
+			if b.Type == "tool_use" && b.Name == "Report" {
+				found = true
+			}
+		}
+	}
+	s.Mu.Unlock()
+	if found {
+		return Msg{}
+	}
+	return M("gate.no_report", "count", len(changed))
 }

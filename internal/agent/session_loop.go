@@ -163,7 +163,7 @@ func (s *Session) request(ctx context.Context, st *runState) (ModelResult, reque
 		}
 	}
 	s.recordReply(res, started)
-	if lim := s.settings.DailyLimitUSD; lim > 0 && !s.freeProvider() { // the day's total across every session
+	if lim := s.settings.DailyLimitUSD; lim > 0 && !s.unmeteredProvider() { // paid APIs only; local bridges are unmetered
 		if spent := todaySpend(); spent > lim {
 			s.failMsg(M("session.daily_limit", "spent", fmt.Sprintf("%.2f", spent), "limit", fmt.Sprintf("%.2f", lim)))
 			return res, requestStop
@@ -172,14 +172,23 @@ func (s *Session) request(ctx context.Context, st *runState) (ModelResult, reque
 	return res, requestOK
 }
 
-// freeProvider reports a provider that cannot spend money (the deterministic demonstration provider);
-// the daily limit must never block a free run.
-func (s *Session) freeProvider() bool {
+// unmeteredProvider reports a local or subscription-backed provider. Claude Code Desktop, Codex,
+// Ollama and the demonstration provider are not billed per token by infuse; applying the paid-API
+// daily limit to them stops a local session for a cost that does not exist.
+func (s *Session) unmeteredProvider() bool {
 	id := s.Provider
 	if id == "" {
 		id = s.settings.Provider
 	}
-	return id == "mock" || s.settings.Connections[id].Kind == "mock"
+	kind := s.settings.Connections[id].Kind
+	if kind == "" {
+		kind = id
+	}
+	switch kind {
+	case "mock", "claudedesk", "codexdesk", "ollama":
+		return true
+	}
+	return false
 }
 
 func (s *Session) recordReply(res ModelResult, started time.Time) {
@@ -207,6 +216,18 @@ func (s *Session) recordReply(res ModelResult, started time.Time) {
 }
 
 func (s *Session) endTurn(ctx context.Context, st *runState) bool {
+	// Work obligations (an unfetched citation, an unreachable screenshot) can be impossible; the same
+	// budget that closes the protocol obligations must also stop them, or the turn burns every model
+	// call until the watchdog.
+	s.Mu.Lock()
+	asked := s.gate.obligationAsks
+	s.Mu.Unlock()
+	if asked >= s.askBudget() {
+		s.closeOpenTasks(M("plan.closed_note").Render(s.uiLang()))
+		s.markUnverified()
+		s.finish("") // the turn is over: without this the session stays "thinking" and a mission never advances
+		return true
+	}
 	why := s.workObligation()
 	if why.Empty() {
 		why = s.turnObligation(ctx)

@@ -107,6 +107,25 @@ func TestShellTamperingWithATestIsRestored(t *testing.T) {
 	}
 }
 
+// Deleting a control record is always a violation, even though the deleted file is gone.
+func TestShellDeletionOfProtectedRecordIsRestored(t *testing.T) {
+	s, root := shellProject(t)
+	oracle := filepath.Join(root, ".infuse", "oracle", "checks.json")
+	writeFile(t, root, ".infuse/oracle/checks.json", "{\"checks\":[]}\n")
+	snapshotTurn(s.Root, s.workRoot(), s.ID, 2)
+	s.Turn = 2
+	if err := os.Remove(oracle); err != nil {
+		t.Fatal(err)
+	}
+	why := s.auditShellWrites()
+	if why.Empty() || !strings.Contains(why.Render("en"), ".infuse/oracle/checks.json") {
+		t.Fatalf("protected deletion not refused: %q", why.Render("en"))
+	}
+	if b, err := os.ReadFile(oracle); err != nil || string(b) != "{\"checks\":[]}\n" {
+		t.Fatalf("protected record not restored: %q %v", b, err)
+	}
+}
+
 // Deleting a file is a change the audit sees, but not content to judge.
 func TestShellDeletionEndsTheTurnClean(t *testing.T) {
 	s, root := shellProject(t)

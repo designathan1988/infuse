@@ -31,10 +31,21 @@ func (m *mockProvider) Stream(ctx context.Context, req ModelRequest, emit func(S
 		return d.say("VERDICT: APPROVE")
 	}
 	if d.lastIsToolResult() {
+		r := d.last()
+		if strings.Contains(r.Content, "diagnosis registered") {
+			return d.call("TodoWrite", map[string]any{"tasks": []map[string]any{
+				{"id": "1", "text": "make the mission goal true", "status": "in_progress", "proof": "the Done? criteria pass"},
+			}})
+		}
+		if strings.Contains(r.Content, "plan recorded") || strings.Contains(r.Content, "plano registrado") {
+			if blocked, ok := d.blockTodo(); ok {
+				return d.call("TodoWrite", blocked)
+			}
+			return d.say("Nothing further can be done without the missing information; the plan is blocked.")
+		}
 		if name, input, ok := d.demoStep(); ok {
 			return d.call(name, input)
 		}
-		r := d.last()
 		if strings.Contains(r.Content, "ls-step") {
 			return d.call("Write", map[string]any{"path": "src/demo.ts", "content": "export const demo = () => `ok ${1}`;\n"})
 		}
@@ -45,6 +56,12 @@ func (m *mockProvider) Stream(ctx context.Context, req ModelRequest, emit func(S
 		if b.Type == "text" {
 			text += b.Text
 		}
+	}
+	if strings.Contains(text, "[Mission") {
+		return d.call("Diagnosis", d.missionDiagnosis())
+	}
+	if strings.HasPrefix(strings.TrimSpace(text), "[infuse]") { // infuse's own note is not a user request
+		return d.say("The scripted provider cannot make this criterion true.")
 	}
 	switch {
 	case mockWants(text, "demo"):
@@ -86,6 +103,49 @@ func (d *mockDialogue) last() Block {
 func (d *mockDialogue) lastIsToolResult() bool {
 	l := d.last()
 	return l.Type == "tool_result"
+}
+
+// missionDiagnosis is evidence-free on purpose: a mission starts on a project with no citable text,
+// and the bootstrap case allows the diagnosis without quotes.
+func (d *mockDialogue) missionDiagnosis() map[string]any {
+	return map[string]any{
+		"problem":    "the mission asks for a file that does not exist yet",
+		"root_cause": "the project is empty, so there is no existing file to quote as evidence",
+		"approach":   "bootstrap the project and then create the requested file",
+		"why_cause":  "the missing file is the whole scope of this mission",
+		"evidence":   []map[string]string{},
+	}
+}
+
+// blockTodo marks the latest plan's open tasks as blocked, once. Without reading the plan back, a
+// reply to the "plan recorded" result would keep re-submitting it and never let the turn end.
+func (d *mockDialogue) blockTodo() (map[string]any, bool) {
+	for i := len(d.req.Messages) - 1; i >= 0; i-- {
+		for _, b := range d.req.Messages[i].Content {
+			if b.Type != "tool_use" || b.Name != "TodoWrite" {
+				continue
+			}
+			var in struct {
+				Tasks []struct{ ID, Text, Status, Proof string }
+			}
+			if json.Unmarshal(b.Input, &in) != nil {
+				return nil, false
+			}
+			open := false
+			tasks := make([]map[string]any, 0, len(in.Tasks))
+			for _, t := range in.Tasks {
+				if t.Status != "done" && t.Status != "blocked" {
+					open, t.Status = true, "blocked"
+				}
+				tasks = append(tasks, map[string]any{"id": t.ID, "text": t.Text, "status": t.Status, "proof": t.Proof})
+			}
+			if !open {
+				return nil, false
+			}
+			return map[string]any{"tasks": tasks}, true
+		}
+	}
+	return nil, false
 }
 
 func (d *mockDialogue) say(s string) (ModelResult, error) {

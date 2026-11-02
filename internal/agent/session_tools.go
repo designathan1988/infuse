@@ -138,9 +138,11 @@ func (s *Session) writeGuards(ctx context.Context, tool Tool, b Block) (string, 
 	if why, changed := baselineChange(rel, before, after); changed { // the verdict container is the user's, never the agent's
 		return s.refuse(b.ID, "", why)
 	}
-	// B5: a checker cannot be silenced without the reason on the same line
-	if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
-		return s.refuse(b.ID, "", M("shortcut.justify", "lines", strings.Join(lines, "\n")))
+	// B5: a checker cannot be silenced without the reason on the same line (source files only)
+	if codeExts[strings.ToLower(filepath.Ext(rel))] {
+		if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
+			return s.refuse(b.ID, "", M("shortcut.justify", "lines", strings.Join(lines, "\n")))
+		}
 	}
 	s.markGated(rel) // everything above passed: the shell audit may skip this path
 	return "", false

@@ -13,13 +13,15 @@ import (
 
 func (s *Session) turnObligation(ctx context.Context) Msg {
 	changed, open, asks := s.turnState()
+	// A failed snapshot or an unreadable policy is not something the agent can fix by trying again;
+	// it blocks before the ask budget can turn it into a quiet "unverified" end.
+	if why := s.turnStateErrors(); !why.Empty() {
+		return why
+	}
 	if asks >= s.askBudget() { // the agent keeps refusing: the turn ends, unverified — never as done
 		s.closeOpenTasks(M("plan.closed_note").Render(s.uiLang())) // shown only in the plan pane
 		s.markUnverified()
 		return Msg{}
-	}
-	if why := s.turnStateErrors(); !why.Empty() {
-		return why
 	}
 	if len(open) > 0 {
 		return M("turn.open_tasks", "tasks", strings.Join(open, "; "))
@@ -53,22 +55,36 @@ func (s *Session) turnObligation(ctx context.Context) Msg {
 	if why := s.oracleObligation(ctx); !why.Empty() { // the verdict, run by infuse on the current tree
 		return why
 	}
-	// the mandatory independent review, once per turn (its findings must be answered)
-	if s.settings.RequireReview == nil || *s.settings.RequireReview {
-		s.Mu.Lock()
-		reviewed := s.gate.reviewed
-		s.gate.reviewed = true
-		s.Mu.Unlock()
-		if !reviewed {
-			out, err := s.RunSubagent(ctx, "review", M("turn.review_title").Render(s.uiLang()), s.reviewMaterial("")+"\nReview the changes above. End with a line exactly like this: VERDICT: APPROVE or VERDICT: FIX.")
-			if err == nil && !regexp.MustCompile(`(?i)(VERDICT:\s*APPROVE|VEREDITO:\s*APROVAR)`).MatchString(out) {
-				return M("turn.review", "findings", out)
-			}
-		}
+	if why := s.reviewObligation(ctx); !why.Empty() {
+		return why
 	}
 	if why := s.acceptanceGate(ctx, changed); !why.Empty() {
 		return why
 	}
+	return Msg{}
+}
+
+// reviewObligation runs the mandatory independent review and keeps asking until its verdict approves.
+func (s *Session) reviewObligation(ctx context.Context) Msg {
+	if s.settings.RequireReview != nil && !*s.settings.RequireReview {
+		return Msg{}
+	}
+	s.Mu.Lock()
+	reviewed := s.gate.reviewed
+	s.Mu.Unlock()
+	if reviewed {
+		return Msg{}
+	}
+	out, err := s.RunSubagent(ctx, "review", M("turn.review_title").Render(s.uiLang()), s.reviewMaterial("")+"\nReview the changes above. End with a line exactly like this: VERDICT: APPROVE or VERDICT: FIX.")
+	if err != nil {
+		return M("turn.review", "findings", firstLine(err.Error()))
+	}
+	if !regexp.MustCompile(`(?i)(VERDICT:\s*APPROVE|VEREDITO:\s*APROVAR)`).MatchString(out) {
+		return M("turn.review", "findings", out)
+	}
+	s.Mu.Lock()
+	s.gate.reviewed = true
+	s.Mu.Unlock()
 	return Msg{}
 }
 

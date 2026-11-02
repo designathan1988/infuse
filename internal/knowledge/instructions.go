@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // InstructionNames are the files agents read as the project's instructions.
@@ -110,11 +111,15 @@ func readInstructionFiles(root string) (ProjectRules, []string) {
 // addRequired records p as a document to read in full, when it is an existing, small document.
 func (r *ProjectRules) addRequired(root, p string, seen map[string]bool) {
 	p = strings.TrimSuffix(strings.TrimPrefix(filepath.ToSlash(p), "./"), "/")
-	if p == ".infuse" || strings.HasPrefix(p, ".infuse/") {
-		return // infuse's own records are not readable project documents
+	if p == ".infuse" || strings.HasPrefix(p, ".infuse/") || filepath.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") {
+		return // infuse's own records and paths outside the project are not readable project documents
 	}
 	fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(p)))
 	if err != nil || fi.IsDir() || !docExts[strings.ToLower(filepath.Ext(p))] || fi.Size() >= 400<<10 || seen[p] || core.Contains(r.Files, p) || len(r.Required) >= 24 {
+		return
+	}
+	// A binary document cannot be read by the agent; requiring it would make every action impossible.
+	if b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(p))); err != nil || !utf8.Valid(b) {
 		return
 	}
 	seen[p] = true

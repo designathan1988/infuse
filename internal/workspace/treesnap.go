@@ -136,11 +136,13 @@ func walkTree(root, work string, store bool) map[string]string {
 // SnapshotTurn records the tree at the start of a session's turn. The error is returned so the
 // session can fail closed: without the initial tree the turn cannot be audited.
 func SnapshotTurn(root, work, session string, turn int) error {
+	protected := protectedHashes(root)
 	m := treeManifest{
 		Work: filepath.Clean(work), At: time.Now().UnixMilli(), Turn: turn,
-		Files: walkTree(root, work, true), Protected: protectedHashes(root),
+		Files: walkTree(root, work, true), Protected: protected,
 		Dependencies: DependencyFingerprint(work),
 	}
+	storeProtectedBlobs(root, protected)
 	if err := core.WriteJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), m); err != nil {
 		journal.Journal(root, journal.JournalEntry{Kind: "gate", Detail: "turn snapshot failed: " + err.Error()})
 		return err
@@ -152,6 +154,40 @@ func SnapshotTurn(root, work, session string, turn int) error {
 // protectedHashes hashes what the agent must never write: the oracle's criteria and the executor's
 // evidence. The shell guard reads the command line; a script that writes the file directly is caught
 // by comparing these hashes at the end of the turn.
+// storeProtectedBlobs keeps the content of the oracle and evidence so a deletion can be undone, not
+// only reported. A protected file too large for the cache is still hashed and audited.
+func storeProtectedBlobs(root string, protected map[string]string) {
+	for rel, hash := range protected {
+		bp := blobPath(root, hash)
+		if core.Exists(bp) {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		_ = os.MkdirAll(filepath.Dir(bp), 0o755)
+		_ = os.WriteFile(bp, b, 0o644)
+	}
+}
+
+// RestoreProtected puts back the oracle and evidence recorded at the start of the turn.
+func RestoreProtected(root, session string, turn int) {
+	var m treeManifest
+	if core.ReadJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), &m) != nil {
+		return
+	}
+	for rel, hash := range m.Protected {
+		b, ok := ReadBlob(root, hash)
+		if !ok {
+			continue
+		}
+		dst := filepath.Join(root, filepath.FromSlash(rel))
+		_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+		_ = os.WriteFile(dst, []byte(b), 0o644)
+	}
+}
+
 func protectedHashes(root string) map[string]string {
 	out := map[string]string{}
 	for _, dir := range []string{"oracle", "evidence"} {
@@ -187,6 +223,11 @@ func TurnProtectedChanges(root, session string, turn int) []string {
 			out = append(out, rel)
 		}
 	}
+	for rel := range m.Protected {
+		if _, still := now[rel]; !still {
+			out = append(out, rel) // the file no longer exists: a deletion is a protected change too
+		}
+	}
 	sort.Strings(out)
 	return out
 }
@@ -200,6 +241,7 @@ func RefreshTurnProtected(root, session string, turn int) {
 		return
 	}
 	m.Protected = protectedHashes(root)
+	storeProtectedBlobs(root, m.Protected)
 	_ = core.WriteJSON(p, m)
 }
 

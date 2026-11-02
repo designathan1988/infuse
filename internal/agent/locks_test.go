@@ -57,6 +57,9 @@ func TestTestGamingInCodeIsRefused(t *testing.T) {
 	full := "export function total(items) {\n  let s = 0;\n  for (const i of items) {\n    s += i.price * i.qty;\n  }\n  return s;\n}\n"
 	wantMsg(t, cheatWriteCheck(root, "src/total.js", full, "export function total(items) {\n  return 0;\n}\n"), "cheat.stub")
 	wantMsg(t, cheatWriteCheck(root, "src/total.js", full, strings.Replace(full, "i.qty", "i.quantity", 1)), "")
+	// prose is not a test runner: examples and TODO lists in docs are not code fraud
+	wantMsg(t, cheatWriteCheck(root, "README.md", "", "```js\nprocess.exit(0);\n```\n"), "")
+	wantMsg(t, cheatWriteCheck(root, "docs/testing.md", "", "// eslint-disable-next-line\nTODO: write more tests\n"), "")
 }
 
 func TestChangedScreenMustBeLookedAt(t *testing.T) {

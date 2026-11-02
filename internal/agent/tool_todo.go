@@ -29,13 +29,23 @@ func (todoTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage)
 		return tc.Say(M("plan.empty")), true
 	}
 	var noProof []string
+	open := false
 	for _, t := range in.Tasks {
-		if t.Status != "done" && t.Status != "blocked" && strings.TrimSpace(t.Proof) == "" {
-			noProof = append(noProof, t.Text)
+		if t.Status != "done" && t.Status != "blocked" {
+			open = true
+			if strings.TrimSpace(t.Proof) == "" {
+				noProof = append(noProof, t.Text)
+			}
 		}
 	}
 	if len(noProof) > 0 { // the protocol: every open task says how it will be proven
 		return tc.Say(M("plan.no_proof", "tasks", strings.Join(noProof, "; "))), true
+	}
+	tc.S.Mu.Lock()
+	planned, existing := tc.S.gate.planned, len(tc.S.Tasks)
+	tc.S.Mu.Unlock()
+	if !open && !planned && existing == 0 {
+		return tc.Say(M("plan.no_open")), true // a plan cannot be born already finished
 	}
 	for i := range in.Tasks {
 		in.Tasks[i].Note = ""

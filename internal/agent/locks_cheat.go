@@ -79,6 +79,9 @@ func cheatWriteCheck(work, rel, before, after string) Msg {
 	if reTestInfra.MatchString(rel) && before != after {
 		return M("cheat.test_infra", "file", rel)
 	}
+	if !codeExts[ext] {
+		return Msg{} // prose and data files cannot fake a test run; code locks do not apply to them
+	}
 	// B8: equality or clocks forced
 	if reAlwaysEqual.MatchString(addedText) && !reAlwaysEqual.MatchString(before) {
 		return M("cheat.always_equal", "file", rel)

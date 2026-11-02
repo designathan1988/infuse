@@ -20,7 +20,7 @@ export const bus = {
 const PREFS_KEY = 'uiPrefs.v1';
 const DEFAULT_PREFS = {
   sidebar: { group: 'folder', sort: 'updated', closed: {} },
-  viewMode: 'normal', rail: true, unread: [], recent: [], hist: [], lastRoot: '',
+  viewMode: 'thinking', rail: true, unread: [], recent: [], hist: [], lastRoot: '',
   layout: null, panes: { open: [], width: 520, sizes: {} }, railFolds: {}, fold: {},
   chgScope: 'all', memScope: 'project', rulesScope: 'project', oracleHelp: null, memHelp: true,
   browserUrl: {}, autofix: {}

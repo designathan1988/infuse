@@ -26,9 +26,15 @@ func (s *Session) ungatedChanges() []workspace.TreeChange {
 	all := workspace.TurnChanges(s.Root, s.workRoot(), s.ID, s.Turn)
 	out := all[:0]
 	for _, ch := range all {
-		if !gated[ch.Path] && !strings.HasPrefix(ch.Path, ".infuse/") {
-			out = append(out, ch)
+		// infuse writes its own records; a deletion of one, however, must reach the protected-record
+		// check below even though the file no longer exists.
+		if gated[ch.Path] {
+			continue
 		}
+		if strings.HasPrefix(ch.Path, ".infuse/") && !ch.Deleted {
+			continue
+		}
+		out = append(out, ch)
 	}
 	return out
 }
@@ -36,13 +42,22 @@ func (s *Session) ungatedChanges() []workspace.TreeChange {
 // auditShellWrites returns what the agent must fix before the turn may end (empty when nothing).
 func (s *Session) auditShellWrites() Msg {
 	if p := workspace.TurnProtectedChanges(s.Root, s.ID, s.Turn); len(p) > 0 {
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "protected file changed outside the executor: " + strings.Join(firstN(p, 6), ", ")})
+		workspace.RestoreProtected(s.Root, s.ID, s.Turn)
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "protected file changed outside the executor (restored): " + strings.Join(firstN(p, 6), ", ")})
 		return M("oracle.protected_write", "files", strings.Join(firstN(p, 6), ", "))
 	}
 	changes := s.ungatedChanges()
 	if len(changes) == 0 {
 		return Msg{}
 	}
+	// A change made outside the write tools counts as a change for declared verification too, so a
+	// command that ran before the shell edit cannot satisfy the project's after-change check.
+	s.Mu.Lock()
+	if !s.gate.shellCounted {
+		s.gate.writes++
+		s.gate.shellCounted = true
+	}
+	s.Mu.Unlock()
 	source := false
 	for _, ch := range changes {
 		if codeExts[strings.ToLower(filepath.Ext(ch.Path))] {
@@ -78,6 +93,21 @@ func (s *Session) restoreShellChange(abs, before string) {
 	Journal(s.Root, JournalEntry{Kind: "gate", Path: relTo(s.workRoot(), abs), Detail: "restored after a shell change to a user test or test infrastructure"})
 }
 
+// protectedRecord recognizes the control records whose deletion must be visible even when the file no
+// longer exists for the snapshot comparison to list it.
+func protectedRecord(rel string) bool {
+	rel = filepath.ToSlash(rel)
+	switch {
+	case rel == ".infuse", strings.HasPrefix(rel, ".infuse/"):
+		return true
+	case rel == ".git", strings.HasPrefix(rel, ".git/"):
+		return true
+	case rel == ".mcp.json", rel == ".claude/settings.json":
+		return true
+	}
+	return false
+}
+
 // shellTestGuard applies the user-test rule to a shell change and restores a weakened test.
 func (s *Session) shellTestGuard(rel, abs, before, after string, newFile, deleted bool) Msg {
 	if newFile && (reTestFile.MatchString(rel) || reTestInfra.MatchString(rel)) {
@@ -108,6 +138,10 @@ func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 	}
 	abs := filepath.Join(s.workRoot(), filepath.FromSlash(rel))
 	if ch.Deleted { // a deletion is measured against what it removed
+		if protectedRecord(rel) {
+			s.restoreShellChange(abs, before)
+			return M("oracle.protected_write", "files", rel)
+		}
 		if m := s.shellTestGuard(rel, abs, before, "", false, true); !m.Empty() {
 			return m
 		}
@@ -143,10 +177,12 @@ func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 // conventions, architecture and size.
 func (s *Session) shellStyleViolation(rel, abs, before string, after []byte) Msg {
 	text := string(after)
-	if lines := unjustifiedSuppressions(before, text); len(lines) > 0 {
-		return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
-	}
 	ext := strings.ToLower(filepath.Ext(abs))
+	if codeExts[ext] {
+		if lines := unjustifiedSuppressions(before, text); len(lines) > 0 {
+			return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
+		}
+	}
 	if strings.HasSuffix(ext, ".md") {
 		return Msg{} // prose: a baseline and a marker are judged above; layout and size are not
 	}
