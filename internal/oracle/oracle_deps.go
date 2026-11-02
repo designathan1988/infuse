@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"hash"
 	"infuse/internal/core"
+	"infuse/internal/fsx"
 	"os"
 	"path"
 	"path/filepath"
@@ -67,22 +68,7 @@ func dependencyTrees(work string) (map[string]string, error) {
 
 // DependencyFingerprint identifies the installed dependencies: it joins the key of a cached verdict, so
 // a patched folder never replays an approval.
-func DependencyFingerprint(work string) string {
-	trees, err := dependencyTrees(work)
-	if err != nil {
-		return "unreadable: " + err.Error()
-	}
-	names := make([]string, 0, len(trees))
-	for k := range trees {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	h := sha256.New()
-	for _, n := range names {
-		fmt.Fprintf(h, "%s %s\n", n, trees[n])
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
+func DependencyFingerprint(work string) string { return fsx.DependencyFingerprint(work) }
 
 // declarationHash hashes the files that declare the given dependency folders.
 func declarationHash(work string, trees map[string]string) string {

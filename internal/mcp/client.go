@@ -6,11 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"infuse/internal/config"
 	"infuse/internal/core"
-	"infuse/internal/filter"
 	"infuse/internal/platform/process"
-	"infuse/internal/sandbox"
 	"io"
 	"net/http"
 	"os"
@@ -126,10 +123,7 @@ func (c *Client) Spawn(root string) error {
 	for i, a := range c.cfg.Args {
 		args[i] = os.ExpandEnv(a)
 	}
-	argv := append([]string{exe}, args...)
-	if projectDefined(root, c.scope, c.cfg) {
-		argv = sandbox.Wrap(argv, root, filter.InfuseRecords(), config.EffectiveSettings(root).ContainProcesses)
-	}
+	argv := containedServer(root, append([]string{exe}, args...))
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = root
 	cmd.Env = os.Environ()
@@ -149,10 +143,12 @@ func (c *Client) Spawn(root string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	process.AttachJob(cmd)
 	c.cmd, c.stdin = cmd, stdin
 	go c.ReadLoop(stdout)
 	go func() {
 		err := cmd.Wait()
+		process.ReleaseJob(cmd)
 		c.mu.Lock()
 		if c.state != "stopped" {
 			c.state = "error"

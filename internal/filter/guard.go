@@ -54,6 +54,7 @@ var internalRels = []string{
 	".infuse/project-rules.json", ".infuse/settings.json", ".infuse/settings.local.json", ".infuse/hooks.json", ".infuse/base.json",
 	".infuse/plugins", ".infuse/turnlog",
 	".infuse/rules.json", ".infuse/launch.json", ".infuse/commands", ".infuse/skills",
+	".infuse/policy.json",
 }
 
 // externalRels are files shared with other agents that the agent must never rewrite, although they
@@ -69,6 +70,12 @@ var gitControlRels = []string{".git/config", ".git/hooks"}
 func InfuseRecords() []string {
 	out := append(append(append([]string{}, internalRels...), externalRels...), gitControlRels...)
 	return append(out, oracleRel, evidenceRel)
+}
+
+// ContainedRecords is what the OS containment keeps out of a shell's reach: infuse's records plus the
+// user's protected paths (literal paths or globs).
+func ContainedRecords(userProtected []string) []string {
+	return append(InfuseRecords(), userProtected...)
 }
 
 // GitControl reports whether a path is a git hook or a repository config, which is refused with its

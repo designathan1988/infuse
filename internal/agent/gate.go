@@ -16,6 +16,7 @@ package agent
 
 import (
 	"encoding/json"
+	"infuse/internal/shellparse"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,10 +31,14 @@ type researchGate struct {
 	needWeb     bool     // local reading was not enough: only outside research opens it
 	unconfirmed int      // claims of the turn's latest Report that execution did not confirm
 
-	planned        bool     // a plan (TodoWrite) was registered in this turn
-	researched     []string // what research calls looked at in this turn (queries, addresses, doc files)
-	obligationAsks int      // times the turn was refused an end
-	reviewed       bool     // the mandatory review ran in this turn
+	planned         bool     // a plan (TodoWrite) was registered in this turn
+	planSteps       int      // tasks in the plan this turn registered
+	contractNeeded  bool     // a multi-step plan was registered: the contract stays required this turn
+	researched      []string // what research calls looked at in this turn (queries, addresses, doc files)
+	obligationAsks  int      // times the turn was refused an end
+	reviewed        bool     // the mandatory review ran in this turn
+	acceptanceAsked bool     // the user was already asked to accept this turn's delivery
+	shellCounted    bool     // a shell change was counted as a change for declared verification
 
 	runs      map[string]*runCount // commands run in this turn, for the measure-and-tweak loop
 	ran       []ranCommand         // every command of the turn with its outcome
@@ -59,6 +64,22 @@ type researchGate struct {
 }
 
 func (g *researchGate) reset() { *g = researchGate{} }
+
+// commandRuns reports whether one segment of the command line is exactly the declared command. A
+// prefix is not enough: "go test ./... -run '^$'" would otherwise satisfy "go test ./..." while
+// running no test.
+func commandRuns(cmd, want string) bool {
+	w := normSpace(want)
+	if w == "" {
+		return false
+	}
+	for _, seg := range shellparse.Segments(cmd) {
+		if normSpace(seg) == w {
+			return true
+		}
+	}
+	return false
+}
 
 // isResearch reports whether a tool call counts as investigation, and whether it reaches outside the
 // project (the web, the browser, pinned docs, a skill).
@@ -172,6 +193,9 @@ var shortcuts = []shortcut{
 	{regexp.MustCompile(`catch\s*(\([^)]*\))?\s*\{\s*\}|\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*(\{\s*\}|null|undefined)\s*\)`), M("shortcut.empty_catch"), false},
 	{regexp.MustCompile(`except(\s+[\w.,() ]+)?:\s*(\n\s*)?pass\b`), M("shortcut.except_pass"), false},
 	{regexp.MustCompile(`"test"\s*:\s*"[^"]*(\|\|\s*true|exit\s+0)[^"]*"`), M("shortcut.test_true"), true},
+	{regexp.MustCompile(`\bcontinue-on-error\s*:\s*true\b|--passWithNoTests\b|--testPathIgnorePatterns|--testNamePattern\s*=\s*['"]?\^?\$|(?:testPathIgnorePatterns|testNamePattern)\s*:`), M("shortcut.test_config"), true},
+	{regexp.MustCompile(`expect\(\s*(?:0|false|null|undefined)\s*\)\.(?:toBe|toEqual)\(\s*(?:0|false|null|undefined)\s*\)`), M("shortcut.assert_true"), true},
+	{regexp.MustCompile(`(?m)^\s*assert\s+(?:0|1|True|False)\s*$`), M("shortcut.assert_true"), true},
 }
 
 // suppressors silence the project's checker. A suppression that carries its reason on the same line
@@ -226,7 +250,8 @@ func suppressorWithoutReason(line string) bool {
 
 // detectShortcuts lists the shortcuts that after has and before did not (newly introduced).
 func detectShortcuts(path, before, after string) (ask []Msg, warn []Msg) {
-	isTest := reTestFile.MatchString(filepath.ToSlash(path)) || strings.HasSuffix(filepath.ToSlash(path), "package.json")
+	rel := filepath.ToSlash(path)
+	isTest := reTestFile.MatchString(rel) || reTestInfra.MatchString(rel) || reTestConfig.MatchString(rel)
 	for _, sc := range shortcuts {
 		if len(sc.re.FindAllStringIndex(after, -1)) <= len(sc.re.FindAllStringIndex(before, -1)) {
 			continue
@@ -289,24 +314,39 @@ func editedContent(root, cwd string, name string, input json.RawMessage) (path, 
 // missingReport returns the reminder when the turn changed files and ended without a Report (empty
 // otherwise).
 func (s *Session) missingReport() Msg {
-	shell := len(s.ungatedChanges()) // a change made by a shell command owes the same account
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	changed := len(s.Checkpoints[s.Turn])
-	if changed == 0 {
-		changed = shell
-	}
-	if changed == 0 || s.Turn < 1 || s.Turn-1 >= len(s.TurnStarts) {
+	shell := s.ungatedChanges() // a change made by a shell command, a deletion included, owes the same account
+	changed, _, _ := s.turnState()
+	if len(changed) == 0 && len(shell) == 0 {
 		return Msg{}
 	}
-	for _, m := range s.Messages[min(s.TurnStarts[s.Turn-1], len(s.Messages)):] {
-		for _, b := range m.Content {
-			if b.Type == "tool_use" && b.Name == "Report" {
-				return Msg{}
+	s.Mu.Lock()
+	start := len(s.Messages)
+	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) && s.TurnStarts[s.Turn-1] < len(s.Messages) {
+		start = s.TurnStarts[s.Turn-1]
+	} else {
+		for i := len(s.Messages) - 1; i >= 0; i-- {
+			if s.Messages[i].Role == "user" {
+				start = i
+				break
 			}
 		}
 	}
-	return M("gate.no_report", "count", changed)
+	found := false
+	for _, m := range s.Messages[start:] {
+		for _, b := range m.Content {
+			var in struct {
+				Claims []json.RawMessage `json:"claims"`
+			}
+			if b.Type == "tool_use" && b.Name == "Report" && json.Unmarshal(b.Input, &in) == nil && len(in.Claims) > 0 {
+				found = true // an empty report does not account for the changes
+			}
+		}
+	}
+	s.Mu.Unlock()
+	if found {
+		return Msg{}
+	}
+	return M("gate.no_report", "count", max(len(changed), len(shell)))
 }
 
 // unconfirmedReport refuses the end of a turn whose latest Report claims what execution did not

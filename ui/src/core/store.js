@@ -22,7 +22,7 @@ const PREFS_KEY = 'uiPrefs.v1';
 const DEFAULT_PREFS = {
   v: 1,
   sidebar: { group: 'folder', sort: 'updated', closed: {} },
-  viewMode: 'normal', rail: true, unread: [], recent: [], hist: [], lastRoot: '',
+  viewMode: 'thinking', rail: true, unread: [], recent: [], hist: [], lastRoot: '',
   layout: null, panes: { open: [], width: 520, sizes: {} }, railFolds: {}, fold: {},
   chgScope: 'all', memScope: 'project', rulesScope: 'project', oracleHelp: null, memHelp: true,
   browserUrl: {}, autofix: {}
@@ -236,6 +236,23 @@ const EVENT_HANDLERS = {
   cwd: fieldHandler('cwd'), checkpoint: onCheckpoint,
   map: () => { bus.emit('pane-refresh', 'map'); bus.emit('pane-refresh', 'files'); },
   compacted: () => bus.emit('compacted'),
+  browser: (L, d) => {
+    const raw = d && d.url;
+    if (!raw) return;
+    let u;
+    try { u = new URL(raw); } catch { return; }
+    const h = u.hostname;
+    const local = h === 'localhost' || h === '0.0.0.0' || h === '[::1]' || h.startsWith('127.') || h.endsWith('.localhost') || h.endsWith('.local');
+    if (!local) return;
+    // Only the session on screen: an agent working in another session must not take over this pane.
+    const v = ui.views.get()[ui.focus.get()];
+    if (!v || v.sid !== L.id) return;
+    const open = n => import('../panes/index.js').then(p => {
+      p.togglePane('browser', true);
+      if (!p.paneCall('browser', 'openAgent', u.href) && n < 25) setTimeout(() => open(n + 1), 100);
+    });
+    open(0);
+  },
 };
 
 async function drainQueue(L) {
@@ -348,7 +365,9 @@ export async function decide(L, id, d) {
     bus.emit('api-error', r?.error instanceof Error ? r.error : new Error(t('perm.failed')));
     return;
   }
-  const s = { ...L.snap.get() }; s.pendingPermission = null; L.snap.set(s);
+  const s = { ...L.snap.get() };
+  if (s.pendingPermission?.id === id) s.pendingPermission = null;
+  L.snap.set(s);
 }
 export async function answer(L, id, a) {
   const r = await api(`/api/sessions/${L.id}/answer`, { body: { id, answer: a }, root: L.root }).catch(e => ({ error: e }));
@@ -356,7 +375,9 @@ export async function answer(L, id, a) {
     bus.emit('api-error', r?.error instanceof Error ? r.error : new Error(t('question.answerFailed')));
     return;
   }
-  const s = { ...L.snap.get() }; s.pendingQuestion = null; L.snap.set(s);
+  const s = { ...L.snap.get() };
+  if (s.pendingQuestion?.id === id) s.pendingQuestion = null;
+  L.snap.set(s);
 }
 export async function setSessionOpts(L, patch) {
   const r = await api(`/api/session/${L.id}/settings`, { body: patch, root: L.root }).catch(() => null);

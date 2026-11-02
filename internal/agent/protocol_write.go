@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"infuse/internal/knowledge"
 	"path/filepath"
@@ -17,27 +18,35 @@ func (s *Session) protocolCheckWrite(name string, input json.RawMessage) Msg {
 		return Msg{}
 	}
 	rel := filepath.ToSlash(p)
-	if strings.HasPrefix(filepath.ToSlash(relTo(s.workRoot(), p)), ".infuse/") || strings.HasSuffix(rel, ".md") && !strings.Contains(rel, "/src/") {
-		return Msg{} // infuse's own files and prose documents are not code
-	}
-	// 0. the project's instructions: not edited, references not written, the declared measurements used
+	// the project's instructions bind every writer: this check comes before the prose exemption
 	if why := s.instructionWriteCheck(relTo(s.workRoot(), p), before); !why.Empty() {
 		return why
+	}
+	if strings.EqualFold(filepath.Base(p), "package.json") {
+		if refs := newManifestPackages(before, after); len(refs) > 0 {
+			if why := verifyPackageRefs(context.Background(), refs); !why.Empty() {
+				return why // a dependency written into the manifest is verified before it can be installed
+			}
+		}
+	}
+	if strings.HasPrefix(filepath.ToSlash(relTo(s.workRoot(), p)), ".infuse/") || strings.HasSuffix(rel, ".md") && !strings.Contains(rel, "/src/") {
+		return Msg{} // infuse's own files and prose documents are not code
 	}
 	// 1. a plan for this turn
 	s.Mu.Lock()
 	planned := s.gate.planned
 	s.Mu.Unlock()
-	if !planned {
+	if s.requirePlan() && !planned {
 		return M("protocol.no_plan")
 	}
-	// 2. the request's contract: the user confirmed what done means before code moves
-	if why := s.contractGate(); !why.Empty() {
+	if why := s.contractGate(); !why.Empty() { // multi-step work starts only after the user confirmed it
 		return why
 	}
 	ext := strings.ToLower(filepath.Ext(p))
-	if m := s.docsBeforeUse(p, before, after); !m.Empty() {
-		return m
+	if s.requireDocs() {
+		if m := s.docsBeforeUse(p, before, after); !m.Empty() {
+			return m
+		}
 	}
 	// 3. the project's conventions
 	if s.settings.EnforceConventions == nil || *s.settings.EnforceConventions {
@@ -67,7 +76,12 @@ func (s *Session) docsBeforeUse(p, before, after string) Msg {
 	}
 	var missing []string
 	for u := range newUses {
-		if !s.researchedFor(researchName(u)) {
+		host := strings.TrimPrefix(u, "host:")
+		ok := s.researchedFor(researchName(u))
+		if strings.HasPrefix(u, "host:") {
+			ok = s.researchedHost(host) // an API is researched against its own address, not a passing mention
+		}
+		if !ok {
 			missing = append(missing, strings.TrimPrefix(strings.TrimPrefix(u, "pkg:"), "host:"))
 		}
 	}

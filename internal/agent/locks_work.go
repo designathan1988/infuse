@@ -253,13 +253,17 @@ var registryLookup = func(ctx context.Context, p pkgRef) (exists bool, created t
 
 // unknownPackages refuses packages that do not exist and asks about very new ones (a name an LLM
 // invented may have been registered by an attacker).
-func unknownPackages(_ context.Context, cmd string) Msg {
-	var missing, fresh []string
+func unknownPackages(ctx context.Context, cmd string) Msg {
+	var missing, fresh, unverified []string
 	for _, p := range packagesInCommand(cmd) {
 		e, ok := cachedPackage(p)
-		if !ok { // not known yet: ask the registry in the background, never inside the gate
+		if !ok { // not known yet: verify before the install runs, never run an unverified name
 			refreshPackageAsync(p)
-			continue
+			e, ok = waitForPackage(ctx, p, packageWait)
+			if !ok {
+				unverified = append(unverified, fmt.Sprintf("%s (%s)", p.name, p.registry))
+				continue
+			}
 		}
 		created := time.UnixMilli(e.Created)
 		if !e.Exists {
@@ -273,6 +277,9 @@ func unknownPackages(_ context.Context, cmd string) Msg {
 	}
 	if len(fresh) > 0 {
 		return M("pkg.fresh", "packages", strings.Join(fresh, ", "))
+	}
+	if len(unverified) > 0 {
+		return M("pkg.unverified", "packages", strings.Join(unverified, ", "))
 	}
 	return Msg{}
 }

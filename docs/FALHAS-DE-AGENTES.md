@@ -117,6 +117,19 @@ State: **covered** (lock in code, with a test) · **partial** · **missing**.
 | Package gate reads a local cache; map parsed once per file generation | network and re-parsing in the gate path | covered (`locks_test.go`) |
 | Base `.infuse/base.json` refuses code outside its folders | work with no intended structure | covered (`base_test.go`) |
 | `infuse claude|codex|gemini` and the app launcher start external CLIs through the shim | the Studio launching unfiltered agents | build + desktop tests |
+| One behaviour policy per scope, edited in Regras; protected from the agent; corrupt policy blocks every turn; prohibitions become typed bans | scattered behaviour sources and a silent weaker fallback | covered (`internal/policy`, `policy_session_test.go`) |
+| A confirmed Contract bound to the current request before multi-step work writes | starting work on an unconfirmed reading of the order | covered (`contract_gate_test.go`) |
+| Job Objects for every agent process; containment on every platform (Windows Low integrity, Linux namespace + Landlock, macOS Seatbelt; write only the work root and a private temp; `.infuse` never granted) | processes outliving infuse; writes outside the project | covered (`internal/sandbox`, `contained_test.go`) |
+| A screenshot is bound to the HTML the criteria measure, not only to the origin | a capture of another page/state satisfying the visual gate | covered (`locks_screenshot_test.go`) |
+| Python dependency versions are read from the manifests; Django/pytest/Express use verified versioned docs URLs | docs for a version other than the one installed | covered (`docs_version_test.go`) |
+| Turn snapshots record a dependency fingerprint; the executor refuses a verdict when lockfiles or installed code change while the checks run, in the live tree or in the snapshot | poisoned `node_modules/.bin` runner or a lockfile edited during measurement | covered (`deps_test.go`, oracle executor test) |
+| Stale compiled rules are labeled and the prompt says so; the blob store keeps 50 turns per session and drops unreferenced content; the base shows intended vs. actual folders | silently enforcing an old instruction text; unbounded snapshot storage; a base that exists only on paper | covered (`knowledge_test.go`, `prune_test.go`, `base_gate_test.go`) |
+| Built-in slash commands come from one data table grouped by area, and custom commands join it | a second hardcoded command list drifting from the UI | covered (`commands_test.go`, Chrome 2×) |
+| A base is chosen and applied in the Rules page; creating from a base writes the folders, the base document and the generated map | a base that exists only as a file, or a project created without structure | covered (`appBase_test.go`, Chrome 2×) |
+| Unattended runs answer their own cards and questions; plan mode, the destructive table, the protected paths and every sentinel still refuse with nobody to approve | a mission hanging on a card nobody sees, or approving what nobody read | covered (`unattended_test.go`, `turn_locks_test.go`) |
+| An existing test, its configuration and a verdict container are refused deterministically, with no card, in every mode; a shell rewrite is restored | "accept everything" or a card reflex approving a weakened test | covered (`sentinel_test.go`, `shell_audit_test.go`) |
+| Protected oracle and evidence files changed outside the executor are restored from the turn snapshot | a deleted criterion surviving the refusal | covered (`shell_audit_test.go`) |
+| High-stakes criteria ask the user to accept the delivery once, after executor and reviewer; a rejection ends the turn visibly and journaled | shipping a risky result as done because the criteria happened to pass | covered (`acceptance_test.go`, Chrome 2×) |
 
 ## H. Corrections from the 2026-11-02 audit
 

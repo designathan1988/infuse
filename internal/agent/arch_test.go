@@ -68,6 +68,9 @@ func TestArchPlacement(t *testing.T) {
 	wantArch(t, root, "misc/util.ts", "", "export const b = 2;\n", M("arch.new_folder", "dir", "misc"))
 	wantArch(t, root, "tests/util.test.ts", "", "export const b = 2;\n", Msg{})
 	wantArch(t, root, "vite.config.md", "", "x\n", Msg{})
+	wantArch(t, root, "index.html", "", "<!doctype html>\n", Msg{})
+	wantArch(t, root, "styles.css", "", "body { margin: 0; }\n", Msg{})
+	wantArch(t, root, "vite.config.js", "", "export default {};\n", Msg{})
 }
 
 func TestArchFunctions(t *testing.T) {

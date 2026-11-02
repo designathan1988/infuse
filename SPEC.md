@@ -32,7 +32,7 @@ runs commands. These are the only points that catch everything, in every agent.
 
 | Point | Mechanism | Infused on the way in | Transformed on the way out |
 |---|---|---|---|
-| **Project directory** | mount (FUSE / WinFsp) when available; instant watcher always | directory map; native per-folder context files (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`, generated) | relocation to the base's place; oracle paths rejected; vice recorded |
+| **Project directory** | explicit mount (`infuse mount`, WinFsp); instant watcher always | directory map; native per-folder context files (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`, generated) | out-of-base code refused (no deterministic relocation target); oracle/protected paths rejected; vice recorded |
 | **Shell** | interposed shell on PATH, invoked by every agent's Bash tool | command output + oracle state + untouched dependents | heredoc → file write; vice patterns → remedy in the response |
 | **Launcher** | `infuse claude` / `infuse codex` / `infuse gemini` | environment mounted before the agent opens | — |
 
@@ -88,19 +88,46 @@ What escapes: what the model thinks (touches nothing) and the final message it w
 > same write rules before the turn can end — heredocs before they run, everything else at the turn
 > boundary. The agent's processes are contained by the OS: a write the parser never saw is refused by
 > the kernel. Slice 2 is delivered: seven bases (api, web, cli, interactive, library, game, service)
-> scaffold running starter code with a pre-filled map. Slice 3 is delivered and anchored, with web checks
-> through a real browser. Slice 5's vice catalog ships as a data table (`internal/data/vices.json`) and
-> every gate refusal records its vice with signature and remedy. Also delivered: tools, permissions,
-> sessions, checkpoints, compaction, git, subagents with an independent reviewer, the MCP client, web
-> search, the desktop bridges and the launcher. Still absent: the FUSE/WinFsp mount (slice 4), which is
-> why an external agent's own Read and Write tools do not pass through the filter: for those agents
-> the interposition point is the shell, and the full filter is the agent that runs inside infuse.
+> scaffold running starter code with a pre-filled map, folder responsibilities and a starter README in
+> the base's folders, through `infuse init <base>` or the Rules page, which also applies a base, edits a
+> custom one and creates a new project from one. The map carries the feature→where index of Slice 1
+> (feature folders, HTTP route literals, name clusters and the import graph, sorted and bounded) in the
+> prompt, the Map pane and `MAP.md`. Slice 3 is delivered and anchored, with web checks through a real
+> browser. Slice 5's vice catalog ships as a data table (`internal/data/vices.json`) and every gate
+> refusal records its vice with signature and remedy. Also delivered: tools, permissions, sessions,
+> checkpoints, compaction, git, subagents with an independent reviewer, the MCP client, web search, the
+> desktop bridges and the `infuse claude|codex|gemini` launcher. The behaviour policy is one versioned
+> document edited in the Rules page (permissions/prohibitions, work method, architecture, conventions,
+> done), and multi-step work needs a user-confirmed Contract, latched from the turn's plan and bound to
+> the request and the turn, before any writer changes code; criteria can require the user's acceptance
+> of a high-stakes delivery even when the executor passes. Missions and scheduled tasks are unattended:
+> cards and questions answer themselves, plan mode still denies writes, and the destructive table,
+> the protected paths and every sentinel still refuse with nobody to approve.
+>
+> OS containment is delivered for the commands infuse launches (`internal/sandbox`): every agent process
+> runs in a kill-on-close Job Object; Windows runs it at Low integrity with Medium labels on what it may
+> not touch, a deny on delete-child, and MSYS2 from a private runtime copy, so Git Bash, Go, Git and npm
+> work while writes and deletes outside the project are denied; Linux uses a mount namespace plus
+> Landlock; macOS uses Seatbelt. It fails closed. It contains mistakes and file tampering, not a hostile
+> same-user process using Explorer/COM brokers, and leaves network access open.
+>
+> Slice 4, the mount, is delivered as an explicit surface: `infuse mount <drive|dir> [project]` serves a
+> project through WinFsp (`internal/mountwin`); writes through the mounted view are journaled and pass
+> the base/protected-path policy before reaching disk. **Sessions do not run on the mount, they run on
+> the real project tree, by design**: the mount denies `.infuse` writes, and infuse itself must write the
+> oracle, journal and evidence there. Auto-mounting the session root would either break those writes or
+> require a privileged bypass that splits the agent's view from the tree. The mandatory write perimeter
+> for agent commands is the OS sandbox; the mount is the explicit filesystem view for other tools, and it
+> is how an external agent's own Read and Write tools can be put behind the policy, which otherwise see
+> only the shell interposition (the full filter is the agent that runs inside infuse). Out-of-base
+> writes are refused rather than relocated, because the base has no deterministic destination for an
+> arbitrary path and refusal keeps the correct path the cheapest one.
 
 
 1. **Minimal filter** — launcher + interposed shell (heredoc → write) + map v0 + write watcher. ← this one
-2. Bases v0 (API, web, CLI, interactive app) as scaffolds with a pre-filled map.
+2. Bases (API, web, CLI, interactive app, library, game, service) as scaffolds with a pre-filled map.
 3. Oracle + executor (web via browser, CLI via process, API via requests).
-4. Mount (FUSE/WinFsp) for pre-write interposition.
+4. Mount (WinFsp) for pre-write interposition: delivered as `infuse mount`, an explicit view; sessions stay on the real tree.
 5. Full vice catalog (from the 32-item base catalog) + lessons.
 
 ## 8. Done for the tool itself (infuse's own oracle)

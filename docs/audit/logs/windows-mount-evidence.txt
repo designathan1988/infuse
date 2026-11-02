@@ -1,0 +1,35 @@
+# Windows project mount evidence
+Sun Nov  1 19:27:43     2026
+driver: 2.1 (SxS=20261101T215211Z)
+
+## tests
+=== RUN   TestMountReadsAndWrites
+--- PASS: TestMountReadsAndWrites (0.01s)
+=== RUN   TestMountRefusesProtectedAndOutsideBase
+--- PASS: TestMountRefusesProtectedAndOutsideBase (0.01s)
+=== RUN   TestMountServesAProject
+--- PASS: TestMountServesAProject (0.21s)
+=== RUN   TestMountReaddir
+--- PASS: TestMountReaddir (0.00s)
+PASS
+ok  	infuse/internal/mountwin	0.242s
+
+## mount
+PASS  WinFsp mounted the project on T:
+
+## writes through the mount
+PASS  write inside the project
+PASS  write code inside the base
+C:/Users/Jonathan/AppData/Local/Temp/infuse-audit/windows-mount-evidence.sh: line 36: /t/server/app.go: Permission denied
+PASS  out-of-base code refused
+C:/Users/Jonathan/AppData/Local/Temp/infuse-audit/windows-mount-evidence.sh: line 37: /t/.infuse/oracle.txt: Permission denied
+PASS  .infuse write refused
+PASS  oracle record unchanged
+
+## journal
+PASS  mount writes reach the journal
+PASS  in-base code write journaled
+PASS  mount exited cleanly after --timeout
+PASS  drive unmounted
+
+RESULT: 0 failure(s)

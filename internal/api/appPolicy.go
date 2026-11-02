@@ -1,33 +1,26 @@
 package api
 
 // appPolicy: the Rules page's routes — the project's base (choice, scaffold, custom editor), the
-// compiled instructions and the project's prohibitions. These are the user's surfaces; the agent has
+// behaviour policy, the compiled instructions and the project's prohibitions. These are the user's surfaces; the agent has
 // no route here and touches the same files only through the gates.
 
 import (
+	"encoding/json"
 	"infuse/internal/agent"
 	"infuse/internal/base"
 	"infuse/internal/knowledge"
-	"infuse/internal/projectmap"
+	"infuse/internal/policy"
 	"net/http"
+	"os"
 )
 
 func appPolicy(w http.ResponseWriter, r *http.Request, q map[string]string, body map[string]any, root, dir string, str func(string) string, num func(string) int, boolean func(string) bool) bool {
 	path := r.URL.Path
 	switch {
-	case path == "/api/base" && r.Method == http.MethodGet:
-		sendJSON(w, 200, map[string]any{"catalog": base.Catalog(), "current": base.Load(root)})
-		return true
-	case path == "/api/base" && r.Method == http.MethodPut:
-		err := saveBase(root, body)
-		sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err), "current": base.Load(root)})
-		return true
-	case path == "/api/base/scaffold" && r.Method == http.MethodPost:
-		b, err := base.Scaffold(root, str("base"))
-		if err == nil {
-			projectmap.WriteMap(root, projectmap.BuildMap(root)) // the map is pre-filled with the base's folders
-		}
-		sendJSON(w, 200, map[string]any{"ok": err == nil, "error": errString(err), "base": b})
+	case path == "/api/base" || path == "/api/base/scaffold":
+		return baseRoute(w, r, body, root, str)
+	case path == "/api/policy":
+		policyRoute(w, r, body, root, q)
 		return true
 	case path == "/api/rules/compiled" && r.Method == http.MethodGet:
 		sendJSON(w, 200, knowledge.LoadCompiledRules(root))
@@ -59,4 +52,38 @@ func saveBase(root string, body map[string]any) error {
 		}
 	}
 	return base.Save(root, "", &custom)
+}
+
+// policyRoute reads and writes the behaviour policy: one document per scope.
+func policyRoute(w http.ResponseWriter, r *http.Request, body map[string]any, root string, q map[string]string) {
+	global := q["scope"] == "global"
+	if !global && root == "" {
+		sendJSON(w, http.StatusBadRequest, map[string]any{"error": "project required"})
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		p, err := policy.Effective(root)
+		if err != nil {
+			sendJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		file := policy.File(root, global)
+		_, statErr := os.Stat(file)
+		sendJSON(w, http.StatusOK, map[string]any{"policy": p, "file": file, "exists": statErr == nil, "global": global})
+	case http.MethodPut:
+		b, _ := json.Marshal(body)
+		var p policy.Policy
+		if err := json.Unmarshal(b, &p); err != nil {
+			sendJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		if err := policy.Save(root, global, p); err != nil {
+			sendJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return
+		}
+		sendJSON(w, http.StatusOK, map[string]any{"ok": true, "file": policy.File(root, global)})
+	default:
+		sendJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+	}
 }

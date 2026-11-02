@@ -22,6 +22,7 @@ type FileInfo struct {
 	Namespace  string   `json:"namespace,omitempty"` // C# namespace / Java-Kotlin package
 	Exports    []string `json:"exports"`
 	Imports    []string `json:"imports"`
+	Routes     []Route  `json:"routes,omitempty"`
 	Dependents []string `json:"dependents"`
 
 	scan *fileScan // what a full build keeps while it computes the levels; never stored
@@ -51,7 +52,8 @@ type ProjectMap struct {
 	Files        map[string]*FileInfo `json:"files"`
 	Dirs         map[string]*DirInfo  `json:"dirs"`
 	Hotspots     []Hotspot            `json:"hotspots"`
-	Features     []Feature            `json:"features,omitempty"` // feature → where it is split
+	Features     []Feature            `json:"features"`           // feature → where it is split
+	Routes       []Route              `json:"routes"`             // the HTTP surface the code declares
 	Data         []DataOwner          `json:"data,omitempty"`     // data → owner
 	Examples     []Example            `json:"examples,omitempty"` // "how X is done here" → real code
 	Drift        []Drift              `json:"drift,omitempty"`    // intended vs. actual
@@ -74,7 +76,7 @@ func BuildMap(root string) *ProjectMap {
 	intended := LoadContract(root)
 	applyContract(m, intended)
 	computeHotspots(m, intended.MaxFileLines)
-	m.Features = computeFeatures(m)
+	m.Features, m.Routes = buildFeatures(m)
 	m.Data = computeData(m)
 	m.Examples = computeExamples(m)
 	m.Dead = computeDead(m, intended)
@@ -178,7 +180,7 @@ func readFileInfo(root, full string, withScan bool) *FileInfo {
 	if len(text) > 0 {
 		lines = strings.Count(text, "\n") + 1
 	}
-	f := &FileInfo{Path: relFile, Lang: lang, Lines: lines, Bytes: st.Size(), Namespace: namespaceOf(text, lang), Exports: extractExports(text, lang, relFile), Imports: extractImports(text, lang), Dependents: []string{}}
+	f := &FileInfo{Path: relFile, Lang: lang, Lines: lines, Bytes: st.Size(), Namespace: namespaceOf(text, lang), Exports: extractExports(text, lang, relFile), Imports: extractImports(text, lang), Routes: extractRoutes(text, lang, filepath.Base(full), relFile), Dependents: []string{}}
 	if withScan {
 		f.scan = scanFile(f, text)
 	}

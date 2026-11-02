@@ -37,8 +37,9 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 	}
 	// the latest exchange stays verbatim; both are fresh slices: appending the request below must not
 	// write over the exchange that is kept (a shared backing array lost the agent's tool calls once)
-	keep := append([]Message{}, msgs[len(msgs)-2:]...)
-	older := append([]Message{}, msgs[:len(msgs)-2]...)
+	keepFrom := len(msgs) - 2
+	keep := append([]Message{}, msgs[keepFrom:]...)
+	older := append([]Message{}, msgs[:keepFrom]...)
 	older = append(older, Message{Role: "user", Content: []Block{{Type: "text", Text: compactRequest + " Be specific and concise."}}})
 	res, err := p.Stream(ctx, ModelRequest{Model: s.fastModel(), Messages: repairTranscript(older), MaxTokens: 4000}, func(StreamEvent) {})
 	if err != nil {
@@ -61,10 +62,26 @@ func (s *Session) compact(ctx context.Context, p Provider) error {
 
 // adoptCompaction replaces the transcript. Turn keeps counting and keeps indexing TurnStarts: every
 // turn the summary absorbed starts right after it, with what was kept verbatim. Checkpoints, tree
-// snapshots and the request of the current turn stay addressed by the same number.
+// snapshots and the request of the current turn stay addressed by the same number. The current turn
+// keeps pointing at its own request: when that fell in the summarized part, it is put back verbatim in
+// front of the kept exchange, so the Contract, Report and mission gates keep reading it.
 func (s *Session) adoptCompaction(head, keep []Message) {
-	s.Messages = append(head, keep...)
+	keepFrom := len(s.Messages) - len(keep)
+	msgs := append([]Message{}, head...)
+	pos := len(head)
+	if s.Turn >= 1 && s.Turn-1 < len(s.TurnStarts) {
+		switch old := s.TurnStarts[s.Turn-1]; {
+		case old >= keepFrom:
+			pos = len(head) + old - keepFrom
+		case old >= 0:
+			msgs = append(msgs, s.Messages[old])
+		}
+	}
+	s.Messages = append(msgs, keep...)
 	s.TurnStarts = compactedStarts(s.Turn, len(head))
+	if s.Turn >= 1 {
+		s.TurnStarts[s.Turn-1] = pos
+	}
 }
 
 func compactedStarts(turns, at int) []int {

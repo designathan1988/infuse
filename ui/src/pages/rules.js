@@ -1,16 +1,18 @@
 // pages/rules — the unified Rules (policy) page: the project's architecture base (choose, create,
-// edit), the filter rules, the write policy and the project's prohibitions, in one place.
+// edit), the behaviour policy, the filter rules, the write policy and the project's prohibitions, in
+// one place.
 import { h, esc } from '../core/dom.js';
 import { t } from '../core/i18n.js';
 import { I } from '../core/icons.js';
 import { api } from '../core/api.js';
-import { cache, projectLabel, curRoot, saveSettings } from '../core/store.js';
+import { cache, projectLabel, curRoot, saveSettings, pref } from '../core/store.js';
 import { pageShell, setRow, toggleEl, inputEl } from './shell.js';
 import { WRITE_POLICY, ALWAYS_ON, writePolicyValues } from './writePolicy.js';
 import { mountFilterRules } from '../components/policy/filterRules.js';
+import { mountPolicy } from '../components/policy/behaviour.js';
 import { toast } from '../components/toast.js';
 
-const SECTIONS = [['base', 'policy.base'], ['filter', 'policy.filter'], ['writes', 'policy.writes'], ['bans', 'policy.bans']];
+const SECTIONS = [['base', 'policy.base'], ['behaviour', 'policy.title'], ['filter', 'policy.filter'], ['writes', 'policy.writes'], ['bans', 'policy.bans']];
 
 export async function openRules(section = 'base') {
   const el = pageShell('rules', SECTIONS, section, openRules);
@@ -18,6 +20,7 @@ export async function openRules(section = 'base') {
   if (!root) { el.append(h(`<div class="empty">${t('cust.needProject')}</div>`)); return; }
   el.append(h(`<p class="faint field-note">${esc(projectLabel(root))} · ${esc(root)}</p>`));
   if (section === 'base') return baseSection(el, root);
+  if (section === 'behaviour') return behaviourSection(el, root);
   if (section === 'filter') return filterSection(el, root);
   if (section === 'writes') return writesSection(el, root);
   if (section === 'bans') return bansSection(el, root);
@@ -26,8 +29,14 @@ export async function openRules(section = 'base') {
 // ---------------------------------------------------------------- base: choose, create, edit
 
 async function baseSection(el, root) {
-  const { catalog, current } = await api('/api/base', { root }).catch(() => ({ catalog: [], current: null }));
+  const { catalog = [], current = null, file = '', folders = [] } = await api('/api/base', { root }).catch(() => ({}));
   el.append(h(`<h1>${t('policy.base')}</h1>`), h(`<p class="lead">${t('policy.baseDesc')}</p>`));
+  el.append(h(`<div class="doc-editor-box field-my">
+      <div class="rules-help-title">${t('base.current')}</div>
+      <p class="lead">${esc(current?.name || t('base.none'))}</p>
+      <div class="faint mono">${esc(file)}</div>
+      ${folders.length ? `<div class="faint mt-4">${esc(t('base.folders'))}: ${esc(folders.join(', '))}</div>` : ''}
+    </div>`));
   el.append(h(`<div class="base-rows"></div>`));
   const rows = el.querySelector('.base-rows');
   for (const b of catalog) {
@@ -35,6 +44,30 @@ async function baseSection(el, root) {
   }
   el.append(h(`<h2 class="mt-6">${t('policy.baseCustom')}</h2>`), h(`<p class="lead">${t('policy.baseCustomDesc')}</p>`));
   customBaseEditor(el, root, current, catalog);
+  newProjectFromBase(el, catalog);
+}
+
+// A new project in a folder the user picks: the folders, the base document and the generated map.
+function newProjectFromBase(el, catalog) {
+  const options = catalog.map(b => `<option value="${esc(b.name)}">${esc(b.name)} — ${esc(t('base.desc.' + b.name))}</option>`).join('');
+  const make = h(`<div class="doc-editor-box field-my mt-7 base-create">
+      <div class="rules-help-title">${t('base.createTitle')}</div>
+      <p class="lead">${t('base.createDesc')}</p>
+      <div class="row mt-4"><input class="field-select name" placeholder="${esc(t('base.name'))}" aria-label="${esc(t('base.name'))}"><select class="field-select starter" aria-label="${esc(t('base.choose'))}">${options}</select><button class="btn line choose">${t('base.chooseFolder')}</button></div>
+      <div class="faint status mt-3"></div>
+    </div>`);
+  el.append(make);
+  make.querySelector('.choose').onclick = async () => {
+    const pick = await api('/api/dialog/folder').catch(e => ({ error: String(e) }));
+    if (pick.error) return toast(pick.error);
+    if (!pick.path) return;
+    const name = make.querySelector('.name').value.trim();
+    const r = await api('/api/base/scaffold', { method: 'POST', body: { parent: pick.path, name, base: make.querySelector('.starter').value } }).catch(e => ({ error: String(e) }));
+    if (r.error) return toast(r.error);
+    make.querySelector('.status').textContent = t('base.created', { path: r.root });
+    const projects = await api('/api/projects').catch(() => null);
+    if (projects) cache.projects.set(projects);
+  };
 }
 
 function baseRow(root, b, current) {
@@ -43,7 +76,7 @@ function baseRow(root, b, current) {
     <div class="top"><span class="nm">${esc(b.name)}</span>${chosen ? `<span class="tag ok">${t('policy.baseChosen')}</span>` : ''}<span class="grow"></span>
       <button class="btn sm pick">${chosen ? t('policy.baseRechoose') : t('policy.basePick')}</button>
       <button class="btn sm line create">${t('policy.baseCreate')}</button></div>
-    <p class="faint">${esc(b.description || '')}</p>
+    <p class="faint">${esc(t('base.desc.' + b.name))}</p>
     <div class="faint mono trunc">${esc(b.folders.join(' · '))}</div>
     <div class="faint res" aria-live="polite"></div>
   </div>`);
@@ -90,6 +123,20 @@ function customBaseEditor(el, root, current, catalog) {
 }
 
 // ---------------------------------------------------------------- filter, writes, bans
+
+// One document per scope: the project's, or the user's for every project.
+async function behaviourSection(el, root) {
+  const scope = pref('rulesScope') === 'global' ? 'global' : 'project';
+  el.append(h(`<h1>${t('policy.title')}</h1>`));
+  const seg = h(`<div class="seg-group mb-4" role="group">${[['project', 'rules.thisProject'], ['global', 'rules.allProjects']].map(([k, l]) => `<button class="${k === scope ? 'on' : ''}" data-scope="${k}">${t(l)}</button>`).join('')}</div>`);
+  seg.onclick = e => {
+    const b = e.target.closest('[data-scope]');
+    if (b) { pref('rulesScope', b.dataset.scope); openRules('behaviour'); }
+  };
+  const box = h('<div class="policy-mount"></div>');
+  el.append(seg, box);
+  await mountPolicy(box, { root }, scope);
+}
 
 async function filterSection(el, root) {
   el.append(h(`<h1>${t('policy.filter')}</h1>`), h(`<p class="lead">${t('policy.filterDesc')}</p>`));

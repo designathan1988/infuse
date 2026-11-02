@@ -92,7 +92,16 @@ func (a *action) contentScreenshot() (string, bool) {
 	_ = os.WriteFile(filepath.Join(dir, name), jpg, 0o644)
 	cfg, _ := jpeg.DecodeConfig(bytes.NewReader(jpg))
 	attachImage(a.h, jpg)
-	a.h.NoteScreenshot(a.where())
+	// Bind the capture to the page it shows: the turn gate needs the captured HTML to prove the shot
+	// is the content the criteria measure, not just any page at the same origin.
+	html := ""
+	if v, err := a.p.b.eval(a.ctx, "document.documentElement.outerHTML"); err == nil {
+		var s string
+		if json.Unmarshal(v, &s) == nil {
+			html = s
+		}
+	}
+	a.h.NoteScreenshot(a.where(), html)
 	if what == "" {
 		return a.h.Say(core.M("browser.shot_screen", "w", cfg.Width, "h", cfg.Height, "where", a.where(), "file", name)), false
 	}

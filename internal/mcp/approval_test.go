@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"infuse/internal/config"
+	"infuse/internal/sandbox"
 	"os"
 	"path/filepath"
 	"testing"
@@ -80,16 +81,13 @@ func TestNothingOutsideTheProjectIsHashed(t *testing.T) {
 	}
 }
 
-func TestContainmentFollowsWhoDefinesTheServer(t *testing.T) {
+func TestEveryServerRunsContained(t *testing.T) {
+	if !sandbox.Available() {
+		t.Skip("no OS containment on this platform")
+	}
+	t.Setenv("INFUSE_NO_SANDBOX", "")
 	root := t.TempDir()
-	script(t, root, "tools/mcp.js", "x")
-	if !projectDefined(root, "project", ServerConfig{Command: "npx"}) {
-		t.Fatal("a project's server runs contained")
-	}
-	if !projectDefined(root, "global", ServerConfig{Command: "node", Args: []string{"tools/mcp.js"}}) {
-		t.Fatal("a global entry launching a project file runs contained")
-	}
-	if projectDefined(root, "global", ServerConfig{Command: "npx", Args: []string{"-y", "some-server"}}) {
-		t.Fatal("the user's own server is the user's")
+	if argv := containedServer(root, []string{"npx", "-y", "some-server"}); len(argv) < 2 || argv[1] != sandbox.Role {
+		t.Fatalf("the server was not contained: %v", argv)
 	}
 }

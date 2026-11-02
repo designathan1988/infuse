@@ -61,7 +61,7 @@ func (s *Session) statusCommand(ctx context.Context, command string, fields map[
 	}
 	cctx, cancel := context.WithTimeout(ctx, statusCommandTimeout)
 	defer cancel()
-	argv := sandbox.Wrap([]string{FindRealBash(), "-c", guarded}, s.workRoot(), filter.InfuseRecords(), s.settings.ContainProcesses)
+	argv := sandbox.Wrap([]string{FindRealBash(), "-c", guarded}, s.workRoot(), filter.ContainedRecords(s.settings.ProtectedPaths), s.settings.ContainProcesses)
 	cmd := exec.CommandContext(cctx, argv[0], argv[1:]...)
 	noConsoleWindow(cmd)
 	cmd.Dir = s.workRoot()

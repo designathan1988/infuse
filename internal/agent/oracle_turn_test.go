@@ -32,7 +32,7 @@ func TestTheOracleGovernsTheEndOfTheTurn(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(root, "src"), 0o755)
 	_ = os.WriteFile(filepath.Join(root, "src", "app.js"), []byte("export const app = 1;\n"), 0o644)
 	s.Messages = []Message{{Role: "assistant", Content: []Block{
-		{Type: "tool_use", ID: "R", Name: "Report", Input: json.RawMessage(`{"summary":"done","claims":[]}`)},
+		{Type: "tool_use", ID: "R", Name: "Report", Input: json.RawMessage(`{"summary":"done","claims":[{"text":"created the app","kind":"other"}]}`)},
 	}}}
 	s.settings.RequireReview = boolPtr(false)
 	why := s.turnObligation(context.Background())

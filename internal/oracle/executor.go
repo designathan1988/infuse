@@ -8,6 +8,7 @@ import (
 	"infuse/internal/fsx"
 	"infuse/internal/journal"
 	"infuse/internal/lang"
+	"infuse/internal/platform/process"
 	"infuse/internal/sandbox"
 	"infuse/internal/security"
 	"io"
@@ -111,8 +112,23 @@ func measureSnapshot(ctx context.Context, v *Verdict, evidenceRoot, workDir, dir
 	v.ServerPID = pid
 	defer stop()
 	var passed int
-	v.Checks, passed = runChecks(ctx, x, dir, spec.Checks)
+	var stable bool
+	v.Checks, passed, v.Dependencies, stable = runChecksOnSnapshot(ctx, x, dir, spec.Checks, workDir, snap.dir)
+	if !stable { // what the checks measured is not what the tree holds now, or a check patched its own tools
+		v.Verdict, v.Summary = "erro", uiText("oracle.dependencies")
+		return
+	}
 	v.Verdict, v.Summary = verdictOf(v.Checks, passed)
+}
+
+// runChecksOnSnapshot runs the checks and reports whether the installed dependencies stayed the same,
+// in the live tree (what the verdict speaks for) and in the snapshot (what the checks ran).
+func runChecksOnSnapshot(ctx context.Context, x containment, dir string, checks []OracleCheck, workDir, snapDir string) (results []CheckResult, passed int, deps string, stable bool) {
+	deps = fsx.DependencyFingerprint(workDir)
+	snapDeps := fsx.DependencyFingerprint(snapDir)
+	results, passed = runChecks(ctx, x, dir, checks)
+	stable = fsx.DependencyFingerprint(workDir) == deps && fsx.DependencyFingerprint(snapDir) == snapDeps
+	return results, passed, deps, stable
 }
 
 // verdictOf reads the results: a check that could not be measured makes the run an error, never a pass
@@ -193,7 +209,12 @@ func runCheckCommand(ctx context.Context, x containment, command string, timeout
 	cmd := x.command(cctx, command)
 	buf := core.NewCapWriter(512 << 10)
 	cmd.Stdout, cmd.Stderr = buf, buf
-	err := cmd.Run()
+	err := cmd.Start()
+	if err == nil {
+		process.AttachJob(cmd)
+		err = cmd.Wait()
+		process.ReleaseJob(cmd)
+	}
 	code := core.ExitCode(err)
 	if cctx.Err() == context.DeadlineExceeded {
 		code = -1

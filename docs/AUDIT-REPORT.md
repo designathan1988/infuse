@@ -337,7 +337,8 @@ with zero console errors and zero HTTP ≥ 400 (`final__home__light__pt-br.png`,
 
 Scope: the uncommitted work of the audit above was preserved and extended. Every item below has a
 regression test; the package suite, `go vet`, `go test ./internal/architecture` and the frontend checks
-are green. Nothing was committed.
+are green. The pass was committed on `master` (`3b2cfaf`, `2fb5081`, `21f9336`, `cfc81b2`, `8146344`);
+the feature index and base starter files below were added after that commit.
 
 | Area | What changed | Test |
 |---|---|---|
@@ -351,29 +352,69 @@ are green. Nothing was committed.
 | Oracle | criteria anchored outside the project; verdicts HMAC-signed; HTTP checks without a snapshot server refused; port must be free and the answering child alive; cache keyed by file content; no-edit turns still run the oracle; missions reuse the turn's verdict; background claims resolve against the final exit code | `TestCriteriaEditedInsideTheProjectAreRefused`, `TestVerdictSignatureDetectsTampering`, `TestHTTPCheckWithoutSnapshotServerIsRefused`, `TestMissionRunsUntilCriteriaPassOrBudget` |
 | Knowledge | vice catalog (`internal/data/vices.json`) with signature + remedy rendered in the prompt; reviewer/subagents/auditor receive map, conventions, lessons and digested facts; digest cap raised to 200 with an overflow notice and per-document failures surfaced; comment language reported as an observation, not a convention; GEMINI.md/.cursorrules/copilot instructions injected; Go and Rust imports resolve to dependents; Glob/Grep carry the directory map; map freshness stated | `TestLessonsCarryTheirRemedy`, `TestGoDependentsResolve`, `TestRustDependentsResolve`, `TestForeignInstructionFilesAreInjected`, updated `TestConventionsAreCountedFromTheCode` |
 | Determinism | package-existence gate reads a local cache and refreshes off the gate path; the parsed map is cached while its file is unchanged | `TestPackageLookupRunsOffTheGatePath`, `TestInventedPackagesAreRefused` |
-| Bases | starter catalog (api, web, cli, interactive), `{"base":"web"}` or a custom base in `.infuse/base.json`, out-of-base refusal on Write, heredoc and shell audit | `TestStarterAndCustomBases`, `TestNoBaseMeansNoCheck` |
+| Bases | starter catalog (api, web, cli, interactive) with a responsibility per folder; `{"base":"web"}` or a custom base in `.infuse/base.json`; out-of-base refusal on Write, heredoc and shell audit; Customize > Base applies a starter and scaffolds a new project with folders, base document, generated map and a starter README in each base folder, never overwriting an existing file; the prompt states intended vs. actual folders and each folder's responsibility | `TestStarterAndCustomBases`, `TestNoBaseMeansNoCheck`, `TestBaseAPIListsAppliesAndScaffolds`, `TestBaseGroundsShowsIntendedVersusActual`, `TestScaffoldCreatesTheBaseStructure`; Chrome 2× `base__customize__light__pt-br__before/after.png`, `...__en__after.png`, `base-ui.summary.json` (211 requests, 0 console/HTTP errors) |
+| Feature index | deterministic feature→where index from feature folders (`features/`, `modules/`, `pages/`, `commands/`, `routes/`, `handlers/`…), HTTP route literals in Go, JS/TS, Python/Flask, C#, Java/Kotlin, Rust, Rails and Laravel, and a two-file filename-prefix fallback; routes fold into the feature named by their first static path segment; sorted and bounded (60 features, 400 routes); carried in the agent prompt, `/api/map`, `MAP.md` and the Map pane, whose file paths open the Files pane | `TestFeatureIndex`, `TestRoutesFromSourceLiterals`, `TestFeatureIndexIsDeterministic`, `TestPromptCarriesTheFeatureIndex`; Chrome 2× `map__features__light__pt-br.png`, `map__feature-file-open__light__pt-br.png`, `map__route-open__light__pt-br.png`, dark and English pairs, `docs/audit/logs/map-ui.summary.json` (297 requests, 0 console/HTTP errors) |
 | Universal interposition | `infuse claude|codex|gemini` installs the shim and starts the CLI with `SHELL`/`PATH` pointed at it; the Studio's app launcher goes through it instead of opening a raw CLI | build + `desktop` tests; live CLI not exercised in this pass |
 | Session persistence | `save` serializes under the session lock; a finishing turn and a mission step no longer read/write `SessionData` at the same time (found by the race detector in the mission test) | race suite, `TestMissionRunsUntilCriteriaPassOrBudget` under `-race` |
+| Behaviour policy | one versioned `.infuse/policy.json` / `~/.infuse/policy.json` per scope, edited in Regras (permissions, prohibitions, work method, architecture, conventions, done); a corrupt policy blocks every turn; prohibitions become typed session bans; the file is protected from the agent | `internal/policy` tests, `TestPolicyAppliesToTheSession`, `TestCorruptPolicyBlocksTheSession`; Chrome 2× `policy__regras*` screenshots, `policy-ui-final.summary.json` (237 requests, 0 console/HTTP errors) |
+| Contract | multi-step work cannot write before the user confirms the agent's restatement, bound to the current request; a new request needs a new confirmation; single-step work skips it; policy toggle | `TestMultiStepWorkNeedsAConfirmedContract`, `TestContractGateOnlyAppliesToWritingCommands` |
+| OS containment | every agent process (Bash, hooks, MCP, executor checks/servers) runs in a kill-on-close Job Object; on Linux the hidden `__sandbox` wrapper applies Landlock (read everywhere, write only in the work root and sandbox temp; `.infuse` not granted) before exec; on Windows the wrapper creates a `WRITE_RESTRICTED` Low-integrity token (logon SID, Everyone, user SID, work-root capability SID), grants write on the work root and private temp/cache, labels the root Low and `.infuse`/protected paths Medium, and runs MSYS2 from a private per-Git-version runtime copy; toolchain caches are redirected so builds work without opening `%USERPROFILE%` | `TestWindowsSandboxWritesInside`, `TestWindowsSandboxBlocksOutsideWrites`, `TestWindowsSandboxProtectsInfuseRecords`, `TestWindowsSandboxBuildsPrivateMSYS`, `TestNormalizeMixedPath`, `TestWrapUsesTheHiddenWrapper`; live GUI-binary evidence in `docs/audit/logs/windows-sandbox-evidence.txt` (Go build, npm install, git commit, outside write/delete denied, native Node write denied); Linux cross-builds |
+| Project mount | `infuse mount <drive|dir> [project] [--timeout seconds]` serves a project through WinFsp (cgofuse no-cgo host); reads pass through, writes are journaled and pass the base/protected-path policy, `.infuse` and protected globs are refused, and junctions/symlinks are resolved before the containment check; `Ctrl+C` or `--timeout` unmounts | `TestMountReadsAndWrites`, `TestMountRefusesProtectedAndOutsideBase`, `TestMountReaddir`, `TestMountServesAProject` (real WinFsp mount on a free drive); `docs/audit/logs/windows-mount-evidence.txt` (driver 2.1, inside/in-base writes, out-of-base and `.infuse` refusals, journal entries, clean unmount) |
+| Real application smoke | the actual server binary served the real UI; a real session used provider/model `mock` (no credits), the user confirmed the Contract in the UI, the agent ran LS/Read/Diagnosis/Bash/TodoWrite/Write/Report through the real tool path, wrote `src/demo.ts`, the Report card confirmed the file and flagged the unevidenced claim, and the real terminal pane ran `echo REAL_APP_TERMINAL_OK && pwd`; the native `infuse` window also opened with its title and closed | Chrome 2× screenshots `realapp__contract__light__pt-br.png`, `realapp__turn__light__pt-br.png`, `realapp__terminal__light__pt-br.png`; `docs/audit/logs/realapp-smoke.summary.json` (68 requests, 0 console/HTTP errors); session API `state=idle, turn=1, messages=20` |
+| Visual evidence | a capture is bound to the measured HTML when the criteria declare `Expect.Contains`, in addition to the origin check | `TestScreenshotHTMLMustShowWhatTheCriteriaMeasure`, `TestScreenshotWithoutContentRequirementUsesOriginOnly` |
+| Doc suggestions | Python versions are read from requirements.txt/pyproject (exact pin, `~=`, lower bound); Django, pytest and Express use verified versioned docs URLs, other vendors keep stable URLs | `TestSuggestDocsPinsPythonVersions`, `TestSuggestDocsFallsBackWithoutVersions`, `TestSuggestDocsReadsPoetryVersions`, `TestSuggestDocsPrefersExactPin` |
+| Dependencies | every turn snapshot records a fingerprint of the lockfiles and the installed entrypoints; the executor refuses a verdict when they change while the checks run (the snapshot junctions the live dependency directories) | `TestDependencyFingerprintFollowsLockfilesAndEntrypoints`, `TestDependencyChangeDuringChecksInvalidatesTheVerdict` |
+| User acceptance | criteria marked high-stakes ask the user once, after the executor and reviewer pass; accepting lets the turn end, rejecting ends it visibly and journals it; the toggle is in the Done? pane | `TestAcceptanceGateAsksOnceForHighStakesCriteria`, `TestRejectedDeliveryIsRecorded`; Chrome 2× `oracle__acceptance*` screenshots, `acceptance-ui.summary.json` (223 requests, 0 console/HTTP errors) |
+| Knowledge freshness | a failed instruction recompilation keeps the old rules in force but labeled stale in the prompt and in the message; the blob store keeps 50 turns per session and drops unreferenced content; the base states intended-vs-actual folders | `TestStaleCompiledRulesAreLabeledAndEnforced`, `TestPruneTreeKeepsRecentTurnsAndReferencedBlobs`, `TestBaseGroundsShowsIntendedVersusActual` |
+| Command registry | built-in slash commands are a data table with group and execution locus, custom commands join the same registry, and the composer menu renders them grouped | `TestBuiltinCommandsComeFromTheTable`; Chrome 2× `slash__commands__light__pt-br__after.png` / `...__en__after.png`, `slash-menu.summary.json` (204 requests, 0 console/HTTP errors) |
 | Interface / rail | the "session details" button was visible on the new-session screen while CSS hid the rail unconditionally, so it did nothing; the control is now hidden when there is no session and toggles the rail in a session (280 px ↔ 0, `aria-pressed` follows) | Chrome via Playwright, headless, 2× (2880×1800): `hardening__home__light__pt-br__before-repro.png` / `...__after.png`, `hardening__session-rail-open__light__pt-br__after.png` / `...-closed...`, `hardening__settings__*`, `hardening__customize__*`, dark and English pairs; logs `docs/audit/logs/hardening-pass.summary.json` — 208 requests, 0 console errors, 0 HTTP ≥ 400 |
 
 ### Remaining risks after this pass
 
-1. **No OS-level containment.** Restricted token/Job Object (Windows) or landlock/bubblewrap (Unix) with
-   deny-write ACLs is not implemented. The command guard plus the content-hash turn audit catch what
-   the parser sees; a process that writes through a path the parser misses reaches the disk before the
-   turn ends.
-2. **The unified Regras policy surface** is not built; `.infuse/base.json` has no UI editor yet.
-3. **Contract is not a hard gate** on the first write; the criteria linter only refuses structurally
-   empty checks.
-4. **Base scaffolds are basic** (`infuse init <base>` creates the folders and the base document); the
-   pre-filled map and a visual creation flow are absent, as is FUSE/WinFsp.
-5. **Approvals/verdict keys** fall back to a private file (`~/.infuse/signing.key`, `oracle-hmac.key`)
-   when the OS vault is unavailable; that file is protected only by file permissions.
-6. **The launcher and the signed approval flow were not exercised live** in this pass (unit/build
+1. **Windows OS containment is delivered for the commands infuse launches, with residual risks.**
+   The earlier dead ends were real: Low integrity alone fails because Cygwin's shared namespace and
+   signal pipe are medium objects, and AppContainer needs administrator ACLs on `Program Files` and a
+   namespace fix in the MSYS2 runtime. The working mechanism is a `WRITE_RESTRICTED` Low token whose
+   restricting SIDs include the user (for MSYS2's per-user pipe and shared memory), a capability SID
+   granted write on the work root, a Low label on the root, and a protected Medium label on `.infuse`
+   and the protected paths; MSYS2 runs from a private runtime copy so its installation namespace does
+   not collide with the user's Git Bash. Residual risks: same-user brokers (Explorer/COM can start a
+   medium process on the user's behalf) mean this contains agent mistakes and file tampering, not a
+   hostile same-user process; network access is not restricted; the Low labels stand on the workspace
+   after the command (other Low processes can then write where the DACL allows); a hard link can alias
+   a file outside the root; the private runtime costs a ~119 MB copy once per Git version (old versions
+   pruned); caches are redirected to `~/.infuse/sandbox/cache`. On Linux Landlock is implemented and
+   fail-closed but was cross-built only (no Linux host was available for a live smoke test).
+2. **The WinFsp mount is an explicit CLI surface; sessions use the real tree by design.** `infuse
+   mount <drive|dir> [project] [--timeout seconds]` exposes the project through WinFsp (cgofuse's
+   no-cgo host). Every write is journaled and passes the base/protected-path policy; `.infuse`,
+   protected globs and out-of-base code are refused, and junctions/symlinks are resolved before the
+   containment check. The filesystem runs in the infuse process at medium integrity, so its in-process
+   policy is the perimeter; a pre-existing hard link can alias a file outside the root. Auto-mounting
+   the session root is rejected: the mount denies `.infuse` writes that infuse itself needs, and a
+   privileged bypass would split the agent's view from the tree; the OS sandbox is the mandatory agent
+   perimeter. Out-of-base writes are refused, not relocated: an arbitrary path has no deterministic
+   base destination.
+3. **Approvals/verdict keys** fall back to a private file (`~/.infuse/signing.key`, `oracle-hmac.key`)
+   when the OS vault is unavailable. On Windows the fallback file holds a DPAPI blob (same user, same
+   machine; a copied file signs nothing) and legacy plain keys are migrated on first use; on Unix the
+   file is protected by its `0600` mode and the home directory.
+4. **The launcher and the signed approval flow were not exercised live** in this pass (unit/build
    evidence only); the native window was not opened on the user's screen.
-7. **Doc suggestions** carry the installed version in the reason (npm) and in the URL (Go), but the
-   npm/python documentation URLs themselves are still version-less; Python versions are not read from
-   the manifest.
+5. **Doc suggestions**: Django and pytest use verified versioned paths; other vendors' docs keep stable
+   URLs because their versioned paths could not be verified, and the reason still states the installed
+   version.
+6. **Contract scope**: the hard gate applies when the turn's plan has two or more steps (the Contract
+   tool's own contract); single-step work and a policy with `requireContract:false` skip it.
+7. **Policy vs settings**: the policy is the source for the new groups, but the legacy settings file
+   still stores the scalar values the policy overlays; the Regras UI writes both through the session
+   reload, so the two are linked until a later storage migration.
+8. **Regras UI** was verified in Chrome via Playwright at 2× in light/dark and pt-BR/en with zero console
+   or HTTP errors; the base editor lives in Customize > Base.
+9. **Map depth**: the map lists files, exports, imports/dependents, hotspots, freshness, the base's
+   intended-vs-actual folders and folder responsibilities, and the deterministic feature→where index
+   with its HTTP routes (feature folders, route literals, filename prefixes). "How X is done here"
+   examples are not generated.
 
 ### Corrections to `PROMPT-INFUSE-FULL-AUDIT.md` (the master execution prompt)
 
@@ -399,3 +440,109 @@ it is handed to an executor:
     force is now stated in the message.
 11. The audit contains 194 screenshots under `docs/audit/screens/`, not 155.
 12. SPEC §7 listed one future slice, not three; the README omitted 13 tools, not 14+.
+13. Block 1's Windows requirement (a deny-write OS sandbox around the agent's Bash) is not achievable
+    with the bundled Git Bash: the low-integrity and AppContainer probes are documented in the remaining
+    risks; Job Objects and the Linux Landlock wrapper are in place, and the Windows write perimeter stays
+    with the guard and the turn audit until a patched MSYS2 runtime or another shell is available.
+
+## 10. Root-cause hardening pass (2026-11-01)
+
+Scope: the three read-only audits above (unattended execution, anti-fraud, Browser pane) and the
+conclusions they reached. Every item below has a regression test; the package suite, `go vet`, the race
+suite, cross-builds and the frontend checks are green.
+
+| Area | What changed | Test |
+|---|---|---|
+| Turn completion | a turn whose obligation budget is spent now calls `finish` and lets a mission advance; a panic in the loop or in a mission step sets the terminal state, clears `working` and ends the running mission | `TestMissionRunsUntilCriteriaPassOrBudget`, `TestMissionTurnsUnattendedOffWhenItEnds` |
+| Unattended runs | missions and scheduled tasks set `Unattended`: permission cards and questions answer themselves without changing the session's mode; plan mode still denies writes; a mission ends unattended | `TestUnattendedSessionAnswersItsOwnCards`, `TestUnattendedKeepsPlanModeDenyingWrites` |
+| Compaction | the transcript replacement rebuilds `TurnStarts` and puts the current turn's request back when it fell in the summarized part, so the Contract, Report and mission gates keep their request | `TestCompactionKeepsTheCurrentTurnRequest`, `TestFallbackCompactionKeepsTheCurrentTurnRequest` |
+| Contract and plan | the contract requirement is latched from the multi-step plan of this turn (shortening the plan cannot erase it; an old plan cannot demand a contract); a blocked task must state why | `TestContractCannotBeAvoidedByShorteningThePlan`, `TestBlockedTaskNeedsAReason` |
+| Mission ownership | a stopped or replaced mission cancels its verification; a late step cannot record or resurrect it; a rejected delivery ends the mission | `TestEndingAMissionCancelsItsVerification`, `TestRejectedDeliveryEndsTheMission` |
+| API token | the token is cached and removed from the process environment after the first read, so the agent's Bash, hooks, MCP servers and executor cannot authenticate against the local API | `TestAPITokenDoesNotReachChildProcesses` |
+| Write audit | a gate approves the content a successful write left, not the path: a later shell rewrite is audited; protected records and instruction files are restored on any shell write; a baseline deletion is refused and restored; a shell-edited screen owes a screenshot | `TestGatedPathRewrittenByTheShellIsAudited`, `TestShellCannotModifyProtectedRecords`, `TestShellCannotRewriteTheProjectInstructions`, `TestShellCannotDeleteABaseline`, `TestShellUIChangeNeedsAScreenshot` |
+| Research and evidence | a research call counts only after it succeeds and names the dependency as a whole word; a host needs its own documentation; a project file or a document the session wrote itself proves nothing; diagnosis evidence resolves symlinks and rejects self-authored files | `TestResearchMustNameTheDependency`, `TestSelfAuthoredEvidenceIsRefused`, `TestSelfAuthoredPinnedDocsDoNotCountAsResearch` |
+| Screenshots | the capture is bound to the same origin (loopback aliases normalized), the same path and the content of the strongest HTTP check | `TestScreenshotWithoutContentRequirementUsesOriginAndPath`, `TestScreenshotPrefersTheContentCheck` |
+| Test fraud | Go/Python assertion removal and constant assertions are weakening; test-runner configuration (continue-on-error, passWithNoTests, ignored paths) is fraud in test-related files, including when written by the shell; removing the test script or a coverage/failure threshold is refused; declared verification must run the exact command | `TestWeakeningDetectionCoversGoAndConstants`, `TestTestConfigWeakeningIsFlagged`, `TestShellTestConfigWeakeningIsRefused`, `TestConfigurationCannotLoseItsGuards`, `TestDeclaredVerificationNeedsTheExactCommand` |
+| Report | a changing turn needs a report with claims; an empty report neither passes the tool nor the end-of-turn gate | `TestEmptyReportDoesNotAccountForChanges` |
+| Packages | an uncached package is verified before the install (and before a new manifest dependency is accepted); an unreachable registry refuses instead of running an unverified name; a new `package.json` dependency is checked | `TestPackageLookupVerifiesBeforeTheInstall`, `TestUnverifiedPackageIsRefused`, `TestManifestDependenciesAreVerified` |
+| Oracle snapshot | ignored tests are force-added while secrets and dependency/build trees stay out of the git object store; the snapshot must byte-match the working tree (no filter or checkout rule); autocrlf is disabled | `TestGitSnapshotIncludesIgnoredFiles`, `TestSnapshotIncludesIgnoredTestsButNotSecrets` |
+| Installed dependencies | the fingerprint covers every installed library, not only `.bin`; a mid-turn patch blocks the turn end until an install command rebases it | `TestDependencyFingerprintCoversInstalledLibraries`, `TestInstalledDependencyChangeNeedsAnInstall` |
+| Turn snapshots | snapshots and turn changes hash content fresh, so a rewrite that restores the mtime and keeps the size is still a change | `TestTurnChangesSeesAStampedRewrite` |
+| Browser pane | the pane attaches to the agent's own CDP target (second connection, no resize), reads the current address on attach, follows clicks and client-side routes, opens the project's dev-server address from a background command, and only acts on the session on screen; an agent tab never replaces the user's tab; a corrupt browser profile is replaced by a fresh one; serve mode shuts down its browsers and processes on Ctrl+C | Chrome 2x: `uifix__agent-browser__light__pt-br.png`, `docs/audit/logs/uifix-agent-browser.*`; `TestProcessOutputSurfacesTheDevServer` |
+
+Residual, unchanged: the first anchoring of a criteria file is trust-on-first-use (a copy of a project
+with no anchor starts a new trust); a same-user broker can start a medium-integrity process; a hard link
+can alias a file outside the root; network access is not restricted by the OS sandbox.
+
+## 11. Consolidation of the two lines (2026-11-02)
+
+The `projects` line (audited, section H of `FALHAS-DE-AGENTES.md`) and `master` (sections 9 and 10) were
+merged. The rule was the union of behaviour and, on a true clash, the stricter guarantee. Sections 9 and
+10 stay as the record of their passes; where they describe a mechanism replaced here, this section wins.
+
+| Duplicate or clash | One owner now | What was kept from the other side |
+|---|---|---|
+| Two Windows sandboxes | `internal/sandbox` (Low integrity, Medium labels, deny delete-child, `.git` hooks and config, job, fails closed); `wrap*.go`, `wrapper*.go`, `msys_windows.go`, `windows_token.go` removed | a work root that is not a folder refused; POSIX `PATH` normalized; `usr/lib` and symlinks in the runtime copy, old runtimes pruned; the wider cache redirection; user globs expanded to files and labeled; on Linux the shared temp and the home cache are no longer granted, writes go to the private temp. A write-restricted SID was not ported: MSYS2 needs the user SID among the restricting SIDs, so it decides nothing the Low label does not |
+| Protected list | `filter.ContainedRecords`: infuse's records plus the user's protected paths, at every `sandbox.Wrap` and in the mount | |
+| Two contract gates | `contract.go`: required when this turn's plan is multi-step, latched, bound to the request and the turn, for Write/Edit, heredocs, writing commands and the turn audit | |
+| Unattended | missions and scheduled tasks answer their own cards and questions | plan mode denies writes; `askPermissionWhy` refuses with nobody to approve, so the destructive table, the sentinels and a user's "ask" rule hold |
+| Test, test infrastructure and verdict containers | refused deterministically, no card, in every mode | scope cuts still ask the user. Any shell edit of an existing test is refused, additions included: tests are edited through the write tools |
+| Two snapshots | the private byte-for-byte copy | git-ignored secrets stay out; the dependency fingerprint is compared across the checks in the live tree and in the snapshot |
+| Two fingerprints | `fsx.DependencyFingerprint`, nested folders included | the per-folder baseline in `oracle_deps.go` |
+| Two compactions | `adoptCompaction` | the current request is put back verbatim beside `TurnRequest` |
+| Two feature levels | one index (`map_features.go`) folding the name clusters (`map_clusters.go`) | routes, sources and bounds; features split across unlinked folders are never cut by the bound |
+| Two browser start-ups | `internal/browser/launch.go` | every candidate is tried, then a fresh profile |
+| Two rules surfaces, two base surfaces | `ui/src/pages/rules.js`: base (including a new project in a chosen folder), behaviour policy, filter rules, writes, prohibitions; the pane keeps the filter rules | `mountPolicy` moved to `components/policy/behaviour.js`; Customize no longer has a Base section |
+| Daily limit | `overDailyLimit` | unmetered providers skip it; the tools of a reply past the limit do not run |
+| MCP servers | every stdio server is contained, whoever declared it | a global server that must write outside the project needs `containProcesses` off |
+
+Found by the sweep and fixed: `/api/bans` answered `null` when a project had sessions and no prohibition,
+and the Rules page threw on it.
+
+Evidence: Chrome 2× `merge__*` screenshots under `docs/audit/screens/`, `docs/audit/logs/merge-sweep.summary.json`.
+The live smoke ran the built binary on an isolated home: the mock `demo` turn asked the Contract question
+and wrote `src/demo.ts`. Linux and macOS containment are cross-built only, never run; the WinFsp mount was
+exercised by its package tests.
+
+
+## 12. Final verification of the consolidated tree (2026-11-02)
+
+Run on the merged tree, independently of the merge itself, then on the rebuilt `build/` binaries.
+
+| Gate | Result |
+|---|---|
+| `gofmt -l`, `go vet ./...` | clean |
+| `go test ./...` | every package passes |
+| Race suite, full tree (`GORACE=atexit_sleep_ms=0`, `-extldflags=-lapi-ms-win-core-synch-l1-2-0`) | exit 0, no data race |
+| Cross builds windows, linux, darwin | exit 0 |
+| `check-ui`, `check-frontend`, `check-i18n`, `check-language`, `gen-tokens` | exit 0, tokens reproduced |
+| Adversarial: exit status, hidden writes, rename of protected paths, git hooks, vault scope | pass, through the real wrapper |
+| Chrome 2×, `build/infuse-dev2.exe serve 7471`, isolated home, four theme and language pairs | 35 PNGs, all opened; 0 console errors, 0 HTTP ≥ 400 (`final__*`, `docs/audit/logs/final__verdicts.json`) |
+| Live flow | `demo` in attended mode: permission card, Contract answered by a click, file written, Report checked |
+
+Accept-all (`bypass`) confirms the Contract by itself, by the product decision taken for unattended
+runs, so the card only appears in the attended modes.
+
+### Incident during this audit
+
+A migration added here moved keys from Credential Manager to a file under the infuse home and deleted
+the vault entry. Credential Manager is per Windows user, so test and lab processes with a redirected
+home reached it. The provider key `infuse:deepseek` was not affected. `infuse-signing-key` and
+`oracle-hmac-key` are absent from the vault and it could not be established whether they existed; the
+one surviving candidate does not verify the two signed verdicts of `infuse-teste-bridge`, so nothing
+was restored. Those two verdicts may read as unverified; the real approval files were never signed, so
+no approval was lost. Fixed at the backend: a redirected home never touches the OS vault
+(`TestRedirectedHomeNeverTouchesTheVault`).
+
+### Cosmetic items left open
+
+The composer footer and the message metadata wrap in the narrow chat column; the "Done?" chip touches
+the text after it in the Oracle pane's help; the scroll-to-end button can cover the last line of a
+transcript. Text a session recorded keeps the language it was produced in after a language switch.
+
+### Not verified
+
+Linux and macOS containment were cross-built, never run on a real host. The native window and tray,
+and real-model turns on `claudedesk`, `codexdesk`, Bedrock and Vertex, were not exercised in this pass.
+Codex and Gemini are not installed here, so `infuse codex|gemini` is unproven. An external agent's own
+Read and Write tools pass through the filter only when it works inside `infuse mount`.

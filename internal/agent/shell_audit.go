@@ -6,6 +6,9 @@ package agent
 // so the turn cannot end until those changes are checked too.
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,21 +29,17 @@ func (s *Session) ungatedChanges() []workspace.TreeChange {
 	all := workspace.TurnChanges(s.Root, s.workRoot(), s.ID, s.Turn)
 	out := all[:0]
 	for _, ch := range all {
-		if !strings.HasPrefix(ch.Path, ".infuse/") && !s.stillAsGated(ch.Path, gated) {
-			out = append(out, ch)
+		// infuse writes its own records; a deletion of one, however, must reach the protected-record
+		// check below even though the file no longer exists.
+		if want, ok := gated[ch.Path]; ok && !ch.Deleted && want == fileDigest(filepath.Join(s.workRoot(), filepath.FromSlash(ch.Path))) {
+			continue // the exact content a write gate approved; a later rewrite does not match
 		}
+		if strings.HasPrefix(ch.Path, ".infuse/") && !ch.Deleted {
+			continue
+		}
+		out = append(out, ch)
 	}
 	return out
-}
-
-// stillAsGated: the path has exactly the content a write tool left in it.
-func (s *Session) stillAsGated(rel string, gated map[string]string) bool {
-	want, ok := gated[rel]
-	if !ok {
-		return false
-	}
-	b, err := os.ReadFile(filepath.Join(s.workRoot(), filepath.FromSlash(rel)))
-	return err == nil && contentHash(b) == want
 }
 
 // noteShellChanges counts what the shell changed as this turn's writes, so the obligations that follow
@@ -50,8 +49,8 @@ func (s *Session) noteShellChanges() {
 	for _, ch := range s.ungatedChanges() {
 		key := ch.Path + ":" + ch.Before
 		if !ch.Deleted {
-			if b, err := os.ReadFile(filepath.Join(s.workRoot(), filepath.FromSlash(ch.Path))); err == nil {
-				key = ch.Path + ":" + contentHash(b)
+			if sum := fileDigest(filepath.Join(s.workRoot(), filepath.FromSlash(ch.Path))); sum != "" {
+				key = ch.Path + ":" + sum
 			}
 		}
 		s.Mu.Lock()
@@ -68,16 +67,49 @@ func (s *Session) noteShellChanges() {
 	}
 }
 
+// markGated records the digest a successful write tool left at rel. The shell audit may skip that
+// exact content; the same path written again by anything else stays under audit.
+func (s *Session) markGated(rel string) {
+	sum := fileDigest(filepath.Join(s.workRoot(), filepath.FromSlash(rel)))
+	if sum == "" {
+		return
+	}
+	s.Mu.Lock()
+	if s.gate.gatedPaths == nil {
+		s.gate.gatedPaths = map[string]string{}
+	}
+	s.gate.gatedPaths[rel] = sum
+	s.Mu.Unlock()
+}
+
+func fileDigest(abs string) string {
+	b, err := os.ReadFile(abs)
+	if err != nil {
+		return ""
+	}
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+
 // auditShellWrites returns what the agent must fix before the turn may end (empty when nothing).
 func (s *Session) auditShellWrites() Msg {
 	if p := s.protectedChanges(); len(p) > 0 {
-		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "protected file changed outside the executor: " + strings.Join(firstN(p, 6), ", ")})
+		workspace.RestoreProtected(s.Root, s.ID, s.Turn, p)
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "protected file changed outside the executor (restored): " + strings.Join(firstN(p, 6), ", ")})
 		return M("oracle.protected_write", "files", strings.Join(firstN(p, 6), ", "))
 	}
 	changes := s.ungatedChanges()
 	if len(changes) == 0 {
 		return Msg{}
 	}
+	// A change made outside the write tools counts as a change for declared verification too, so a
+	// command that ran before the shell edit cannot satisfy the project's after-change check.
+	s.Mu.Lock()
+	if !s.gate.shellCounted {
+		s.gate.writes++
+		s.gate.shellCounted = true
+	}
+	s.Mu.Unlock()
 	source := false
 	for _, ch := range changes {
 		if codeExts[strings.ToLower(filepath.Ext(ch.Path))] {
@@ -105,6 +137,50 @@ func (s *Session) auditShellWrites() Msg {
 	return Msg{}
 }
 
+// restoreShellChange puts back the user's test or test infrastructure after a shell write tried to
+// alter it. The turn is still refused; the restored file is what the next turn sees.
+func (s *Session) restoreShellChange(abs, before string) {
+	if before == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(abs, []byte(before), 0o644)
+	Journal(s.Root, JournalEntry{Kind: "gate", Path: relTo(s.workRoot(), abs), Detail: "restored after a shell change to a user test or test infrastructure"})
+}
+
+// protectedRecord recognizes the control records whose deletion must be visible even when the file no
+// longer exists for the snapshot comparison to list it.
+func protectedRecord(rel string) bool {
+	rel = filepath.ToSlash(rel)
+	switch {
+	case rel == ".infuse", strings.HasPrefix(rel, ".infuse/"):
+		return true
+	case rel == ".git", strings.HasPrefix(rel, ".git/"):
+		return true
+	case rel == ".mcp.json", rel == ".claude/settings.json":
+		return true
+	}
+	return false
+}
+
+// shellTestGuard applies the user-test rule to a shell change and restores a weakened test.
+func (s *Session) shellTestGuard(rel, abs, before, after string, newFile, deleted bool) Msg {
+	if newFile && (reTestFile.MatchString(rel) || reTestInfra.MatchString(rel)) {
+		s.markAgentFile(rel) // the agent created this test or its infrastructure through the shell
+		return Msg{}
+	}
+	if !reTestFile.MatchString(rel) || s.agentFile(rel) || before == "" {
+		return Msg{}
+	}
+	if deleted || testWeakeningEdit(before, after) {
+		s.restoreShellChange(abs, before)
+		return M("sentinel.test_edit_blocked", "file", rel)
+	}
+	return Msg{}
+}
+
 // shellChangeViolation runs the write-time policy on one change made outside the write tools.
 func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 	rel := filepath.ToSlash(ch.Path)
@@ -117,21 +193,72 @@ func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 			before = b
 		}
 	}
-	if ch.Deleted { // a deletion is measured against what it removed
-		if why := s.largeRemoval(rel, before, ""); !why.Empty() {
-			return why
-		}
-		return Msg{}
-	}
 	abs := filepath.Join(s.workRoot(), filepath.FromSlash(rel))
+	if why := s.shellRecordViolation(rel, abs, before, ch.New); !why.Empty() {
+		return why
+	}
+	if ch.Deleted {
+		return s.shellDeletionViolation(rel, abs, before)
+	}
 	after, err := os.ReadFile(abs)
 	if err != nil {
 		return Msg{}
 	}
-	if why := s.shellHonesty(ch, rel, before, string(after)); !why.Empty() {
+	if why := s.shellHonesty(ch, rel, abs, before, string(after)); !why.Empty() {
 		return why
 	}
+	why := s.shellStyleViolation(rel, abs, before, after)
+	if why.Empty() {
+		s.noteUIChange(rel) // a screen edited through the shell is still a changed screen
+	}
+	return why
+}
+
+// shellRecordViolation protects the user's control records from every writer: a rewrite is removed or
+// restored before the refusal reaches the agent.
+func (s *Session) shellRecordViolation(rel, abs, before string, isNew bool) Msg {
+	why := Msg{}
+	if protectedRecord(rel) { // .mcp.json, .claude/settings.json: a modification is as serious as a deletion
+		why = M("oracle.protected_write", "files", rel)
+	} else if m := s.instructionWriteCheck(rel, before); !m.Empty() {
+		why = m
+	}
+	if why.Empty() {
+		return why
+	}
+	if isNew {
+		_ = os.Remove(abs)
+	} else {
+		s.restoreShellChange(abs, before)
+	}
+	return why
+}
+
+// shellDeletionViolation judges a file the shell removed.
+func (s *Session) shellDeletionViolation(rel, abs, before string) Msg {
+	if kind := baselineKind(rel); kind != "" {
+		s.restoreShellChange(abs, before)
+		return M("work.baseline", "file", rel, "kind", kind)
+	}
+	if m := s.shellTestGuard(rel, abs, before, "", false, true); !m.Empty() {
+		return m
+	}
+	return s.largeRemoval(rel, before, "")
+}
+
+// shellStyleViolation judges the shape of a shell-written file: suppressions, base placement,
+// conventions, architecture and size.
+func (s *Session) shellStyleViolation(rel, abs, before string, after []byte) Msg {
+	text := string(after)
+	if ask, _ := detectShortcuts(rel, before, text); len(ask) > 0 {
+		return M("shortcut.weakens_tests", "items", ask)
+	}
 	ext := strings.ToLower(filepath.Ext(abs))
+	if codeExts[ext] {
+		if lines := unjustifiedSuppressions(before, text); len(lines) > 0 {
+			return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
+		}
+	}
 	if strings.HasSuffix(ext, ".md") {
 		return Msg{} // prose: a baseline and a marker are judged above; layout and size are not
 	}
@@ -139,43 +266,48 @@ func (s *Session) shellChangeViolation(ch workspace.TreeChange) Msg {
 		return why
 	}
 	if s.settings.EnforceConventions == nil || *s.settings.EnforceConventions {
-		if why := conventionViolation(s.Root, abs, before, string(after)); !why.Empty() {
+		if why := conventionViolation(s.Root, abs, before, text); !why.Empty() {
 			return M("protocol.convention", "why", why)
 		}
 	}
 	if s.settings.EnforceArchitecture == nil || *s.settings.EnforceArchitecture {
-		if why := archCheck(s.Root, s.workRoot(), rel, before, string(after)); !why.Empty() {
+		if why := archCheck(s.Root, s.workRoot(), rel, before, text); !why.Empty() {
 			return M("protocol.architecture", "why", why)
 		}
 	}
-	return s.sizeViolation(rel, ext, before, string(after))
+	return s.sizeViolation(rel, ext, before, text)
 }
 
 // shellHonesty applies the anti-fraud locks to a change the write tools never saw.
-func (s *Session) shellHonesty(ch workspace.TreeChange, rel, before, after string) Msg {
+func (s *Session) shellHonesty(ch workspace.TreeChange, rel, abs, before, after string) Msg {
+	if strings.EqualFold(filepath.Base(rel), "package.json") {
+		if refs := newManifestPackages(before, after); len(refs) > 0 {
+			if why := verifyPackageRefs(context.Background(), refs); !why.Empty() {
+				return why
+			}
+		}
+	}
+	if m := s.shellTestGuard(rel, abs, before, after, ch.New, false); !m.Empty() {
+		return m
+	}
 	if why := s.largeRemoval(rel, before, after); !why.Empty() {
 		return why
 	}
 	if _, changed := baselineChange(rel, before, after); changed {
 		return M("work.baseline_shell", "file", rel, "kind", baselineKind(rel))
 	}
-	// an existing test is the user's oracle: the write tools ask them, a shell command cannot
-	if !ch.New && reTestFile.MatchString(rel) && before != after {
+	// an existing test is the user's oracle: the write tools judge the edit, a shell command cannot
+	if !ch.New && reTestFile.MatchString(rel) && before != after && !s.agentFile(rel) {
 		return M("gate.shell_test_edit", "file", rel)
-	}
-	if ask, _ := detectShortcuts(rel, before, after); len(ask) > 0 {
-		return M("shortcut.weakens_tests", "items", ask)
 	}
 	if why := s.scopeCut(rel, before, after); !why.Empty() {
 		return why
 	}
-	if why := cheatWriteCheck(s.workRoot(), rel, before, after); !why.Empty() {
-		return why
+	why := cheatWriteCheck(s.workRoot(), rel, before, after)
+	if why.ID == "cheat.test_infra" && !s.agentFile(rel) && before != "" {
+		s.restoreShellChange(abs, before)
 	}
-	if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
-		return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
-	}
-	return Msg{}
+	return why
 }
 
 func (s *Session) planned() bool {

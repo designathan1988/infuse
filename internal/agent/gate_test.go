@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func bashCall(id, cmd string) Block {
@@ -87,28 +86,16 @@ func TestShortcutsInEditsAreCaught(t *testing.T) {
 	test := filepath.Join(root, "sum.test.js")
 	_ = os.WriteFile(test, []byte("test('sum', () => { expect(sum(2, 2)).toBe(4) })\n"), 0o644)
 	s.markRead(test)
-	// skipping the failing test: the user is asked even in bypass mode; refused here
-	go func() {
-		for i := 0; i < 300; i++ {
-			s.Mu.Lock()
-			req := s.pendingPerm
-			s.Mu.Unlock()
-			if req != nil {
-				if !strings.Contains(req.Reason, ".skip") {
-					t.Errorf("reason: %q", req.Reason)
-				}
-				s.ResolvePermission(req.ID, "deny")
-				return
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}()
+	// Skipping the failing test is a deterministic block, not a permission card, even in bypass.
 	out, isErr := s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "1", Name: "Edit", Input: json.RawMessage(`{"path":"sum.test.js","old_string":"test('sum'","new_string":"test.skip('sum'"}`)})
-	if want := M("shortcut.user_refused", "why", M("shortcut.weakens_tests", "items", []Msg{M("shortcut.skip_only")})); !isErr || out != want.String() {
+	if !isErr || !strings.Contains(out, M("sentinel.test_edit_blocked", "file", "sum.test.js").String()) {
 		t.Fatal(out)
 	}
+	if s.pendingPerm != nil {
+		t.Fatal("the shortcut opened a permission card")
+	}
 	if b, _ := os.ReadFile(test); strings.Contains(string(b), "skip") {
-		t.Fatal("the test was skipped although the user refused")
+		t.Fatal("the test was skipped")
 	}
 	// swallowing an error in code: the write is refused until the line says why (B5)
 	out, isErr = s.runTool(context.Background(), &RuleSet{}, Block{Type: "tool_use", ID: "2", Name: "Write", Input: json.RawMessage(`{"path":"sum.js","content":"try { load() } catch (e) {}\n"}`)})
@@ -141,7 +128,7 @@ func TestTurnWithChangesNeedsAReport(t *testing.T) {
 	if why := s.missingReport(); why.String() != M("gate.no_report", "count", 1).String() {
 		t.Fatal(why)
 	}
-	s.Messages = append(s.Messages, Message{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "r", Name: "Report", Input: json.RawMessage(`{"summary":"x","claims":[]}`)}}})
+	s.Messages = append(s.Messages, Message{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "r", Name: "Report", Input: json.RawMessage(`{"summary":"x","claims":[{"text":"created a.js","kind":"file","ref":"a.js"}]}`)}}})
 	if !s.missingReport().Empty() {
 		t.Fatal("report present")
 	}
@@ -158,5 +145,20 @@ func TestDeepSeekHasAPriceSoBudgetsWork(t *testing.T) {
 	}
 	if s.HasPrice("unknown-model") {
 		t.Fatal("unknown model priced")
+	}
+}
+
+// A declared check must be run as declared, not as a narrowed variant that proves nothing.
+func TestDeclaredVerificationNeedsTheExactCommand(t *testing.T) {
+	if !commandRuns("npm test", "npm test") {
+		t.Fatal("the declared command did not match itself")
+	}
+	if !commandRuns("cd app && npm test", "npm test") {
+		t.Fatal("a declared command after cd did not match")
+	}
+	for _, cheat := range []string{"go test ./... -run '^$'", "npm test -- --testNamePattern=^$", "go test ./... -count=0"} {
+		if commandRuns(cheat, "go test ./...") || commandRuns(cheat, "npm test") {
+			t.Errorf("a narrowed command satisfied the declaration: %s", cheat)
+		}
 	}
 }

@@ -76,9 +76,12 @@ func TestScaffoldRoutePrefillsTheMapAndBansRouteReads(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, ".infuse", "map", "intended.json")); err != nil {
 		t.Fatal("the intended map was not recorded")
 	}
-	// the bans route answers, empty when nothing was forbidden
+	// the bans route answers, empty when nothing was forbidden: a list, also when sessions exist
+	if err := os.MkdirAll(filepath.Join(root, ".infuse", "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	w = policyRequest(t, "GET", "/api/bans", "", root)
-	if w.Code != http.StatusOK {
-		t.Fatalf("bans: %d", w.Code)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"sessions":[]`) {
+		t.Fatalf("bans: %d %s", w.Code, w.Body.String())
 	}
 }

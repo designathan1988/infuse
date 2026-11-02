@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"infuse/internal/browser"
+	"infuse/internal/config"
 	"infuse/internal/core"
 	"net/http"
 	"time"
@@ -24,6 +25,8 @@ func viewAPI(w http.ResponseWriter, r *http.Request, root, path string, body map
 		viewStream(w, r, root, id)
 	case "/api/view/open":
 		viewOpen(w, r, root, id, str, num)
+	case "/api/view/agent":
+		viewAgent(w, r, root, id, num)
 	case "/api/view/input":
 		viewInput(w, r, root, id, body, str)
 	default:
@@ -82,6 +85,17 @@ func viewOpen(w http.ResponseWriter, r *http.Request, root, id string, str func(
 			return
 		}
 	}
+	sendJSON(w, 200, map[string]any{"ok": true})
+}
+
+// viewAgent attaches the pane to the page the agent's Browser tool drives.
+func viewAgent(w http.ResponseWriter, r *http.Request, root, id string, num func(string) float64) {
+	t, err := browser.ViewAgentTab(root, id, config.LoadSettings(), int(num("width")), int(num("height")))
+	if err != nil {
+		sendJSON(w, 200, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	t.StartStream(int(num("width")), int(num("height")))
 	sendJSON(w, 200, map[string]any{"ok": true})
 }
 

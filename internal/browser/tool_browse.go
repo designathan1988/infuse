@@ -18,8 +18,9 @@ func (a *action) browse() (string, bool) {
 		if u == "" {
 			return a.h.Say(core.M("browser.give_url")), true
 		}
-		if !strings.Contains(u, "://") && !strings.HasPrefix(u, "about:") {
-			if strings.HasPrefix(u, "localhost") || strings.HasPrefix(u, "127.") {
+		if low := strings.ToLower(u); !strings.Contains(u, "://") && !strings.HasPrefix(low, "about:") {
+			if strings.HasPrefix(low, "localhost") || strings.HasPrefix(low, "127.") || strings.HasPrefix(low, "0.0.0.0") ||
+				strings.HasPrefix(low, "[::1]") || strings.HasPrefix(low, "::1") {
 				u = "http://" + u
 			} else {
 				u = "https://" + u
@@ -42,6 +43,7 @@ func (a *action) browse() (string, bool) {
 			return a.h.Say(core.M("browser.open_failed_url", "url", u, "error", nav.ErrorText)), true
 		}
 		a.p.b.waitLoad(a.ctx)
+		a.showURL()
 		return a.h.Say(core.M("browser.opened", "where", a.where())), false
 	case "back", "reload":
 		if a.in.Action == "back" {
@@ -51,6 +53,7 @@ func (a *action) browse() (string, bool) {
 		}
 		sleepCtx(a.ctx, 400*time.Millisecond)
 		a.p.b.waitLoad(a.ctx)
+		a.showURL()
 		if a.in.Action == "back" {
 			return a.h.Say(core.M("browser.went_back", "where", a.where())), false
 		}

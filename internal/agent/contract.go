@@ -1,9 +1,9 @@
 package agent
 
 // The Contract is the user-confirmed restatement of a request: the goal and the criteria that make
-// it done. It is bound to the request text it was confirmed for, so a new request needs a new
-// confirmation. While the setting is on, the first code write of a request is refused until the
-// contract of that request is confirmed.
+// it done. It is bound to the request text and the turn it was confirmed for, so a new request needs a
+// new confirmation. While the setting is on, work with more than one step does not write, by any tool
+// or the shell, until the contract of that request is confirmed.
 
 import (
 	"context"
@@ -22,19 +22,21 @@ type Contract struct {
 	At       int64    `json:"at"`
 }
 
-// contractGate returns why a write is refused before the request has a confirmed contract.
+// contractGate returns why a write is refused before the request has a confirmed contract. The rule
+// follows this turn's plan, never tasks left from an earlier request, and it is latched: shortening
+// the plan after a multi-step one does not erase it.
 func (s *Session) contractGate() Msg {
 	if s.settings.RequireContract != nil && !*s.settings.RequireContract {
 		return Msg{}
 	}
 	s.Mu.Lock()
+	steps, needed := s.gate.planSteps, s.gate.contractNeeded
 	c, turn := s.Contract, s.Turn
-	alone := s.Unattended || s.Mission != nil && s.Mission.State == "running"
 	s.Mu.Unlock()
-	if alone { // the task or the mission's goal is the request the user wrote in advance
+	if !needed && steps < 2 {
 		return Msg{}
 	}
-	if c != nil && len(c.Criteria) > 0 && c.Turn == turn && c.Request == s.turnRequest() {
+	if request := s.turnRequest(); request != "" && c != nil && c.Turn == turn && c.Request == request {
 		return Msg{}
 	}
 	return M("contract.required")
@@ -44,7 +46,7 @@ type contractTool struct{}
 
 func (contractTool) Category() string { return "ui" }
 func (contractTool) Spec() ToolSpec {
-	return ToolSpec{Name: "Contract", Description: "Before a piece of work with more than one step, turn the request into verifiable criteria (what must be true at the end, each one checkable by a command, a file or using the program) and ask the user to confirm them. Confirmed criteria go into the session memory with the highest priority. The first code write of a request is refused until its contract is confirmed.",
+	return ToolSpec{Name: "Contract", Description: "Before a piece of work with more than one step, turn the request into verifiable criteria (what must be true at the end, each one checkable by a command, a file or using the program) and ask the user to confirm them. Confirmed criteria go into the session memory with the highest priority. Multi-step work does not write until its contract is confirmed.",
 		InputSchema: schema(`{"type":"object","properties":{"goal":{"type":"string"},"criteria":{"type":"array","items":{"type":"string"}}},"required":["goal","criteria"]}`)}
 }
 

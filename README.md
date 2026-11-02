@@ -24,8 +24,13 @@ journaled as `blocked`; native folder/file dialogs (`IFileOpenDialog`, NSOpenPan
 automatic context compaction; cost tracking with an editable price table; layered instructions
 (CLAUDE.md, AGENTS.md, GEMINI.md, .cursorrules, copilot instructions); a project memory; a read-only
 oracle anchored outside the project and signed with an HMAC the project cannot produce; an architecture
-base (`base.json`) enforced on every write; an interposed launcher (`infuse claude|codex|gemini`); git
-status, diff, discard and commit; a `mock` provider to try everything without a key. See
+base (`base.json`) enforced on every write, chosen, edited and scaffolded from the Rules page (folders,
+starter code, base document and generated map); one behaviour policy edited in the same page
+(permissions, prohibitions, work method, architecture, conventions, definition of done) with a confirmed
+Contract before multi-step work; an interposed launcher (`infuse claude|codex|gemini`); git status, diff,
+discard and commit; a `mock` provider to try everything without a key. Every agent process runs in a
+kill-on-close Job Object and under OS containment (Low integrity on Windows, namespace + Landlock on
+Linux, Seatbelt on macOS). See
 `docs/PROMPT-infuse-studio.md` for the full target and `windows/LEIA-ME.txt` for the user guide
 (Portuguese).
 
@@ -54,15 +59,32 @@ tool-less pipe and execute every tool inside infuse.
 - Command output comes back with what was written, who depends on it, the map of what was listed, and whatever your rules inject.
 - A per-project watcher starts on first use and journals every write by any tool within milliseconds.
 - Project map (exports, imports, dependents, hotspots), generated from code only; Go and Rust imports
-  resolve to the file they name, so dependents are real for those languages too.
+  resolve to the file they name, so dependents are real for those languages too. The map also carries a
+  deterministic feature→where index (feature folders, HTTP route literals and filename-prefix fallback)
+  and the HTTP surface, shown in the Map pane, in `MAP.md` and in the agent's prompt.
 - Lessons carry the deterministic signature and the remedy from the base vice catalog; Glob/Grep
   results carry the same directory map as LS.
 - User rules (`~/.infuse/rules.json`, `<project>/.infuse/rules.json`): command / write / list / always → replace, say, infuse, infuseFile, vice.
 - An empty `.infuse/base.json` means no base. `{"base":"web"}` chooses a starter (api, web, cli,
-  interactive); a full object declares custom folders; code written outside the chosen folders is refused.
-  `infuse init <base> [dir]` scaffolds a starter's folders and writes its base document.
+  interactive, library, game, service); a full object declares custom folders; code written outside the chosen folders is refused.
+  `infuse init <base> [dir]` scaffolds a starter's folders, running starter code, its base document, a
+  generated map, the default oracle and a starter README in the base's folders; a starter never overwrites a file the project already has.
+- The behaviour policy (`.infuse/policy.json` and `~/.infuse/policy.json`) is edited in the Rules page: work
+  method toggles and ask budget, architecture and convention enforcement, permissions, prohibitions and
+  done criteria. Multi-step work needs a user-confirmed Contract bound to the current request and turn, whichever tool
+  writes; missions and scheduled tasks answer their own cards, and plan mode, the destructive table and
+  the protected paths still refuse with nobody to approve.
 - Hook and MCP approvals are signed with a key kept outside the project: an approval file the agent
   edits no longer approves anything.
+- Agent commands run in an OS deny-write sandbox that fails closed: on Windows a Low integrity token
+  that writes only in the work root and a private temp, keeps `.infuse`, the git hooks and config at
+  Medium integrity, and runs MSYS2 from a private runtime so Git Bash, Go, Git and npm keep working; on
+  Linux a mount namespace plus Landlock; on macOS Seatbelt.
+- `infuse mount <drive|dir> [project] [--timeout seconds]` exposes the project through WinFsp. Every
+  write is journaled and passes the base/protected-path policy before it reaches disk; `.infuse`,
+  protected files and out-of-base code are refused. WinFsp must be installed. Sessions do not run on the
+  mount: they work on the real tree, where infuse writes the oracle, journal and evidence, and the OS
+  sandbox is their perimeter.
 
 ## Build
 

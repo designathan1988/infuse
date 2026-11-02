@@ -87,6 +87,8 @@ func runCommand(command string, args []string) int {
 		uninstallCommand()
 	case "status":
 		statusCommand(root)
+	case "mount":
+		return mountCommand(args)
 	case "watch":
 		watchCommand(root, args)
 	case "map":
@@ -102,7 +104,7 @@ func runCommand(command string, args []string) int {
 	case "version", "--version", "-v":
 		fmt.Println("infuse", version)
 	default:
-		fmt.Println("usage: infuse [ui | claude | codex | gemini | init <base> [dir] | install | uninstall | status | map | journal [n] | lessons | rules | context on|off | shell -c <cmd> | watch <root> | version]")
+		fmt.Println("usage: infuse [ui | claude | codex | gemini | init <base> [dir] | install | uninstall | status | map | mount <drive|dir> [project] | journal [n] | lessons | rules | context on|off | shell -c <cmd> | watch <root> | version]")
 		return 1
 	}
 	return 0

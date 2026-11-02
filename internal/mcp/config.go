@@ -9,7 +9,7 @@ package mcp
 //
 // The approval covers what runs, not only how it is named: a script inside the project is part of the
 // fingerprint, so an approved "node tools/mcp.js" whose file changed is a server awaiting approval. A
-// server defined by the project, or launched from it, runs contained like the agent's shell.
+// server runs contained like the agent's shell, whoever declared it.
 
 import (
 	"crypto/sha256"
@@ -17,6 +17,8 @@ import (
 	"encoding/json"
 	"infuse/internal/config"
 	"infuse/internal/core"
+	"infuse/internal/filter"
+	"infuse/internal/sandbox"
 	"io"
 	"os"
 	"path/filepath"
@@ -144,10 +146,11 @@ func projectFileHash(root, arg string) (string, string) {
 	return filepath.ToSlash(rel), hex.EncodeToString(h.Sum(nil))
 }
 
-// projectDefined reports whether a server must run contained: the project declares it, or it launches
-// a file of the project, wherever it is declared.
-func projectDefined(root, scope string, c ServerConfig) bool {
-	return scope != "global" || len(launchedScripts(root, c)) > 0
+// containedServer is how every stdio server starts, whoever declared it: an MCP server is an agent
+// process, and a tool it runs reaches the project as much as the shell does.
+func containedServer(root string, argv []string) []string {
+	settings := config.EffectiveSettings(root)
+	return sandbox.Wrap(argv, root, filter.ContainedRecords(settings.ProtectedPaths), settings.ContainProcesses)
 }
 
 func mcpApprovalsFile() string { return filepath.Join(core.InfuseHome(), "approved-mcp.json") }

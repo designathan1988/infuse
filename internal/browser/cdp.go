@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"infuse/internal/core"
-	"infuse/internal/platform/process"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,77 +31,7 @@ type Browser struct {
 	console  []string
 	lastUse  time.Time
 	closed   bool
-}
-
-// startCDP opens the first installed browser that answers: an installation that never opens its
-// debugging port (a broken profile, a policy) must not take the feature down when another one works.
-func startCDP(profile string) (*Browser, error) {
-	cands := chromiumCandidates()
-	if len(cands) == 0 {
-		return nil, errors.New("no Edge, Chrome or Chromium browser was found on this computer")
-	}
-	var last error
-	for _, exe := range cands {
-		b, err := startCDPWith(exe, profile)
-		if err == nil {
-			return b, nil
-		}
-		last = err
-	}
-	return nil, last
-}
-
-func startCDPWith(exe, profile string) (*Browser, error) {
-	_ = os.MkdirAll(profile, 0o755)
-	_ = os.Remove(filepath.Join(profile, "DevToolsActivePort"))
-	cmd := exec.Command(exe, "--headless=new", "--remote-debugging-port=0", "--user-data-dir="+profile, "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-blink-features=AutomationControlled", "--window-size=1280,800", "about:blank")
-	process.NoConsoleWindow(cmd)
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	var port string
-	for i := 0; i < 100 && port == ""; i++ {
-		if b, err := os.ReadFile(filepath.Join(profile, "DevToolsActivePort")); err == nil {
-			port = strings.TrimSpace(strings.SplitN(string(b), "\n", 2)[0])
-		} else {
-			time.Sleep(100 * time.Millisecond)
-		}
-	}
-	if port == "" {
-		_ = cmd.Process.Kill()
-		return nil, errors.New("the browser did not open the debugging port")
-	}
-	var targets []struct{ Type, WebSocketDebuggerURL string }
-	for i := 0; i < 30; i++ {
-		if resp, err := http.Get("http://127.0.0.1:" + port + "/json/list"); err == nil {
-			_ = json.NewDecoder(resp.Body).Decode(&targets)
-			resp.Body.Close()
-		}
-		if len(targets) > 0 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	wsURL := ""
-	for _, t := range targets {
-		if t.Type == "page" {
-			wsURL = t.WebSocketDebuggerURL
-			break
-		}
-	}
-	if wsURL == "" {
-		_ = cmd.Process.Kill()
-		return nil, errors.New("the browser has no page")
-	}
-	ws, err := wsDial(wsURL)
-	if err != nil {
-		_ = cmd.Process.Kill()
-		return nil, err
-	}
-	b := &Browser{port: port, profile: profile, cmd: cmd, ws: ws, pending: map[int64]chan json.RawMessage{}, errs: map[int64]string{}, lastUse: time.Now()}
-	go b.readLoop()
-	b.prepare()
-	return b, nil
+	detached bool // a second connection to another owner's page: closing it must not close the page
 }
 
 // prepare enables the domains infuse listens to and presents the browser as a regular one (sites block
@@ -342,6 +270,13 @@ func (b *Browser) waitLoad(ctx context.Context) {
 }
 
 func (b *Browser) close() {
+	if b.detached { // a viewer's connection: the page belongs to the agent
+		b.mu.Lock()
+		b.closed = true
+		b.mu.Unlock()
+		b.ws.c.Close()
+		return
+	}
 	if b.parent != nil { // a tab: close its target, the browser stays
 		_, _ = b.parent.call(context.Background(), "Target.closeTarget", map[string]any{"targetId": b.targetID})
 		b.mu.Lock()

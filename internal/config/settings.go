@@ -40,7 +40,11 @@ type Settings struct {
 	EnforceConventions   *bool                 `json:"enforceConventions,omitempty"`   // refuse writes that break the project's conventions (nil = yes)
 	RequireReview        *bool                 `json:"requireReview,omitempty"`        // independent review at the end of each turn with changes (nil = yes)
 	ContainProcesses     *bool                 `json:"containProcesses,omitempty"`     // the agent's shell processes run OS-contained (nil = yes)
-	RequireContract      *bool                 `json:"requireContract,omitempty"`      // the first code write of a request needs its confirmed Contract (nil = yes)
+	RequireContract      *bool                 `json:"requireContract,omitempty"`      // multi-step work needs a user-confirmed contract before the first write (nil = yes)
+	RequirePlan          *bool                 `json:"requirePlan,omitempty"`          // source changes need a registered plan (nil = yes)
+	RequireDocs          *bool                 `json:"requireDocs,omitempty"`          // documentation before using a new library/host (nil = yes)
+	RequireReading       *bool                 `json:"requireReading,omitempty"`       // the documents the instructions point to, read in full (nil = yes)
+	AskBudget            int                   `json:"askBudget,omitempty"`            // how many times a turn may be sent back before it ends unverified (0 = 6)
 	MaxFileLines         int                   `json:"maxFileLines,omitempty"`         // refuse code files longer than this (0 = 400, -1 = no limit)
 	UserProhibitions     *bool                 `json:"userProhibitions,omitempty"`     // the user's prohibitions compiled and enforced (nil = on)
 	RequireDiagnosis     *bool                 `json:"requireDiagnosis,omitempty"`     // a verified diagnosis before changes and commands (nil = on)
@@ -125,7 +129,7 @@ func DefaultSettings() Settings {
 			"deepseek-reasoner": {0.3, 1.2},
 			"deepseek-v4-pro":   {1.32, 3.96},
 		},
-		DailyLimitUSD: 20,
+		DailyLimitUSD: 0, // unlimited; the user opts into a paid-API cap
 		Language:      "pt-BR",
 		Notify:        true,
 		Theme:         "system",

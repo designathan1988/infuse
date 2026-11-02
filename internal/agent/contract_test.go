@@ -15,6 +15,8 @@ func contractSession(t *testing.T) *Session {
 	s.Mode = "bypass"
 	s.gate.planned = true   // this test is about the contract gate
 	s.gate.diagnosed = true // the gates before it are not under test here
+	s.gate.planSteps = 2    // the rule binds multi-step work
+	s.settings.RequireContract = boolPointer(true)
 	s.Messages = append(s.Messages, Message{Role: "user", Content: []Block{{Type: "text", Text: "add the widget"}}})
 	s.TurnStarts = append(s.TurnStarts, len(s.Messages)-1)
 	s.Turn = 1

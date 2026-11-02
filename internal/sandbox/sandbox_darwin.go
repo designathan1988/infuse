@@ -20,7 +20,7 @@ func platformAvailable() bool {
 
 // RunWrapper applies the profile and runs argv. It fails closed, as on every platform.
 func RunWrapper(root string, protected []string, argv []string) int {
-	profile := seatbeltProfile(root, os.TempDir(), protected)
+	profile := seatbeltProfile(root, os.TempDir(), protectedRels(root, protected))
 	cmd := exec.Command(sandboxExec, append([]string{"-p", profile}, argv...)...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"infuse/internal/workspace"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,22 +14,24 @@ import (
 
 func (s *Session) turnObligation(ctx context.Context) Msg {
 	changed, open, asks := s.turnState()
-	if asks >= 6 { // the agent keeps refusing: the turn ends, unverified — never as done
+	// A failed snapshot or an unreadable policy is not something the agent can fix by trying again;
+	// it blocks before the ask budget can turn it into a quiet "unverified" end.
+	if why := s.turnStateErrors(); !why.Empty() {
+		return why
+	}
+	if asks >= s.askBudget() { // the agent keeps refusing: the turn ends, unverified — never as done
 		s.closeOpenTasks(M("plan.closed_note").Render(s.uiLang())) // shown only in the plan pane
 		s.markUnverified()
 		return Msg{}
-	}
-	s.Mu.Lock()
-	snapErr := s.snapshotErr
-	s.Mu.Unlock()
-	if snapErr != nil { // without the initial tree there is nothing to compare against: fail closed
-		return M("turn.snapshot", "error", snapErr.Error())
 	}
 	if len(open) > 0 {
 		return M("turn.open_tasks", "tasks", strings.Join(open, "; "))
 	}
 	// whatever changed the tree outside the write tools is judged before anything else
 	if why := s.auditShellWrites(); !why.Empty() {
+		return why
+	}
+	if why := s.dependencyObligation(); !why.Empty() {
 		return why
 	}
 	// a turn that only started a server changed no file and still owes an account of it
@@ -65,7 +68,66 @@ func (s *Session) turnObligation(ctx context.Context) Msg {
 	if why := s.reviewObligation(ctx); !why.Empty() {
 		return why
 	}
+	if why := s.acceptanceGate(ctx, changed); !why.Empty() {
+		return why
+	}
 	s.noteUnmeasuredContract()
+	return Msg{}
+}
+
+// acceptanceGate asks the user to accept a high-stakes delivery (criteria marked requireAcceptance).
+// It asks once per turn; a rejection ends the turn visibly instead of letting it pass as done.
+func (s *Session) acceptanceGate(ctx context.Context, changed []CheckpointFile) Msg {
+	if len(changed) == 0 {
+		return Msg{}
+	}
+	spec, err := LoadOracleSpec(s.Root)
+	if err != nil || !spec.RequireAcceptance {
+		return Msg{}
+	}
+	s.Mu.Lock()
+	asked := s.gate.acceptanceAsked
+	s.gate.acceptanceAsked = true
+	s.Mu.Unlock()
+	if asked {
+		return Msg{}
+	}
+	var files []string
+	for _, c := range changed {
+		files = append(files, c.Path)
+	}
+	answer, ok := s.askUser(ctx, M("turn.acceptanceQuestion", "files", strings.Join(firstN(files, 6), ", ")).Render(s.uiLang()), []string{M("turn.accept").Render(s.uiLang()), M("turn.reject").Render(s.uiLang())})
+	if !ok {
+		return M("ask.no_answer")
+	}
+	if answer == M("turn.accept").Render(s.uiLang()) {
+		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "delivery accepted by the user"})
+		s.emitMsg("gate", M("turn.accepted"))
+		return Msg{}
+	}
+	Journal(s.Root, JournalEntry{Kind: "gate", Detail: "delivery rejected by the user"})
+	s.emitMsg("gate", M("turn.rejected"))
+	s.Mu.Lock()
+	mission := s.Mission != nil && s.Mission.State == "running"
+	s.Mu.Unlock()
+	if mission { // a mission cannot continue as if the user had accepted the delivery
+		s.endMissionMsg("parada", M("mission.end_rejected"))
+	}
+	return Msg{}
+}
+
+// turnStateErrors: a turn cannot be judged without its starting tree, and never runs on an unreadable
+// policy. Both are fail-closed.
+func (s *Session) turnStateErrors() Msg {
+	s.Mu.Lock()
+	snapErr, polErr := s.snapshotErr, s.policyErr
+	s.Mu.Unlock()
+	if snapErr != nil {
+		return M("turn.snapshot", "error", snapErr.Error())
+	}
+	if polErr != nil {
+		return M("policy.invalid", "error", polErr.Error())
+	}
 	return Msg{}
 }
 
@@ -160,6 +222,16 @@ func (s *Session) turnState() (changed []CheckpointFile, open []string, asks int
 		}
 	}
 	return changed, open, asks
+}
+
+// dependencyObligation refuses a turn whose installed dependencies changed without an install command:
+// a patched runner or library would make the checks measure code the user never approved.
+func (s *Session) dependencyObligation() Msg {
+	start := workspace.TurnDependencies(s.Root, s.ID, s.Turn)
+	if start == "" || workspace.DependencyFingerprint(s.workRoot()) == start {
+		return Msg{}
+	}
+	return M("turn.dependencies")
 }
 
 // missingDeclaredProcs: a turn never ends leaving a background process it did not account for. Every

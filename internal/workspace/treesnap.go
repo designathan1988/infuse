@@ -31,11 +31,12 @@ const (
 )
 
 type treeManifest struct {
-	Work      string            `json:"work"`
-	At        int64             `json:"at"`
-	Turn      int               `json:"turn"`
-	Files     map[string]string `json:"files"`     // slash path → sha1 of the content
-	Protected map[string]string `json:"protected"` // .infuse/oracle and .infuse/evidence → sha1
+	Work         string            `json:"work"`
+	At           int64             `json:"at"`
+	Turn         int               `json:"turn"`
+	Files        map[string]string `json:"files"`        // slash path → sha1 of the content
+	Protected    map[string]string `json:"protected"`    // .infuse/oracle and .infuse/evidence → sha1
+	Dependencies string            `json:"dependencies"` // lockfiles + installed entrypoints at the turn start
 }
 
 func treeDir(root string) string { return filepath.Join(root, core.InfuseDirName, "tree") }
@@ -109,7 +110,7 @@ func walkTreeWith(root, work string, store, useCache bool) map[string]string {
 		e, ok := hashCache[p]
 		hashCacheMu.Unlock()
 		settled := time.Since(info.ModTime()) > 2*time.Second // a just-written file may change again within the same mtime
-		if useCache && ok && settled && e.mod == info.ModTime().UnixNano() && e.size == info.Size() {
+		if useCache && ok && settled && e.mod == info.ModTime().UnixNano() && e.size == info.Size() && (!store || core.Exists(blobPath(root, e.hash))) {
 			out[rel] = e.hash
 			return nil
 		}
@@ -146,11 +147,18 @@ func walkTreeWith(root, work string, store, useCache bool) map[string]string {
 // SnapshotTurn records the tree at the start of a session's turn. The error is returned so the
 // session can fail closed: without the initial tree the turn cannot be audited.
 func SnapshotTurn(root, work, session string, turn int) error {
-	m := treeManifest{Work: filepath.Clean(work), At: time.Now().UnixMilli(), Turn: turn, Files: walkTree(root, work, true), Protected: protectedHashes(root)}
+	protected := protectedHashes(root)
+	m := treeManifest{
+		Work: filepath.Clean(work), At: time.Now().UnixMilli(), Turn: turn,
+		Files: walkTree(root, work, true), Protected: protected,
+		Dependencies: DependencyFingerprint(work),
+	}
+	storeProtectedBlobs(root, protected)
 	if err := core.WriteJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), m); err != nil {
 		journal.Journal(root, journal.JournalEntry{Kind: "gate", Detail: "turn snapshot failed: " + err.Error()})
 		return err
 	}
+	PruneTree(root) // keep the newest turns of each session; drop content no kept manifest refers to
 	return nil
 }
 
@@ -158,6 +166,40 @@ func SnapshotTurn(root, work, session string, turn int) error {
 // evidence. The shell guard reads the command line; a script that writes the file directly is caught
 // by comparing these hashes at the end of the turn. Always by content and with no size or count limit:
 // a limit is a place to hide a change.
+// storeProtectedBlobs keeps the content of the oracle and evidence so a deletion can be undone, not
+// only reported. A protected file too large for the cache is still hashed and audited.
+func storeProtectedBlobs(root string, protected map[string]string) {
+	for rel, hash := range protected {
+		bp := blobPath(root, hash)
+		if core.Exists(bp) {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			continue
+		}
+		_ = os.MkdirAll(filepath.Dir(bp), 0o755)
+		_ = os.WriteFile(bp, b, 0o644)
+	}
+}
+
+// RestoreProtected puts back the listed oracle and evidence files as the turn recorded them.
+func RestoreProtected(root, session string, turn int, paths []string) {
+	var m treeManifest
+	if core.ReadJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), &m) != nil {
+		return
+	}
+	for _, rel := range paths {
+		b, ok := ReadBlob(root, m.Protected[rel])
+		if !ok {
+			continue
+		}
+		dst := filepath.Join(root, filepath.FromSlash(rel))
+		_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+		_ = os.WriteFile(dst, []byte(b), 0o644)
+	}
+}
+
 func protectedHashes(root string) map[string]string {
 	out := map[string]string{}
 	for _, dir := range []string{"oracle", "evidence"} {
@@ -195,7 +237,7 @@ func TurnProtectedChanges(root, session string, turn int) []string {
 	}
 	for rel := range m.Protected {
 		if _, still := now[rel]; !still {
-			out = append(out, rel)
+			out = append(out, rel) // the file no longer exists: a deletion is a protected change too
 		}
 	}
 	sort.Strings(out)
@@ -219,6 +261,7 @@ func RefreshTurnProtected(root, session string, turn int, accept func(rel string
 			m.Protected[rel] = h
 		}
 	}
+	storeProtectedBlobs(root, m.Protected)
 	_ = core.WriteJSON(p, m)
 }
 
@@ -258,6 +301,26 @@ func TurnChanges(root, work, session string, turn int) []TreeChange {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
+}
+
+// TurnDependencies is the dependency fingerprint recorded at the start of the turn.
+func TurnDependencies(root, session string, turn int) string {
+	var m treeManifest
+	if core.ReadJSON(filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json"), &m) != nil {
+		return ""
+	}
+	return m.Dependencies
+}
+
+// RefreshTurnDependencies rebases the turn's fingerprint after an install command the gate approved.
+func RefreshTurnDependencies(root, session string, turn int) {
+	p := filepath.Join(treeDir(root), session, strconv.Itoa(turn)+".json")
+	var m treeManifest
+	if core.ReadJSON(p, &m) != nil {
+		return
+	}
+	m.Dependencies = DependencyFingerprint(m.Work)
+	_ = core.WriteJSON(p, m)
 }
 
 // manifests lists the recorded snapshots of a work folder, oldest first (only one session's with session).

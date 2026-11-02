@@ -57,8 +57,8 @@ func (s *Session) Send(text string, atts []Attachment, imgs []InlineImage) error
 		s.setState(idle)
 		return errors.New(hook.blockMsg().Render(s.uiLang()))
 	}
+	s.refreshPolicy() // the settings snapshot and the policy scan happen before the turn starts
 	s.Mu.Lock()
-	s.settings = EffectiveSettings(s.Root)
 	if s.Model == "" {
 		s.Model = s.settings.Model
 	}

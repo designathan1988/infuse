@@ -14,6 +14,7 @@ package agent
 
 import (
 	"encoding/json"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -26,6 +27,23 @@ import (
 func (s *Session) noteResearch(name string, input json.RawMessage) {
 	var in struct{ Query, URL, Path, Name, Prompt, Action string }
 	_ = json.Unmarshal(input, &in)
+	switch name {
+	case "Grep", "Glob", "LS", "Bash": // a lookup does not read the documentation of a dependency
+		return
+	case "Read":
+		if !isSourceRead(input) { // a project file named after the package proves nothing
+			return
+		}
+		if p := in.Path; p != "" {
+			abs := p
+			if !filepath.IsAbs(abs) {
+				abs = filepath.Join(s.Cwd, abs)
+			}
+			if within(s.workRoot(), abs) && s.agentFile(relTo(s.workRoot(), abs)) {
+				return // documentation the agent wrote itself is not outside research
+			}
+		}
+	}
 	text := strings.ToLower(strings.Join([]string{in.Query, in.URL, filepath.ToSlash(in.Path), in.Name, in.Prompt}, " "))
 	if strings.TrimSpace(text) == "" {
 		return
@@ -35,20 +53,89 @@ func (s *Session) noteResearch(name string, input json.RawMessage) {
 	s.Mu.Unlock()
 }
 
-// researchedFor reports whether name (a package or a host) was consulted in this turn or is pinned.
-func (s *Session) researchedFor(name string) bool {
-	n := strings.ToLower(name)
-	alt := strings.ReplaceAll(n, "-", " ")
+// mentionsName reports name as a whole name in text: "express" does not match "regular expression",
+// "ms" does not match "forms". A hyphenated package also matches its spaced form.
+func mentionsName(text, name string) bool {
+	for _, candidate := range []string{strings.ToLower(name), strings.ReplaceAll(strings.ToLower(name), "-", " ")} {
+		if candidate == "" {
+			continue
+		}
+		for from := 0; from < len(text); {
+			i := strings.Index(text[from:], candidate)
+			if i < 0 {
+				break
+			}
+			start, end := from+i, from+i+len(candidate)
+			if !nameByte(text, start-1) && !nameByte(text, end) {
+				return true
+			}
+			from = start + 1
+		}
+	}
+	return false
+}
+
+func nameByte(s string, i int) bool {
+	if i < 0 || i >= len(s) {
+		return false
+	}
+	c := s[i]
+	return c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '@' || c == '-'
+}
+
+// hostLabel is the distinctive label of a host (api.frankfurter.app → frankfurter).
+func hostLabel(host string) string {
+	parts := strings.Split(strings.ToLower(host), ".")
+	if len(parts) >= 2 {
+		return parts[len(parts)-2]
+	}
+	return strings.ToLower(host)
+}
+
+// docWords marks a text about a service as documentation, not a passing mention.
+var docWords = regexp.MustCompile(`\b(api|docs?|documentation|reference|endpoint|request|guide|sdk|spec)\b`)
+
+// researchedHost reports whether the host's own documentation was consulted: a URL for the same
+// label, or a search that names the label and asks for its API/docs.
+func (s *Session) researchedHost(host string) bool {
+	label := hostLabel(host)
 	s.Mu.Lock()
 	seen := append([]string{}, s.gate.researched...)
 	s.Mu.Unlock()
 	for _, t := range seen {
-		if strings.Contains(t, n) || strings.Contains(t, alt) {
+		for _, raw := range reURLCited.FindAllString(t, -1) {
+			if u, err := url.Parse(raw); err == nil && hostLabel(u.Hostname()) == label {
+				return true
+			}
+		}
+		if mentionsName(t, label) && docWords.MatchString(t) {
 			return true
 		}
 	}
 	for _, d := range loadDocs(s.Root) {
-		if strings.Contains(strings.ToLower(d.URL+" "+d.Title+" "+d.File), n) {
+		if mentionsName(strings.ToLower(d.URL+" "+d.Title+" "+d.File), label) {
+			return true
+		}
+	}
+	return false
+}
+
+// researchedFor reports whether name (a package) was consulted in this turn or is pinned.
+func (s *Session) researchedFor(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if n == "" {
+		return false
+	}
+	s.Mu.Lock()
+	seen := append([]string{}, s.gate.researched...)
+	s.Mu.Unlock()
+	for _, t := range seen {
+		if mentionsName(t, n) {
+			return true
+		}
+	}
+	for _, d := range loadDocs(s.Root) {
+		if mentionsName(strings.ToLower(d.URL+" "+d.Title+" "+d.File), n) {
 			return true
 		}
 	}

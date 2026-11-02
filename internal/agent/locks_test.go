@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,9 @@ func TestTestGamingInCodeIsRefused(t *testing.T) {
 	full := "export function total(items) {\n  let s = 0;\n  for (const i of items) {\n    s += i.price * i.qty;\n  }\n  return s;\n}\n"
 	wantMsg(t, cheatWriteCheck(root, "src/total.js", full, "export function total(items) {\n  return 0;\n}\n"), "cheat.stub")
 	wantMsg(t, cheatWriteCheck(root, "src/total.js", full, strings.Replace(full, "i.qty", "i.quantity", 1)), "")
+	// prose is not a test runner: examples and TODO lists in docs are not code fraud
+	wantMsg(t, cheatWriteCheck(root, "README.md", "", "```js\nprocess.exit(0);\n```\n"), "")
+	wantMsg(t, cheatWriteCheck(root, "docs/testing.md", "", "// eslint-disable-next-line\nTODO: write more tests\n"), "")
 }
 
 func TestChangedScreenMustBeLookedAt(t *testing.T) {
@@ -113,24 +117,37 @@ func TestInventedPackagesAreRefused(t *testing.T) {
 }
 
 // A package the cache does not know is looked up off the gate path and remembered for the next run.
-func TestPackageLookupRunsOffTheGatePath(t *testing.T) {
+func TestPackageLookupVerifiesBeforeTheInstall(t *testing.T) {
 	testHome(t)
-	saved := registryLookup
-	t.Cleanup(func() { registryLookup = saved })
+	saved, savedWait := registryLookup, packageWait
+	t.Cleanup(func() { registryLookup, packageWait = saved, savedWait })
+	packageWait = 500 * time.Millisecond
 	looked := make(chan string, 1)
 	registryLookup = func(ctx context.Context, p pkgRef) (bool, time.Time, error) {
 		looked <- p.name
 		return false, time.Time{}, nil
 	}
-	wantMsg(t, unknownPackages(context.Background(), "npm i mystery-pkg-xyz"), "") // not blocked on the network
+	wantMsg(t, unknownPackages(context.Background(), "npm i mystery-pkg-xyz"), "pkg.missing")
 	select {
 	case name := <-looked:
 		if name != "mystery-pkg-xyz" {
 			t.Fatalf("looked up %q", name)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("the background lookup never ran")
+		t.Fatal("the lookup never ran")
 	}
+}
+
+// A registry that cannot answer is not permission to install an unverified name.
+func TestUnverifiedPackageIsRefused(t *testing.T) {
+	testHome(t)
+	saved, savedWait := registryLookup, packageWait
+	t.Cleanup(func() { registryLookup, packageWait = saved, savedWait })
+	packageWait = 200 * time.Millisecond
+	registryLookup = func(ctx context.Context, p pkgRef) (bool, time.Time, error) {
+		return false, time.Time{}, fmt.Errorf("offline")
+	}
+	wantMsg(t, unknownPackages(context.Background(), "npm i mystery-pkg-xyz"), "pkg.unverified")
 }
 
 func TestUserProhibitionsAreCompiledWithQuotesAndEnforced(t *testing.T) {
@@ -163,4 +180,43 @@ func TestUserProhibitionsAreCompiledWithQuotesAndEnforced(t *testing.T) {
 	wantMsg(t, s.banCheck("Agent", in(map[string]string{"kind": "explore"})), "")
 	s.compileBans(context.Background(), p)
 	wantMsg(t, s.banCheck("Agent", in(map[string]string{"kind": "explore"})), "")
+}
+
+// A dependency written into package.json is verified before the file is accepted, so a later
+// "npm install" cannot run a name the agent invented.
+func TestManifestDependenciesAreVerified(t *testing.T) {
+	testHome(t)
+	rememberPackage(pkgRef{name: "react", registry: "npm"}, true, time.Now().AddDate(-5, 0, 0))
+	rememberPackage(pkgRef{name: "reactt-dom-utils", registry: "npm"}, false, time.Time{})
+	before := `{"dependencies":{"react":"19.0.0"}}`
+	after := `{"dependencies":{"react":"19.0.0","reactt-dom-utils":"1.0.0"}}`
+	refs := newManifestPackages(before, after)
+	if len(refs) != 1 || refs[0].name != "reactt-dom-utils" {
+		t.Fatalf("new dependencies: %+v", refs)
+	}
+	if len(newManifestPackages(before, before)) != 0 {
+		t.Fatal("an unchanged manifest reported new dependencies")
+	}
+	s := newSession(t.TempDir())
+	in, _ := json.Marshal(map[string]string{"path": "package.json", "content": after})
+	if why := s.protocolCheckWrite("Write", in); why.ID != "pkg.missing" {
+		t.Fatalf("an invented dependency passed the manifest gate: %q", why.Render("en"))
+	}
+	ok := `{"dependencies":{"react":"19.0.0"}}`
+	in, _ = json.Marshal(map[string]string{"path": "package.json", "content": ok})
+	if why := s.protocolCheckWrite("Write", in); why.ID == "pkg.missing" {
+		t.Fatal("a known dependency was refused")
+	}
+}
+
+// Removing a coverage/failure threshold or the test script from configuration is fraud.
+func TestConfigurationCannotLoseItsGuards(t *testing.T) {
+	before := `{"scripts":{"test":"jest"},"jest":{"coverageThreshold":{"global":{"lines":80}}}}`
+	after := `{"scripts":{"build":"tsc"},"jest":{}}`
+	if why := cheatWriteCheck(t.TempDir(), "package.json", before, after); why.ID != "cheat.config_removed" {
+		t.Fatalf("the removed guards passed: %q", why.Render("en"))
+	}
+	if why := cheatWriteCheck(t.TempDir(), "package.json", before, `{"scripts":{"test":"jest"},"jest":{"coverageThreshold":{"global":{"lines":90}}}}`); !why.Empty() {
+		t.Fatalf("raising a threshold was refused: %q", why.Render("en"))
+	}
 }

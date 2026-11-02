@@ -18,10 +18,15 @@ var convo = []Message{
 
 func testHome(t *testing.T) {
 	t.Helper()
-	t.Setenv("INFUSE_HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("INFUSE_HOME", home)
 	prev := config.SecretBackend
 	config.SecretBackend = config.MemSecrets{}
 	t.Cleanup(func() { config.SecretBackend = prev })
+	// Unit tests are not a user: they do not confirm a Contract, so the multi-step gate is off here.
+	// The gate itself is covered by contract_gate_test.go.
+	_ = os.MkdirAll(home, 0o755)
+	_ = os.WriteFile(filepath.Join(home, "settings.json"), []byte(`{"requireContract":false}`), 0o644)
 }
 
 func gitRepo(t *testing.T) string {

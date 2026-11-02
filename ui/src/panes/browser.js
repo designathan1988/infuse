@@ -25,7 +25,7 @@ const labelOf = tb => tb.title || (tb.url ? tb.url.replace(/^https?:\/\/(www\.)?
 function makeState(pb, extra, c) {
   const b = {
     pb, extra, c, tabs: [], cur: null, picking: false, lastPlace: '',
-    native: !!(window.infuse && window.infuse.native), resizeBusy: false, resizeAgain: false, resizeRaf: 0
+    native: !!(window.infuse && window.infuse.native && window.infuse.browser), resizeBusy: false, resizeAgain: false, resizeRaf: 0
   };
   pb.innerHTML = `<div class="urlbar">
       <button class="icon-btn back" aria-label="${esc(t('browser.back'))}">‹</button>
@@ -92,7 +92,11 @@ function input(b, tb, body) {
 function bindStreamMouse(b, tb, img, kb) {
   const at = e => {
     const r = img.getBoundingClientRect();
-    return { x: Math.round(e.clientX - r.left), y: Math.round(e.clientY - r.top) };
+    // an attached agent page keeps its own viewport, so the stream is scaled to fit the pane and
+    // the click is mapped back to the page's coordinates
+    const sx = tb.vw ? tb.vw / Math.max(1, r.width) : 1;
+    const sy = tb.vh ? tb.vh / Math.max(1, r.height) : 1;
+    return { x: Math.round((e.clientX - r.left) * sx), y: Math.round((e.clientY - r.top) * sy) };
   };
   const btn = e => ['left', 'middle', 'right'][e.button] || 'left';
   img.onmousedown = async e => {
@@ -145,9 +149,11 @@ function streamTab(b, tb) {
   tb.es.onmessage = e => {
     const d = JSON.parse(e.data);
     if (d.type === 'frame') {
+      b.empty.hidden = true;
       img.src = 'data:image/jpeg;base64,' + d.data;
       tb.vw = d.w; tb.vh = d.h;
-      if (d.w) { img.style.width = d.w + 'px'; img.style.height = d.h + 'px'; }
+      if (d.w && tb.agent) fitAgent(b, tb);
+      else if (d.w) { img.style.width = d.w + 'px'; img.style.height = d.h + 'px'; }
     } else if (d.type === 'nav') onBrowserEvent(b, { id: tb.id, url: d.url, title: d.title, loading: d.loading });
   };
   bindStreamMouse(b, tb, img, kb);
@@ -158,12 +164,20 @@ async function sendResize(b) {
   if (b.resizeBusy) { b.resizeAgain = true; return; }
   b.resizeBusy = true;
   const sz = sizeOf(b);
-  await Promise.all(b.tabs.filter(tb => tb.img).map(tb => input(b, tb, { kind: 'resize', ...sz })));
+  await Promise.all(b.tabs.filter(tb => tb.img && !tb.agent).map(tb => input(b, tb, { kind: 'resize', ...sz })));
   b.resizeBusy = false;
   if (b.resizeAgain) { b.resizeAgain = false; sendResize(b); }
 }
 
+function fitAgent(b, tb) {
+  if (!tb.img || !tb.vw) return;
+  const w = Math.min(tb.vw, Math.max(200, b.frames.clientWidth));
+  tb.img.style.width = w + 'px';
+  tb.img.style.height = Math.round(tb.vh * (w / tb.vw)) + 'px';
+}
+
 function resizeStreams(b) {
+  b.tabs.filter(tb => tb.agent).forEach(tb => fitAgent(b, tb));
   if (b.native) return;
   cancelAnimationFrame(b.resizeRaf);
   b.resizeRaf = requestAnimationFrame(() => sendResize(b));
@@ -280,7 +294,8 @@ function destroyBrowser(b) {
 
 export function mount(pb, extra, c) {
   const b = makeState(pb, extra, c);
-  if (b.native) infuse.on('browser', ev => { if (document.body.contains(pb)) onBrowserEvent(b, ev); });
+  const onAgentEvent = ev => { if (document.body.contains(pb)) onBrowserEvent(b, ev); };
+  if (b.native) infuse.on('browser', onAgentEvent);
   b.ro = new ResizeObserver(() => { placeNative(b); resizeStreams(b); });
   b.ro.observe(b.frames);
   b.timer = setInterval(() => placeNative(b), 200);
@@ -288,7 +303,28 @@ export function mount(pb, extra, c) {
   addTab(b, pref('browserUrl')[c.root] || '');
   return {
     go: v => { if (!b.cur) addTab(b, ''); goTo(b, v); },
+    // The agent's page gets its own tab: the user's current page and history are never replaced.
+    // In the native window this tab is streamed too, because WebView2 cannot attach to the agent's
+    // Chromium page; the stream is that same page, with its own address and content.
+    openAgent: async v => {
+      let tb = b.tabs.find(x => x.agent);
+      if (tb) { showTab(b, tb); return true; }
+      tb = { id: 'b' + (++seq) + '-' + Date.now(), url: v, agent: true, stream: true };
+      b.tabs.push(tb); showTab(b, tb); b.empty.hidden = false;
+      const r = await api('/api/view/agent', { body: { id: tb.id, ...sizeOf(b) }, root: b.c.root }).catch(e => ({ error: String(e) }));
+      if (!r.ok) { // no agent page yet: fall back to a regular tab at the address
+        tb.agent = false; tb.stream = false;
+        if (!b.native) streamTab(b, tb);
+        goTo(b, v);
+        return true;
+      }
+      streamTab(b, tb);
+      return true;
+    },
     pick: () => pickInPage(b),
-    destroy: () => destroyBrowser(b)
+    destroy: () => {
+      if (b.native && window.infuse?.off) infuse.off('browser', onAgentEvent);
+      destroyBrowser(b);
+    }
   };
 }

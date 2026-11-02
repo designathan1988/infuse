@@ -1,0 +1,82 @@
+[
+  {
+    "url": "http://127.0.0.1:3000/",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/style.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/app.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks",
+    "status": 201,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks",
+    "status": 201,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks/f63102ee-c8a1-4458-bfe5-e7e7b3c8c78e",
+    "status": 200,
+    "method": "PATCH"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks/15da59fa-9133-4242-8b0b-805dc69c4883",
+    "status": 204,
+    "method": "DELETE"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/style.css",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/app.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:3000/api/tasks",
+    "status": 200,
+    "method": "GET"
+  }
+]

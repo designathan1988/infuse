@@ -51,10 +51,11 @@ type OracleCheck struct {
 
 type OracleSpec struct {
 	store.Versioned
-	Setup     string        `json:"setup,omitempty"`            // runs in the snapshot before the checks
-	Server    string        `json:"server,omitempty"`           // HTTP and browser checks talk to this server, started in the snapshot
-	ServerSec int           `json:"serverTimeoutSec,omitempty"` // how long to wait for it (default 60)
-	Checks    []OracleCheck `json:"checks"`
+	Setup             string        `json:"setup,omitempty"`             // runs in the snapshot before the checks
+	Server            string        `json:"server,omitempty"`            // HTTP and browser checks talk to this server, started in the snapshot
+	ServerSec         int           `json:"serverTimeoutSec,omitempty"`  // how long to wait for it (default 60)
+	RequireAcceptance bool          `json:"requireAcceptance,omitempty"` // a high-stakes delivery also needs the user's acceptance
+	Checks            []OracleCheck `json:"checks"`
 }
 
 type CheckResult struct {
@@ -87,22 +88,23 @@ func checkTarget(c OracleCheck) string {
 }
 
 type Verdict struct {
-	Run         string        `json:"run"`
-	Started     int64         `json:"started"`
-	Finished    int64         `json:"finished"`
-	Snapshot    string        `json:"snapshot"` // the base commit, when there is one, and the manifest's hash
-	Verdict     string        `json:"verdict"`  // aprovado | reprovado | sem-criterios | erro
-	Summary     string        `json:"summary"`
-	Checks      []CheckResult `json:"checks"`
-	Session     string        `json:"session,omitempty"`
-	Turn        int           `json:"turn,omitempty"`        // the session turn this verdict belongs to
-	SpecHash    string        `json:"specHash,omitempty"`    // sha256 of the criteria the run used
-	Criteria    int           `json:"criteria,omitempty"`    // how many checks the criteria had
-	Warnings    []string      `json:"warnings,omitempty"`    // limits of the run, stated with the verdict
-	ServerPID   int           `json:"serverPid,omitempty"`   // the process the checks talked to, when the criteria declared one
-	Project     string        `json:"project,omitempty"`     // which project the verdict was produced for
-	Fingerprint string        `json:"fingerprint,omitempty"` // sha256 of the snapshot's manifest, stored as snapshot.txt
-	Signature   string        `json:"signature,omitempty"`   // HMAC over every other field, key kept outside the project
+	Run          string        `json:"run"`
+	Started      int64         `json:"started"`
+	Finished     int64         `json:"finished"`
+	Snapshot     string        `json:"snapshot"` // the base commit, when there is one, and the manifest's hash
+	Verdict      string        `json:"verdict"`  // aprovado | reprovado | sem-criterios | erro
+	Summary      string        `json:"summary"`
+	Checks       []CheckResult `json:"checks"`
+	Session      string        `json:"session,omitempty"`
+	Turn         int           `json:"turn,omitempty"`         // the session turn this verdict belongs to
+	SpecHash     string        `json:"specHash,omitempty"`     // sha256 of the criteria the run used
+	Criteria     int           `json:"criteria,omitempty"`     // how many checks the criteria had
+	Warnings     []string      `json:"warnings,omitempty"`     // limits of the run, stated with the verdict
+	ServerPID    int           `json:"serverPid,omitempty"`    // the process the checks talked to, when the criteria declared one
+	Project      string        `json:"project,omitempty"`      // which project the verdict was produced for
+	Fingerprint  string        `json:"fingerprint,omitempty"`  // sha256 of the snapshot's manifest, stored as snapshot.txt
+	Dependencies string        `json:"dependencies,omitempty"` // lockfiles + installed code the run measured
+	Signature    string        `json:"signature,omitempty"`    // HMAC over every other field, key kept outside the project
 
 	// SpecVerified is set when the verdict is read: the criteria stored with the run still hash to
 	// the value the verdict recorded and the verdict's signature verifies, so neither was edited after.

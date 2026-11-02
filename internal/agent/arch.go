@@ -193,13 +193,28 @@ func archCheck(root, work, rel, before, after string) Msg {
 
 // archPlacement: a new file goes inside the structure the project has, not loose at the root or in a
 // folder invented for it.
+// rootEntryName recognizes the files an application normally keeps at the root even after its code
+// moved into folders: entry points, static entry files and tool configuration.
+func rootEntryName(name string) bool {
+	low := strings.ToLower(name)
+	switch low {
+	case "index.html", "index.css", "style.css", "styles.css", "main.js", "main.ts",
+		"server.js", "server.ts", "app.js", "app.ts", "bootstrap.js", "bootstrap.ts",
+		"tsconfig.json", "vite.config.js", "vite.config.ts", "webpack.config.js",
+		"next.config.js", "next.config.ts", "tailwind.config.js", "tailwind.config.ts",
+		"postcss.config.js", "eslint.config.js", "jest.config.js", "vitest.config.js":
+		return true
+	}
+	return strings.HasSuffix(low, ".config.js") || strings.HasSuffix(low, ".config.ts")
+}
+
 func archPlacement(r *ArchRules, work, rel, ext string, isNew bool) Msg {
 	if !isNew || !r.on("placement") {
 		return Msg{}
 	}
 	parts := strings.Split(rel, "/")
 	if len(parts) == 1 { // at the root: loose only when the project already keeps its code in folders
-		if !codeExts[ext] || contains(r.RootExts, ext) {
+		if !codeExts[ext] || rootEntryName(parts[0]) || contains(r.RootExts, ext) {
 			return Msg{}
 		}
 		rootHas, dirs := treeShape(work, ext)

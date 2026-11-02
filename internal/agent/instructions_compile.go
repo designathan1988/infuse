@@ -53,11 +53,17 @@ func (s *Session) ensureCompiledRules(ctx context.Context, p Provider) {
 	}
 	s.emitMsg("gate", M("instr.compiling"))
 	c, err := s.compileInstructions(ctx, p, pr.Text)
-	if err != nil { // the user sees it: without the compiled rules their locks are not in force
+	if err != nil { // the old rules stay in force, labeled stale: never silently enforce an old text as current
 		Journal(s.Root, JournalEntry{Kind: "gate", Detail: "compiling the instructions: " + err.Error()})
 		s.emitMsg("gate", M("instr.compile_failed", "error", firstLine(err.Error())))
+		if old != nil {
+			old.Stale = true
+			_ = writeJSON(knowledge.CompiledRulesFile(s.Root), old)
+			knowledge.InvalidateRules(s.Root)
+		}
 		return
 	}
+	c.Stale = false
 	if old != nil { // the user's switches survive a recompilation
 		off := map[string]bool{}
 		for _, r := range old.Rules {

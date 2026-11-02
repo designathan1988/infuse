@@ -48,7 +48,7 @@ func (s *Session) spend(model string, u Usage) float64 {
 // overDailyLimit is the stop every model call checks first: the day's total across every session.
 func (s *Session) overDailyLimit() (Msg, bool) {
 	lim := s.settings.DailyLimitUSD
-	if lim <= 0 {
+	if lim <= 0 || s.unmeteredProvider() {
 		return Msg{}, false
 	}
 	if spent := todaySpend(); spent >= lim {
@@ -57,10 +57,29 @@ func (s *Session) overDailyLimit() (Msg, bool) {
 	return Msg{}, false
 }
 
+// unmeteredProvider reports a local or subscription-backed provider. Claude Code Desktop, Codex,
+// Ollama and the demonstration provider are not billed per token by infuse; applying the paid-API
+// daily limit to them stops a local session for a cost that does not exist.
+func (s *Session) unmeteredProvider() bool {
+	id := s.Provider
+	if id == "" {
+		id = s.settings.Provider
+	}
+	kind := s.settings.Connections[id].Kind
+	if kind == "" {
+		kind = id
+	}
+	switch kind {
+	case "mock", "claudedesk", "codexdesk", "ollama":
+		return true
+	}
+	return false
+}
+
 // warnDailyLimit tells the user once a day, per session, that the limit is near.
 func (s *Session) warnDailyLimit() {
 	lim := s.settings.DailyLimitUSD
-	if lim <= 0 {
+	if lim <= 0 || s.unmeteredProvider() {
 		return
 	}
 	spent := todaySpend()

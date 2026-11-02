@@ -50,11 +50,23 @@ AGENTE COMPLETO, DENTRO DO FILTRO
     turno com o mesmo conteudo e o veredito volta para o agente; os criterios
     ficam ancorados fora do projeto e o veredito e assinado, entao um arquivo
     editado dentro do projeto nao vale como aprovacao;
-  - a base de arquitetura que voce escolher em .infuse\base.json recusa codigo
-    escrito fora das pastas declaradas e imports que quebram as camadas dela, e
-    define o limite de linhas por arquivo;
+  - a base de arquitetura (pagina Regras > Base) define as pastas do projeto e o
+    limite de linhas por arquivo, recusa codigo escrito fora delas e imports que
+    quebram as camadas dela, e cria um projeto novo a partir da base, com o mapa
+    ja gerado;
   - hooks e servidores MCP so rodam depois que voce aprova, e a aprovacao e
     assinada: editar o arquivo de aprovacoes nao libera nada;
+  - a pagina Regras tem UMA politica de comportamento: metodo de trabalho, limite
+    de recusas, arquitetura, convencoes, permissoes, proibicoes e criterio de
+    pronto. O filtro e o nucleo antifraude nao sao configuraveis ali;
+  - trabalho com mais de uma etapa exige que voce confirme a releitura do
+    pedido (Contract) antes da primeira alteracao, pelo editor ou pelo shell;
+    nos criterios do Pronto voce pode marcar "esta entrega precisa da minha
+    aceitacao" e o turno pede o seu aceite mesmo quando os criterios passam;
+  - missoes e tarefas agendadas respondem sozinhas aos proprios cartoes; o modo
+    plano continua negando escritas, e comandos destrutivos e arquivos protegidos
+    continuam recusados quando nao ha ninguem para aprovar;
+  - todo processo do agente roda em um Job Object e termina junto com o infuse;
   - tudo que foi escrito fica no Jornal; cada recusa registra o vicio exato, na
     aba Vicios, com a assinatura e o remedio.
 
@@ -110,13 +122,26 @@ LANCADOR
   mapa de cada pasta, em cada pasta; infuse context off remove.
 
 O QUE AINDA NAO ESTA NESTA VERSAO (ver SPEC.md e docs/PROMPT-infuse-studio.md)
-  o mount FUSE/WinFsp. A escolha de base, os scaffolds, a recusa de codigo fora
-  da base, o restante do SPEC.md, os subagentes com revisor independente, o
-  cliente MCP, a busca na web, o executor do oraculo com evidencia em snapshot,
-  a janela nativa e o multi-provedor estao implementados.
+  nada do recorte entregue ficou pendente. O mount WinFsp e uma superficie
+  explicita: "infuse mount <unidade|pasta> [projeto]" monta o projeto, aplica a
+  base e as pastas protegidas em cada escrita e registra no jornal. As sessoes
+  usam a arvore real por decisao de projeto: o mount recusa escritas em .infuse,
+  que o proprio infuse precisa fazer para oraculo, jornal e evidencias; o sandbox
+  de SO e o perimetro obrigatorio dos comandos do agente.
+  O sandbox de escrita em nivel de SO esta ativo: no Windows o comando roda em
+  integridade Baixa, escreve apenas na raiz do projeto e em uma pasta temporaria
+  privada, mantem .infuse, os hooks e a configuracao do git em integridade Media
+  e usa uma copia privada do runtime MSYS2, para que Git Bash, Go, Git e npm
+  continuem funcionando sem poderem escrever fora do projeto; no Linux valem um
+  namespace de montagem e o Landlock, e no macOS o Seatbelt. A escolha de base, os
+  scaffolds, a recusa de codigo fora da base, o restante do SPEC.md, os subagentes
+  com revisor independente, o cliente MCP, a busca na web, o executor do oraculo
+  com evidencia em snapshot, a janela nativa e o multi-provedor estao
+  implementados.
 
 Tudo fica no seu computador. A interface responde apenas em 127.0.0.1.
-Dados: %USERPROFILE%\.infuse\settings.json (as chaves de API ficam no cofre do
-sistema operacional, nao no arquivo) e, em cada projeto, a pasta .infuse\
+Dados: %USERPROFILE%\.infuse\settings.json (as chaves de API nao ficam nesse
+arquivo: no Windows ficam em um arquivo cifrado com DPAPI, fora do alcance dos
+comandos do agente; nos outros sistemas, no cofre do sistema operacional) e, em cada projeto, a pasta .infuse\
 (sessoes, checkpoints, regras, base, oraculo, jornal, licoes, mapa). Sessoes,
 checkpoints e capturas ficam fora do git; o resto e versionado com o projeto.

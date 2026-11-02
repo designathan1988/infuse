@@ -1,0 +1,47 @@
+# Windows OS sandbox evidence
+Sun Nov  1 19:08:58     2026
+git bash: C:\Program Files\Git\bin\bash.exe
+
+## unit tests
+=== RUN   TestWindowsSandboxWritesInside
+--- PASS: TestWindowsSandboxWritesInside (0.45s)
+=== RUN   TestWindowsSandboxBlocksOutsideWrites
+--- PASS: TestWindowsSandboxBlocksOutsideWrites (0.50s)
+=== RUN   TestWindowsSandboxProtectsInfuseRecords
+--- PASS: TestWindowsSandboxProtectsInfuseRecords (0.45s)
+=== RUN   TestWindowsSandboxBuildsPrivateMSYS
+--- PASS: TestWindowsSandboxBuildsPrivateMSYS (0.44s)
+=== RUN   TestWindowsSandboxRefusesBadRoot
+--- PASS: TestWindowsSandboxRefusesBadRoot (0.00s)
+PASS
+ok  	infuse/internal/sandbox	1.862s
+
+## installed prerequisite
+WinFsp 2025 WinFsp.WinFsp 2.1.25156 winget
+
+## inside write
+PASS  Git Bash writes inside the work root
+
+## outside write
+PASS  outside write denied (exit 1)
+
+## outside delete
+PASS  outside delete denied (exit 1)
+
+## native Node write outside
+PASS  native Node cannot write outside (exit 1)
+
+## Go build and run
+PASS  go build and run inside the sandbox
+
+## npm install
+PASS  npm install and package use inside the sandbox
+
+## git commit
+PASS  git commit inside the sandbox
+
+## private runtime and cache
+PASS  private MSYS2 runtime prepared
+PASS  Go cache redirected into the granted cache
+
+RESULT: 0 failure(s)

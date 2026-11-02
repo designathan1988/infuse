@@ -104,7 +104,7 @@ func TestSnapshotKeepsFilesGitWouldDrop(t *testing.T) {
 	writeSpec(t, root, `{"checks":[
 		{"id":"tests","kind":"file","path":"tests/a.test","expect":{"contains":"kept"}},
 		{"id":"build","kind":"file","path":"dist/tracked.js"},
-		{"id":"env","kind":"file","path":".env"}
+		{"id":"env","kind":"file","path":".env","expect":{"exists":false}}
 	]}`)
 	if v := run(t, root); v.Verdict != "aprovado" {
 		t.Fatalf("the snapshot lost files: %+v", v.Checks)

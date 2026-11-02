@@ -31,7 +31,8 @@ type Host interface {
 	Clip(string) string
 	Say(core.Msg) string
 	SayErr(error) string
-	NoteScreenshot(url string) // what the capture looked at, for the turn's visual-evidence gate
+	NoteScreenshot(url, html string) // what the capture looked at and showed, for the visual-evidence gate
+	ShowURL(string)                  // surface the page in the user's Browser pane
 }
 
 type Tool struct{}
@@ -118,9 +119,17 @@ func (Tool) Run(ctx context.Context, h Host, input json.RawMessage) (string, boo
 	case "navigate", "back", "reload":
 		return a.browse()
 	case "click", "hover", "type", "press", "scroll", "drag", "select", "upload", "wait_for":
-		return a.interact()
+		out, bad := a.interact()
+		if !bad {
+			a.showURL() // a click may have navigated, including a client-side route
+		}
+		return out, bad
 	case "text", "dom", "eval", "screenshot":
-		return a.content()
+		out, bad := a.content()
+		if !bad && in.Action == "eval" {
+			a.showURL() // the script may have changed the page
+		}
+		return out, bad
 	case "record_start", "record_stop":
 		return a.record()
 	case "console", "network", "performance", "a11y", "storage", "throttle", "emulate", "viewport", "pdf":
@@ -137,12 +146,13 @@ type actionInput struct {
 }
 
 type action struct {
-	ctx  context.Context
-	h    Host
-	p    *Page
-	g    gestureStyle
-	wait time.Duration
-	in   actionInput
+	ctx   context.Context
+	h     Host
+	p     *Page
+	g     gestureStyle
+	wait  time.Duration
+	in    actionInput
+	shown string // the last address sent to the pane, so a click that stays put is not repeated
 }
 
 func (a *action) where() string {
@@ -150,6 +160,17 @@ func (a *action) where() string {
 	var w string
 	_ = json.Unmarshal(v, &w)
 	return w
+}
+
+// showURL tells the UI the page the agent opened, so the user can watch the same server.
+func (a *action) showURL() {
+	v, _ := a.p.b.eval(a.ctx, `location.href`)
+	var u string
+	_ = json.Unmarshal(v, &u)
+	if (strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")) && u != a.shown {
+		a.shown = u
+		a.h.ShowURL(u)
+	}
 }
 
 // locateErr finds an element; the error says why not (no selector, not found, not visible).

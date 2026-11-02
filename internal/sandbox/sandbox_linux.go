@@ -92,6 +92,9 @@ func enter(root string, protected []string, argv []string, namespaced bool) int 
 			fmt.Fprintf(os.Stderr, "[infuse] read-only mounts unavailable, using per-entry grants: %v\n", err)
 		}
 	}
+	for _, kv := range envCacheVars(root) { // the temp and the caches a shell needs live in the grant
+		_ = os.Setenv(kv[0], kv[1])
+	}
 	if err := restrictSelf(root, protected, namespaced); err != nil {
 		fmt.Fprintf(os.Stderr, "[infuse] the command was not run: OS containment is unavailable here (%v). The user can turn containProcesses off in the settings.\n", err)
 		return 126
@@ -112,8 +115,8 @@ func enter(root string, protected []string, argv []string, namespaced bool) int 
 // and the protected list.
 func protectedPaths(root string, protected []string) []string {
 	out := []string{filepath.Join(root, ".infuse"), filepath.Join(root, ".git", "hooks"), filepath.Join(root, ".git", "config")}
-	for _, rel := range protected {
-		if rel = strings.Trim(filepath.ToSlash(rel), "/"); !strings.HasPrefix(rel, ".infuse/") {
+	for _, rel := range protectedRels(root, protected) {
+		if rel = strings.Trim(rel, "/"); !strings.HasPrefix(rel, ".infuse/") {
 			out = append(out, filepath.Join(root, filepath.FromSlash(rel)))
 		}
 	}
@@ -164,7 +167,7 @@ func restrictSelf(root string, protected []string, namespaced bool) error {
 	if err := grantProject(int(fd), root, protected, handled, namespaced); err != nil {
 		return err
 	}
-	for _, p := range scratchPaths() {
+	for _, p := range scratchPaths(root) {
 		if err := grant(int(fd), p, handled); err != nil {
 			return err
 		}
@@ -183,8 +186,8 @@ func grantProject(fd int, root string, protected []string, handled uint64, names
 		return grant(fd, root, handled)
 	}
 	denied := map[string]bool{".infuse": true}
-	for _, p := range protected {
-		denied[strings.SplitN(strings.Trim(filepath.ToSlash(p), "/"), "/", 2)[0]] = true
+	for _, p := range protectedRels(root, protected) {
+		denied[strings.SplitN(strings.Trim(p, "/"), "/", 2)[0]] = true
 	}
 	// creating and removing direct children stays possible: the rights a directory rule may carry for
 	// its own entries, without the write right that would reach into a protected child
@@ -202,17 +205,10 @@ func grantProject(fd int, root string, protected []string, handled uint64, names
 	return nil
 }
 
-// scratchPaths are the writable places every shell needs. The per-user caches stay with the user's
-// toolchains; everything under the home folder that matters to infuse stays out of reach.
-func scratchPaths() []string {
-	out := []string{"/tmp", "/var/tmp", "/dev/null", "/dev/zero", "/dev/tty", "/dev/full", "/dev/shm", "/dev/pts"}
-	if t := os.TempDir(); t != "" {
-		out = append(out, t)
-	}
-	if c, err := os.UserCacheDir(); err == nil {
-		out = append(out, c)
-	}
-	return out
+// scratchPaths are the writable places a shell needs besides the project: the devices and the private
+// temp, where the toolchain caches also live. The shared temp and the home folder stay out of reach.
+func scratchPaths(root string) []string {
+	return []string{sandboxTemp(root), "/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom", "/dev/tty", "/dev/shm", "/dev/pts"}
 }
 
 // grant allows the handled operations beneath path. A rule on a regular file or a device may only

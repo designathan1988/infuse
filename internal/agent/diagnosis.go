@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"infuse/internal/shellparse"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +41,7 @@ type Diagnosis struct {
 }
 
 // diagnosisRule is the line of the system prompt that states the protocol.
-const diagnosisRule = "Before changing files or running anything that is not a read, register a Diagnosis (tool) with verified evidence; for a request that only continues the previous turn's work, call Diagnosis with continues=true. infuse refuses changes and commands until then, and demands a new diagnosis when facts contradict the approach."
+const diagnosisRule = "Before changing files or running anything that is not a read, register a Diagnosis (tool) with verified evidence (an empty project has no file to quote: an evidence-free bootstrap diagnosis is valid there); for a request that only continues the previous turn's work, call Diagnosis with continues=true. infuse refuses changes and commands until then, and demands a new diagnosis when facts contradict the approach."
 
 type diagnosisTool struct{}
 
@@ -51,7 +52,7 @@ func (diagnosisTool) Spec() ToolSpec {
 - root_cause: the cause that explains ALL the symptoms together — not the largest symptom.
 - approach: what you will change, at the level of the cause.
 - why_cause: why this approach removes the cause instead of treating one effect.
-- evidence: at least 2 items {file, quote, supports}. quote is copied verbatim from the file (code checks it), and you must have read that file to the end. When the project has documents (instructions, docs, memory, decisions, audits), at least one item must come from them: what the project already knows about this problem comes first.
+- evidence: at least 2 items {file, quote, supports}. quote is copied verbatim from the file (code checks it), and you must have read that file to the end. When the project has documents (instructions, docs, memory, decisions, audits), at least one item must come from them: what the project already knows about this problem comes first. When the project has no files yet, evidence may be empty: state that the project is empty and proceed to bootstrap it.
 If a new diagnosis is demanded, it must bring evidence you did not cite before.`,
 		InputSchema: schema(`{"type":"object","properties":{"problem":{"type":"string"},"root_cause":{"type":"string"},"approach":{"type":"string"},"why_cause":{"type":"string"},"evidence":{"type":"array","items":{"type":"object","properties":{"file":{"type":"string"},"quote":{"type":"string"},"supports":{"type":"string"}},"required":["file","quote","supports"]}},"continues":{"type":"boolean","description":"true only when this request continues the previous turn's work and its diagnosis still holds"}},"required":[]}`)}
 }
@@ -73,12 +74,14 @@ func (diagnosisTool) Run(ctx context.Context, tc *ToolContext, input json.RawMes
 			return tc.Say(M("diag.field_short", "field", f.name)), true
 		}
 	}
-	if len(d.Evidence) < 2 {
+	// An empty project has no file to quote; requiring evidence there deadlocks the first write.
+	citable := projectHasFiles(tc.S.workRoot())
+	if len(d.Evidence) < 2 && citable {
 		return tc.Say(M("diag.need_two")), true
 	}
-	knowledge := knowledgeInventory(tc.S.Root)
+	knowledge := knowledgeInventory(tc.S.workRoot())
 	problems, fromKnowledge := evidenceProblems(tc.S, d, knowledge)
-	if len(problems) == 0 && len(knowledge) > 0 && !fromKnowledge {
+	if len(problems) == 0 && len(knowledge) > 0 && !fromKnowledge && citable {
 		problems = append(problems, M("diag.no_knowledge", "docs", strings.Join(firstN(knowledge, 8), ", ")))
 	}
 	if len(problems) == 0 {
@@ -120,10 +123,26 @@ func evidenceProblems(s *Session, d Diagnosis, knowledge []string) ([]Msg, bool)
 	for i, e := range d.Evidence {
 		n := i + 1
 		rel := strings.TrimPrefix(filepath.ToSlash(e.File), "./")
-		abs := filepath.Join(s.Root, filepath.FromSlash(rel))
-		if !within(s.Root, abs) {
+		root := s.workRoot()
+		abs := rel
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(root, filepath.FromSlash(rel))
+		}
+		if !within(root, abs) {
 			problems = append(problems, M("diag.ev_outside", "n", n, "file", e.File))
 			continue
+		}
+		rel = filepath.ToSlash(relTo(root, abs))
+		if s.agentFile(rel) {
+			problems = append(problems, M("diag.ev_authored", "n", n, "file", rel))
+			continue
+		}
+		if real, err := filepath.EvalSymlinks(abs); err == nil {
+			rootReal, err := filepath.EvalSymlinks(root)
+			if err == nil && !within(rootReal, real) {
+				problems = append(problems, M("diag.ev_outside", "n", n, "file", e.File))
+				continue
+			}
 		}
 		b, err := os.ReadFile(abs)
 		if err != nil {
@@ -198,6 +217,48 @@ func firstN(xs []string, n int) []string {
 		return xs[:n]
 	}
 	return xs
+}
+
+// projectHasFiles reports whether the project has a text file that can actually supply a quote of
+// the required size. A lone image, an empty file or a one-line stub cannot: those projects must be
+// able to bootstrap with an evidence-free diagnosis instead of deadlocking on an impossible gate.
+func projectHasFiles(root string) bool {
+	found := false
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || p == root {
+			return nil
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".infuse", ".git", "node_modules", "vendor", ".venv", "venv":
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(d.Name(), ".") {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(d.Name()))
+		if !codeExts[ext] && ext != ".md" && ext != ".txt" && ext != ".rst" && ext != ".json" && ext != ".yml" && ext != ".yaml" && ext != ".toml" {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil || info.Size() == 0 {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			if len(normSpace(line)) >= 12 {
+				found = true
+				return fs.SkipAll
+			}
+		}
+		return nil
+	})
+	return found
 }
 
 // isReadOnlyCommand reports whether a shell command only reads (allowed before a diagnosis).

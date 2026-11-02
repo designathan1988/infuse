@@ -25,7 +25,7 @@ func mcpServerConfig(t *testing.T, probe string) mcp.ServerConfig {
 }
 
 // A server the project defines runs like the agent's shell: it starts, serves, and cannot write outside
-// the project. The user's own global server stays outside containment, which also proves the probe.
+// the project. So does the user's own global server; with containment off the same probe writes.
 func TestMCPServerOfTheProjectRunsContained(t *testing.T) {
 	if !sandbox.Available() {
 		t.Skip("this platform has no OS containment")
@@ -51,23 +51,35 @@ func TestMCPServerOfTheProjectRunsContained(t *testing.T) {
 	}
 }
 
-func TestMCPServerOfTheUserIsNotContained(t *testing.T) {
+func TestMCPServerOfTheUserRunsContained(t *testing.T) {
+	if !sandbox.Available() {
+		t.Skip("this platform has no OS containment")
+	}
 	testHome(t)
-	root := t.TempDir()
+	serve := func(probe string) {
+		t.Helper()
+		root := t.TempDir()
+		cfg := mcpServerConfig(t, probe)
+		if err := editMCP(root, "global", func(sv map[string]mcp.ServerConfig) { sv["fake"] = cfg }); err != nil {
+			t.Fatal(err)
+		}
+		m := mcpFor(root)
+		defer mcp.CloseAll()
+		if err := mcp.Approve(root, "global", "fake", cfg); err != nil {
+			t.Fatal(err)
+		}
+		m.Ensure(context.Background())
+		if len(m.Tools()) != 2 {
+			t.Fatalf("%+v", m.Status())
+		}
+	}
 	probe := filepath.Join(t.TempDir(), "user.txt")
-	cfg := mcpServerConfig(t, probe)
-	if err := editMCP(root, "global", func(sv map[string]mcp.ServerConfig) { sv["fake"] = cfg }); err != nil {
-		t.Fatal(err)
+	serve(probe)
+	if _, err := os.Stat(probe); err == nil {
+		t.Fatal("a global MCP server wrote outside the project")
 	}
-	m := mcpFor(root)
-	defer mcp.CloseAll()
-	if err := mcp.Approve(root, "global", "fake", cfg); err != nil {
-		t.Fatal(err)
-	}
-	m.Ensure(context.Background())
-	if len(m.Tools()) != 2 {
-		t.Fatalf("%+v", m.Status())
-	}
+	t.Setenv("INFUSE_NO_SANDBOX", "1")
+	serve(probe)
 	if _, err := os.Stat(probe); err != nil {
 		t.Fatalf("the probe itself does not work: %v", err)
 	}

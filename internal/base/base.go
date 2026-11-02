@@ -45,24 +45,26 @@ type Template struct {
 }
 
 type Base struct {
-	Name          string          `json:"name"`
-	Description   string          `json:"description,omitempty"`
-	Language      string          `json:"language,omitempty"`
-	Folders       []string        `json:"folders"`          // where the project's own code may live, relative to the root
-	Layout        []FolderRole    `json:"layout,omitempty"` // what each declared folder is for (the intended architecture)
-	Layers        []Layer         `json:"layers,omitempty"` // layers and their allowed dependencies
-	Public        []string        `json:"public,omitempty"` // folders whose exports are the product's surface
-	Model         []Datum         `json:"model,omitempty"`
-	Registries    []Registry      `json:"registries,omitempty"`
-	Config        string          `json:"config,omitempty"`        // the one place for settings and tables
-	Persistence   string          `json:"persistence,omitempty"`   // the versioned persistence helper
-	Observability string          `json:"observability,omitempty"` // the observability hook
-	Surface       string          `json:"surface,omitempty"`       // what the oracle can observe
-	DataDir       string          `json:"dataDir,omitempty"`
-	Tokens        string          `json:"tokens,omitempty"`
-	MaxFileLines  int             `json:"maxFileLines,omitempty"`
-	Templates     []Template      `json:"templates,omitempty"`
-	Oracle        json.RawMessage `json:"oracle,omitempty"` // the default .infuse/oracle/checks.json
+	Name          string            `json:"name"`
+	Description   string            `json:"description,omitempty"`
+	Language      string            `json:"language,omitempty"`
+	Folders       []string          `json:"folders"`          // where the project's own code may live, relative to the root
+	Layout        []FolderRole      `json:"layout,omitempty"` // what each declared folder is for (the intended architecture)
+	Layers        []Layer           `json:"layers,omitempty"` // layers and their allowed dependencies
+	Public        []string          `json:"public,omitempty"` // folders whose exports are the product's surface
+	Model         []Datum           `json:"model,omitempty"`
+	Registries    []Registry        `json:"registries,omitempty"`
+	Config        string            `json:"config,omitempty"`        // the one place for settings and tables
+	Persistence   string            `json:"persistence,omitempty"`   // the versioned persistence helper
+	Observability string            `json:"observability,omitempty"` // the observability hook
+	Surface       string            `json:"surface,omitempty"`       // what the oracle can observe
+	DataDir       string            `json:"dataDir,omitempty"`
+	Tokens        string            `json:"tokens,omitempty"`
+	MaxFileLines  int               `json:"maxFileLines,omitempty"`
+	Templates     []Template        `json:"templates,omitempty"`
+	Oracle        json.RawMessage   `json:"oracle,omitempty"`   // the default .infuse/oracle/checks.json
+	Roles         map[string]string `json:"roles,omitempty"`    // folder → its responsibility (module meaning)
+	Starters      map[string]string `json:"starters,omitempty"` // relative path → starter file content (never overwrites)
 }
 
 func file(root string) string { return filepath.Join(root, core.InfuseDirName, "base.json") }
@@ -212,6 +214,17 @@ func (b *Base) Summary() string {
 	}
 	if b.Tokens != "" {
 		parts = append(parts, "design tokens live in: "+b.Tokens)
+	}
+	if len(b.Roles) > 0 {
+		var roles []string
+		for _, f := range b.Folders {
+			if role := b.Roles[f]; role != "" {
+				roles = append(roles, f+" ("+role+")")
+			}
+		}
+		if len(roles) > 0 {
+			parts = append(parts, "responsibilities: "+strings.Join(roles, ", "))
+		}
 	}
 	if b.MaxFileLines > 0 {
 		parts = append(parts, fmt.Sprintf("files stay under %d lines", b.MaxFileLines))

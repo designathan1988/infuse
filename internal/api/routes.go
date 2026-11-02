@@ -81,6 +81,7 @@ var apiRoutes = []apiRoute{
 	{pattern: "/api/rules/compiled", methods: "GET"},
 	{pattern: "/api/base", methods: "GET PUT"},
 	{pattern: "/api/base/scaffold", methods: "POST"},
+	{pattern: "/api/policy", methods: "GET PUT"},
 	{pattern: "/api/bans", methods: "GET"},
 	{pattern: "/api/docs", methods: "GET"},
 	{pattern: "/api/docs/pin", methods: "POST"},
@@ -167,6 +168,7 @@ var apiRoutes = []apiRoute{
 	{pattern: "/api/term/*/close", methods: "POST"},
 	{pattern: "/api/view/stream", methods: "GET", access: accessStream},
 	{pattern: "/api/view/open", methods: "POST"},
+	{pattern: "/api/view/agent", methods: "POST"},
 	{pattern: "/api/view/input", methods: "POST"},
 }
 

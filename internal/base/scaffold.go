@@ -38,6 +38,9 @@ func Scaffold(root, name string) (Base, error) {
 	if err := writeTemplates(root, b); err != nil {
 		return b, err
 	}
+	if err := writeStarters(root, b); err != nil {
+		return b, err
+	}
 	if err := writeDefaultOracle(root, b); err != nil {
 		return b, err
 	}
@@ -95,6 +98,16 @@ func writeTemplates(root string, b Base) error {
 		fill := strings.NewReplacer("{{module}}", module, "{{name}}", pkg, "{{base}}", b.Name, "{{package}}", templatePackage(t, pkg))
 		to := filepath.Join(root, filepath.FromSlash(fill.Replace(t.To)))
 		if err := writeNew(to, fill.Replace(string(data.Template(t.From)))); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// writeStarters writes each base folder's starter file (its README, saying what the folder is for).
+func writeStarters(root string, b Base) error {
+	for rel, content := range b.Starters {
+		if err := writeNew(filepath.Join(root, filepath.FromSlash(rel)), content); err != nil {
 			return err
 		}
 	}

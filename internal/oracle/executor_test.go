@@ -56,6 +56,32 @@ func TestExecutorVerdictFromEvidence(t *testing.T) {
 	}
 }
 
+// The snapshot junctions node_modules: a check that rewrites an installed runner while it runs
+// invalidates the verdict instead of approving a tree it no longer measured.
+func TestDependencyChangeDuringChecksInvalidatesTheVerdict(t *testing.T) {
+	testHome(t)
+	root := t.TempDir()
+	bin := filepath.Join(root, "node_modules", ".bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "runner"), []byte("original\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "package-lock.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSpec(t, root, `{"checks":[{"id":"tamper","kind":"command","run":"echo poisoned > node_modules/.bin/runner && echo ok","expect":{"contains":"ok"}}]}`)
+	v, _ := RunOracle(context.Background(), root, root, "")
+	if v.Verdict != "erro" || v.Dependencies == "" {
+		t.Fatalf("the dependency change did not invalidate the verdict: %+v", v)
+	}
+	b, err := os.ReadFile(filepath.Join(bin, "runner"))
+	if err != nil || string(b) != "original\n" {
+		t.Fatalf("the check reached the live dependency directory: %q %v", b, err)
+	}
+}
+
 // An HTTP check without a server started from the snapshot would measure whatever answers the
 // address: it is refused, not run with a warning.
 func TestHTTPCheckWithoutSnapshotServerIsRefused(t *testing.T) {
@@ -130,5 +156,41 @@ func TestExecutorWithoutGitAndWithoutCriteria(t *testing.T) {
 	v, _ = RunOracle(context.Background(), root, root, "")
 	if v.Verdict != "aprovado" || !strings.HasPrefix(v.Snapshot, "sha256:") {
 		t.Fatalf("%+v", v)
+	}
+}
+
+// A file the agent hides from git (ignored path) is still measured by the checks.
+func TestGitSnapshotIncludesIgnoredFiles(t *testing.T) {
+	testHome(t)
+	root := gitRepo(t)
+	_ = os.WriteFile(filepath.Join(root, ".gitignore"), []byte("hidden.test.js\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "hidden.test.js"), []byte("test('hidden', () => {});\n"), 0o644)
+	writeSpec(t, root, `{"checks":[{"id":"hidden","kind":"file","path":"hidden.test.js","expect":{"contains":"hidden"}}]}`)
+	v, err := RunOracle(context.Background(), root, root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Verdict != "aprovado" || !v.Checks[0].Passed {
+		t.Fatalf("an ignored file was left out of the snapshot: %+v", v)
+	}
+}
+
+// An ignored test is measured, but an ignored secret never enters the snapshot or the git object store.
+func TestSnapshotIncludesIgnoredTestsButNotSecrets(t *testing.T) {
+	testHome(t)
+	root := gitRepo(t)
+	_ = os.WriteFile(filepath.Join(root, ".gitignore"), []byte("hidden.test.js\n.env\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "hidden.test.js"), []byte("test('hidden', () => {});\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, ".env"), []byte("SECRET=value\n"), 0o644)
+	snap, err := takeSnapshot(root, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snap.cleanup()
+	if _, err := os.Stat(filepath.Join(snap.dir, "hidden.test.js")); err != nil {
+		t.Fatal("the ignored test was left out of the snapshot")
+	}
+	if _, err := os.Stat(filepath.Join(snap.dir, ".env")); !os.IsNotExist(err) {
+		t.Fatal("an ignored secret entered the snapshot")
 	}
 }

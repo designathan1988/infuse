@@ -6,8 +6,6 @@ package sandbox
 // may not, and the temp and cache folders its toolchains need.
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"infuse/internal/config"
 	"os"
@@ -38,7 +36,7 @@ func labelTree(root string, protected []string) error {
 	infuse := filepath.Join(root, ".infuse")
 	_ = os.MkdirAll(infuse, 0o755) // the label needs the folder; infuse owns it anyway
 	keep := []string{infuse, filepath.Join(root, ".git", "hooks"), filepath.Join(root, ".git", "config")}
-	for _, rel := range protected {
+	for _, rel := range protectedRels(root, protected) {
 		keep = append(keep, filepath.Join(root, filepath.FromSlash(rel)))
 	}
 	for _, p := range append(protectedRoots(root), sensitiveStores()...) {
@@ -133,45 +131,9 @@ func denyDeleteChild(dir string) error {
 	return nil
 }
 
-// sandboxTemp is the project's private writable temp: TMP and the toolchain caches point into it
-// (envCacheVars), so builds and package managers work without granting the shared temp. One small
-// tree per project, persistent across the commands of that project.
-func sandboxTemp(root string) string {
-	parent, key := filepath.Join(os.TempDir(), "infuse-sandbox"), strings.ToLower(filepath.Clean(root))
-	if isolationKey != "" {
-		if dir, err := PrivateDir(); err == nil {
-			parent, key = dir, isolationKey
-		}
-	}
-	sum := sha256.Sum256([]byte(key))
-	p := filepath.Join(parent, hex.EncodeToString(sum[:8]))
-	_ = os.MkdirAll(p, 0o700)
-	return p
-}
-
 // PrepareRoot makes a new, empty folder a contained process's working tree before anything is written
 // in it: the files inherit the label on creation, so a large tree never needs relabeling afterwards.
 func PrepareRoot(path string) error { return label(path, labelLow) }
-
-// envCacheVars redirect the child's temp and the known toolchain caches into the private temp.
-func envCacheVars(root string) [][2]string {
-	t := sandboxTemp(root)
-	return [][2]string{
-		{"TMP", t}, {"TEMP", t}, {"TMPDIR", t},
-		{"GOCACHE", filepath.Join(t, "go-build")},
-		{"GOPATH", filepath.Join(t, "gopath")},
-		{"GOMODCACHE", filepath.Join(t, "gopath", "pkg", "mod")},
-		{"GOENV", filepath.Join(t, "goenv")},
-		{"GOTELEMETRY", "off"},
-		{"npm_config_cache", filepath.Join(t, "npm")},
-		{"PIP_CACHE_DIR", filepath.Join(t, "pip")},
-		{"CARGO_HOME", filepath.Join(t, "cargo")},
-		{"NUGET_PACKAGES", filepath.Join(t, "nuget")},
-		{"DOTNET_CLI_HOME", filepath.Join(t, "dotnet")},
-		{"GRADLE_USER_HOME", filepath.Join(t, "gradle")},
-		{"XDG_CACHE_HOME", filepath.Join(t, "cache")},
-	}
-}
 
 // sensitiveStores are the user's own stores: infuse's anchors and signing keys, shell credentials and
 // agent configurations. They only need a label when a project contains them (a home folder opened as

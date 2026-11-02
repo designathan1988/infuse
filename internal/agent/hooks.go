@@ -21,8 +21,10 @@ import (
 	"fmt"
 	"infuse/internal/config"
 	"infuse/internal/filter"
+	"infuse/internal/platform/process"
 	"infuse/internal/sandbox"
 	"infuse/internal/store"
+	"infuse/internal/workspace"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -203,7 +205,44 @@ func (s *Session) guardedHook(h HookEntry) (string, bool) {
 	return guarded, true
 }
 
+// runHookCommand executes one approved hook in the sandbox and returns its exit code and output.
+func (s *Session) runHookCommand(ctx context.Context, h HookEntry, payload map[string]any) (code int, stdout, stderr string) {
+	in, _ := json.Marshal(payload)
+	timeout := time.Duration(h.Timeout) * time.Second
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+	hctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	argv := sandbox.Wrap([]string{FindRealBash(), "-c", h.Command}, s.workRoot(), filter.ContainedRecords(s.settings.ProtectedPaths), s.settings.ContainProcesses)
+	cmd := exec.CommandContext(hctx, argv[0], argv[1:]...)
+	noConsoleWindow(cmd)
+	cmd.Dir = s.workRoot()
+	cmd.Env = append(append(os.Environ(), "INFUSE_PROJECT_DIR="+s.Root, "CLAUDE_PROJECT_DIR="+s.Root), s.settingsEnv()...)
+	cmd.Stdin = bytes.NewReader(in)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	err := cmd.Start()
+	if err == nil {
+		process.AttachJob(cmd)
+		err = cmd.Wait()
+		process.ReleaseJob(cmd)
+	}
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	}
+	return code, out.String(), errb.String()
+}
+
 // runHooks runs the approved hooks of an event whose matcher fits target (a tool name; "" for others).
+func changePathSet(changes []workspace.TreeChange) map[string]bool {
+	out := make(map[string]bool, len(changes))
+	for _, ch := range changes {
+		out[ch.Path] = true
+	}
+	return out
+}
+
 func (s *Session) runHooks(ctx context.Context, event, target string, payload map[string]any) hookOutcome {
 	var res hookOutcome
 	for _, h := range LoadHooks(s.Root) {
@@ -223,41 +262,30 @@ func (s *Session) runHooks(ctx context.Context, event, target string, payload ma
 		payload["hook_event_name"] = event
 		payload["session_id"] = s.ID
 		payload["cwd"] = s.workRoot()
-		in, _ := json.Marshal(payload)
-		timeout := time.Duration(h.Timeout) * time.Second
-		if timeout <= 0 {
-			timeout = 60 * time.Second
-		}
-		hctx, cancel := context.WithTimeout(ctx, timeout)
-		argv := sandbox.Wrap([]string{FindRealBash(), "-c", h.Command}, s.workRoot(), filter.InfuseRecords(), s.settings.ContainProcesses)
-		cmd := exec.CommandContext(hctx, argv[0], argv[1:]...)
-		noConsoleWindow(cmd)
-		cmd.Dir = s.workRoot()
-		cmd.Env = append(append(os.Environ(), "INFUSE_PROJECT_DIR="+s.Root, "CLAUDE_PROJECT_DIR="+s.Root), s.settingsEnv()...)
-		cmd.Stdin = bytes.NewReader(in)
-		var stdout, stderr bytes.Buffer
-		cmd.Stdout, cmd.Stderr = &stdout, &stderr
-		err := cmd.Run()
-		cancel()
-		code := 0
-		if ee, ok := err.(*exec.ExitError); ok {
-			code = ee.ExitCode()
+		before := changePathSet(s.ungatedChanges())
+		code, stdout, stderr := s.runHookCommand(ctx, h, payload)
+		// Files the user's hook writes are infuse-controlled, not agent work: the turn audit must not
+		// demand a Report for them (a Stop hook commonly touches a marker file).
+		for _, ch := range s.ungatedChanges() {
+			if !before[ch.Path] {
+				s.markGated(ch.Path)
+			}
 		}
 		Journal(s.Root, JournalEntry{Kind: "hook", Command: h.Command, Detail: fmt.Sprintf("%s · output %d", event, code)})
 		var dec struct {
 			Decision string `json:"decision"`
 			Reason   string `json:"reason"`
 		}
-		_ = json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &dec)
+		_ = json.Unmarshal([]byte(strings.TrimSpace(stdout)), &dec)
 		switch {
 		case code == 2:
 			res.Block = true
-			res.Message = strings.TrimSpace(stderr.String())
+			res.Message = strings.TrimSpace(stderr)
 		case dec.Decision == "block":
 			res.Block = true
 			res.Message = dec.Reason
-		case hookContextEvents[event] && code == 0 && strings.TrimSpace(stdout.String()) != "":
-			res.Message = strings.TrimSpace(stdout.String()) // context added for the agent
+		case hookContextEvents[event] && code == 0 && strings.TrimSpace(stdout) != "":
+			res.Message = strings.TrimSpace(stdout) // context added for the agent
 		}
 		if res.Block {
 			res.Command = h.Command

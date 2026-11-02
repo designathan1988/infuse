@@ -77,6 +77,7 @@ function shellHTML(o, files) {
       <div class="verdict-host"></div>
       <div class="oracle-sect"><span class="grow">${t('oracle.needsToBeTrue')}</span><button class="btn sm addc">${I.plus} ${t('oracle.addCriterion')}</button></div>
       <div class="checks"></div>
+      <label class="row rules-toggle"><span class="switch ${o.spec.requireAcceptance ? 'on' : ''} acc" role="switch" aria-checked="${!!o.spec.requireAcceptance}" tabindex="0"></span><span class="grow">${t('oracle.requireAcceptance')}<span class="faint"> — ${t('oracle.requireAcceptanceDesc')}</span></span></label>
       <div class="sugg"></div>
       <details class="details-fold"${o.spec.setup || o.spec.server ? ' open' : ''}><summary>${t('oracle.setupTitle')}</summary>
         <div class="crit-sentence">${t('oracle.setupRun')} <input class="slot mono setup" value="${esc(o.spec.setup || '')}" placeholder="npm ci" spellcheck="false"> ${t('oracle.setupHint')}</div>
@@ -95,6 +96,13 @@ function wireShell(o) {
   o.pb.querySelector('.hx').onclick = () => toggleHelp(o, false);
   o.pb.querySelector('.setup').oninput = e => { o.spec.setup = e.target.value.trim(); o.save(); };
   o.pb.querySelector('.server').oninput = e => { o.spec.server = e.target.value.trim(); o.save(); };
+  o.pb.querySelector('.acc').onclick = e => {
+    const on = !e.currentTarget.classList.contains('on');
+    e.currentTarget.classList.toggle('on', on);
+    e.currentTarget.setAttribute('aria-checked', String(on));
+    o.spec.requireAcceptance = on;
+    o.save();
+  };
   o.pb.querySelector('.addc').onclick = e => menu(e.currentTarget, [
     { h: t('oracle.whichKind') },
     ...Object.entries(CRIT_KINDS).map(([k, x]) => ({

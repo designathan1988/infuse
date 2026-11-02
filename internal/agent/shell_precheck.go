@@ -18,7 +18,7 @@ type shellWriteIntent struct {
 
 // precheckShellWrites applies the write policy to a heredoc body before the transform writes it. The
 // transform writes on the host, outside the OS sandbox: a target outside the work root is refused, as
-// Write refuses it, and never skipped.
+// Write refuses it, and never skipped: it would bypass both the sandbox and the turn audit.
 func (s *Session) precheckShellWrites(ctx context.Context, intents []shellWriteIntent) Msg {
 	for _, in := range intents {
 		if !within(realPath(s.workRoot()), realPath(in.Abs)) {
@@ -52,24 +52,31 @@ func (s *Session) judgeShellContent(ctx context.Context, rel, before, after stri
 	if why := s.instructionWriteCheck(rel, before); !why.Empty() {
 		return why
 	}
+	if strings.EqualFold(filepath.Base(rel), "package.json") {
+		if refs := newManifestPackages(before, after); len(refs) > 0 {
+			if why := verifyPackageRefs(ctx, refs); !why.Empty() {
+				return why
+			}
+		}
+	}
 	if why := s.largeRemoval(rel, before, after); !why.Empty() {
 		return why
 	}
 	if why := cheatWriteCheck(s.workRoot(), rel, before, after); !why.Empty() {
-		if why.ID != "cheat.test_infra" {
+		if why.ID != "cheat.test_infra" || (before != "" && !s.agentFile(rel)) {
 			return why
 		}
-		if !s.askPermissionWhy(ctx, bashTool{}, nil, "cheat:"+rel, why) {
-			return M("perm.user_refused", "why", why)
-		}
+	}
+	if reTestFile.MatchString(rel) && before != "" && !s.agentFile(rel) && testWeakeningEdit(before, after) {
+		return M("sentinel.test_edit_blocked", "file", rel)
 	}
 	if why, changed := baselineChange(rel, before, after); changed {
-		if !s.askPermissionWhy(ctx, bashTool{}, nil, "baseline:"+rel, why) {
-			return M("perm.user_refused", "why", why)
-		}
+		return why
 	}
-	if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
-		return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
+	if codeExts[strings.ToLower(filepath.Ext(rel))] {
+		if lines := unjustifiedSuppressions(before, after); len(lines) > 0 {
+			return M("shortcut.justify", "lines", strings.Join(lines, "\n"))
+		}
 	}
 	return Msg{}
 }

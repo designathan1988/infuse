@@ -87,3 +87,16 @@ func TestImpasseEndsTheMission(t *testing.T) {
 		t.Fatalf("%+v", m)
 	}
 }
+
+// Stopping a mission cancels the verification it left running; a late step cannot resurrect it.
+func TestEndingAMissionCancelsItsVerification(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	s.Mission = &Mission{Goal: "x", State: "running", BudgetUSD: 1, MaxTurns: 3}
+	cancelled := false
+	s.missionCancel = func() { cancelled = true }
+	s.endMission("parada", "stopped by the user")
+	if !cancelled || s.missionSnapshot().State != "parada" {
+		t.Fatalf("cancelled %v, mission %+v", cancelled, s.missionSnapshot())
+	}
+}

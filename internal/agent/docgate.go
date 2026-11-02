@@ -11,6 +11,7 @@ package agent
 
 import (
 	"encoding/json"
+	"infuse/internal/shellparse"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -221,15 +222,34 @@ func commandSegments(cmd string) []cmdSegment {
 // helpCommand reports whether a command only reads documentation or files (its output is research).
 func helpCommand(cmd string) bool {
 	c := " " + strings.ToLower(cmd) + " "
-	if strings.Contains(c, " --help") || strings.Contains(c, " -h ") || strings.Contains(c, " /? ") || strings.Contains(c, " help ") {
-		return true
-	}
-	for _, p := range []string{" man ", " curl ", " wget ", " cat ", " head ", " tail ", " less ", " grep ", " rg ", " ls ", " info "} {
+	looksHelp := strings.Contains(c, " --help") || strings.Contains(c, " -h ") || strings.Contains(c, " /? ") || strings.Contains(c, " help ")
+	prefix := false
+	for _, p := range []string{" man ", " cat ", " head ", " tail ", " less ", " more ", " grep ", " rg ", " ls ", " info "} {
 		if strings.HasPrefix(c, p) {
-			return true
+			prefix = true
+			break
 		}
 	}
-	return false
+	if !looksHelp && !prefix {
+		return networkRead(cmd)
+	}
+	// A reader that redirects output, or a "help" command carrying a write flag, is not research.
+	return (!shellparse.MayChangeTree(cmd) && prefix) || networkRead(cmd)
+}
+
+// networkRead is a fetch that prints to stdout; output flags that write a file are not research.
+func networkRead(cmd string) bool {
+	fields := strings.Fields(cmd)
+	if len(fields) < 2 || (fields[0] != "curl" && fields[0] != "wget") {
+		return false
+	}
+	for _, a := range fields[1:] {
+		switch a {
+		case "-o", "-O", "--output", "--remote-name", "-P", "--directory-prefix", "-c", "--continue", "-C", "--remote-name-all":
+			return false
+		}
+	}
+	return true
 }
 
 // commandDocCheck returns why a command may not run yet (empty when it may).

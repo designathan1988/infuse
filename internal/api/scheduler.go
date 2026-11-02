@@ -32,6 +32,7 @@ func (scheduledRunner) RunTask(t scheduler.Task) (string, error) {
 	s.Mu.Lock()
 	s.Unattended = true
 	s.Title = "⏱ " + t.Name
+	s.Unattended = true // a scheduled run has nobody to answer a permission card or a question
 	if t.Mode != "" {
 		s.Mode = t.Mode
 	}

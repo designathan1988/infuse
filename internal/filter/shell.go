@@ -159,7 +159,7 @@ func containedArgv(root, realBash string, args []string) []string {
 	if interactiveUse(args) || !containable(root) {
 		return argv
 	}
-	return sandbox.Wrap(argv, root, InfuseRecords(), config.EffectiveSettings(root).ContainProcesses)
+	return sandbox.Wrap(argv, root, ContainedRecords(config.EffectiveSettings(root).ProtectedPaths), config.EffectiveSettings(root).ContainProcesses)
 }
 
 // interactiveUse is a person at a terminal: no script and no command to run, stdin a console.

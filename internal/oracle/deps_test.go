@@ -16,8 +16,9 @@ func TestDependenciesAreCopiedNotLinked(t *testing.T) {
 	mustWrite(t, dep, "real\n")
 	mustWrite(t, filepath.Join(root, "node_modules", ".cache", "big"), "cache\n")
 	writeSpec(t, root, commandSpec(`grep -q real node_modules/pkg/dist/index.js && test ! -e node_modules/.cache && echo patched > node_modules/pkg/dist/index.js`))
-	if v := run(t, root); v.Verdict != "aprovado" {
-		t.Fatalf("%+v", v.Checks)
+	// the patch stays in the copy, and a run whose tools changed under it reaches no verdict
+	if v := run(t, root); v.Verdict != "erro" || !v.Checks[0].Passed {
+		t.Fatalf("%+v", v)
 	}
 	if b, _ := os.ReadFile(dep); string(b) != "real\n" {
 		t.Fatalf("a check reached the live dependency folder: %q", b)

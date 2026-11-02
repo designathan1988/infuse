@@ -153,9 +153,9 @@ func applyUpdates(root string, m *ProjectMap, rels []string) {
 	c := LoadContract(root)
 	applyContract(m, c)
 	computeHotspots(m, c.MaxFileLines)
-	m.Features = computeFeatures(m)
 	m.Drift = computeDrift(m, c)
 	dropGone(m)
+	m.Features, m.Routes = buildFeatures(m)
 	m.GeneratedAt = time.Now().UnixMilli()
 	if m.partial {
 		return

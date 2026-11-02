@@ -1,0 +1,52 @@
+[
+  {
+    "name": "session created",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "demo ended idle with no error",
+    "ok": true,
+    "detail": "idle "
+  },
+  {
+    "name": "the file exists on disk",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "the protocol ran in order",
+    "ok": true,
+    "detail": "Bash,LS,Read,Diagnosis,TodoWrite,Contract,Write,TodoWrite,Report,Bash,Write"
+  },
+  {
+    "name": "Bash ran contained and returned output",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "name": "light pt-BR: no console error and no HTTP >= 400",
+    "ok": true,
+    "detail": "121 requests"
+  },
+  {
+    "name": "dark pt-BR: no console error and no HTTP >= 400",
+    "ok": true,
+    "detail": "121 requests"
+  },
+  {
+    "name": "light en: no console error and no HTTP >= 400",
+    "ok": true,
+    "detail": "121 requests"
+  },
+  {
+    "name": "dark en: no console error and no HTTP >= 400",
+    "ok": true,
+    "detail": "121 requests"
+  },
+  {
+    "name": "the contract card was answered by a click, attended mode",
+    "ok": true,
+    "detail": ""
+  }
+]

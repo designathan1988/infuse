@@ -62,6 +62,64 @@ func TestCompactionKeepsTheToolCallOfTheLastExchange(t *testing.T) {
 	}
 }
 
+// Compaction replaces the transcript; the current turn must still point at its own request, even when
+// the request fell in the summarized part.
+func TestCompactionKeepsTheCurrentTurnRequest(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	s.Provider = "mock"
+	call := Message{Role: "assistant", Content: []Block{{Type: "tool_use", ID: "t1", Name: "Write", Input: json.RawMessage(`{"path":"a.ts","content":"x"}`)}}}
+	result := Message{Role: "user", Content: []Block{{Type: "tool_result", ToolUseID: "t1", Content: "File written"}}}
+	s.Messages = []Message{
+		{Role: "user", Content: []Block{{Type: "text", Text: "first request"}}},
+		{Role: "assistant", Content: []Block{{Type: "text", Text: "one"}}},
+		{Role: "user", Content: []Block{{Type: "text", Text: "second request"}}},
+		{Role: "assistant", Content: []Block{{Type: "text", Text: "two"}}},
+		{Role: "user", Content: []Block{{Type: "text", Text: "third request"}}},
+		{Role: "assistant", Content: []Block{{Type: "text", Text: "working"}}},
+		call, result,
+	}
+	s.Turn, s.TurnStarts = 3, []int{0, 2, 4}
+	p, err := providerFor(s.settings, "mock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.compact(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.TurnStarts) != 3 || s.TurnStarts[2] >= len(s.Messages) {
+		t.Fatalf("turn table after compaction: %v of %d messages", s.TurnStarts, len(s.Messages))
+	}
+	if got := s.turnRequest(); got != "third request" {
+		t.Fatalf("the current turn lost its request: %q (%v)", got, s.TurnStarts)
+	}
+}
+
+// The fallback path (no model) keeps the same binding.
+func TestFallbackCompactionKeepsTheCurrentTurnRequest(t *testing.T) {
+	testHome(t)
+	s := newSession(t.TempDir())
+	for i := 0; i < 12; i++ {
+		role := "assistant"
+		if i%2 == 0 {
+			role = "user"
+		}
+		text := "message"
+		if i == 4 {
+			text = "current request"
+		}
+		s.Messages = append(s.Messages, Message{Role: role, Content: []Block{{Type: "text", Text: text}}})
+	}
+	s.Turn, s.TurnStarts = 3, []int{0, 2, 4}
+	s.compactFallback()
+	if len(s.TurnStarts) != 3 || s.TurnStarts[2] >= len(s.Messages) {
+		t.Fatalf("turn table after fallback: %v of %d messages", s.TurnStarts, len(s.Messages))
+	}
+	if got := s.turnRequest(); got != "current request" {
+		t.Fatalf("the fallback lost the current request: %q (%v)", got, s.TurnStarts)
+	}
+}
+
 func TestRepairTranscript(t *testing.T) {
 	msgs := []Message{
 		{Role: "user", Content: []Block{{Type: "text", Text: "[Compacted context] summary"}}},

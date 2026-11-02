@@ -53,7 +53,7 @@ func runChecker(ctx context.Context, root, dir, name string, args ...string) (st
 	if err != nil {
 		return "", true // checker not installed: nothing to say
 	}
-	argv := sandbox.Wrap(append([]string{exe}, args...), root, InfuseRecords(), config.EffectiveSettings(root).ContainProcesses)
+	argv := sandbox.Wrap(append([]string{exe}, args...), root, ContainedRecords(config.EffectiveSettings(root).ProtectedPaths), config.EffectiveSettings(root).ContainProcesses)
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	process.NoConsoleWindow(cmd)
 	cmd.Dir = dir

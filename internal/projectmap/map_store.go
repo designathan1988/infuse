@@ -82,6 +82,7 @@ func mapDocument(m *ProjectMap) string {
 		md.WriteString(describe(m, d, false) + "\n")
 	}
 	md.WriteString(LevelsBrief(m, 0))
+	appendFeaturesMD(&md, m)
 	if len(m.Hotspots) > 0 {
 		md.WriteString("\n## Hotspots\n")
 		for _, h := range m.Hotspots {
@@ -179,9 +180,10 @@ func Peek(root string) *ProjectMap {
 	return m
 }
 
-// LoadOrBuildMap returns the stored map, building it the first time.
+// LoadOrBuildMap returns the stored map, building it the first time. A map written before the feature
+// index has no features or routes keys, and is rebuilt once.
 func LoadOrBuildMap(root string) *ProjectMap {
-	if m := Peek(root); m != nil {
+	if m := Peek(root); m != nil && m.Features != nil && m.Routes != nil {
 		return m
 	}
 	m := BuildMap(root)

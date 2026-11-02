@@ -153,7 +153,7 @@ func devCommand(root string, c LaunchConfig) (*exec.Cmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	argv := sandbox.Wrap(append([]string{exe}, c.RuntimeArgs...), root, filter.InfuseRecords(), config.EffectiveSettings(root).ContainProcesses)
+	argv := sandbox.Wrap(append([]string{exe}, c.RuntimeArgs...), root, filter.ContainedRecords(config.EffectiveSettings(root).ProtectedPaths), config.EffectiveSettings(root).ContainProcesses)
 	return exec.Command(argv[0], argv[1:]...), nil
 }
 

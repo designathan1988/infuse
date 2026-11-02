@@ -64,20 +64,21 @@ type SessionData struct {
 	LastInput   int                      `json:"lastInput,omitempty"`   // context size of the latest request
 	LastInputAt int                      `json:"lastInputAt,omitempty"` // messages that request carried
 	// LastInputMark is the time of the last of those messages: a changed transcript no longer matches it.
-	LastInputMark int64        `json:"lastInputMark,omitempty"`
-	TurnCosts     []float64    `json:"turnCosts,omitempty"`    // what each turn cost, by turn number
-	Unpriced      []string     `json:"unpriced,omitempty"`     // models used without a known price
-	Memory        []MemoryItem `json:"memory,omitempty"`       // structured memory of this session only
-	Pinned        bool         `json:"pinned,omitempty"`       // shown at the top of the sidebar
-	Mission       *Mission     `json:"mission,omitempty"`      // the session's mission, running or ended
-	PinnedMsgs    []int        `json:"pinnedMsgs,omitempty"`   // messages the user pinned (indices)
-	Contract      *Contract    `json:"contract,omitempty"`     // the request's confirmed contract (contract.go)
-	TurnRequest   string       `json:"turnRequest,omitempty"`  // what the current turn was asked to do: compaction must not lose it
-	Outcome       string       `json:"outcome,omitempty"`      // how the last turn ended when it was not plainly done (unverified)
-	Unattended    bool         `json:"unattended,omitempty"`   // nobody is there to answer (a scheduled task): a question is refused at once
-	AuditPending  bool         `json:"auditPending,omitempty"` // the last turn ended before its audit: the next one keeps its base
-	PlanReturn    string       `json:"planReturn,omitempty"`   // the mode to return to when the agent entered plan mode itself
-	Impasse       *Impasse     `json:"impasse,omitempty"`      // the latest impasse declared outside a mission
+	LastInputMark int64           `json:"lastInputMark,omitempty"`
+	TurnCosts     []float64       `json:"turnCosts,omitempty"`    // what each turn cost, by turn number
+	Unpriced      []string        `json:"unpriced,omitempty"`     // models used without a known price
+	Memory        []MemoryItem    `json:"memory,omitempty"`       // structured memory of this session only
+	Pinned        bool            `json:"pinned,omitempty"`       // shown at the top of the sidebar
+	Mission       *Mission        `json:"mission,omitempty"`      // the session's mission, running or ended
+	PinnedMsgs    []int           `json:"pinnedMsgs,omitempty"`   // messages the user pinned (indices)
+	Contract      *Contract       `json:"contract,omitempty"`     // the request's confirmed contract (contract.go)
+	TurnRequest   string          `json:"turnRequest,omitempty"`  // what the current turn was asked to do: compaction must not lose it
+	Outcome       string          `json:"outcome,omitempty"`      // how the last turn ended when it was not plainly done (unverified)
+	Unattended    bool            `json:"unattended,omitempty"`   // no human is present (a mission, a scheduled task): cards and questions answer themselves
+	AuditPending  bool            `json:"auditPending,omitempty"` // the last turn ended before its audit: the next one keeps its base
+	PlanReturn    string          `json:"planReturn,omitempty"`   // the mode to return to when the agent entered plan mode itself
+	Impasse       *Impasse        `json:"impasse,omitempty"`      // the latest impasse declared outside a mission
+	AgentFiles    map[string]bool `json:"agentFiles,omitempty"`   // files this session created itself
 }
 
 type Session struct {
@@ -89,12 +90,14 @@ type Session struct {
 	subs          map[chan Event]struct{}
 	seq           int
 	cancel        context.CancelFunc
+	missionCancel context.CancelFunc // cancels the mission step's verification when the mission ends
 	pendingPerm   *permRequest
 	pendingAsk    *askRequest
 	readFiles     map[string]bool
 	allowAlways   map[string]bool
 	lastError     string
 	snapshotErr   error  // the turn snapshot failed: the turn cannot be audited, so it cannot end clean
+	policyErr     error  // the behaviour policy is unreadable: no turn may run on an unknown policy
 	lastOracleRun string // the last executor run of this session, reused by missions instead of running twice
 	lastOracleSum string
 	lastOracleErr string // the failing checks of that run, for the mission's next message

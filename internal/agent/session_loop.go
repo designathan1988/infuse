@@ -30,10 +30,9 @@ type runState struct {
 func (s *Session) run(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
-			s.Mu.Lock()
-			s.lastError = fmt.Sprint(r)
-			s.Mu.Unlock()
-			s.setState("error")
+			// fail clears Working and ends a running mission: a panic must not leave a session
+			// "working" on disk, to be resumed forever, or a mission without a terminal state.
+			s.fail(fmt.Errorf("panic in the agent loop: %v", r))
 		}
 		s.save()
 	}()
@@ -174,6 +173,10 @@ func (s *Session) request(ctx context.Context, st *runState) (ModelResult, reque
 	}
 	s.recordReply(res, started)
 	s.logModelCall(req, res, started)
+	if stop, over := s.overDailyLimit(); over { // the tools of this reply do not run past the limit
+		s.failMsg(stop)
+		return res, requestStop
+	}
 	return res, requestOK
 }
 
@@ -205,13 +208,19 @@ func (s *Session) endTurn(ctx context.Context, st *runState) bool {
 		return true
 	}
 	s.noteShellChanges()
+	// Work obligations (an unfetched citation, an unreachable screenshot) can be impossible; the same
+	// budget that closes the protocol obligations must also stop them, or the turn burns every model
+	// call until the watchdog.
 	s.Mu.Lock()
-	spent := s.gate.obligationAsks >= 6
+	asked := s.gate.obligationAsks
 	s.Mu.Unlock()
-	why := Msg{}
-	if !spent { // past the budget every obligation stops asking, and the turn ends as unverified
-		why = s.workObligation()
+	if asked >= s.askBudget() {
+		s.closeOpenTasks(M("plan.closed_note").Render(s.uiLang()))
+		s.markUnverified()
+		s.finish("") // the turn is over: without this the session stays "thinking" and a mission never advances
+		return true
 	}
+	why := s.workObligation()
 	if why.Empty() {
 		why = s.turnObligation(ctx)
 	}

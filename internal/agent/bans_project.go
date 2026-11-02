@@ -25,7 +25,7 @@ func ProjectBans(root string) []SessionBans {
 	if err != nil {
 		return []SessionBans{}
 	}
-	var out []SessionBans
+	out := []SessionBans{} // the page reads a list, also when a project has sessions and no prohibition
 	for _, e := range entries {
 		id, ok := strings.CutSuffix(e.Name(), ".bans.json")
 		if !ok {

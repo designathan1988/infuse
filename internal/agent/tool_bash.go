@@ -10,6 +10,8 @@ import (
 	"infuse/internal/sandbox"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -124,13 +126,22 @@ func runBackground(ctx context.Context, tc *ToolContext, in *bashInput, command,
 	return msg, state != "running" && p.Exit != nil && *p.Exit != 0
 }
 
+// shellDir reads the folder the shell printed. Git Bash mounts the user's temp folder at /tmp, so a
+// project that lives there prints that spelling.
+func shellDir(p string) string {
+	if runtime.GOOS == "windows" && strings.HasPrefix(p, "/tmp/") {
+		return filepath.Join(os.TempDir(), filepath.FromSlash(p[len("/tmp/"):]))
+	}
+	return FromMsysPath(p)
+}
+
 func runForeground(ctx context.Context, tc *ToolContext, in *bashInput, command string, tr TransformResult, notes []Msg, started int64) (string, bool) {
 	// Track the working directory across commands, as a human shell would. The command's status is
 	// kept across the trailer: every lock that reads an exit code depends on it.
 	wrapped := command + "\n__infuse_status=$?\nprintf '\\n__INFUSE_CWD__%s' \"$PWD\"\nexit $__infuse_status"
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(in.Timeout)*time.Second)
 	defer cancel()
-	argv := sandbox.Wrap([]string{FindRealBash(), "-c", wrapped}, tc.S.workRoot(), filter.InfuseRecords(), tc.S.settings.ContainProcesses)
+	argv := sandbox.Wrap([]string{FindRealBash(), "-c", wrapped}, tc.S.workRoot(), filter.ContainedRecords(tc.S.settings.ProtectedPaths), tc.S.settings.ContainProcesses)
 	cmd := exec.CommandContext(cctx, argv[0], argv[1:]...)
 	noConsoleWindow(cmd)
 	cmd.Dir = tc.Cwd
@@ -146,7 +157,7 @@ func runForeground(ctx context.Context, tc *ToolContext, in *bashInput, command 
 	out := buf.String()
 	if i := strings.LastIndex(out, "__INFUSE_CWD__"); i >= 0 {
 		if nc := strings.TrimSpace(out[i+len("__INFUSE_CWD__"):]); nc != "" {
-			if abs := FromMsysPath(nc); within(tc.Root, abs) {
+			if abs := shellDir(nc); within(tc.Root, abs) {
 				tc.S.setCwd(abs)
 			}
 		}

@@ -23,6 +23,9 @@ func (askTool) Run(ctx context.Context, tc *ToolContext, input json.RawMessage) 
 		Options  []string `json:"options"`
 	}
 	_ = json.Unmarshal(input, &in)
+	if tc.S.mode() == "bypass" {
+		return tc.Say(M("ask.bypass")), false
+	}
 	answer, ok := tc.S.askUser(ctx, in.Question, in.Options)
 	if !ok {
 		return tc.Say(M("ask.no_answer")), true

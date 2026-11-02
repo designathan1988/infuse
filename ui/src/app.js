@@ -72,9 +72,9 @@ const nat = async (method, ...p) => {
   }
 };
 bus.on('gate', d => {
-  const text = String(d?.display || d?.message || d || '').replace(/^\[infuse\] /, '').split('\n')[0].slice(0, 140);
-  if (d === 'choose-folder') return toast(t('composer.chooseFolder'));
-  toast(t('gate.intervened') + text);
+  // The refusal is already shown in place, next to the call it blocked. A second toast at the bottom
+  // of the screen only makes noise.
+  if (d === 'choose-folder') toast(t('composer.chooseFolder'));
 });
 bus.on('api-error', e => {
   const code = e?.body?.code;

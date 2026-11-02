@@ -37,10 +37,31 @@ const dirsTable = m => dataTable({
   empty: 'map.empty'
 });
 
+// A feature's path opens in the Files pane when it is a file; a folder is only named.
+const featurePath = p => /\.[^/]+$/.test(p)
+  ? `<span class="mono path-link" data-path="${esc(p)}" tabindex="0" role="button">${esc(p)}</span>`
+  : `<span class="mono">${esc(p)}</span>`;
+
+function featureCard(m) {
+  const list = (m.features || []).slice(0, 30);
+  if (!list.length) return '';
+  return `<div class="rail-card mb-5"><b>${t('map.features')}</b>${list.map(f => `<div class="mb-2">
+      <div><span class="mono">${esc(f.name)}</span> <span class="faint">· ${t('map.fileCount', { count: f.fileCount })} · ${t('map.lineCount', { count: f.lines })}</span></div>
+      <div class="faint">${(f.paths || []).map(featurePath).join(' · ')}${f.pathCount > (f.paths || []).length ? ` · +${f.pathCount - f.paths.length}` : ''}</div>
+      ${(f.routes || []).length ? `<div class="mono">${f.routes.map(r => esc(r)).join(' · ')}</div>` : ''}
+    </div>`).join('')}</div>`;
+}
+
+function routeCard(m) {
+  const list = (m.routes || []).slice(0, 40);
+  if (!list.length) return '';
+  return `<div class="rail-card mb-5"><b>${t('map.routes')}</b>${list.map(r => `<div class="mono path-link" data-path="${esc(r.file)}" tabindex="0" role="button"><span class="faint">${esc(r.method)}</span> ${esc(r.path)} — ${esc(r.file)}</div>`).join('')}</div>`;
+}
+
 function summaryHTML(m) {
   const hot = (m.hotspots || []).map(x => pathLink(x.path, ` — ${x.lines} ${t('common.lines')}`)).join('');
   const used = mostUsed(m).map(r => pathLink(r.path, ` — ${r.nDependents}`)).join('');
-  return `${hot ? `<div class="rail-card mb-5"><b>${t('map.hotspots')}</b>${hot}</div>` : ''}
+  return `${featureCard(m)}${routeCard(m)}${hot ? `<div class="rail-card mb-5"><b>${t('map.hotspots')}</b>${hot}</div>` : ''}
     ${used ? `<div class="rail-card mb-5"><b>${t('map.mostUsed')}</b>${used}</div>` : ''}`;
 }
 

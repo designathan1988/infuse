@@ -127,6 +127,10 @@ func Main(args []string) int {
 		fmt.Fprintln(os.Stderr, "[infuse] __sandbox: need -r <root> and a command")
 		return 2
 	}
+	if st, err := os.Stat(root); err != nil || !st.IsDir() { // fail closed, never run outside the sandbox
+		fmt.Fprintf(os.Stderr, "[infuse] the command was not run: the work root %q is not a folder.\n", root)
+		return 126
+	}
 	if isolationKey != "" {
 		dropInfuseEnv() // an isolated child has no infuse in it to mark, and must not learn where it runs
 	} else {

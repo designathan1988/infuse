@@ -123,3 +123,31 @@ func TestRefreshAcceptsOnlyWhatInfuseWrote(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// A rewrite that keeps the byte length and restores the modification time is still a change: the
+// digest comparison reads the content, never the file's metadata alone.
+func TestTurnChangesSeesAStampedRewrite(t *testing.T) {
+	root := t.TempDir()
+	work := filepath.Join(root, "work")
+	if err := os.MkdirAll(filepath.Join(work, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(work, "src", "sum.test.js")
+	if err := os.WriteFile(path, []byte("test('sums', () => { assert(1 + 1 === 2); });\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := os.Stat(path)
+	if err := SnapshotTurn(root, work, "s1", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("test('sums', () => { assert(1 + 1 === 3); });\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	changes := TurnChanges(root, work, "s1", 1)
+	if len(changes) != 1 || changes[0].Path != "src/sum.test.js" {
+		t.Fatalf("the stamped rewrite was invisible: %+v", changes)
+	}
+}

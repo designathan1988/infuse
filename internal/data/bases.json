@@ -29,6 +29,13 @@
     "persistence": "internal/store/persist.go",
     "observability": "internal/platform/observe.go",
     "surface": "HTTP: GET /healthz and the routes table, exercised by tests/smoke_test.go",
+    "roles": {"cmd": "entry point", "internal/api": "transport", "internal/domain": "domain rules", "internal/store": "data owner", "internal/config": "configuration", "internal/platform": "platform adapters", "tests": "tests"},
+    "starters": {
+      "internal/domain/README.md": "# Domain\n\nRules and types that do not depend on HTTP, storage or the platform. Import only the standard library and this folder.\n",
+      "internal/store/README.md": "# Data owner\n\nEvery persisted record has one owner here. Migrations live beside the schema.\n",
+      "internal/api/README.md": "# Transport\n\nHTTP handlers translate requests into domain calls. No business rules here.\n",
+      "cmd/README.md": "# Entry point\n\nWiring only: configuration, adapters and the server lifecycle.\n"
+    },
     "dataDir": "internal/store",
     "tokens": "",
     "maxFileLines": 400,
@@ -81,6 +88,14 @@
     "persistence": "src/core/persist.js",
     "observability": "src/core/observe.js",
     "surface": "the page itself, and tests/smoke.test.js over the store and the rendered markup",
+    "roles": {"src": "source", "src/core": "shared primitives", "src/components": "UI components", "src/pages": "pages", "src/panes": "panels", "ui": "styles", "ui/tokens": "design tokens", "tests": "tests", "public": "static assets"},
+    "starters": {
+      "src/core/README.md": "# Shared primitives\n\nSmall, dependency-free helpers used by every feature. No imports from components or pages.\n",
+      "src/components/README.md": "# UI components\n\nReusable presentational components. A component receives data and emits events; it does not fetch.\n",
+      "src/pages/README.md": "# Pages\n\nOne file per page, composing components and core primitives.\n",
+      "src/data/README.md": "# Data\n\nTables and typed fixtures. Behaviour data lives here, not in conditionals.\n",
+      "ui/tokens/README.md": "# Design tokens\n\nThe only source of colours and sizes; generate the CSS from these files.\n"
+    },
     "dataDir": "src/data",
     "tokens": "ui/tokens",
     "maxFileLines": 400,
@@ -131,6 +146,11 @@
     "persistence": "internal/core/persist.go",
     "observability": "internal/core/observe.go",
     "surface": "the commands' output and exit codes, exercised by tests/smoke_test.go",
+    "roles": {"cmd": "entry point", "internal/commands": "one command per file", "internal/core": "shared core", "tests": "tests"},
+    "starters": {
+      "internal/commands/README.md": "# Commands\n\nOne file per command: parse arguments, call the core, print the result.\n",
+      "internal/core/README.md": "# Core\n\nShared logic with no terminal or file-system side effects.\n"
+    },
     "dataDir": "internal/data",
     "tokens": "",
     "maxFileLines": 400,
@@ -184,6 +204,12 @@
     "persistence": "src/state/persist.js",
     "observability": "src/engine/observe.js",
     "surface": "the running screen, and tests/smoke.test.js stepping the engine without a screen",
+    "roles": {"src/engine": "simulation/engine", "src/state": "state owner", "src/input": "input", "src/render": "rendering", "src/ui": "interface", "assets": "assets", "tests": "tests"},
+    "starters": {
+      "src/state/README.md": "# State owner\n\nThe single owner of mutable state; systems read and mutate it through declared operations.\n",
+      "src/engine/README.md": "# Engine\n\nSimulation and update loop. No rendering or input handling here.\n",
+      "src/render/README.md": "# Rendering\n\nReads state and draws it; never mutates state.\n"
+    },
     "dataDir": "src/data",
     "tokens": "src/ui/tokens",
     "maxFileLines": 400,
@@ -215,6 +241,8 @@
     "language": "go",
     "folders": ["pkg", "internal/core", "examples", "tests"],
     "public": ["pkg"],
+    "roles": {"pkg":"the public API: what users import, and the only stable surface","internal/core":"the implementation behind the API","examples":"programs that use the public API, kept compiling","tests":"tests through the public API only"},
+    "starters": {"pkg/README.md":"# pkg\n\nThe public API: what users import, and the only stable surface.\n","internal/core/README.md":"# internal/core\n\nThe implementation behind the API.\n","examples/README.md":"# examples\n\nPrograms that use the public API, kept compiling.\n","tests/README.md":"# tests\n\nTests through the public API only.\n"},
     "layout": [
       {"path": "pkg", "role": "the public API: what users import, and the only stable surface"},
       {"path": "internal/core", "role": "the implementation behind the API"},
@@ -259,6 +287,8 @@
     "description": "Game or 3D application: fixed-step engine, world state with one owner, systems, rendering apart from simulation.",
     "language": "js",
     "folders": ["src", "src/engine", "src/world", "src/systems", "src/input", "src/render", "src/ui", "src/data", "assets", "tests"],
+    "roles": {"src/engine":"the fixed-step loop, the systems registry and the observability hook","src/world":"the world state, its phases and saves: the single owner of what exists","src/systems":"one simulation system per file, advancing the world by one step","src/input":"bindings from devices to actions","src/render":"the camera and the drawing of the world, never changing it","src/ui":"HUD, menus and the design tokens","src/data":"data tables: levels, balance","assets":"models, textures, audio and fonts","tests":"headless tests stepping the simulation"},
+    "starters": {"src/engine/README.md":"# src/engine\n\nThe fixed-step loop, the systems registry and the observability hook.\n","src/world/README.md":"# src/world\n\nThe world state, its phases and saves: the single owner of what exists.\n","src/systems/README.md":"# src/systems\n\nOne simulation system per file, advancing the world by one step.\n","src/input/README.md":"# src/input\n\nBindings from devices to actions.\n"},
     "layout": [
       {"path": "src/engine", "role": "the fixed-step loop, the systems registry and the observability hook"},
       {"path": "src/world", "role": "the world state, its phases and saves: the single owner of what exists"},
@@ -318,6 +348,8 @@
     "description": "Service with workers: a durable job queue, a pool of workers and handlers registered by kind.",
     "language": "go",
     "folders": ["cmd", "internal/queue", "internal/workers", "internal/config", "internal/platform", "tests"],
+    "roles": {"cmd":"the entry point and wiring only","internal/queue":"the jobs, their states and their storage: the only writer of a job","internal/workers":"the pool and the handlers, registered by job kind","internal/config":"configuration: settings, environment, concurrency","internal/platform":"platform adapters and the observability hook","tests":"tests over the queue and the pool together"},
+    "starters": {"cmd/README.md":"# cmd\n\nThe entry point and wiring only.\n","internal/queue/README.md":"# internal/queue\n\nThe jobs, their states and their storage: the only writer of a job.\n","internal/workers/README.md":"# internal/workers\n\nThe pool and the handlers, registered by job kind.\n","internal/config/README.md":"# internal/config\n\nConfiguration: settings, environment, concurrency.\n"},
     "layout": [
       {"path": "cmd", "role": "the entry point and wiring only"},
       {"path": "internal/queue", "role": "the jobs, their states and their storage: the only writer of a job"},

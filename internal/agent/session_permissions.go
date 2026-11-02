@@ -26,6 +26,9 @@ func (s *Session) permissionFor(tool Tool, input json.RawMessage) string {
 	if rule != "" {
 		return rule
 	}
+	if s.unattended() { // a mission or a scheduled run has nobody to answer a card
+		return "allow"
+	}
 	if mode == "acceptEdits" && (cat == "write" || cat == "memory") {
 		return "allow"
 	}
@@ -89,6 +92,14 @@ func (s *Session) askPermissionWhy(ctx context.Context, tool Tool, input json.Ra
 	}
 }
 
+// unattended reports a run with no human present: a mission or a scheduled task. Its gates still run;
+// only the cards that would wait forever answer themselves.
+func (s *Session) unattended() bool {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	return s.Unattended
+}
+
 func (s *Session) ResolvePermission(id, decision string) bool {
 	s.Mu.Lock()
 	req := s.pendingPerm
@@ -100,16 +111,12 @@ func (s *Session) ResolvePermission(id, decision string) bool {
 	return true
 }
 
-// unattended: nobody is there to answer. A question fails at once instead of holding the turn forever.
-func (s *Session) unattended() bool {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	return s.Unattended
-}
-
 func (s *Session) askUser(ctx context.Context, question string, options []string) (string, bool) {
-	if s.unattended() {
-		return "", false
+	if s.mode() == "bypass" || s.unattended() { // accept-all and unattended runs have no user card
+		if len(options) > 0 {
+			return options[0], true
+		}
+		return "", true
 	}
 	s.askMu.Lock()
 	defer s.askMu.Unlock()

@@ -50,7 +50,7 @@ func TestGatedPathIsJudgedAgainOnceItsContentChanges(t *testing.T) {
 	if err := os.WriteFile(p, []byte("written by the tool\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	s.markGated("a.txt", p)
+	s.markGated("a.txt")
 	if got := changedPaths(s); got != "" {
 		t.Fatalf("the tool's own write was audited: %q", got)
 	}
@@ -88,6 +88,8 @@ func TestShellCodeWriteNeedsTheContract(t *testing.T) {
 	s := lockSession(t)
 	turnOn(t, s, "edit")
 	s.gate.planned = true
+	s.gate.planSteps = 2 // the rule binds multi-step work, whoever writes
+	s.settings.RequireContract = boolPointer(true)
 	if err := os.WriteFile(filepath.Join(s.Root, "b.go"), []byte("package b\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -191,19 +193,22 @@ func TestCompactionKeepsTurnsAddressable(t *testing.T) {
 
 func TestContractDoesNotCrossToAnotherTurnWithTheSameWords(t *testing.T) {
 	s := lockSession(t)
+	s.settings.RequireContract = boolPointer(true)
 	turnOn(t, s, "fix it")
+	s.gate.planSteps = 2
 	s.Contract = &Contract{Goal: "g", Criteria: []string{"c"}, Request: "fix it", Turn: s.Turn}
 	if m := s.contractGate(); !m.Empty() {
 		t.Fatalf("the confirmed contract was refused: %+v", m)
 	}
 	turnOn(t, s, "fix it")
+	s.gate.planSteps = 2
 	if m := s.contractGate(); m.ID != "contract.required" {
 		t.Fatalf("yesterday's contract opened today's turn: %+v", m)
 	}
 }
 
-// A scheduled task has nobody to answer: it cannot hang on a question, and its prompt is the request
-// the user wrote in advance.
+// A scheduled task has nobody to answer: it cannot hang on a question, which answers itself, and a
+// card that needs a human's approval is refused.
 func TestUnattendedSessionNeverWaitsForAnAnswer(t *testing.T) {
 	s := lockSession(t)
 	s.Unattended = true
@@ -218,8 +223,8 @@ func TestUnattendedSessionNeverWaitsForAnAnswer(t *testing.T) {
 	}()
 	select {
 	case ok := <-done:
-		if ok {
-			t.Fatal("nobody answered")
+		if !ok {
+			t.Fatal("the question did not answer itself")
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the question hangs a turn nobody is watching")

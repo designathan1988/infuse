@@ -32,6 +32,7 @@ type copier struct {
 	work, real, dst string
 	depsOnly        bool // hash the dependency folders and nothing else
 	trackedDirs     map[string]bool
+	hiddenSecrets   map[string]bool // ignored files named like secrets: they stay out of the snapshot
 	files           []string
 	links           []treeLink
 	outside         int
@@ -52,8 +53,37 @@ func newCopier(work, dst string) *copier {
 	if err != nil {
 		real = work
 	}
-	return &copier{work: work, real: real, dst: dst, trackedDirs: trackedDirs(work)}
+	return &copier{work: work, real: real, dst: dst, trackedDirs: trackedDirs(work), hiddenSecrets: ignoredSecrets(work)}
 }
+
+// ignoredSecrets lists the git-ignored files that hold credentials: no check needs them to prove the
+// project works, and the snapshot is a copy no one else cleans up after a crash. A file that can run
+// is never one of them, so naming a test after a secret does not hide it from the checks.
+func ignoredSecrets(work string) map[string]bool {
+	out := map[string]bool{}
+	if !core.Exists(filepath.Join(work, ".git")) {
+		return out
+	}
+	for _, f := range strings.Split(gitx.Output(work, "ls-files", "-z", "--others", "--ignored", "--exclude-standard"), "\x00") {
+		if secretName(path.Base(f)) {
+			out[f] = true
+		}
+	}
+	return out
+}
+
+// secretName recognizes a credential file by its name.
+func secretName(name string) bool {
+	low := strings.ToLower(name)
+	if runnableExts[path.Ext(low)] {
+		return false
+	}
+	return strings.HasPrefix(low, ".env") || low == ".npmrc" || low == ".pypirc" || strings.Contains(low, "credential") ||
+		strings.HasSuffix(low, ".pem") || strings.HasSuffix(low, ".key") || strings.HasPrefix(low, "id_rsa")
+}
+
+var runnableExts = map[string]bool{".js": true, ".jsx": true, ".ts": true, ".tsx": true, ".mjs": true, ".cjs": true,
+	".py": true, ".go": true, ".rs": true, ".java": true, ".kt": true, ".cs": true, ".rb": true, ".php": true, ".sh": true}
 
 // trackedDirs lists the folders holding a file git knows, from the index and from HEAD: a build-like
 // folder is copied when the project versions it. Only the walk is widened by this, never narrowed, so
@@ -102,6 +132,8 @@ func (c *copier) walk() error {
 		case d.IsDir():
 			return c.enterDir(rel, d.Name())
 		case c.depsOnly && dependencyOf(rel) == "", d.Name() == ".git":
+			return nil
+		case c.hiddenSecrets[rel]:
 			return nil
 		case d.Type().IsRegular():
 			c.files = append(c.files, rel)

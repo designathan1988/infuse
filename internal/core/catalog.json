@@ -119,6 +119,14 @@
     "en": "[infuse] The screenshot was taken at {got}, but the criteria measure {expected}: open the project's own server and capture the changed screen there.",
     "pt-BR": "[infuse] A captura foi feita em {got}, mas os critérios medem {expected}: abra o servidor do próprio projeto e fotografe a tela alterada ali."
   },
+  "agent.screenshot_path": {
+    "en": "[infuse] The screenshot was taken at {got}, but the criteria measure {expected}: capture that page (same origin) instead.",
+    "pt-BR": "[infuse] A captura foi feita em {got}, mas os critérios medem {expected}: fotografe essa página (mesma origem)."
+  },
+  "agent.screenshot_html": {
+    "en": "[infuse] The screenshot was taken at the right address but does not show what the criteria measure ({expected}). Open the state the criteria describe, capture it, and look at the image before reporting.",
+    "pt-BR": "[infuse] A captura foi feita no endereço certo, mas não mostra o que os critérios medem ({expected}). Abra o estado que os critérios descrevem, fotografe e olhe a imagem antes de relatar."
+  },
   "agent.starting": {
     "en": "starting the subagent…",
     "pt-BR": "iniciando o subagente…"
@@ -258,6 +266,10 @@
   "ask.answer": {
     "en": "User's answer: {answer}",
     "pt-BR": "Resposta do usuário: {answer}"
+  },
+  "ask.bypass": {
+    "en": "[infuse] This session is in accept-all mode: the user delegated the decision. Decide yourself and continue; do not ask for confirmation.",
+    "pt-BR": "[infuse] Esta sessão está no modo aceitar tudo: o usuário delegou a decisão. Decida você e continue; não peça confirmação."
   },
   "ask.no_answer": {
     "en": "the user did not answer",
@@ -807,9 +819,13 @@
     "en": "[infuse] Blocked: this test command hides its own failure (`|| true`, `; exit 0` or `set +e`): `{command}`. A test run is judged by its real exit code — run it as it is and fix what fails.",
     "pt-BR": "[infuse] Bloqueado: este comando de teste esconde a própria falha (`|| true`, `; exit 0` ou `set +e`): `{command}`. Um teste é julgado pelo código de saída real — rode como está e corrija o que falhar."
   },
+  "cheat.config_removed": {
+    "en": "the edit removes a test script or a coverage/failure threshold from {file}; a check cannot stop governing by configuration",
+    "pt-BR": "a edição remove um script de teste ou um limite de cobertura/falha de {file}; uma verificação não pode deixar de valer por configuração"
+  },
   "cheat.test_infra": {
-    "en": "[infuse] Blocked: {file} configures how the tests run and what counts as passing. Changing it to make tests pass is gaming the check. If it truly must change, say why to the user; they decide.",
-    "pt-BR": "[infuse] Bloqueado: {file} configura como os testes rodam e o que conta como aprovado. Alterá-lo para os testes passarem é burlar a verificação. Se precisar mesmo mudar, diga ao usuário por quê; ele decide."
+    "en": "[infuse] Blocked: {file} configures how the tests run and what counts as passing. Changing it to make tests pass is gaming the check. The agent must not change it; the user changes it themselves if it truly must change.",
+    "pt-BR": "[infuse] Bloqueado: {file} configura como os testes rodam e o que conta como aprovado. Alterá-lo para os testes passarem é burlar a verificação. O agente não deve alterá-lo; o usuário o altera se realmente precisar."
   },
   "ci.no_branch": {
     "en": "there is no current branch",
@@ -1075,6 +1091,250 @@
     "en": "The user asked for changes to the criteria: {answer}\nRewrite them and call Contract again.",
     "pt-BR": "O usuário pediu ajustes nos critérios: {answer}\nReformule e chame Contract de novo."
   },
+  "policy.invalid": {
+    "en": "[infuse] The behaviour policy could not be read ({error}). The turn cannot run on an unknown policy: fix the policy in the Rules page.",
+    "pt-BR": "[infuse] Não foi possível ler a política de comportamento ({error}). O turno não roda com uma política desconhecida: corrija a política em Regras."
+  },
+  "ban.policy": {
+    "en": "[infuse] Blocked by the project's behaviour policy (Rules): {value}.",
+    "pt-BR": "[infuse] Bloqueado pela política de comportamento do projeto (Regras): {value}."
+  },
+  "policy.filterRules": {
+    "en": "Filter rules",
+    "pt-BR": "Regras do filtro"
+  },
+  "policy.title": {
+    "en": "Behaviour policy",
+    "pt-BR": "Política de comportamento"
+  },
+  "policy.noteTitle": {
+    "en": "What is not configurable:",
+    "pt-BR": "O que não é configurável:"
+  },
+  "policy.note": {
+    "en": "the filter, the anti-fraud core and the app's own interface. This page shapes how the AI works on your projects.",
+    "pt-BR": "o filtro, o núcleo antifraude e a interface do próprio aplicativo. Esta página define como a IA trabalha nos seus projetos."
+  },
+  "policy.unavailable": {
+    "en": "The policy could not be loaded.",
+    "pt-BR": "Não foi possível carregar a política."
+  },
+  "policy.saving": {
+    "en": "Saving…",
+    "pt-BR": "Salvando…"
+  },
+  "policy.saved": {
+    "en": "Saved",
+    "pt-BR": "Salvo"
+  },
+  "policy.saveFailed": {
+    "en": "Could not save",
+    "pt-BR": "Não foi possível salvar"
+  },
+  "policy.method": {
+    "en": "Work method",
+    "pt-BR": "Método de trabalho"
+  },
+  "policy.plan": {
+    "en": "Plan before changing code",
+    "pt-BR": "Plano antes de alterar código"
+  },
+  "policy.planDesc": {
+    "en": "Every source change needs a registered plan with proof.",
+    "pt-BR": "Toda alteração de código exige um plano registrado com comprovação."
+  },
+  "policy.diagnosis": {
+    "en": "Diagnosis before acting",
+    "pt-BR": "Diagnóstico antes de agir"
+  },
+  "policy.diagnosisDesc": {
+    "en": "The agent states the cause, with evidence, before changing files or running commands.",
+    "pt-BR": "O agente declara a causa, com evidências, antes de alterar arquivos ou rodar comandos."
+  },
+  "policy.docs": {
+    "en": "Documentation before use",
+    "pt-BR": "Documentação antes de usar"
+  },
+  "policy.docsDesc": {
+    "en": "A new library, API or host must have its documentation read first.",
+    "pt-BR": "Uma biblioteca, API ou host novos precisam da documentação lida antes."
+  },
+  "policy.reading": {
+    "en": "Read the project's documents in full",
+    "pt-BR": "Ler os documentos do projeto até o fim"
+  },
+  "policy.readingDesc": {
+    "en": "The instruction files and the documents they point to are delivered completely before action.",
+    "pt-BR": "As instruções e os documentos que elas indicam são entregues por completo antes da ação."
+  },
+  "policy.askBudget": {
+    "en": "Refusals before ending the turn",
+    "pt-BR": "Recusas antes de encerrar o turno"
+  },
+  "policy.askBudgetDesc": {
+    "en": "How many times the turn may be sent back; after that it ends as unverified, never as done.",
+    "pt-BR": "Quantas vezes o turno pode voltar; depois disso termina como não verificado, nunca como concluído."
+  },
+  "policy.architecture": {
+    "en": "Architecture",
+    "pt-BR": "Arquitetura"
+  },
+  "policy.enforceArchitecture": {
+    "en": "Enforce the architecture rules",
+    "pt-BR": "Aplicar as regras de arquitetura"
+  },
+  "policy.enforceArchitectureDesc": {
+    "en": "Placement, layers, no god files or duplicated state; checked on every write.",
+    "pt-BR": "Colocação, camadas, sem arquivos-deus nem estado duplicado; verificado a cada escrita."
+  },
+  "policy.maxFileLines": {
+    "en": "Maximum file size (lines)",
+    "pt-BR": "Tamanho máximo de arquivo (linhas)"
+  },
+  "policy.maxFileLinesDesc": {
+    "en": "Use -1 for no limit.",
+    "pt-BR": "Use -1 para não limitar."
+  },
+  "policy.conventions": {
+    "en": "Code conventions",
+    "pt-BR": "Convenções de código"
+  },
+  "policy.enforceConventions": {
+    "en": "Enforce the project's conventions",
+    "pt-BR": "Aplicar as convenções do projeto"
+  },
+  "policy.enforceConventionsDesc": {
+    "en": "Refuse writes that break the style measured in the project.",
+    "pt-BR": "Recusa escritas que quebram o estilo medido no projeto."
+  },
+  "policy.done": {
+    "en": "Definition of done",
+    "pt-BR": "Definição de pronto"
+  },
+  "policy.review": {
+    "en": "Mandatory independent review",
+    "pt-BR": "Revisão independente obrigatória"
+  },
+  "policy.reviewDesc": {
+    "en": "A reviewer with clean context reads the request, the criteria and the diff before the turn ends.",
+    "pt-BR": "Um revisor com contexto limpo lê o pedido, os critérios e o diff antes de o turno terminar."
+  },
+  "policy.contract": {
+    "en": "Confirmed contract before multi-step work",
+    "pt-BR": "Contrato confirmado antes de trabalho com várias etapas"
+  },
+  "policy.contractDesc": {
+    "en": "The user confirms the agent's restatement of the objective before the first change.",
+    "pt-BR": "O usuário confirma a releitura do objetivo pelo agente antes da primeira alteração."
+  },
+  "policy.permissions": {
+    "en": "Permissions",
+    "pt-BR": "Permissões"
+  },
+  "policy.mode": {
+    "en": "Permission mode",
+    "pt-BR": "Modo de permissão"
+  },
+  "policy.modeDesc": {
+    "en": "How tool calls are approved in new sessions.",
+    "pt-BR": "Como as chamadas de ferramenta são aprovadas em novas sessões."
+  },
+  "policy.modeDefault": {
+    "en": "Ask",
+    "pt-BR": "Perguntar"
+  },
+  "policy.modeAccept": {
+    "en": "Accept edits",
+    "pt-BR": "Aceitar edições"
+  },
+  "policy.modePlan": {
+    "en": "Plan only",
+    "pt-BR": "Somente plano"
+  },
+  "policy.modeBypass": {
+    "en": "No questions",
+    "pt-BR": "Sem perguntas"
+  },
+  "policy.toolsDesc": {
+    "en": "Per tool: ask, allow or deny.",
+    "pt-BR": "Por ferramenta: perguntar, permitir ou negar."
+  },
+  "policy.toolAsk": {
+    "en": "Ask",
+    "pt-BR": "Perguntar"
+  },
+  "policy.toolAllow": {
+    "en": "Allow",
+    "pt-BR": "Permitir"
+  },
+  "policy.toolDeny": {
+    "en": "Deny",
+    "pt-BR": "Negar"
+  },
+  "policy.protectedPaths": {
+    "en": "Protected paths",
+    "pt-BR": "Caminhos protegidos"
+  },
+  "policy.protectedPathsDesc": {
+    "en": "One glob per line; the agent cannot write to them.",
+    "pt-BR": "Um padrão por linha; o agente não pode escrever neles."
+  },
+  "policy.prohibitions": {
+    "en": "Prohibitions",
+    "pt-BR": "Proibições"
+  },
+  "policy.commands": {
+    "en": "Forbidden commands",
+    "pt-BR": "Comandos proibidos"
+  },
+  "policy.commandsDesc": {
+    "en": "One command fragment per line.",
+    "pt-BR": "Um trecho de comando por linha."
+  },
+  "policy.paths": {
+    "en": "Forbidden paths",
+    "pt-BR": "Caminhos proibidos"
+  },
+  "policy.pathsDesc": {
+    "en": "One path or glob per line.",
+    "pt-BR": "Um caminho ou padrão por linha."
+  },
+  "policy.prohibitedTools": {
+    "en": "Forbidden tools",
+    "pt-BR": "Ferramentas proibidas"
+  },
+  "policy.prohibitedToolsDesc": {
+    "en": "One tool name per line (Agent, Browser, WebSearch…).",
+    "pt-BR": "Um nome de ferramenta por linha (Agent, Browser, WebSearch…)."
+  },
+  "policy.actions": {
+    "en": "Forbidden actions",
+    "pt-BR": "Ações proibidas"
+  },
+  "policy.actionsDesc": {
+    "en": "commit, push, install — one per line.",
+    "pt-BR": "commit, push, install — uma por linha."
+  },
+  "policy.errorMode": {
+    "en": "Unknown mode.",
+    "pt-BR": "Modo desconhecido."
+  },
+  "policy.errorBudget": {
+    "en": "Use a number between 1 and 20.",
+    "pt-BR": "Use um número entre 1 e 20."
+  },
+  "policy.errorMaxLines": {
+    "en": "Use -1 or a number between 20 and 5000.",
+    "pt-BR": "Use -1 ou um número entre 20 e 5000."
+  },
+  "policy.errorActions": {
+    "en": "Only commit, push or install.",
+    "pt-BR": "Apenas commit, push ou install."
+  },
+  "contract.required": {
+    "en": "[infuse] This is work with more than one step and the user has not confirmed the restatement of the request yet. Call Contract with the objective and verifiable criteria and ask the user to confirm before the first change or command that writes.",
+    "pt-BR": "[infuse] Este é um trabalho com mais de uma etapa e o usuário ainda não confirmou a releitura do pedido. Chame Contract com o objetivo e critérios verificáveis e peça a confirmação do usuário antes da primeira alteração ou comando que escreve."
+  },
   "contract.confirm": {
     "en": "Confirm",
     "pt-BR": "Confirmar"
@@ -1086,10 +1346,6 @@
   "contract.no_criteria": {
     "en": "give at least one criterion",
     "pt-BR": "informe ao menos um critério"
-  },
-  "contract.required": {
-    "en": "No contract is confirmed for this request yet. Call Contract with the goal and the verifiable criteria of the request, and wait for the user's confirmation before writing code.",
-    "pt-BR": "Nenhum contrato foi confirmado para este pedido ainda. Chame Contract com o objetivo e os critérios verificáveis do pedido, e espere a confirmação do usuário antes de escrever código."
   },
   "contract.question": {
     "en": "Goal: {goal}\n\nI will consider it done when:\n{criteria}\n\nConfirm? (or write what to adjust)",
@@ -1307,6 +1563,86 @@
     "en": "Command saved",
     "pt-BR": "Comando salvo"
   },
+  "cust.base": {
+    "en": "Architecture base",
+    "pt-BR": "Base de arquitetura"
+  },
+  "cust.baseDesc": {
+    "en": "The structure this project follows: where code, data and tokens live. The agent refuses code written outside it.",
+    "pt-BR": "A estrutura que este projeto segue: onde ficam o código, os dados e os tokens. O agente recusa código escrito fora dela."
+  },
+  "base.current": {
+    "en": "Current base",
+    "pt-BR": "Base atual"
+  },
+  "base.none": {
+    "en": "No base chosen",
+    "pt-BR": "Nenhuma base escolhida"
+  },
+  "base.choose": {
+    "en": "Choose a starter",
+    "pt-BR": "Escolha uma base"
+  },
+  "base.apply": {
+    "en": "Use this base",
+    "pt-BR": "Usar esta base"
+  },
+  "base.applied": {
+    "en": "Base applied; the map is updated.",
+    "pt-BR": "Base aplicada; o mapa foi atualizado."
+  },
+  "base.createTitle": {
+    "en": "Create a project from this base",
+    "pt-BR": "Criar um projeto a partir desta base"
+  },
+  "base.createDesc": {
+    "en": "Pick a name and a parent folder: the folders and the base document are created, with the map already generated.",
+    "pt-BR": "Escolha um nome e uma pasta: as pastas e o documento da base são criados, com o mapa já gerado."
+  },
+  "base.name": {
+    "en": "Project name",
+    "pt-BR": "Nome do projeto"
+  },
+  "base.chooseFolder": {
+    "en": "Choose folder",
+    "pt-BR": "Escolher pasta"
+  },
+  "base.created": {
+    "en": "Project created at {path}.",
+    "pt-BR": "Projeto criado em {path}."
+  },
+  "base.folders": {
+    "en": "Folders",
+    "pt-BR": "Pastas"
+  },
+  "base.desc.api": {
+    "en": "HTTP service: transport, domain, storage and contracts in separate layers.",
+    "pt-BR": "Serviço HTTP: transporte, domínio, armazenamento e contratos em camadas separadas."
+  },
+  "base.desc.web": {
+    "en": "Browser application: components, pages, core primitives, styles from tokens.",
+    "pt-BR": "Aplicação de navegador: componentes, páginas, primitivas, estilos a partir de tokens."
+  },
+  "base.desc.cli": {
+    "en": "Command-line tool: command dispatch, one file per command, shared core.",
+    "pt-BR": "Ferramenta de linha de comando: despacho de comandos, um arquivo por comando, núcleo compartilhado."
+  },
+  "base.desc.library": {
+    "en": "Reusable library: a small public surface over internal code, with examples that compile.",
+    "pt-BR": "Biblioteca reutilizável: uma superfície pública pequena sobre código interno, com exemplos que compilam."
+  },
+  "base.desc.game": {
+    "en": "Game or 3D application: fixed-step engine, world state with one owner, systems, rendering apart from simulation.",
+    "pt-BR": "Jogo ou aplicação 3D: motor de passo fixo, estado do mundo com um dono, sistemas, renderização separada da simulação."
+  },
+  "base.desc.service": {
+    "en": "Service with workers: a durable job queue, a pool of workers and handlers registered by kind.",
+    "pt-BR": "Serviço com workers: fila de jobs durável, um pool de workers e handlers registrados por tipo."
+  },
+  "base.desc.interactive": {
+    "en": "Interactive application: engine, state, input, rendering, assets and tests separated.",
+    "pt-BR": "Aplicação interativa: motor, estado, entrada, renderização, assets e testes separados."
+  },
   "cust.commands": {
     "en": "Slash commands",
     "pt-BR": "Comandos de barra"
@@ -1458,6 +1794,10 @@
   "diag.continued": {
     "en": "the previous diagnosis carries over to this turn (the user sees it marked as a continuation)",
     "pt-BR": "o diagnóstico anterior vale para este turno (o usuário o vê marcado como continuação)"
+  },
+  "diag.ev_authored": {
+    "en": "evidence {n}: {file} was written by this session; a file you wrote yourself cannot prove what the project already knows",
+    "pt-BR": "evidência {n}: {file} foi escrita por esta sessão; um arquivo que você mesmo escreveu não prova o que o projeto já sabe"
   },
   "diag.ev_missing": {
     "en": "evidence {n}: {file} does not exist",
@@ -1759,6 +2099,14 @@
     "en": "no such message",
     "pt-BR": "mensagem inexistente"
   },
+  "gate.heredoc_outside": {
+    "en": "[infuse] Blocked: the heredoc would write {file}, outside the work root. A heredoc is written directly by infuse, so it must stay inside the sandboxed tree.",
+    "pt-BR": "[infuse] Bloqueado: o heredoc escreveria {file}, fora da raiz de trabalho. O heredoc é gravado diretamente pelo infuse, então precisa ficar dentro da árvore isolada."
+  },
+  "gate.destructive_git": {
+    "en": "[infuse] Blocked: git clean, reset --hard, checkout -- ., restore, branch/tag deletion and forced push can erase work, including the protected records. Use a targeted operation instead.",
+    "pt-BR": "[infuse] Bloqueado: git clean, reset --hard, checkout -- ., restore, exclusão de branch/tag e push forçado podem apagar trabalho, inclusive os registros protegidos. Use uma operação pontual."
+  },
   "gate.intervened": {
     "en": "infuse stepped in: ",
     "pt-BR": "infuse interveio: "
@@ -2051,6 +2399,10 @@
     "en": "[infuse] The project's instructions could not be compiled into rules ({error}). The rules compiled from the previous version stay in force, with their required reading and verification commands; infuse tries again at the next message.",
     "pt-BR": "[infuse] Não foi possível compilar as instruções do projeto em regras ({error}). As regras compiladas da versão anterior continuam valendo, com a leitura obrigatória e os comandos de verificação delas; o infuse tenta de novo na próxima mensagem."
   },
+  "instr.rules_stale": {
+    "en": "these rules were compiled from an earlier version of the instructions and the latest compilation failed: they stay in force, but verify them against the current text.",
+    "pt-BR": "estas regras foram compiladas de uma versão anterior das instruções e a última compilação falhou: elas continuam valendo, mas confira-as contra o texto atual."
+  },
   "instr.compiling": {
     "en": "[infuse] Reading the project's instructions to extract the rules (each one checked against the text)…",
     "pt-BR": "[infuse] Lendo as instruções do projeto para extrair as regras (cada uma conferida contra o texto)…"
@@ -2219,6 +2571,14 @@
     "en": "Nothing here yet.",
     "pt-BR": "Nada aqui ainda."
   },
+  "map.fileCount": {
+    "en": "{count, plural, one {# file} other {# files}}",
+    "pt-BR": "{count, plural, one {# arquivo} other {# arquivos}}"
+  },
+  "map.features": {
+    "en": "Features (where each one lives)",
+    "pt-BR": "Funcionalidades (onde cada uma vive)"
+  },
   "map.files": {
     "en": "files",
     "pt-BR": "arquivos"
@@ -2227,6 +2587,10 @@
     "en": "Files too large",
     "pt-BR": "Arquivos grandes demais"
   },
+  "map.lineCount": {
+    "en": "{count, plural, one {# line} other {# lines}}",
+    "pt-BR": "{count, plural, one {# linha} other {# linhas}}"
+  },
   "map.lines": {
     "en": "lines",
     "pt-BR": "linhas"
@@ -2234,6 +2598,10 @@
   "map.regenerate": {
     "en": "Regenerate",
     "pt-BR": "Regerar"
+  },
+  "map.routes": {
+    "en": "HTTP routes",
+    "pt-BR": "Rotas HTTP"
   },
   "mcp.addConnector": {
     "en": "Add connector",
@@ -2682,6 +3050,10 @@
   "mission.end_passed": {
     "en": "the Done? criteria passed",
     "pt-BR": "os critérios do Pronto? passaram"
+  },
+  "mission.end_rejected": {
+    "en": "the user rejected the delivery",
+    "pt-BR": "o usuário recusou a entrega"
   },
   "mission.end_stopped": {
     "en": "stopped by the user",
@@ -3315,6 +3687,10 @@
     "en": "[infuse] Blocked: these packages were published less than 30 days ago: {packages}. Names invented by models get registered by attackers; confirm in the official documentation that this is the package meant, and ask the user before installing it.",
     "pt-BR": "[infuse] Bloqueado: estes pacotes foram publicados há menos de 30 dias: {packages}. Nomes inventados por modelos acabam registrados por atacantes; confirme na documentação oficial que é o pacote certo e pergunte ao usuário antes de instalar."
   },
+  "pkg.unverified": {
+    "en": "the package {packages} could not be verified against the registry yet; the command was not run. Try it again in a moment — a name that does not exist is refused.",
+    "pt-BR": "não foi possível verificar o pacote {packages} no registro ainda; o comando não rodou. Tente de novo em instantes — um nome que não existe é recusado."
+  },
   "pkg.missing": {
     "en": "[infuse] Blocked: these packages do not exist in their registry: {packages}. The name was probably invented; find the real package in the official documentation.",
     "pt-BR": "[infuse] Bloqueado: estes pacotes não existem no registro: {packages}. O nome provavelmente foi inventado; encontre o pacote real na documentação oficial."
@@ -3362,6 +3738,14 @@
   "plan.noTasks": {
     "en": "No agent tasks yet.",
     "pt-BR": "Nenhuma tarefa do agente ainda."
+  },
+  "plan.no_open": {
+    "en": "a plan must contain at least one open task; a first plan cannot arrive already finished",
+    "pt-BR": "um plano precisa ter ao menos uma tarefa aberta; um primeiro plano não pode chegar já concluído"
+  },
+  "plan.blocked_reason": {
+    "en": "plan refused: a blocked task must say why it is blocked (put the reason in its proof): {tasks}",
+    "pt-BR": "plano recusado: uma tarefa bloqueada precisa dizer por que está bloqueada (coloque o motivo na proof): {tasks}"
   },
   "plan.no_proof": {
     "en": "plan refused: every open task needs a proof (the command, the page or the file that will prove it works). Without proof: {tasks}",
@@ -3927,6 +4311,10 @@
     "en": "- [{status}] {text} — {evidence}",
     "pt-BR": "- [{status}] {text} — {evidence}"
   },
+  "report.no_claims": {
+    "en": "the report has no claims: state what you did as claims, each with the evidence it relies on",
+    "pt-BR": "o relatório não tem alegações: diga o que foi feito em alegações, cada uma com a evidência em que se apoia"
+  },
   "report.confirmed": {
     "en": "confirmed by running",
     "pt-BR": "confirmado pela execução"
@@ -4335,6 +4723,10 @@
     "en": "a change to a test file in a request to make the tests pass",
     "pt-BR": "uma alteração em arquivo de teste num pedido para fazer os testes passarem"
   },
+  "sentinel.test_edit_blocked": {
+    "en": "[infuse] Blocked: {file} is an existing test and the change would remove or alter its checks. Changing a user's test to make it pass is gaming the verification. Fix the code, or add a new test; an existing test is changed only by the user.",
+    "pt-BR": "[infuse] Bloqueado: {file} é um teste existente e a alteração removeria ou mudaria suas verificações. Alterar o teste do usuário para ele passar é burlar a verificação. Corrija o código ou adicione um teste novo; um teste existente só é alterado pelo usuário."
+  },
   "session.busy": {
     "en": "the agent is busy",
     "pt-BR": "o agente está ocupado"
@@ -4468,7 +4860,7 @@
     "pt-BR": "Regras do filtro"
   },
   "policy.filterDesc": {
-    "en": "What the interposed shell does with commands, writes and listings: replace, infuse, teach a lesson. The same editor as the Regras pane.",
+    "en": "What the interposed shell does with commands, writes and listings: replace, infuse, teach a lesson. The same editor as the Rules pane.",
     "pt-BR": "O que o shell interposto faz com comandos, escritas e listagens: substituir, infundir, ensinar um vício. O mesmo editor do painel Regras."
   },
   "policy.writes": {
@@ -4560,8 +4952,8 @@
     "pt-BR": "Limite de gasto diário (US$)"
   },
   "settings.dailyLimitDesc": {
-    "en": "Sum of all sessions in the day; the agent stops past it; 0 turns it off",
-    "pt-BR": "Soma de todas as sessões no dia; o agente para ao ultrapassar; 0 desliga"
+    "en": "Paid API providers only. Local bridges (Claude Code Desktop, Codex, Ollama) and the demo run unmetered; 0 turns the cap off.",
+    "pt-BR": "Somente provedores de API pagos. As pontes locais (Claude Code Desktop, Codex, Ollama) e a demonstração não são limitadas; 0 desliga o teto."
   },
   "settings.defaultEffort": {
     "en": "Default effort",
@@ -4736,12 +5128,12 @@
     "pt-BR": "Conecte um ou mais provedores de IA. As chaves ficam no cofre do sistema (Gerenciador de Credenciais do Windows, Keychain, libsecret), nunca em texto puro."
   },
   "settings.requireContract": {
-    "en": "Contract before the first write",
-    "pt-BR": "Contrato antes da primeira escrita"
+    "en": "Contract before multi-step work",
+    "pt-BR": "Contrato antes de trabalho com mais de uma etapa"
   },
   "settings.requireContractDesc": {
-    "en": "The agent must state the goal and the verifiable criteria of a request and have you confirm them before its first code write; a new request needs a new confirmation.",
-    "pt-BR": "O agente precisa formular o objetivo e os critérios verificáveis do pedido e ter a sua confirmação antes da primeira escrita de código; um novo pedido pede nova confirmação."
+    "en": "When the turn's plan has more than one step, the agent must state the goal and the verifiable criteria of the request and have you confirm them before any code is written, by any tool or the shell; a new request needs a new confirmation.",
+    "pt-BR": "Quando o plano do turno tem mais de uma etapa, o agente precisa formular o objetivo e os critérios verificáveis do pedido e ter a sua confirmação antes de escrever código, por qualquer ferramenta ou pelo shell; um novo pedido pede nova confirmação."
   },
   "settings.requirePlan": {
     "en": "Plan before changing files",
@@ -4914,6 +5306,10 @@
   "shortcut.t_skip": {
     "en": "test skipped (t.Skip)",
     "pt-BR": "teste pulado (t.Skip)"
+  },
+  "shortcut.test_config": {
+    "en": "test configuration that hides tests or failures (continue-on-error, passWithNoTests, ignored test paths)",
+    "pt-BR": "configuração de teste que esconde testes ou falhas (continue-on-error, passWithNoTests, caminhos de teste ignorados)"
   },
   "shortcut.test_true": {
     "en": "test script that never fails (|| true)",
@@ -5563,6 +5959,10 @@
     "en": "[infuse] Blocked: these background processes are still running and the Report does not account for them: {items}. Name each one in the Report (a claim of kind other with its id and what it serves) or stop it with KillShell — a turn does not leave processes it cannot explain.",
     "pt-BR": "[infuse] Bloqueado: estes processos em segundo plano continuam rodando e o Report não os menciona: {items}. Cite cada um no Report (uma afirmação de tipo other com o id e o que ele serve) ou encerre com KillShell — um turno não deixa processos que não explica."
   },
+  "turn.dependencies": {
+    "en": "the installed dependencies changed during the turn without an install command; revert the change, or run the project's installer so the change is the one it approved",
+    "pt-BR": "as dependências instaladas mudaram durante o turno sem um comando de instalação; reverta a mudança, ou rode o instalador do projeto para que a mudança seja a que ele aprovou"
+  },
   "turn.open_tasks": {
     "en": "[infuse] The turn cannot end: the plan has open tasks — {tasks}. Complete each one and mark it with TodoWrite (done), or mark it as blocked and explain why in the Report.",
     "pt-BR": "[infuse] O turno não pode terminar: o plano tem tarefas abertas — {tasks}. Conclua cada uma e marque com TodoWrite (done), ou marque como blocked e explique o motivo no Report."
@@ -6035,6 +6435,38 @@
     "en": "the browser check could not run: {error}",
     "pt-BR": "a verificação no navegador não pôde rodar: {error}"
   },
+  "oracle.requireAcceptance": {
+    "en": "This delivery needs my acceptance",
+    "pt-BR": "Esta entrega precisa da minha aceitação"
+  },
+  "oracle.requireAcceptanceDesc": {
+    "en": "The turn asks you to accept the result before it can end, even when the criteria pass.",
+    "pt-BR": "O turno pede a sua aceitação do resultado antes de terminar, mesmo quando os critérios passam."
+  },
+  "turn.acceptanceQuestion": {
+    "en": "[infuse] The criteria pass. This delivery is marked as needing your acceptance — files changed: {files}. Accept it?",
+    "pt-BR": "[infuse] Os critérios passaram. Esta entrega está marcada como dependente da sua aceitação — arquivos alterados: {files}. Aceita?"
+  },
+  "turn.accept": {
+    "en": "Accept delivery",
+    "pt-BR": "Aceitar entrega"
+  },
+  "turn.reject": {
+    "en": "Reject and describe what to change",
+    "pt-BR": "Rejeitar e descrever o que mudar"
+  },
+  "turn.accepted": {
+    "en": "[infuse] Delivery accepted by the user.",
+    "pt-BR": "[infuse] Entrega aceita pelo usuário."
+  },
+  "turn.rejected": {
+    "en": "[infuse] The user rejected this delivery. The turn ends unverified; the user will say what must change.",
+    "pt-BR": "[infuse] O usuário rejeitou esta entrega. O turno termina não verificado; o usuário dirá o que deve mudar."
+  },
+  "oracle.dependencies": {
+    "en": "the dependency manifests or installed runners changed while the checks ran; the verdict is not usable",
+    "pt-BR": "os manifestos de dependências ou os executáveis instalados mudaram durante as verificações; o veredito não é utilizável"
+  },
   "oracle.httpNeedsServer": {
     "en": "an HTTP or browser check requires \"server\" in the criteria: without it the check would measure whatever answers the address, not the snapshot",
     "pt-BR": "uma verificação HTTP ou no navegador exige \"server\" nos critérios: sem isso ela mediria o que estiver respondendo no endereço, não o snapshot"
@@ -6102,6 +6534,30 @@
   "slash.btw": {
     "en": "A side question, outside the history",
     "pt-BR": "Pergunta paralela, fora do histórico"
+  },
+  "slash.group.session": {
+    "en": "Session",
+    "pt-BR": "Sessão"
+  },
+  "slash.group.model": {
+    "en": "Model",
+    "pt-BR": "Modelo"
+  },
+  "slash.group.view": {
+    "en": "View",
+    "pt-BR": "Visualização"
+  },
+  "slash.group.tools": {
+    "en": "Tools",
+    "pt-BR": "Ferramentas"
+  },
+  "slash.group.help": {
+    "en": "Help",
+    "pt-BR": "Ajuda"
+  },
+  "slash.group.custom": {
+    "en": "Custom",
+    "pt-BR": "Personalizado"
   },
   "slash.clear": {
     "en": "New session in this project",
