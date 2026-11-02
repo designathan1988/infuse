@@ -243,3 +243,15 @@ func TestInstalledDependencyChangeNeedsAnInstall(t *testing.T) {
 		t.Fatalf("the approved install did not rebase the dependency: %q", why.Render("en"))
 	}
 }
+
+// A test configuration weakened through the shell is refused like one written by the tools.
+func TestShellTestConfigWeakeningIsRefused(t *testing.T) {
+	s, root := shellProject(t)
+	writeFile(t, root, ".github/workflows/ci.yml", "steps:\n  - run: npm test\n")
+	s.Turn = 2
+	snapshotTurn(s.Root, s.workRoot(), s.ID, s.Turn)
+	writeFile(t, root, ".github/workflows/ci.yml", "steps:\n  - run: npm test\n    continue-on-error: true\n")
+	if why := s.auditShellWrites(); why.Empty() {
+		t.Fatal("a shell-added continue-on-error passed the audit")
+	}
+}

@@ -67,7 +67,7 @@ func rememberPackage(p pkgRef, exists bool, created time.Time) {
 	_ = core.WriteJSON(packageCacheFile(), pkgCache)
 }
 
-var reInstaller = regexp.MustCompile(`(?i)\b(?:npm|pnpm|yarn)\s+(?:i|install|ci|add)\b|\bpip3?\s+install\b|\bgo\s+get\b|\bcargo\s+add\b|\bpoetry\s+add\b|\bbundle\s+install\b`)
+var reInstaller = regexp.MustCompile(`(?i)\b(?:npm|pnpm|yarn)\s+(?:i|install|ci|add)\b|\bpip3?\s+install\b|\bgo\s+get\b|\bcargo\s+add\b|\bpoetry\s+add\b|\bbundle\s+install\b|\bgo mod (?:tidy|download)\b|\bnpm rebuild\b|\buv sync\b|\bpoetry install\b|\bcomposer install\b`)
 
 // installerCommand reports a command that installs dependencies: its success rebases the turn's
 // installed-tree fingerprint, so the change it made is not treated as a tampering after the fact.

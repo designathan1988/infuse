@@ -208,3 +208,15 @@ func TestManifestDependenciesAreVerified(t *testing.T) {
 		t.Fatal("a known dependency was refused")
 	}
 }
+
+// Removing a coverage/failure threshold or the test script from configuration is fraud.
+func TestConfigurationCannotLoseItsGuards(t *testing.T) {
+	before := `{"scripts":{"test":"jest"},"jest":{"coverageThreshold":{"global":{"lines":80}}}}`
+	after := `{"scripts":{"build":"tsc"},"jest":{}}`
+	if why := cheatWriteCheck(t.TempDir(), "package.json", before, after); why.ID != "cheat.config_removed" {
+		t.Fatalf("the removed guards passed: %q", why.Render("en"))
+	}
+	if why := cheatWriteCheck(t.TempDir(), "package.json", before, `{"scripts":{"test":"jest"},"jest":{"coverageThreshold":{"global":{"lines":90}}}}`); !why.Empty() {
+		t.Fatalf("raising a threshold was refused: %q", why.Render("en"))
+	}
+}

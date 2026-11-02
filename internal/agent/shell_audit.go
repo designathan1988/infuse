@@ -240,6 +240,9 @@ func (s *Session) shellDeletionViolation(rel, abs, before string) Msg {
 // conventions, architecture and size.
 func (s *Session) shellStyleViolation(rel, abs, before string, after []byte) Msg {
 	text := string(after)
+	if ask, _ := detectShortcuts(rel, before, text); len(ask) > 0 {
+		return M("shortcut.weakens_tests", "items", ask)
+	}
 	ext := strings.ToLower(filepath.Ext(abs))
 	if codeExts[ext] {
 		if lines := unjustifiedSuppressions(before, text); len(lines) > 0 {

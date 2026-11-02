@@ -55,22 +55,22 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/i18n.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/icons.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/core/signals.js",
     "status": 200,
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/core/i18n.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/core/api.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/core/icons.js",
     "status": 200,
     "method": "GET"
   },
@@ -85,17 +85,17 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/panes/index.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/components/sidebar.js",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/src/core/store.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/panes/index.js",
     "status": 200,
     "method": "GET"
   },
@@ -120,17 +120,17 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/components/open-in.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/transcript.js",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/src/components/rail.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/open-in.js",
     "status": 200,
     "method": "GET"
   },
@@ -145,12 +145,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/markdown.js",
+    "url": "http://127.0.0.1:7471/src/core/messages.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/messages.js",
+    "url": "http://127.0.0.1:7471/src/core/markdown.js",
     "status": 200,
     "method": "GET"
   },
@@ -170,17 +170,42 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/wire.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/components/composer/context.js",
     "status": 200,
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/components/composer/wire.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/composer/effect.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/autocomplete.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/under.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/attachments.js",
     "status": 200,
     "method": "GET"
   },
@@ -195,31 +220,6 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/autocomplete.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/attachments.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/under.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/components/composer/slash.js",
     "status": 200,
     "method": "GET"
@@ -230,12 +230,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/icon.png",
+    "url": "http://127.0.0.1:7471/api/settings/full",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/settings/full",
+    "url": "http://127.0.0.1:7471/icon.png",
     "status": 200,
     "method": "GET"
   },
@@ -315,22 +315,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/i18n.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/icons.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/core/fmt.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/api.js",
+    "url": "http://127.0.0.1:7471/src/core/i18n.js",
     "status": 200,
     "method": "GET"
   },
@@ -340,17 +330,12 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/core/icons.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/toast.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/panes/index.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/view.js",
     "status": 200,
     "method": "GET"
   },
@@ -360,12 +345,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/menu.js",
+    "url": "http://127.0.0.1:7471/src/core/api.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/store.js",
+    "url": "http://127.0.0.1:7471/src/panes/index.js",
     "status": 200,
     "method": "GET"
   },
@@ -375,17 +360,17 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/open-in.js",
+    "url": "http://127.0.0.1:7471/src/components/view.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/transcript.js",
+    "url": "http://127.0.0.1:7471/src/core/store.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer.js",
+    "url": "http://127.0.0.1:7471/src/components/menu.js",
     "status": 200,
     "method": "GET"
   },
@@ -395,17 +380,22 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/components/open-in.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/transcript.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/rail.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/messages.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/markdown.js",
     "status": 200,
     "method": "GET"
   },
@@ -416,6 +406,16 @@
   },
   {
     "url": "http://127.0.0.1:7471/src/components/composer/mount.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/core/messages.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/core/markdown.js",
     "status": 200,
     "method": "GET"
   },
@@ -435,17 +435,27 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/context.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/components/composer/wire.js",
     "status": 200,
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/components/composer/context.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/composer/effect.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/keys.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/menus.js",
     "status": 200,
     "method": "GET"
   },
@@ -460,12 +470,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/keys.js",
+    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
     "status": 200,
     "method": "GET"
   },
@@ -475,27 +485,17 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/menus.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/components/composer/slash.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/i18n",
+    "url": "http://127.0.0.1:7471/icon.png",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/icon.png",
+    "url": "http://127.0.0.1:7471/api/i18n",
     "status": 200,
     "method": "GET"
   },
@@ -555,12 +555,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/css/components.css",
+    "url": "http://127.0.0.1:7471/css/layout.css",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/css/layout.css",
+    "url": "http://127.0.0.1:7471/css/components.css",
     "status": 200,
     "method": "GET"
   },
@@ -585,12 +585,22 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/core/fmt.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/core/icons.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/core/i18n.js",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/fmt.js",
+    "url": "http://127.0.0.1:7471/src/core/api.js",
     "status": 200,
     "method": "GET"
   },
@@ -605,17 +615,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/toast.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/icons.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/core/api.js",
+    "url": "http://127.0.0.1:7471/src/core/store.js",
     "status": 200,
     "method": "GET"
   },
@@ -625,12 +625,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/core/store.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/panes/index.js",
+    "url": "http://127.0.0.1:7471/src/components/dialog.js",
     "status": 200,
     "method": "GET"
   },
@@ -640,7 +635,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/dialog.js",
+    "url": "http://127.0.0.1:7471/src/components/toast.js",
     "status": 200,
     "method": "GET"
   },
@@ -650,17 +645,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/session-actions.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/rail.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/transcript.js",
+    "url": "http://127.0.0.1:7471/src/panes/index.js",
     "status": 200,
     "method": "GET"
   },
@@ -670,7 +655,27 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/components/rail.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/session-actions.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/transcript.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/composer/options.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/cards-shared.js",
     "status": 200,
     "method": "GET"
   },
@@ -681,11 +686,6 @@
   },
   {
     "url": "http://127.0.0.1:7471/src/core/markdown.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/cards-shared.js",
     "status": 200,
     "method": "GET"
   },
@@ -720,22 +720,7 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/src/components/composer/keys.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/menus.js",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
     "status": 200,
     "method": "GET"
   },
@@ -745,7 +730,22 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/src/components/composer/menus.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/send.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/src/components/composer/attachments.js",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/src/components/composer/vim.js",
     "status": 200,
     "method": "GET"
   },
@@ -815,22 +815,22 @@
     "method": "POST"
   },
   {
-    "url": "http://127.0.0.1:7471/api/sessions/1793582449105?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/sessions/1793583094440?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/sessions/1793582449105/events?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/sessions/1793583094440/events?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/session/1793582449105/bans?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/session/1793583094440/bans?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
@@ -845,12 +845,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/session/1793582449105/bans?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/session/1793583094440/bans?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/sessions/1793582449105/send?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/sessions/1793583094440/send?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "POST"
   },
@@ -865,47 +865,47 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
   },
@@ -915,24 +915,14 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/session/1793582449105/suggest?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/session/1793583094440/suggest?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "POST"
   },
   {
-    "url": "http://127.0.0.1:7471/api/changes?session=1793582449105&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "url": "http://127.0.0.1:7471/api/changes?session=1793583094440&scope=all&root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2&dir=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
     "status": 200,
     "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/session/1793582449105/suggest?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
-    "status": 200,
-    "method": "POST"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/session/1793582449105/suggest?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
-    "status": 200,
-    "method": "POST"
   },
   {
     "url": "http://127.0.0.1:7471/api/usage",
@@ -940,6 +930,221 @@
     "method": "GET"
   },
   {
+    "url": "http://127.0.0.1:7471/api/session/1793583094440/suggest?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/session/1793583094440/suggest?root=C%3A%5CUsers%5CJonathan%5CAppData%5CLocal%5CTemp%5Cinfuse-demo-verify2",
+    "status": 200,
+    "method": "POST"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/projects",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
+    "url": "http://127.0.0.1:7471/api/sessions/all",
+    "status": 200,
+    "method": "GET"
+  },
+  {
     "url": "http://127.0.0.1:7471/api/sessions/all",
     "status": 200,
     "method": "GET"
@@ -1475,217 +1680,12 @@
     "method": "GET"
   },
   {
-    "url": "http://127.0.0.1:7471/api/projects",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
-    "status": 200,
-    "method": "GET"
-  },
-  {
     "url": "http://127.0.0.1:7471/api/sessions/all",
     "status": 200,
     "method": "GET"
   },
   {
     "url": "http://127.0.0.1:7471/api/projects",
-    "status": 200,
-    "method": "GET"
-  },
-  {
-    "url": "http://127.0.0.1:7471/api/sessions/all",
     "status": 200,
     "method": "GET"
   },

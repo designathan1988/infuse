@@ -16,18 +16,20 @@ import (
 )
 
 var (
-	reTestRunner   = regexp.MustCompile(`\b(?:go\s+test|npm\s+(?:run\s+)?test|pnpm\s+(?:run\s+)?test|yarn\s+(?:run\s+)?test|npx\s+(?:jest|vitest|mocha|playwright)|jest|vitest|mocha|pytest|python3?\s+-m\s+(?:pytest|unittest)|node\s+--test|cargo\s+test|dotnet\s+test|mvn\s+test|gradle\w*\s+test|deno\s+test|bun\s+test)\b`)
-	reSwallowExit  = regexp.MustCompile(`\|\|\s*(?:true|:|exit\s+0)\b|;\s*(?:true|exit\s+0)\s*$|\bset\s+\+e\b`)
-	reSilenceOut   = regexp.MustCompile(`(?:^|[^0-9&2])>\s*/dev/null`) // stdout hidden: the result cannot be read
-	reTestInfra    = regexp.MustCompile(`(?i)(?:^|/)(?:conftest\.py|sitecustomize\.py|usercustomize\.py|[^/]*\.pth|jest\.(?:config|setup)[^/]*|vitest\.(?:config|setup|workspace)[^/]*|setuptests\.[jt]sx?|karma\.conf[^/]*|\.mocharc[^/]*|pytest\.ini|tox\.ini|playwright\.config[^/]*)$`)
-	reTestConfig   = regexp.MustCompile(`(?i)(?:^|/)(?:\.github/workflows/|\.gitlab-ci|azure-pipelines|bitbucket-pipelines|jenkinsfile)|(?:^|/)(?:jest|vitest|playwright|cypress)\.config[^/]*$|(?:^|/)package\.json$|\.nycrc[^/]*$|(?:^|/)(?:codecov|coveralls)\.ya?ml$|(?:^|/)\.c8rc[^/]*$`)
-	reAlwaysEqual  = regexp.MustCompile(`(?s)def\s+__(?:eq|ne)__\s*\([^)]*\)\s*(?:->\s*\w+\s*)?:\s*\n\s*return\s+(?:True|False)\b|\bequals\s*\([^)]*\)\s*(?::\s*\w+\s*)?\{\s*return\s+(?:true|false)\s*;?\s*\}`)
-	reClockPatch   = regexp.MustCompile(`\b(?:time\.time|time\.perf_counter|time\.monotonic|Date\.now|performance\.now|process\.hrtime)\s*=[^=]`)
-	reMarker       = regexp.MustCompile(`\b(?:TODO|FIXME|HACK|XXX)\b`)
-	reStubBody     = regexp.MustCompile(`^\s*(?:pass|\.\.\.|return\s*(?:null|None|nil|undefined|0|false|False|""|''|\[\]|\{\})?\s*;?|throw\s+new\s+\w*Error\([^)]*\)\s*;?|raise\s+NotImplementedError\b.*|panic\([^)]*\)|unimplemented!\(\)|todo!\(\))\s*$`)
-	reStringLit    = regexp.MustCompile(`"([^"\\\n]{4,80})"|'([^'\\\n]{4,80})'`)
-	reNumberLit    = regexp.MustCompile(`\b\d{3,}(?:\.\d+)?\b`)
-	reConditionPos = regexp.MustCompile(`\b(?:if|elif|else\s+if|case|when|switch)\b|===?|!==?|\?\s`)
+	reTestRunner    = regexp.MustCompile(`\b(?:go\s+test|npm\s+(?:run\s+)?test|pnpm\s+(?:run\s+)?test|yarn\s+(?:run\s+)?test|npx\s+(?:jest|vitest|mocha|playwright)|jest|vitest|mocha|pytest|python3?\s+-m\s+(?:pytest|unittest)|node\s+--test|cargo\s+test|dotnet\s+test|mvn\s+test|gradle\w*\s+test|deno\s+test|bun\s+test)\b`)
+	reSwallowExit   = regexp.MustCompile(`\|\|\s*(?:true|:|exit\s+0)\b|;\s*(?:true|exit\s+0)\s*$|\bset\s+\+e\b`)
+	reSilenceOut    = regexp.MustCompile(`(?:^|[^0-9&2])>\s*/dev/null`) // stdout hidden: the result cannot be read
+	reTestInfra     = regexp.MustCompile(`(?i)(?:^|/)(?:conftest\.py|sitecustomize\.py|usercustomize\.py|[^/]*\.pth|jest\.(?:config|setup)[^/]*|vitest\.(?:config|setup|workspace)[^/]*|setuptests\.[jt]sx?|karma\.conf[^/]*|\.mocharc[^/]*|pytest\.ini|tox\.ini|playwright\.config[^/]*)$`)
+	reTestConfig    = regexp.MustCompile(`(?i)(?:^|/)(?:\.github/workflows/|\.gitlab-ci|azure-pipelines|bitbucket-pipelines|jenkinsfile)|(?:^|/)(?:jest|vitest|playwright|cypress)\.config[^/]*$|(?:^|/)package\.json$|\.nycrc[^/]*$|(?:^|/)(?:codecov|coveralls)\.ya?ml$|(?:^|/)\.c8rc[^/]*$`)
+	reCoverageGuard = regexp.MustCompile(`(?i)"(?:coverageThreshold|coveragePathIgnorePatterns|collectCoverage|check-coverage|fail_under|fail-under|thresholds?)"`)
+	reTestScript    = regexp.MustCompile(`(?i)"test"\s*:`)
+	reAlwaysEqual   = regexp.MustCompile(`(?s)def\s+__(?:eq|ne)__\s*\([^)]*\)\s*(?:->\s*\w+\s*)?:\s*\n\s*return\s+(?:True|False)\b|\bequals\s*\([^)]*\)\s*(?::\s*\w+\s*)?\{\s*return\s+(?:true|false)\s*;?\s*\}`)
+	reClockPatch    = regexp.MustCompile(`\b(?:time\.time|time\.perf_counter|time\.monotonic|Date\.now|performance\.now|process\.hrtime)\s*=[^=]`)
+	reMarker        = regexp.MustCompile(`\b(?:TODO|FIXME|HACK|XXX)\b`)
+	reStubBody      = regexp.MustCompile(`^\s*(?:pass|\.\.\.|return\s*(?:null|None|nil|undefined|0|false|False|""|''|\[\]|\{\})?\s*;?|throw\s+new\s+\w*Error\([^)]*\)\s*;?|raise\s+NotImplementedError\b.*|panic\([^)]*\)|unimplemented!\(\)|todo!\(\))\s*$`)
+	reStringLit     = regexp.MustCompile(`"([^"\\\n]{4,80})"|'([^'\\\n]{4,80})'`)
+	reNumberLit     = regexp.MustCompile(`\b\d{3,}(?:\.\d+)?\b`)
+	reConditionPos  = regexp.MustCompile(`\b(?:if|elif|else\s+if|case|when|switch)\b|===?|!==?|\?\s`)
 )
 
 func isTestPath(rel string) bool { return reTestFile.MatchString(filepath.ToSlash(rel)) }
@@ -71,6 +73,20 @@ func testLiterals(work string) map[string]string {
 }
 
 // cheatWriteCheck looks at what a write adds to a file.
+// configWeakening refuses the removal of a test script or a coverage/failure threshold from a
+// test-related configuration file: that is how a passing check stops governing without a code change.
+func configWeakening(rel, before, after string) Msg {
+	if !strings.EqualFold(filepath.Base(rel), "package.json") && !reTestConfig.MatchString(rel) {
+		return Msg{}
+	}
+	for _, re := range []*regexp.Regexp{reCoverageGuard, reTestScript} {
+		if len(re.FindAllString(after, -1)) < len(re.FindAllString(before, -1)) {
+			return M("cheat.config_removed", "file", filepath.ToSlash(rel))
+		}
+	}
+	return Msg{}
+}
+
 func cheatWriteCheck(work, rel, before, after string) Msg {
 	rel = filepath.ToSlash(rel)
 	ext := strings.ToLower(path.Ext(rel))
@@ -79,6 +95,9 @@ func cheatWriteCheck(work, rel, before, after string) Msg {
 	// B8: infrastructure that decides whether tests pass
 	if reTestInfra.MatchString(rel) && before != after {
 		return M("cheat.test_infra", "file", rel)
+	}
+	if why := configWeakening(rel, before, after); !why.Empty() {
+		return why
 	}
 	if !codeExts[ext] {
 		return Msg{} // prose and data files cannot fake a test run; code locks do not apply to them
